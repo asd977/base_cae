@@ -43,40 +43,76 @@
       </property>
       <item row="0" column="0">
        <widget class="QLabel" name="analysisLabel">
+ <property name="sizePolicy">
+  <sizepolicy hsizetype="Fixed" vsizetype="Preferred">
+   <horstretch>0</horstretch>
+   <verstretch>0</verstretch>
+  </sizepolicy>
+ </property>
         <property name="text">
          <string>计算工况</string>
         </property>
-       </widget>
+        <property name="wordWrap">
+  <bool>false</bool>
+ </property>
+</widget>
       </item>
       <item row="0" column="1">
        <widget class="QComboBox" name="analysisComboBox" />
       </item>
       <item row="1" column="0">
        <widget class="QLabel" name="resultStageLabel">
+ <property name="sizePolicy">
+  <sizepolicy hsizetype="Fixed" vsizetype="Preferred">
+   <horstretch>0</horstretch>
+   <verstretch>0</verstretch>
+  </sizepolicy>
+ </property>
         <property name="text">
          <string>结果阶段</string>
         </property>
-       </widget>
+        <property name="wordWrap">
+  <bool>false</bool>
+ </property>
+</widget>
       </item>
       <item row="1" column="1">
        <widget class="QComboBox" name="resultDirComboBox" />
       </item>
       <item row="2" column="0">
        <widget class="QLabel" name="resultTimeLabel">
+ <property name="sizePolicy">
+  <sizepolicy hsizetype="Fixed" vsizetype="Preferred">
+   <horstretch>0</horstretch>
+   <verstretch>0</verstretch>
+  </sizepolicy>
+ </property>
         <property name="text">
          <string>结果时刻</string>
         </property>
-       </widget>
+        <property name="wordWrap">
+  <bool>false</bool>
+ </property>
+</widget>
       </item>
       <item row="2" column="1">
        <widget class="QComboBox" name="resultTimeComboBox" />
       </item>
       <item row="3" column="0">
        <widget class="QLabel" name="resultFileLabel">
+ <property name="sizePolicy">
+  <sizepolicy hsizetype="Fixed" vsizetype="Preferred">
+   <horstretch>0</horstretch>
+   <verstretch>0</verstretch>
+  </sizepolicy>
+ </property>
         <property name="text">
          <string>结果文件</string>
         </property>
-       </widget>
+        <property name="wordWrap">
+  <bool>false</bool>
+ </property>
+</widget>
       </item>
       <item row="3" column="1">
        <widget class="QComboBox" name="stepComboBox" />
@@ -130,40 +166,76 @@
       </property>
       <item row="0" column="0">
        <widget class="QLabel" name="xLabel">
+ <property name="sizePolicy">
+  <sizepolicy hsizetype="Fixed" vsizetype="Preferred">
+   <horstretch>0</horstretch>
+   <verstretch>0</verstretch>
+  </sizepolicy>
+ </property>
         <property name="text">
          <string>X 分量</string>
         </property>
-       </widget>
+        <property name="wordWrap">
+  <bool>false</bool>
+ </property>
+</widget>
       </item>
       <item row="0" column="1">
        <widget class="QComboBox" name="xComboBox" />
       </item>
       <item row="1" column="0">
        <widget class="QLabel" name="yLabel">
+ <property name="sizePolicy">
+  <sizepolicy hsizetype="Fixed" vsizetype="Preferred">
+   <horstretch>0</horstretch>
+   <verstretch>0</verstretch>
+  </sizepolicy>
+ </property>
         <property name="text">
          <string>Y 分量</string>
         </property>
-       </widget>
+        <property name="wordWrap">
+  <bool>false</bool>
+ </property>
+</widget>
       </item>
       <item row="1" column="1">
        <widget class="QComboBox" name="yComboBox" />
       </item>
       <item row="2" column="0">
        <widget class="QLabel" name="zLabel">
+ <property name="sizePolicy">
+  <sizepolicy hsizetype="Fixed" vsizetype="Preferred">
+   <horstretch>0</horstretch>
+   <verstretch>0</verstretch>
+  </sizepolicy>
+ </property>
         <property name="text">
          <string>Z 分量</string>
         </property>
-       </widget>
+        <property name="wordWrap">
+  <bool>false</bool>
+ </property>
+</widget>
       </item>
       <item row="2" column="1">
        <widget class="QComboBox" name="zComboBox" />
       </item>
       <item row="3" column="0">
        <widget class="QLabel" name="samplingLabel">
+ <property name="sizePolicy">
+  <sizepolicy hsizetype="Fixed" vsizetype="Preferred">
+   <horstretch>0</horstretch>
+   <verstretch>0</verstretch>
+  </sizepolicy>
+ </property>
         <property name="text">
          <string>采样间隔</string>
         </property>
-       </widget>
+        <property name="wordWrap">
+  <bool>false</bool>
+ </property>
+</widget>
       </item>
       <item row="3" column="1">
        <widget class="QSpinBox" name="maskSizeSpinBox">
@@ -189,10 +261,19 @@
       </item>
       <item row="4" column="0">
        <widget class="QLabel" name="scaleLabel">
+ <property name="sizePolicy">
+  <sizepolicy hsizetype="Fixed" vsizetype="Preferred">
+   <horstretch>0</horstretch>
+   <verstretch>0</verstretch>
+  </sizepolicy>
+ </property>
         <property name="text">
          <string>箭头长度</string>
         </property>
-       </widget>
+        <property name="wordWrap">
+  <bool>false</bool>
+ </property>
+</widget>
       </item>
       <item row="4" column="1">
        <widget class="QDoubleSpinBox" name="scaleSpinBox">
@@ -221,10 +302,19 @@
       </item>
       <item row="5" column="0">
        <widget class="QLabel" name="thicknessLabel">
+ <property name="sizePolicy">
+  <sizepolicy hsizetype="Fixed" vsizetype="Preferred">
+   <horstretch>0</horstretch>
+   <verstretch>0</verstretch>
+  </sizepolicy>
+ </property>
         <property name="text">
          <string>箭头粗细</string>
         </property>
-       </widget>
+        <property name="wordWrap">
+  <bool>false</bool>
+ </property>
+</widget>
       </item>
       <item row="5" column="1">
        <widget class="QDoubleSpinBox" name="thicknessSpinBox">

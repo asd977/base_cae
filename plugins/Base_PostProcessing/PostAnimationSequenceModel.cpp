@@ -175,7 +175,7 @@ void PostAnimationSequenceModel::rebuild(const QString& projectDir)
                 sequence.axis = Axis::Time;
                 sequence.supportsInterpolation = true;
                 frame.label = file.frameLabel.trimmed().isEmpty()
-                                  ? QStringLiteral("步 %1").arg(file.frameOrder)
+                                  ? QStringLiteral("计算时刻索引 %1").arg(file.frameOrder)
                                   : file.frameLabel.trimmed();
                 sequence.frames.push_back(frame);
             }

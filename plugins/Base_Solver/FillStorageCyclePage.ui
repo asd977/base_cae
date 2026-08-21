@@ -11,7 +11,7 @@
    </rect>
   </property>
   <property name="windowTitle">
-   <string>施工阶段（填筑—蓄水）</string>
+   <string>填筑蓄水</string>
   </property>
   <layout class="QVBoxLayout" name="verticalLayout">
    <property name="leftMargin">
@@ -35,7 +35,7 @@
       </sizepolicy>
      </property>
      <property name="text">
-      <string>填筑与蓄水参数</string>
+      <string>填筑蓄水</string>
      </property>
      <property name="visible">
       <bool>false</bool>
@@ -69,6 +69,12 @@
          <layout class="QFormLayout" name="formLayoutStaticLoad">
           <item row="0" column="0">
            <widget class="QLabel" name="labelIFIIWL_SEEP">
+ <property name="sizePolicy">
+  <sizepolicy hsizetype="Fixed" vsizetype="Preferred">
+   <horstretch>0</horstretch>
+   <verstretch>0</verstretch>
+  </sizepolicy>
+ </property>
             <property name="text">
              <string>坝基渗透荷载</string>
             </property>
@@ -100,6 +106,12 @@
           </item>
           <item row="1" column="0">
            <widget class="QLabel" name="labelIFIIWL_BODY">
+ <property name="sizePolicy">
+  <sizepolicy hsizetype="Fixed" vsizetype="Preferred">
+   <horstretch>0</horstretch>
+   <verstretch>0</verstretch>
+  </sizepolicy>
+ </property>
             <property name="text">
              <string>坝体渗流体力</string>
             </property>
@@ -133,6 +145,12 @@
           </item>
           <item row="2" column="0">
            <widget class="QLabel" name="labelIFIIWL_FACE">
+ <property name="sizePolicy">
+  <sizepolicy hsizetype="Fixed" vsizetype="Preferred">
+   <horstretch>0</horstretch>
+   <verstretch>0</verstretch>
+  </sizepolicy>
+ </property>
             <property name="text">
              <string>坝体水压力</string>
             </property>
@@ -226,10 +244,19 @@
           </property>
           <item row="0" column="0">
            <widget class="QLabel" name="labelSeepageSource">
+ <property name="sizePolicy">
+  <sizepolicy hsizetype="Fixed" vsizetype="Preferred">
+   <horstretch>0</horstretch>
+   <verstretch>0</verstretch>
+  </sizepolicy>
+ </property>
             <property name="text">
              <string>来源工况</string>
             </property>
-           </widget>
+            <property name="wordWrap">
+  <bool>false</bool>
+ </property>
+</widget>
           </item>
           <item row="0" column="1">
            <widget class="QComboBox" name="comboSeepageSource">
@@ -245,10 +272,19 @@
           </item>
           <item row="1" column="0">
            <widget class="QLabel" name="labelSeepageResultType">
+ <property name="sizePolicy">
+  <sizepolicy hsizetype="Fixed" vsizetype="Preferred">
+   <horstretch>0</horstretch>
+   <verstretch>0</verstretch>
+  </sizepolicy>
+ </property>
             <property name="text">
              <string>结果类型</string>
             </property>
-           </widget>
+            <property name="wordWrap">
+  <bool>false</bool>
+ </property>
+</widget>
           </item>
           <item row="1" column="1">
            <widget class="QComboBox" name="comboSeepageResultType">
@@ -269,11 +305,17 @@
           </item>
           <item row="2" column="0" colspan="2">
            <widget class="QLabel" name="labelSeepageAssociationHint">
+ <property name="sizePolicy">
+  <sizepolicy hsizetype="Fixed" vsizetype="Preferred">
+   <horstretch>0</horstretch>
+   <verstretch>0</verstretch>
+  </sizepolicy>
+ </property>
             <property name="text">
              <string>用于坝体渗流体力计算。</string>
             </property>
             <property name="wordWrap">
-             <bool>true</bool>
+             <bool>false</bool>
             </property>
            </widget>
           </item>
@@ -283,7 +325,7 @@
        <item>
         <widget class="QGroupBox" name="groupSeepageTransientStep">
          <property name="title">
-          <string>非稳态结果步</string>
+          <string>非稳态计算时刻</string>
          </property>
          <layout class="QFormLayout" name="formLayoutSeepageTransientStep">
           <property name="leftMargin">
@@ -315,30 +357,45 @@
           </property>
           <item row="0" column="0">
            <widget class="QLabel" name="labelSeepageTransientStep">
+ <property name="sizePolicy">
+  <sizepolicy hsizetype="Fixed" vsizetype="Preferred">
+   <horstretch>0</horstretch>
+   <verstretch>0</verstretch>
+  </sizepolicy>
+ </property>
             <property name="text">
-             <string>结果步</string>
+             <string>计算时刻</string>
             </property>
-           </widget>
+            <property name="wordWrap">
+  <bool>false</bool>
+ </property>
+</widget>
           </item>
           <item row="0" column="1">
            <widget class="QComboBox" name="comboSeepageTransientStep">
             <property name="toolTip">
-             <string>选择所需结果步。</string>
+             <string>按实际计算时间和对应水位选择渗流场。</string>
             </property>
             <item>
              <property name="text">
-              <string>请选择非稳态结果步</string>
+              <string>请选择非稳态计算时刻</string>
              </property>
             </item>
            </widget>
           </item>
           <item row="1" column="0" colspan="2">
            <widget class="QLabel" name="labelSeepageTransientHint">
+ <property name="sizePolicy">
+  <sizepolicy hsizetype="Fixed" vsizetype="Preferred">
+   <horstretch>0</horstretch>
+   <verstretch>0</verstretch>
+  </sizepolicy>
+ </property>
             <property name="text">
-             <string>暂无可用的非稳态结果。</string>
+             <string>暂无可用的非稳态时刻结果。</string>
             </property>
             <property name="wordWrap">
-             <bool>true</bool>
+             <bool>false</bool>
             </property>
            </widget>
           </item>
@@ -534,21 +591,33 @@
        <item>
         <widget class="QGroupBox" name="groupDynamic">
          <property name="title">
-          <string>动力分析参数</string>
+          <string>动力分析</string>
          </property>
          <layout class="QFormLayout" name="formLayoutDynamic">
           <item row="0" column="0" colspan="2">
            <widget class="QLabel" name="labelDynamicHint">
+ <property name="sizePolicy">
+  <sizepolicy hsizetype="Fixed" vsizetype="Preferred">
+   <horstretch>0</horstretch>
+   <verstretch>0</verstretch>
+  </sizepolicy>
+ </property>
             <property name="text">
-             <string>启用动力计算后可设置。</string>
+             <string>设置当前计算工况需要执行的动力任务；静力－动力材料转换仅对当前工况生效。</string>
             </property>
             <property name="wordWrap">
-             <bool>true</bool>
+             <bool>false</bool>
             </property>
            </widget>
           </item>
           <item row="1" column="0">
            <widget class="QLabel" name="labelIFMODE">
+ <property name="sizePolicy">
+  <sizepolicy hsizetype="Fixed" vsizetype="Preferred">
+   <horstretch>0</horstretch>
+   <verstretch>0</verstretch>
+  </sizepolicy>
+ </property>
             <property name="text">
              <string>模态分析</string>
             </property>
@@ -558,27 +627,84 @@
            </widget>
           </item>
           <item row="1" column="1">
-           <widget class="QComboBox" name="comboIFMODE">
-            <item>
-             <property name="text">
-              <string>不计算</string>
+           <widget class="QWidget" name="widgetModalControls" native="true">
+            <layout class="QHBoxLayout" name="layoutModalControls">
+             <property name="leftMargin">
+              <number>0</number>
              </property>
-            </item>
-            <item>
-             <property name="text">
-              <string>计算</string>
+             <property name="topMargin">
+              <number>0</number>
              </property>
-            </item>
-            <property name="minimumSize">
-             <size>
-              <width>10</width>
-              <height>0</height>
-             </size>
-            </property>
+             <property name="rightMargin">
+              <number>0</number>
+             </property>
+             <property name="bottomMargin">
+              <number>0</number>
+             </property>
+             <property name="spacing">
+              <number>8</number>
+             </property>
+             <item>
+              <widget class="QComboBox" name="comboIFMODE">
+               <item>
+                <property name="text">
+                 <string>不计算</string>
+                </property>
+               </item>
+               <item>
+                <property name="text">
+                 <string>计算</string>
+                </property>
+               </item>
+               <property name="minimumSize">
+                <size>
+                 <width>10</width>
+                 <height>0</height>
+                </size>
+               </property>
+              </widget>
+             </item>
+             <item>
+              <widget class="QLabel" name="labelModalOrderInline">
+               <property name="text">
+                <string>提取阶数</string>
+               </property>
+              </widget>
+             </item>
+             <item>
+              <widget class="QLineEdit" name="editModalOrder">
+               <property name="text">
+                <string>10</string>
+               </property>
+               <property name="maximumWidth">
+                <number>80</number>
+               </property>
+              </widget>
+             </item>
+             <item>
+              <spacer name="horizontalSpacerModalOrder">
+               <property name="orientation">
+                <enum>Qt::Horizontal</enum>
+               </property>
+               <property name="sizeHint" stdset="0">
+                <size>
+                 <width>20</width>
+                 <height>20</height>
+                </size>
+               </property>
+              </spacer>
+             </item>
+            </layout>
            </widget>
           </item>
           <item row="2" column="0">
            <widget class="QLabel" name="labelIFWAVE">
+ <property name="sizePolicy">
+  <sizepolicy hsizetype="Fixed" vsizetype="Preferred">
+   <horstretch>0</horstretch>
+   <verstretch>0</verstretch>
+  </sizepolicy>
+ </property>
             <property name="text">
              <string>地震波时程分析</string>
             </property>
@@ -609,6 +735,12 @@
           </item>
           <item row="3" column="0">
            <widget class="QLabel" name="labelIFSETT">
+ <property name="sizePolicy">
+  <sizepolicy hsizetype="Fixed" vsizetype="Preferred">
+   <horstretch>0</horstretch>
+   <verstretch>0</verstretch>
+  </sizepolicy>
+ </property>
             <property name="text">
              <string>地震永久沉降</string>
             </property>
@@ -639,6 +771,12 @@
           </item>
           <item row="4" column="0">
            <widget class="QLabel" name="labelDT">
+ <property name="sizePolicy">
+  <sizepolicy hsizetype="Fixed" vsizetype="Preferred">
+   <horstretch>0</horstretch>
+   <verstretch>0</verstretch>
+  </sizepolicy>
+ </property>
             <property name="text">
              <string>计算时步</string>
             </property>
@@ -662,6 +800,12 @@
           </item>
           <item row="5" column="0">
            <widget class="QLabel" name="labelTSTA">
+ <property name="sizePolicy">
+  <sizepolicy hsizetype="Fixed" vsizetype="Preferred">
+   <horstretch>0</horstretch>
+   <verstretch>0</verstretch>
+  </sizepolicy>
+ </property>
             <property name="text">
              <string>起始时间</string>
             </property>
@@ -685,6 +829,12 @@
           </item>
           <item row="6" column="0">
            <widget class="QLabel" name="labelTEND">
+ <property name="sizePolicy">
+  <sizepolicy hsizetype="Fixed" vsizetype="Preferred">
+   <horstretch>0</horstretch>
+   <verstretch>0</verstretch>
+  </sizepolicy>
+ </property>
             <property name="text">
              <string>终止时间</string>
             </property>
@@ -708,6 +858,12 @@
           </item>
           <item row="7" column="0">
            <widget class="QLabel" name="labelWOMI1">
+ <property name="sizePolicy">
+  <sizepolicy hsizetype="Fixed" vsizetype="Preferred">
+   <horstretch>0</horstretch>
+   <verstretch>0</verstretch>
+  </sizepolicy>
+ </property>
             <property name="text">
              <string>一阶圆频率 ω1</string>
             </property>
@@ -762,7 +918,7 @@
        <item>
         <widget class="QGroupBox" name="groupCycle">
          <property name="title">
-          <string>施工阶段（填筑—蓄水）</string>
+          <string>填筑与蓄水</string>
          </property>
          <layout class="QHBoxLayout" name="layoutCircle">
           <item>

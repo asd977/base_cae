@@ -23,6 +23,7 @@
 #include <QSurfaceFormat>
 #include <QToolBar>
 #include <QToolButton>
+#include <QVariantMap>
 #include <QVBoxLayout>
 #include <QWidgetAction>
 
@@ -184,8 +185,13 @@ void VisualizationWidget::initVtk()
 {
     m_renderWindow = vtkSmartPointer<vtkGenericOpenGLRenderWindow>::New();
     m_vtkWidget->setRenderWindow(m_renderWindow);
+    m_defaultMultiSamples = m_renderWindow->GetMultiSamples();
+    m_renderWindow->SetAlphaBitPlanes(1);
 
     m_renderer = vtkSmartPointer<vtkRenderer>::New();
+    m_renderer->SetMaximumNumberOfPeels(8);
+    m_renderer->SetOcclusionRatio(0.25);
+    m_renderer->SetUseDepthPeeling(false);
     m_renderer->SetBackground(244.0 / 255.0, 246.0 / 255.0, 248.0 / 255.0);
     m_renderer->SetBackground2(1.0, 1.0, 1.0);
     m_renderer->SetGradientBackground(true);
@@ -407,11 +413,26 @@ void VisualizationWidget::initViewToolbar()
     connect(m_globalOpacitySlider, &QSlider::valueChanged, this,
             [this](int value)
             {
-                applyGlobalOpacity(static_cast<double>(value) / 100.0);
                 if (m_opacityPercentLabel)
                     m_opacityPercentLabel->setText(QString::number(value) + "%");
                 if (m_opacityButton)
                     m_opacityButton->setToolTip(tr("整体透明度：%1%").arg(value));
+
+                // 内部域面 + depth peeling 的一次 Render 可能远超过 40 ms。
+                // 拖动期间只更新滑块和百分比，松开后再一次性提交透明度，避免
+                // Render 阻塞事件循环后积压 valueChanged，造成越拖越卡。
+                if (m_globalOpacitySlider && m_globalOpacitySlider->isSliderDown())
+                    return;
+                applyGlobalOpacity(static_cast<double>(value) / 100.0, true);
+            });
+
+    connect(m_globalOpacitySlider, &QSlider::sliderReleased, this,
+            [this]()
+            {
+                if (!m_globalOpacitySlider)
+                    return;
+                applyGlobalOpacity(
+                    static_cast<double>(m_globalOpacitySlider->value()) / 100.0, true);
             });
 
     auto* action = new QWidgetAction(m_opacityMenu);
@@ -503,6 +524,7 @@ bool VisualizationWidget::addProp(const QString& id, vtkSmartPointer<vtkProp> pr
     }
 
     updateScaleActorBounds();
+    updateTransparencyRendering();
 
     if (resetCam)
         resetCamera(false);
@@ -517,12 +539,22 @@ bool VisualizationWidget::removeProp(const QString& id, bool renderNow)
     if (it == m_registry.end())
         return false;
 
+    // Registry 保存的是 Actor 自身的基础透明度，全局透明度只应在挂载期间相乘。
+    // 卸载前必须恢复基础值，否则同一 Actor 再次挂载时会把已经相乘后的值当作
+    // 新基准，页面每切换一次透明度就会继续衰减（例如 50% -> 25% -> 12.5%）。
+    if (auto* actor = vtkActor::SafeDownCast(it.value().prop))
+    {
+        if (actor->GetProperty())
+            actor->GetProperty()->SetOpacity(it.value().opacity);
+    }
+
     if (it.value().prop)
         m_renderer->RemoveViewProp(it.value().prop);
 
     m_registry.erase(it);
 
     updateScaleActorBounds();
+    updateTransparencyRendering();
 
     if (renderNow)
         render();
@@ -533,6 +565,11 @@ void VisualizationWidget::clearAll(bool renderNow)
 {
     for (auto it = m_registry.begin(); it != m_registry.end(); ++it)
     {
+        if (auto* actor = vtkActor::SafeDownCast(it.value().prop))
+        {
+            if (actor->GetProperty())
+                actor->GetProperty()->SetOpacity(it.value().opacity);
+        }
         if (it.value().prop)
             m_renderer->RemoveViewProp(it.value().prop);
     }
@@ -541,6 +578,7 @@ void VisualizationWidget::clearAll(bool renderNow)
     if (m_cubeAxesActor)
         m_cubeAxesActor->SetVisibility(0);
 
+    updateTransparencyRendering();
     if (renderNow)
         render();
 }
@@ -562,11 +600,17 @@ bool VisualizationWidget::setVisible(const QString& id, bool on, bool renderNow)
     if (it == m_registry.end())
         return false;
 
+    vtkProp* prop = it.value().prop.GetPointer();
+    if (it.value().visible == on &&
+        (!prop || (prop->GetVisibility() != 0) == on))
+        return true;
+
     it.value().visible = on;
-    if (it.value().prop)
-        it.value().prop->SetVisibility(on ? 1 : 0);
+    if (prop)
+        prop->SetVisibility(on ? 1 : 0);
 
     updateScaleActorBounds();
+    updateTransparencyRendering();
 
     if (renderNow)
         render();
@@ -575,16 +619,25 @@ bool VisualizationWidget::setVisible(const QString& id, bool on, bool renderNow)
 
 void VisualizationWidget::setGroupVisible(const QString& group, bool on, bool renderNow)
 {
+    bool changed = false;
     for (auto it = m_registry.begin(); it != m_registry.end(); ++it)
     {
         if (it.value().group == group && it.value().prop)
         {
+            if (it.value().visible == on &&
+                (it.value().prop->GetVisibility() != 0) == on)
+                continue;
             it.value().visible = on;
             it.value().prop->SetVisibility(on ? 1 : 0);
+            changed = true;
         }
     }
 
+    if (!changed)
+        return;
+
     updateScaleActorBounds();
+    updateTransparencyRendering();
     if (renderNow)
         render();
 }
@@ -596,11 +649,26 @@ bool VisualizationWidget::setOpacity(const QString& id, double alpha, bool rende
         return false;
 
     auto* actor = vtkActor::SafeDownCast(it.value().prop);
-    if (!actor)
+    if (!actor || !actor->GetProperty())
         return false;
 
-    it.value().opacity = qBound(0.0, alpha, 1.0);
-    actor->GetProperty()->SetOpacity(it.value().opacity * m_globalOpacity);
+    const double baseOpacity = qBound(0.0, alpha, 1.0);
+    const double effectiveOpacity = baseOpacity * m_globalOpacity;
+    if (std::abs(it.value().opacity - baseOpacity) < 1.0e-6 &&
+        std::abs(actor->GetProperty()->GetOpacity() - effectiveOpacity) < 1.0e-6)
+        return true;
+
+    it.value().opacity = baseOpacity;
+    actor->GetProperty()->SetOpacity(effectiveOpacity);
+    updateTransparencyRendering();
+
+    if (id.startsWith(QStringLiteral("post."), Qt::CaseInsensitive))
+    {
+        QVariantMap event;
+        event.insert(QStringLiteral("opacity"), actor->GetProperty()->GetOpacity());
+        EventManager::instance().sendEvent(QStringLiteral("visualization.opacity.changed"), event);
+    }
+
     if (renderNow)
         render();
     return true;
@@ -608,7 +676,11 @@ bool VisualizationWidget::setOpacity(const QString& id, double alpha, bool rende
 
 void VisualizationWidget::applyGlobalOpacity(double alpha, bool renderNow)
 {
-    m_globalOpacity = qBound(0.05, alpha, 1.0);
+    const double boundedOpacity = qBound(0.05, alpha, 1.0);
+    if (std::abs(m_globalOpacity - boundedOpacity) < 1.0e-6)
+        return;
+
+    m_globalOpacity = boundedOpacity;
     for (auto it = m_registry.begin(); it != m_registry.end(); ++it)
     {
         auto* actor = vtkActor::SafeDownCast(it.value().prop);
@@ -616,8 +688,59 @@ void VisualizationWidget::applyGlobalOpacity(double alpha, bool renderNow)
             continue;
         actor->GetProperty()->SetOpacity(it.value().opacity * m_globalOpacity);
     }
+
+    updateTransparencyRendering();
+
+    QVariantMap event;
+    event.insert(QStringLiteral("opacity"), m_globalOpacity);
+    EventManager::instance().sendEvent(QStringLiteral("visualization.opacity.changed"), event);
+
     if (renderNow)
         render();
+}
+
+void VisualizationWidget::updateTransparencyRendering()
+{
+    if (!m_renderer || !m_renderWindow)
+        return;
+
+    bool hasTranslucentActor = false;
+    for (auto it = m_registry.constBegin(); it != m_registry.constEnd(); ++it)
+    {
+        if (!it.value().visible)
+            continue;
+        auto* actor = vtkActor::SafeDownCast(it.value().prop);
+        if (!actor || !actor->GetProperty())
+            continue;
+        if (actor->GetProperty()->GetOpacity() < 0.999)
+        {
+            hasTranslucentActor = true;
+            break;
+        }
+    }
+
+    // 只有“不透明 <-> 半透明”状态真正变化时才改 Renderer 配置。
+    // 透明度从 60% 拖到 55% 时没有必要重复 SetUseDepthPeeling/SetMultiSamples。
+    if (hasTranslucentActor == m_transparencyRenderingEnabled)
+        return;
+    m_transparencyRenderingEnabled = hasTranslucentActor;
+
+    if (hasTranslucentActor)
+    {
+        // 大网格透明显示使用 depth peeling。限制为 8 层，并允许 25% 的
+        // 遮挡收敛，可显著降低旋转和最终提交透明度时的 GPU 多遍绘制开销；
+        // 域界面几何仍完整保留，不通过删面换取速度。
+        m_renderWindow->SetAlphaBitPlanes(1);
+        m_renderWindow->SetMultiSamples(0);
+        m_renderer->SetUseDepthPeeling(true);
+        m_renderer->SetMaximumNumberOfPeels(8);
+        m_renderer->SetOcclusionRatio(0.25);
+    }
+    else
+    {
+        m_renderer->SetUseDepthPeeling(false);
+        m_renderWindow->SetMultiSamples(m_defaultMultiSamples);
+    }
 }
 
 bool VisualizationWidget::setTransform(const QString& id, vtkTransform* tr, bool renderNow)
@@ -1043,8 +1166,13 @@ void VisualizationWidget::updateScaleActorBounds()
     if (!m_cubeAxesActor || !m_renderer)
         return;
 
-    // 计算边界时先隐藏标尺本身，避免将旧标尺边界再次计入结果。
+    // 标尺默认关闭时不需要遍历全部 Actor 计算 Bounds。页面切换会批量改变
+    // Actor 显隐，这个提前返回可避免对大网格反复执行整场景 Bounds 扫描。
     m_cubeAxesActor->SetVisibility(0);
+    if (!m_isScaleVisible)
+        return;
+
+    // 计算边界时先隐藏标尺本身，避免将旧标尺边界再次计入结果。
 
     double bounds[6] = {0.0, -1.0, 0.0, -1.0, 0.0, -1.0};
     m_renderer->ComputeVisiblePropBounds(bounds);
@@ -1053,6 +1181,6 @@ void VisualizationWidget::updateScaleActorBounds()
 
     if (hasBounds)
         m_cubeAxesActor->SetBounds(bounds);
-    m_cubeAxesActor->SetVisibility((m_isScaleVisible && hasBounds) ? 1 : 0);
+    m_cubeAxesActor->SetVisibility(hasBounds ? 1 : 0);
 
 }

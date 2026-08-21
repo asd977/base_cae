@@ -11,7 +11,10 @@
 #include <QClipboard>
 #include <QFont>
 #include <QIcon>
+#include <QInputDialog>
+#include <QLineEdit>
 #include <QMenu>
+#include <QMessageBox>
 #include <QPalette>
 #include <QRegularExpression>
 #include <QVariant>
@@ -135,6 +138,7 @@ void ProjectTreeWidget::onCurItemChanged(QTreeWidgetItem* current, QTreeWidgetIt
     QWidget* widget = page->getWidget();
     if (widget && widget->property("projectTreeDockPanel").toBool())
     {
+        page->applyDeferredLoadJson();
         page->beforeLoad();
 
         // Dock 型控制页是当前场景的辅助工具，不等同于切换到它所属的模块。
@@ -170,6 +174,7 @@ void ProjectTreeWidget::onCurItemChanged(QTreeWidgetItem* current, QTreeWidgetIt
     const bool switchedToDifferentPage = (prevPage != page);
     if (switchedToDifferentPage)
     {
+        page->applyDeferredLoadJson();
         page->beforeLoad();
     }
     m_activeSettingsPage = page;
@@ -329,8 +334,39 @@ void ProjectTreeWidget::contextMenuEvent(QContextMenuEvent* event)
     // 模块扩展：同步往菜单里塞 action
     ContextMenuHub::instance().buildMenu(kScope_ProjectTreeNode, &menu, ctx);
 
-    if (!menu.isEmpty())
-        menu.exec(event->globalPos());
+    // 工程根节点由 ProjectManager 自己管理，不交给各业务模块注册菜单。
+    // 这里只提供“显示名称重命名”；工程目录和 .xml 清单文件路径保持不变。
+    QAction* renameProjectAction = nullptr;
+    if (node == m_rootNode)
+    {
+        if (!menu.isEmpty())
+            menu.addSeparator();
+        renameProjectAction = menu.addAction(QStringLiteral("重命名"));
+    }
+
+    if (menu.isEmpty())
+        return;
+
+    QAction* chosen = menu.exec(event->globalPos());
+    if (chosen != renameProjectAction)
+        return;
+
+    bool accepted = false;
+    QString newName = QInputDialog::getText(
+        this, QStringLiteral("重命名工程"), QStringLiteral("工程名称"),
+        QLineEdit::Normal, node->text(0), &accepted).trimmed();
+    if (!accepted)
+        return;
+    if (newName.isEmpty())
+    {
+        QMessageBox::warning(this, QStringLiteral("重命名工程"),
+                             QStringLiteral("工程名称不能为空。"));
+        return;
+    }
+    if (newName == node->text(0).trimmed())
+        return;
+
+    emit projectRenameRequested(newName);
 }
 
 void ProjectTreeWidget::deleteProjectNode(ProjectNode* node)

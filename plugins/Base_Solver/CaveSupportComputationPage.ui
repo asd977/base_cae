@@ -64,6 +64,12 @@
        <layout class="QFormLayout" name="formLayoutAnalysisType">
         <item row="0" column="0">
          <widget class="QLabel" name="label22">
+ <property name="sizePolicy">
+  <sizepolicy hsizetype="Fixed" vsizetype="Preferred">
+   <horstretch>0</horstretch>
+   <verstretch>0</verstretch>
+  </sizepolicy>
+ </property>
           <property name="text">
            <string>计算类型</string>
           </property>
@@ -120,6 +126,12 @@
        <layout class="QFormLayout" name="formLayoutStaticControl">
         <item row="0" column="0">
          <widget class="QLabel" name="label3">
+ <property name="sizePolicy">
+  <sizepolicy hsizetype="Fixed" vsizetype="Preferred">
+   <horstretch>0</horstretch>
+   <verstretch>0</verstretch>
+  </sizepolicy>
+ </property>
           <property name="text">
            <string>地下水影响</string>
           </property>
@@ -140,6 +152,12 @@
         </item>
         <item row="2" column="0">
          <widget class="QLabel" name="label5">
+ <property name="sizePolicy">
+  <sizepolicy hsizetype="Fixed" vsizetype="Preferred">
+   <horstretch>0</horstretch>
+   <verstretch>0</verstretch>
+  </sizepolicy>
+ </property>
           <property name="text">
            <string>洞内水位</string>
           </property>
@@ -163,6 +181,12 @@
         </item>
         <item row="3" column="0">
          <widget class="QLabel" name="label7">
+ <property name="sizePolicy">
+  <sizepolicy hsizetype="Fixed" vsizetype="Preferred">
+   <horstretch>0</horstretch>
+   <verstretch>0</verstretch>
+  </sizepolicy>
+ </property>
           <property name="text">
            <string>衬砌外水位</string>
           </property>
@@ -186,6 +210,12 @@
         </item>
         <item row="4" column="0">
          <widget class="QLabel" name="label10">
+ <property name="sizePolicy">
+  <sizepolicy hsizetype="Fixed" vsizetype="Preferred">
+   <horstretch>0</horstretch>
+   <verstretch>0</verstretch>
+  </sizepolicy>
+ </property>
           <property name="text">
            <string>衬砌安装级</string>
           </property>
@@ -212,6 +242,12 @@
         </item>
         <item row="5" column="0">
          <widget class="QLabel" name="label11">
+ <property name="sizePolicy">
+  <sizepolicy hsizetype="Fixed" vsizetype="Preferred">
+   <horstretch>0</horstretch>
+   <verstretch>0</verstretch>
+  </sizepolicy>
+ </property>
           <property name="text">
            <string>衬砌安装前围岩荷载释放系数</string>
           </property>
@@ -235,6 +271,12 @@
         </item>
         <item row="6" column="0">
          <widget class="QLabel" name="label23">
+ <property name="sizePolicy">
+  <sizepolicy hsizetype="Fixed" vsizetype="Preferred">
+   <horstretch>0</horstretch>
+   <verstretch>0</verstretch>
+  </sizepolicy>
+ </property>
           <property name="text">
            <string>开挖荷载来源</string>
           </property>
@@ -255,6 +297,12 @@
         </item>
         <item row="7" column="0">
          <widget class="QLabel" name="label24">
+ <property name="sizePolicy">
+  <sizepolicy hsizetype="Fixed" vsizetype="Preferred">
+   <horstretch>0</horstretch>
+   <verstretch>0</verstretch>
+  </sizepolicy>
+ </property>
           <property name="text">
            <string>非线性迭代方法</string>
           </property>
@@ -268,6 +316,12 @@
         </item>
         <item row="9" column="0">
          <widget class="QLabel" name="label25">
+ <property name="sizePolicy">
+  <sizepolicy hsizetype="Fixed" vsizetype="Preferred">
+   <horstretch>0</horstretch>
+   <verstretch>0</verstretch>
+  </sizepolicy>
+ </property>
           <property name="text">
            <string>加固对应荷载分级</string>
           </property>
@@ -318,10 +372,19 @@
         </property>
         <item row="8" column="0">
          <widget class="QLabel" name="labelIterationCount">
+ <property name="sizePolicy">
+  <sizepolicy hsizetype="Fixed" vsizetype="Preferred">
+   <horstretch>0</horstretch>
+   <verstretch>0</verstretch>
+  </sizepolicy>
+ </property>
           <property name="text">
            <string>最大迭代次数</string>
           </property>
-         </widget>
+          <property name="wordWrap">
+  <bool>false</bool>
+ </property>
+</widget>
         </item>
         <item row="8" column="1">
          <widget class="QSpinBox" name="spinIterationCount">
@@ -457,6 +520,12 @@
        <layout class="QFormLayout" name="formLayoutParams">
         <item row="0" column="0">
          <widget class="QLabel" name="labelIexcaSta">
+ <property name="sizePolicy">
+  <sizepolicy hsizetype="Fixed" vsizetype="Preferred">
+   <horstretch>0</horstretch>
+   <verstretch>0</verstretch>
+  </sizepolicy>
+ </property>
           <property name="text">
            <string>起始开挖级</string>
           </property>
@@ -483,6 +552,12 @@
         </item>
         <item row="2" column="0">
          <widget class="QLabel" name="labelIfEall">
+ <property name="sizePolicy">
+  <sizepolicy hsizetype="Fixed" vsizetype="Preferred">
+   <horstretch>0</horstretch>
+   <verstretch>0</verstretch>
+  </sizepolicy>
+ </property>
           <property name="text">
            <string>一次成洞（不加固）</string>
           </property>
@@ -503,6 +578,12 @@
         </item>
         <item row="3" column="0">
          <widget class="QLabel" name="labelIfJall">
+ <property name="sizePolicy">
+  <sizepolicy hsizetype="Fixed" vsizetype="Preferred">
+   <horstretch>0</horstretch>
+   <verstretch>0</verstretch>
+  </sizepolicy>
+ </property>
           <property name="text">
            <string>一次成洞（加固）</string>
           </property>
@@ -523,6 +604,12 @@
         </item>
         <item row="4" column="0">
          <widget class="QLabel" name="labelIfE1toa">
+ <property name="sizePolicy">
+  <sizepolicy hsizetype="Fixed" vsizetype="Preferred">
+   <horstretch>0</horstretch>
+   <verstretch>0</verstretch>
+  </sizepolicy>
+ </property>
           <property name="text">
            <string>逐级开挖（不加固）</string>
           </property>
@@ -543,6 +630,12 @@
         </item>
         <item row="5" column="0">
          <widget class="QLabel" name="labelIfJ1toa">
+ <property name="sizePolicy">
+  <sizepolicy hsizetype="Fixed" vsizetype="Preferred">
+   <horstretch>0</horstretch>
+   <verstretch>0</verstretch>
+  </sizepolicy>
+ </property>
           <property name="text">
            <string>逐级开挖（加固）</string>
           </property>
@@ -563,6 +656,12 @@
         </item>
         <item row="6" column="0">
          <widget class="QLabel" name="labelJaMethod">
+ <property name="sizePolicy">
+  <sizepolicy hsizetype="Fixed" vsizetype="Preferred">
+   <horstretch>0</horstretch>
+   <verstretch>0</verstretch>
+  </sizepolicy>
+ </property>
           <property name="text">
            <string>加固方式</string>
           </property>
@@ -583,6 +682,12 @@
         </item>
         <item row="7" column="0">
          <widget class="QLabel" name="labelIfChen">
+ <property name="sizePolicy">
+  <sizepolicy hsizetype="Fixed" vsizetype="Preferred">
+   <horstretch>0</horstretch>
+   <verstretch>0</verstretch>
+  </sizepolicy>
+ </property>
           <property name="text">
            <string>衬砌内力计算</string>
           </property>
@@ -603,6 +708,12 @@
         </item>
         <item row="9" column="0">
          <widget class="QLabel" name="labelIdayCase">
+ <property name="sizePolicy">
+  <sizepolicy hsizetype="Fixed" vsizetype="Preferred">
+   <horstretch>0</horstretch>
+   <verstretch>0</verstretch>
+  </sizepolicy>
+ </property>
           <property name="text">
            <string>长期稳定日期</string>
           </property>
@@ -653,6 +764,12 @@
         </property>
         <item row="1" column="0">
          <widget class="QLabel" name="labelIexcaEnd">
+ <property name="sizePolicy">
+  <sizepolicy hsizetype="Fixed" vsizetype="Preferred">
+   <horstretch>0</horstretch>
+   <verstretch>0</verstretch>
+  </sizepolicy>
+ </property>
           <property name="text">
            <string>终止开挖级</string>
           </property>
@@ -679,13 +796,22 @@
         </item>
         <item row="8" column="0">
          <widget class="QLabel" name="labelLiningMaterials">
+ <property name="sizePolicy">
+  <sizepolicy hsizetype="Fixed" vsizetype="Preferred">
+   <horstretch>0</horstretch>
+   <verstretch>0</verstretch>
+  </sizepolicy>
+ </property>
           <property name="text">
            <string>衬砌材料</string>
           </property>
           <property name="toolTip">
            <string>从网格材料中选择组成衬砌实体的材料，可多选。</string>
           </property>
-         </widget>
+          <property name="wordWrap">
+  <bool>false</bool>
+ </property>
+</widget>
         </item>
         <item row="8" column="1">
          <widget class="QListWidget" name="listLiningMaterials">
@@ -711,6 +837,12 @@
        <layout class="QFormLayout" name="formLayoutDynamicControl">
         <item row="0" column="0">
          <widget class="QLabel" name="label18">
+ <property name="sizePolicy">
+  <sizepolicy hsizetype="Fixed" vsizetype="Preferred">
+   <horstretch>0</horstretch>
+   <verstretch>0</verstretch>
+  </sizepolicy>
+ </property>
           <property name="text">
            <string>阻尼方式</string>
           </property>
@@ -731,6 +863,12 @@
         </item>
         <item row="1" column="0">
          <widget class="QLabel" name="label19">
+ <property name="sizePolicy">
+  <sizepolicy hsizetype="Fixed" vsizetype="Preferred">
+   <horstretch>0</horstretch>
+   <verstretch>0</verstretch>
+  </sizepolicy>
+ </property>
           <property name="text">
            <string>阻尼参数</string>
           </property>
@@ -754,6 +892,12 @@
         </item>
         <item row="2" column="0">
          <widget class="QLabel" name="label20">
+ <property name="sizePolicy">
+  <sizepolicy hsizetype="Fixed" vsizetype="Preferred">
+   <horstretch>0</horstretch>
+   <verstretch>0</verstretch>
+  </sizepolicy>
+ </property>
           <property name="text">
            <string>瑞雷阻尼质量系数</string>
           </property>
@@ -777,6 +921,12 @@
         </item>
         <item row="3" column="0">
          <widget class="QLabel" name="label21">
+ <property name="sizePolicy">
+  <sizepolicy hsizetype="Fixed" vsizetype="Preferred">
+   <horstretch>0</horstretch>
+   <verstretch>0</verstretch>
+  </sizepolicy>
+ </property>
           <property name="text">
            <string>瑞雷阻尼刚度系数</string>
           </property>
@@ -836,6 +986,12 @@
        <layout class="QFormLayout" name="formLayoutDyna">
         <item row="0" column="0">
          <widget class="QLabel" name="labelIfMode">
+ <property name="sizePolicy">
+  <sizepolicy hsizetype="Fixed" vsizetype="Preferred">
+   <horstretch>0</horstretch>
+   <verstretch>0</verstretch>
+  </sizepolicy>
+ </property>
           <property name="text">
            <string>模态分析开关</string>
           </property>
@@ -856,6 +1012,12 @@
         </item>
         <item row="1" column="0">
          <widget class="QLabel" name="labelIfWave">
+ <property name="sizePolicy">
+  <sizepolicy hsizetype="Fixed" vsizetype="Preferred">
+   <horstretch>0</horstretch>
+   <verstretch>0</verstretch>
+  </sizepolicy>
+ </property>
           <property name="text">
            <string>时程分析开关</string>
           </property>
@@ -913,6 +1075,12 @@
         </item>
         <item row="5" column="0">
          <widget class="QLabel" name="labelWaveFiles">
+ <property name="sizePolicy">
+  <sizepolicy hsizetype="Fixed" vsizetype="Preferred">
+   <horstretch>0</horstretch>
+   <verstretch>0</verstretch>
+  </sizepolicy>
+ </property>
           <property name="text">
            <string>地震波文件</string>
           </property>
@@ -1058,6 +1226,12 @@
         </item>
         <item row="2" column="0">
          <widget class="QLabel" name="labelDt">
+ <property name="sizePolicy">
+  <sizepolicy hsizetype="Fixed" vsizetype="Preferred">
+   <horstretch>0</horstretch>
+   <verstretch>0</verstretch>
+  </sizepolicy>
+ </property>
           <property name="text">
            <string>时间步</string>
           </property>
@@ -1068,6 +1242,12 @@
         </item>
         <item row="3" column="0">
          <widget class="QLabel" name="labelTsta">
+ <property name="sizePolicy">
+  <sizepolicy hsizetype="Fixed" vsizetype="Preferred">
+   <horstretch>0</horstretch>
+   <verstretch>0</verstretch>
+  </sizepolicy>
+ </property>
           <property name="text">
            <string>起始时刻</string>
           </property>
@@ -1094,6 +1274,12 @@
         </item>
         <item row="4" column="0">
          <widget class="QLabel" name="labelTend">
+ <property name="sizePolicy">
+  <sizepolicy hsizetype="Fixed" vsizetype="Preferred">
+   <horstretch>0</horstretch>
+   <verstretch>0</verstretch>
+  </sizepolicy>
+ </property>
           <property name="text">
            <string>终止时刻</string>
           </property>

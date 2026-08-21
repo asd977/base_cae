@@ -7,7 +7,6 @@
 #include <vtkAppendFilter.h>
 #include <vtkLookupTable.h>
 #include <vtkCellDataToPointData.h>
-#include <vtkDataSetSurfaceFilter.h>
 #include <vtkMultiBlockDataSet.h>
 #include <vtkPointData.h>
 #include <vtkProperty.h>
@@ -512,7 +511,7 @@ void BlockSettingsWidget::buildClipPipelineIfNeeded()
     // 3) Actor
     m_actor = vtkSmartPointer<vtkActor>::New();
     m_actor->SetMapper(m_mapper);
-    m_actor->GetProperty()->SetRepresentationToSurface();
+    applyPostActorRepresentation(m_actor);
 
     // 首次建管线时即挂入场景
     addActorByService(m_visualService, postActorId(getUuid(), QStringLiteral("block")),
@@ -652,23 +651,21 @@ void BlockSettingsWidget::updateContourOverlay()
     double range[2]{dataRange[0], dataRange[1]};
     resolvePostDisplayRange(field.name, dataRange[0], dataRange[1], range[0], range[1]);
 
-    vtkSmartPointer<vtkDataSetSurfaceFilter> surface = vtkSmartPointer<vtkDataSetSurfaceFilter>::New();
+    // createPostContourActor() 统一负责“提当前可见表面 -> Contour”。
+    // 这里仅在 CellData 场时做一次 CellData -> PointData，避免各页面重复维护 Surface 管线。
     if (field.association == vtkDataObject::FIELD_ASSOCIATION_CELLS)
     {
         auto cellToPoint = vtkSmartPointer<vtkCellDataToPointData>::New();
         cellToPoint->SetInputConnection(m_clipper->GetOutputPort());
         cellToPoint->PassCellDataOn();
-        cellToPoint->Update();
-        surface->SetInputConnection(cellToPoint->GetOutputPort());
+        m_contourActor = createPostContourActor(cellToPoint->GetOutputPort(), field.name,
+                                                range[0], range[1]);
     }
     else
     {
-        surface->SetInputConnection(m_clipper->GetOutputPort());
+        m_contourActor = createPostContourActor(m_clipper->GetOutputPort(), field.name,
+                                                range[0], range[1]);
     }
-    surface->Update();
-
-    m_contourActor = createPostContourActor(surface->GetOutputPort(), field.name,
-                                            range[0], range[1]);
     if (m_contourActor)
         addActorByService(m_visualService, postActorId(getUuid(), QStringLiteral("contour")),
                           m_contourActor, QStringLiteral("等值线"), false);

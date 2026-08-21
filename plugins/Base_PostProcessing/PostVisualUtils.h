@@ -1,7 +1,6 @@
 #pragma once
 
 #include <services/VisualWidgetService.h>
-#include <services/MeshModuleControllerService.h>
 #include <EventManager.h>
 #include <PublicVariables.h>
 #include <PublicConstants.h>
@@ -10,12 +9,16 @@
 #include <vtkAlgorithmOutput.h>
 #include <vtkContourFilter.h>
 #include <vtkDataObject.h>
+#include <vtkDataSetSurfaceFilter.h>
 #include <vtkCellData.h>
+#include <vtkCellArray.h>
 #include <vtkDataArray.h>
 #include <vtkExtractCells.h>
 #include <vtkIdList.h>
 #include <vtkLookupTable.h>
+#include <vtkMapper.h>
 #include <vtkUnstructuredGrid.h>
+#include <vtkPolyData.h>
 #include <vtkPolyDataMapper.h>
 #include <vtkProperty.h>
 #include <vtkProp.h>
@@ -23,20 +26,22 @@
 #include <vtkStripper.h>
 #include <vtkScalarBarActor.h>
 #include <vtkSmartPointer.h>
-#include <vtkStaticPointLocator.h>
 #include <vtkCell.h>
+#include <vtkCellType.h>
 #include <vtkTextProperty.h>
 #include <vtkWeakPointer.h>
 
 #include <QByteArray>
 #include <QCheckBox>
 #include <QDialog>
+#include <QDebug>
 #include <QDialogButtonBox>
 #include <QDoubleSpinBox>
 #include <QFormLayout>
 #include <QGroupBox>
 #include <QHash>
 #include <QJsonObject>
+#include <QMap>
 #include <QSet>
 #include <QVector>
 #include <QStringList>
@@ -48,10 +53,12 @@
 #include <vtkPointData.h>
 #include <algorithm>
 #include <cmath>
+#include <limits>
 
 struct PostScalarBarStyle
 {
     bool visible{true};
+    QString customTitle;
     int titleFont{14};
     int labelFont{11};
     int precision{4};
@@ -83,6 +90,8 @@ struct PostSceneStyle
 {
     bool visible{true};
     bool followMeshFilter{true};
+    // 0=表面，1=表面+单元边线，2=线框。
+    int representationMode{0};
 };
 
 struct PostDisplayFieldContext
@@ -165,6 +174,16 @@ inline QString meshDisplayFilterChangedEvent()
     return QStringLiteral("mesh.display.filter.changed");
 }
 
+inline QString postResultFilterChangedEvent()
+{
+    return QStringLiteral("post.result.filter.changed");
+}
+
+inline QString postResultFilterSourceChangedEvent()
+{
+    return QStringLiteral("post.result.filter.source.changed");
+}
+
 inline QString postViewActiveKey()
 {
     return QStringLiteral("post.display.view.active");
@@ -175,8 +194,130 @@ inline QString postViewActiveChangedEvent()
     return QStringLiteral("post.display.view.active.changed");
 }
 
+inline bool isPostViewActive()
+{
+    return PublicVariables::instance().get(postViewActiveKey()).toBool();
+}
+
+struct PostCoincidentTopologyState
+{
+    bool applied{false};
+    int previousMode{0};
+    int previousOffsetFaces{1};
+};
+
+inline PostCoincidentTopologyState& postCoincidentTopologyState()
+{
+    static PostCoincidentTopologyState state;
+    return state;
+}
+
+// ParaView 将“面与线/点共面”的处理作为 RenderView 级策略，而不是让每个
+// Contour/Edge Actor 自己写 shader 或反复调局部 depth 参数。
+// 进入后处理时统一启用“Offset faces relative to lines and points”；退出后处理时
+// 恢复进入前的 VTK 全局状态，避免影响几何、网格等其他工作台。
+inline void setPostCoincidentTopologyActive(bool active)
+{
+    PostCoincidentTopologyState& state = postCoincidentTopologyState();
+
+    if (active)
+    {
+        if (state.applied)
+            return;
+
+        state.previousMode = vtkMapper::GetResolveCoincidentTopology();
+        state.previousOffsetFaces =
+            vtkMapper::GetResolveCoincidentTopologyPolygonOffsetFaces();
+
+        vtkMapper::SetResolveCoincidentTopologyToPolygonOffset();
+        vtkMapper::SetResolveCoincidentTopologyPolygonOffsetFaces(1);
+        state.applied = true;
+        return;
+    }
+
+    if (!state.applied)
+        return;
+
+    vtkMapper::SetResolveCoincidentTopology(state.previousMode);
+    vtkMapper::SetResolveCoincidentTopologyPolygonOffsetFaces(
+        state.previousOffsetFaces);
+    state.applied = false;
+}
+
+struct PostSceneVisibilitySnapshot
+{
+    bool captured{false};
+    QHash<QString, bool> visibility;
+};
+
+inline PostSceneVisibilitySnapshot& postSceneVisibilitySnapshot()
+{
+    static PostSceneVisibilitySnapshot state;
+    return state;
+}
+
+inline bool isPostRegistryPropId(const QString& id)
+{
+    return id.startsWith(QStringLiteral("post."), Qt::CaseInsensitive);
+}
+
+inline void isolatePostProcessingScene(VisualWidgetService* service)
+{
+    if (!service)
+        return;
+
+    PostSceneVisibilitySnapshot& state = postSceneVisibilitySnapshot();
+    const QList<QString> ids = service->allIds();
+
+    if (!state.captured)
+    {
+        state.visibility.clear();
+        state.captured = true;
+    }
+
+    // 不依赖 Geometry/网格组名或若干固定 Actor ID。网格筛选、边界条件、
+    // 选中高亮等模块后续新增的 Prop 也必须在后处理视图中被压住。
+    // 后处理期间新注册的非 post Prop 也补记进入前/刚创建时的可见状态，
+    // 这样离开后处理后仍能正确恢复。
+    for (const QString& id : ids)
+    {
+        if (isPostRegistryPropId(id))
+            continue;
+        if (!state.visibility.contains(id))
+        {
+            if (vtkProp* prop = service->getProp(id))
+                state.visibility.insert(id, prop->GetVisibility() != 0);
+        }
+        service->setVisible(id, false, false);
+    }
+}
+
+inline void restoreSceneAfterPostProcessing()
+{
+    PostSceneVisibilitySnapshot& state = postSceneVisibilitySnapshot();
+    if (!state.captured)
+        return;
+
+    auto* service = ServiceRegistry::instance().getService<VisualWidgetService>();
+    if (service)
+    {
+        for (auto it = state.visibility.cbegin(); it != state.visibility.cend(); ++it)
+        {
+            if (service->getProp(it.key()))
+                service->setVisible(it.key(), it.value(), false);
+        }
+    }
+
+    state.visibility.clear();
+    state.captured = false;
+}
+
 inline void setPostViewActive(bool active)
 {
+    // 必须先切换渲染策略，再广播“后处理视图状态变化”，这样事件处理器如果立即
+    // Render，也会使用正确的 RenderView 级共面策略。
+    setPostCoincidentTopologyActive(active);
+
     const bool previous = PublicVariables::instance().get(postViewActiveKey()).toBool();
     PublicVariables::instance().set(postViewActiveKey(), active,
                                     QStringLiteral("post_processing_view"));
@@ -186,6 +327,9 @@ inline void setPostViewActive(bool active)
         data.insert(QStringLiteral("active"), active);
         EventManager::instance().sendEvent(postViewActiveChangedEvent(), data);
     }
+
+    if (!active)
+        restoreSceneAfterPostProcessing();
 }
 
 inline void publishPostDisplayContext(const QString& fieldName, double dataMin, double dataMax,
@@ -264,7 +408,9 @@ inline QJsonObject savePostDisplaySettings()
     QJsonObject obj;
     obj[QStringLiteral("postVisible")] = scene.visible;
     obj[QStringLiteral("followMeshFilter")] = scene.followMeshFilter;
+    obj[QStringLiteral("representationMode")] = scene.representationMode;
     obj[QStringLiteral("scalarBarVisible")] = bar.visible;
+    obj[QStringLiteral("scalarBarCustomTitle")] = bar.customTitle;
     obj[QStringLiteral("scalarBarTitleFont")] = bar.titleFont;
     obj[QStringLiteral("scalarBarLabelFont")] = bar.labelFont;
     obj[QStringLiteral("scalarBarPrecision")] = bar.precision;
@@ -300,7 +446,9 @@ inline void loadPostDisplaySettings(const QJsonObject& obj)
     PostSceneStyle& scene = postSceneStyle();
     scene.visible = obj.value(QStringLiteral("postVisible")).toBool(scene.visible);
     scene.followMeshFilter = obj.value(QStringLiteral("followMeshFilter")).toBool(scene.followMeshFilter);
+    scene.representationMode = qBound(0, obj.value(QStringLiteral("representationMode")).toInt(scene.representationMode), 2);
     bar.visible = obj.value(QStringLiteral("scalarBarVisible")).toBool(bar.visible);
+    bar.customTitle = obj.value(QStringLiteral("scalarBarCustomTitle")).toString(bar.customTitle);
     bar.titleFont = qBound(8, obj.value(QStringLiteral("scalarBarTitleFont")).toInt(bar.titleFont), 36);
     bar.labelFont = qBound(8, obj.value(QStringLiteral("scalarBarLabelFont")).toInt(bar.labelFont), 32);
     bar.precision = qBound(1, obj.value(QStringLiteral("scalarBarPrecision")).toInt(bar.precision), 10);
@@ -344,15 +492,18 @@ inline QSet<int> postIntSetFromString(const QString& text)
     return values;
 }
 
+inline QString postResultFilterKey(const QString& category)
+{
+    if (category == QStringLiteral("MATYPE"))
+        return QStringLiteral("post.result.filter.matype.checked");
+    if (category == QStringLiteral("LAYER"))
+        return QStringLiteral("post.result.filter.layer.checked");
+    return QString();
+}
+
 inline QSet<int> postMeshCheckedValues(const QString& category)
 {
-    QString key;
-    if (category == QStringLiteral("KETYPE"))
-        key = QStringLiteral("mesh.display.filter.ketype.checked");
-    else if (category == QStringLiteral("MATYPE"))
-        key = QStringLiteral("mesh.display.filter.matype.checked");
-    else if (category == QStringLiteral("LAYER"))
-        key = QStringLiteral("mesh.display.filter.layer.checked");
+    const QString key = postResultFilterKey(category);
     return key.isEmpty() ? QSet<int>{}
                          : postIntSetFromString(PublicVariables::instance().get(key).toString());
 }
@@ -360,12 +511,12 @@ inline QSet<int> postMeshCheckedValues(const QString& category)
 inline bool postMeshFilterIsCustom()
 {
     if (!PublicVariables::instance()
-             .get(QStringLiteral("mesh.display.filter.custom"))
+             .get(QStringLiteral("post.result.filter.custom"))
              .toBool())
         return false;
 
     const QString storedProject = PublicVariables::instance()
-                                      .get(QStringLiteral("mesh.display.filter.project"))
+                                      .get(QStringLiteral("post.result.filter.project"))
                                       .toString()
                                       .trimmed();
     const QString currentProject = PublicVariables::instance()
@@ -375,6 +526,139 @@ inline bool postMeshFilterIsCustom()
     if (storedProject.isEmpty() || currentProject.isEmpty())
         return false;
     return storedProject == currentProject;
+}
+
+inline QVariantMap postCellValueCounts(vtkDataArray* array)
+{
+    QMap<int, int> counts;
+    if (array)
+    {
+        for (vtkIdType i = 0; i < array->GetNumberOfTuples(); ++i)
+        {
+            const int value = static_cast<int>(std::llround(array->GetTuple1(i)));
+            counts[value] = counts.value(value) + 1;
+        }
+    }
+
+    QVariantMap values;
+    for (auto it = counts.constBegin(); it != counts.constEnd(); ++it)
+        values.insert(QString::number(it.key()), it.value());
+    return values;
+}
+
+inline QSet<int> postIntSetFromCountMap(const QVariantMap& counts)
+{
+    QSet<int> values;
+    for (auto it = counts.constBegin(); it != counts.constEnd(); ++it)
+    {
+        bool ok = false;
+        const int value = it.key().toInt(&ok);
+        if (ok)
+            values.insert(value);
+    }
+    return values;
+}
+
+inline QString postResultFilterIntSetText(const QSet<int>& values)
+{
+    QList<int> ordered = values.values();
+    std::sort(ordered.begin(), ordered.end());
+    QStringList parts;
+    parts.reserve(ordered.size());
+    for (int value : ordered)
+        parts.push_back(QString::number(value));
+    return parts.join(QLatin1Char(','));
+}
+
+inline void postPublishResultFilterSource(vtkUnstructuredGrid* source)
+{
+    if (!source || !source->GetCellData())
+        return;
+
+    vtkDataArray* matype = source->GetCellData()->GetArray("MATYPE");
+    vtkDataArray* layer = source->GetCellData()->GetArray("LAYER");
+    if (!matype && !layer)
+        return;
+
+    const QVariantMap matypeCounts = postCellValueCounts(matype);
+    const QVariantMap layerCounts = postCellValueCounts(layer);
+    const QSet<int> allMatypes = postIntSetFromCountMap(matypeCounts);
+    const QSet<int> allLayers = postIntSetFromCountMap(layerCounts);
+
+    const QString project = PublicVariables::instance()
+                                .get(PublicConstants::kProjectDirectoryKey)
+                                .toString()
+                                .trimmed();
+    const QString storedProject = PublicVariables::instance()
+                                      .get(QStringLiteral("post.result.filter.project"))
+                                      .toString()
+                                      .trimmed();
+    const bool sameProject = !project.isEmpty() && project == storedProject;
+    const bool custom = sameProject &&
+                        PublicVariables::instance()
+                            .get(QStringLiteral("post.result.filter.custom"))
+                            .toBool();
+
+    QSet<int> checkedMatypes =
+        postIntSetFromString(PublicVariables::instance()
+                                 .get(QStringLiteral("post.result.filter.matype.checked"))
+                                 .toString());
+    QSet<int> checkedLayers =
+        postIntSetFromString(PublicVariables::instance()
+                                 .get(QStringLiteral("post.result.filter.layer.checked"))
+                                 .toString());
+
+    if (!custom)
+    {
+        checkedMatypes = allMatypes;
+        checkedLayers = allLayers;
+    }
+    else
+    {
+        checkedMatypes.intersect(allMatypes);
+        checkedLayers.intersect(allLayers);
+    }
+
+    const QString sourceSignature =
+        QStringLiteral("%1|C=%2|M=%3|L=%4")
+            .arg(project)
+            .arg(source->GetNumberOfCells())
+            .arg(postResultFilterIntSetText(allMatypes))
+            .arg(postResultFilterIntSetText(allLayers));
+    const QString previousSignature =
+        PublicVariables::instance()
+            .get(QStringLiteral("post.result.filter.source.signature"))
+            .toString();
+
+    PublicVariables::instance().set(
+        QStringLiteral("post.result.filter.matype.counts"), matypeCounts,
+        QStringLiteral("project_dir"));
+    PublicVariables::instance().set(
+        QStringLiteral("post.result.filter.layer.counts"), layerCounts,
+        QStringLiteral("project_dir"));
+    PublicVariables::instance().set(
+        QStringLiteral("post.result.filter.matype.checked"),
+        postResultFilterIntSetText(checkedMatypes), QStringLiteral("project_dir"));
+    PublicVariables::instance().set(
+        QStringLiteral("post.result.filter.layer.checked"),
+        postResultFilterIntSetText(checkedLayers), QStringLiteral("project_dir"));
+    PublicVariables::instance().set(
+        QStringLiteral("post.result.filter.custom"), custom,
+        QStringLiteral("project_dir"));
+    PublicVariables::instance().set(
+        QStringLiteral("post.result.filter.project"), project,
+        QStringLiteral("project_dir"));
+    PublicVariables::instance().set(
+        QStringLiteral("post.result.filter.source.signature"), sourceSignature,
+        QStringLiteral("project_dir"));
+
+    if (previousSignature != sourceSignature)
+    {
+        QVariantMap event;
+        event.insert(QStringLiteral("matypeCounts"), matypeCounts);
+        event.insert(QStringLiteral("layerCounts"), layerCounts);
+        EventManager::instance().sendEvent(postResultFilterSourceChangedEvent(), event);
+    }
 }
 
 inline QSet<int> postUniqueCellValues(vtkDataArray* array)
@@ -395,377 +679,6 @@ inline vtkSmartPointer<vtkUnstructuredGrid> postShallowGrid(vtkUnstructuredGrid*
     return result;
 }
 
-inline bool postCellTopologyCompatible(vtkUnstructuredGrid* resultGrid,
-                                       vtkUnstructuredGrid* meshGrid)
-{
-    if (!resultGrid || !meshGrid ||
-        resultGrid->GetNumberOfCells() != meshGrid->GetNumberOfCells())
-        return false;
-
-    const vtkIdType cellCount = resultGrid->GetNumberOfCells();
-    if (cellCount <= 0)
-        return true;
-
-    // 快速路径：结果网格与原网格保持相同的单元顺序和连接关系。
-    const vtkIdType sampleCount = std::min<vtkIdType>(cellCount, 48);
-    auto resultIds = vtkSmartPointer<vtkIdList>::New();
-    auto meshIds = vtkSmartPointer<vtkIdList>::New();
-    for (vtkIdType i = 0; i < sampleCount; ++i)
-    {
-        const vtkIdType cellId = sampleCount == 1
-                                     ? 0
-                                     : (i * (cellCount - 1)) / (sampleCount - 1);
-        if (resultGrid->GetCellType(cellId) != meshGrid->GetCellType(cellId))
-            return false;
-
-        resultIds->Reset();
-        meshIds->Reset();
-        resultGrid->GetCellPoints(cellId, resultIds);
-        meshGrid->GetCellPoints(cellId, meshIds);
-        if (resultIds->GetNumberOfIds() != meshIds->GetNumberOfIds())
-            return false;
-        for (vtkIdType p = 0; p < resultIds->GetNumberOfIds(); ++p)
-            if (resultIds->GetId(p) != meshIds->GetId(p))
-                return false;
-    }
-    return true;
-}
-
-struct PostResultMeshCellMap
-{
-    vtkWeakPointer<vtkUnstructuredGrid> resultGrid;
-    vtkWeakPointer<vtkUnstructuredGrid> meshGrid;
-    vtkIdType resultCells{0};
-    vtkIdType meshCells{0};
-    vtkMTimeType resultMTime{0};
-    vtkMTimeType meshMTime{0};
-    QVector<vtkIdType> resultToMesh;
-    bool complete{false};
-    quint64 accessSerial{0};
-};
-
-inline QVector<PostResultMeshCellMap>& postResultMeshCellMapCache()
-{
-    static QVector<PostResultMeshCellMap> cache;
-    return cache;
-}
-
-inline quint64& postResultMeshCellMapSerial()
-{
-    static quint64 serial = 0;
-    return serial;
-}
-
-inline double postGridDiagonal(vtkUnstructuredGrid* grid)
-{
-    if (!grid || grid->GetNumberOfPoints() <= 0)
-        return 0.0;
-    double bounds[6]{0.0, 0.0, 0.0, 0.0, 0.0, 0.0};
-    grid->GetBounds(bounds);
-    const double dx = bounds[1] - bounds[0];
-    const double dy = bounds[3] - bounds[2];
-    const double dz = bounds[5] - bounds[4];
-    return std::sqrt(dx * dx + dy * dy + dz * dz);
-}
-
-inline QByteArray postCellPointIdKey(vtkUnstructuredGrid* grid, vtkIdType cellId)
-{
-    QByteArray key;
-    if (!grid || cellId < 0 || cellId >= grid->GetNumberOfCells())
-        return key;
-
-    vtkCell* cell = grid->GetCell(cellId);
-    if (!cell || !cell->GetPointIds())
-        return key;
-
-    QVector<vtkIdType> ids;
-    ids.reserve(static_cast<int>(cell->GetPointIds()->GetNumberOfIds()));
-    for (vtkIdType i = 0; i < cell->GetPointIds()->GetNumberOfIds(); ++i)
-        ids.push_back(cell->GetPointIds()->GetId(i));
-    std::sort(ids.begin(), ids.end());
-
-    key.reserve(24 + ids.size() * 12);
-    key.append(QByteArray::number(grid->GetCellType(cellId)));
-    key.append(':');
-    for (vtkIdType id : ids)
-    {
-        key.append(QByteArray::number(static_cast<qlonglong>(id)));
-        key.append(',');
-    }
-    return key;
-}
-
-inline QVector<vtkIdType> postBuildResultToMeshCellMap(vtkUnstructuredGrid* resultGrid,
-                                                        vtkUnstructuredGrid* meshGrid,
-                                                        bool& complete)
-{
-    complete = false;
-    QVector<vtkIdType> mapping;
-    if (!resultGrid || !meshGrid || resultGrid->GetNumberOfCells() <= 0 ||
-        meshGrid->GetNumberOfCells() <= 0 || meshGrid->GetNumberOfPoints() <= 0)
-        return mapping;
-
-    const vtkIdType resultCellCount = resultGrid->GetNumberOfCells();
-    mapping.fill(-1, static_cast<int>(resultCellCount));
-
-    // 1) 最快路径：结果仍保持原网格的单元顺序和连接关系。
-    if (postCellTopologyCompatible(resultGrid, meshGrid))
-    {
-        for (vtkIdType cid = 0; cid < resultCellCount; ++cid)
-            mapping[static_cast<int>(cid)] = cid;
-        complete = true;
-        return mapping;
-    }
-
-    QHash<QByteArray, vtkIdType> meshCellByKey;
-    meshCellByKey.reserve(static_cast<int>(meshGrid->GetNumberOfCells() * 1.25));
-    for (vtkIdType cid = 0; cid < meshGrid->GetNumberOfCells(); ++cid)
-    {
-        const QByteArray key = postCellPointIdKey(meshGrid, cid);
-        if (!key.isEmpty() && !meshCellByKey.contains(key))
-            meshCellByKey.insert(key, cid);
-    }
-
-    vtkIdType mappedCount = 0;
-
-    // 2) 稳定单元编号优先。内部生成的后处理缓存会携带 elem_id，
-    // 即使显示坐标以后发生变形，也不需要再依赖空间位置。
-    vtkDataArray* resultElemIds = resultGrid->GetCellData()
-                                      ? resultGrid->GetCellData()->GetArray("elem_id")
-                                      : nullptr;
-    vtkDataArray* meshElemIds = meshGrid->GetCellData()
-                                    ? meshGrid->GetCellData()->GetArray("elem_id")
-                                    : nullptr;
-    if (resultElemIds && meshElemIds &&
-        resultElemIds->GetNumberOfTuples() >= resultCellCount)
-    {
-        QHash<qlonglong, vtkIdType> meshCellByElementId;
-        meshCellByElementId.reserve(static_cast<int>(meshGrid->GetNumberOfCells() * 1.25));
-        for (vtkIdType cid = 0; cid < meshGrid->GetNumberOfCells(); ++cid)
-            meshCellByElementId.insert(
-                static_cast<qlonglong>(std::llround(meshElemIds->GetTuple1(cid))), cid);
-
-        for (vtkIdType cid = 0; cid < resultCellCount; ++cid)
-        {
-            const qlonglong elementId =
-                static_cast<qlonglong>(std::llround(resultElemIds->GetTuple1(cid)));
-            const auto it = meshCellByElementId.constFind(elementId);
-            if (it == meshCellByElementId.constEnd())
-                continue;
-            mapping[static_cast<int>(cid)] = it.value();
-            ++mappedCount;
-        }
-        if (mappedCount == resultCellCount)
-        {
-            complete = true;
-            return mapping;
-        }
-    }
-
-    // 3) 稳定节点编号。Tecplot 分区合并会重排 VTK 点号，但 node_id
-    // 不变，因此可以用“单元类型 + 原始节点集合”建立关联。
-    vtkDataArray* resultNodeIds = resultGrid->GetPointData()
-                                      ? resultGrid->GetPointData()->GetArray("node_id")
-                                      : nullptr;
-    vtkDataArray* meshNodeIds = meshGrid->GetPointData()
-                                    ? meshGrid->GetPointData()->GetArray("node_id")
-                                    : nullptr;
-    if (resultNodeIds && meshNodeIds &&
-        resultNodeIds->GetNumberOfTuples() >= resultGrid->GetNumberOfPoints())
-    {
-        QHash<qlonglong, vtkIdType> meshPointByNodeId;
-        meshPointByNodeId.reserve(static_cast<int>(meshGrid->GetNumberOfPoints() * 1.25));
-        for (vtkIdType pid = 0; pid < meshGrid->GetNumberOfPoints(); ++pid)
-            meshPointByNodeId.insert(
-                static_cast<qlonglong>(std::llround(meshNodeIds->GetTuple1(pid))), pid);
-
-        for (vtkIdType resultCellId = 0; resultCellId < resultCellCount; ++resultCellId)
-        {
-            if (mapping[static_cast<int>(resultCellId)] >= 0)
-                continue;
-            vtkCell* resultCell = resultGrid->GetCell(resultCellId);
-            if (!resultCell || !resultCell->GetPointIds())
-                continue;
-
-            QVector<vtkIdType> meshPointIds;
-            meshPointIds.reserve(static_cast<int>(resultCell->GetPointIds()->GetNumberOfIds()));
-            bool resolved = true;
-            for (vtkIdType p = 0; p < resultCell->GetPointIds()->GetNumberOfIds(); ++p)
-            {
-                const vtkIdType resultPointId = resultCell->GetPointIds()->GetId(p);
-                const qlonglong nodeId = static_cast<qlonglong>(
-                    std::llround(resultNodeIds->GetTuple1(resultPointId)));
-                const auto it = meshPointByNodeId.constFind(nodeId);
-                if (it == meshPointByNodeId.constEnd())
-                {
-                    resolved = false;
-                    break;
-                }
-                meshPointIds.push_back(it.value());
-            }
-            if (!resolved)
-                continue;
-
-            std::sort(meshPointIds.begin(), meshPointIds.end());
-            QByteArray key;
-            key.reserve(24 + meshPointIds.size() * 12);
-            key.append(QByteArray::number(resultGrid->GetCellType(resultCellId)));
-            key.append(':');
-            for (vtkIdType id : meshPointIds)
-            {
-                key.append(QByteArray::number(static_cast<qlonglong>(id)));
-                key.append(',');
-            }
-            const auto cellIt = meshCellByKey.constFind(key);
-            if (cellIt == meshCellByKey.constEnd())
-                continue;
-            mapping[static_cast<int>(resultCellId)] = cellIt.value();
-            ++mappedCount;
-        }
-        if (mappedCount == resultCellCount)
-        {
-            complete = true;
-            return mapping;
-        }
-    }
-
-    // 4) 最后才做几何位置兜底，兼容外部导入、没有稳定 ID 的旧结果文件。
-    // 这个分支只匹配尚未关联的单元。
-    auto locator = vtkSmartPointer<vtkStaticPointLocator>::New();
-    locator->SetDataSet(meshGrid);
-    locator->BuildLocator();
-
-    const double diagonal = std::max(postGridDiagonal(meshGrid), 1.0);
-    const double tolerance = std::max(diagonal * 1.0e-6, 1.0e-8);
-    const double tolerance2 = tolerance * tolerance;
-
-    for (vtkIdType resultCellId = 0; resultCellId < resultCellCount; ++resultCellId)
-    {
-        if (mapping[static_cast<int>(resultCellId)] >= 0)
-            continue;
-        vtkCell* resultCell = resultGrid->GetCell(resultCellId);
-        if (!resultCell || !resultCell->GetPointIds())
-            continue;
-
-        QVector<vtkIdType> meshPointIds;
-        meshPointIds.reserve(static_cast<int>(resultCell->GetPointIds()->GetNumberOfIds()));
-        bool cellMapped = true;
-        for (vtkIdType p = 0; p < resultCell->GetPointIds()->GetNumberOfIds(); ++p)
-        {
-            const vtkIdType resultPointId = resultCell->GetPointIds()->GetId(p);
-            double resultPoint[3]{0.0, 0.0, 0.0};
-            resultGrid->GetPoint(resultPointId, resultPoint);
-
-            const vtkIdType meshPointId = locator->FindClosestPoint(resultPoint);
-            if (meshPointId < 0)
-            {
-                cellMapped = false;
-                break;
-            }
-
-            double meshPoint[3]{0.0, 0.0, 0.0};
-            meshGrid->GetPoint(meshPointId, meshPoint);
-            const double dx = resultPoint[0] - meshPoint[0];
-            const double dy = resultPoint[1] - meshPoint[1];
-            const double dz = resultPoint[2] - meshPoint[2];
-            if (dx * dx + dy * dy + dz * dz > tolerance2)
-            {
-                cellMapped = false;
-                break;
-            }
-            meshPointIds.push_back(meshPointId);
-        }
-
-        if (!cellMapped)
-            continue;
-
-        std::sort(meshPointIds.begin(), meshPointIds.end());
-        QByteArray key;
-        key.reserve(24 + meshPointIds.size() * 12);
-        key.append(QByteArray::number(resultGrid->GetCellType(resultCellId)));
-        key.append(':');
-        for (vtkIdType id : meshPointIds)
-        {
-            key.append(QByteArray::number(static_cast<qlonglong>(id)));
-            key.append(',');
-        }
-
-        const auto it = meshCellByKey.constFind(key);
-        if (it == meshCellByKey.constEnd())
-            continue;
-
-        mapping[static_cast<int>(resultCellId)] = it.value();
-        ++mappedCount;
-    }
-
-    complete = mappedCount == resultCellCount;
-    return mapping;
-}
-
-inline const PostResultMeshCellMap& postResultToMeshCellMap(vtkUnstructuredGrid* resultGrid,
-                                                             vtkUnstructuredGrid* meshGrid)
-{
-    auto& cache = postResultMeshCellMapCache();
-
-    // 清理已经释放的数据集，避免缓存长期保留悬空地址；同时用 MTime 判断
-    // “对象地址没变但网格内容已经原地更新”的情况。
-    for (int i = cache.size() - 1; i >= 0; --i)
-    {
-        if (!cache[i].resultGrid.GetPointer() || !cache[i].meshGrid.GetPointer())
-            cache.removeAt(i);
-    }
-
-    const vtkIdType resultCells = resultGrid ? resultGrid->GetNumberOfCells() : 0;
-    const vtkIdType meshCells = meshGrid ? meshGrid->GetNumberOfCells() : 0;
-    const vtkMTimeType resultMTime = resultGrid ? resultGrid->GetMTime() : 0;
-    const vtkMTimeType meshMTime = meshGrid ? meshGrid->GetMTime() : 0;
-
-    for (PostResultMeshCellMap& entry : cache)
-    {
-        if (entry.resultGrid.GetPointer() == resultGrid &&
-            entry.meshGrid.GetPointer() == meshGrid &&
-            entry.resultCells == resultCells && entry.meshCells == meshCells &&
-            entry.resultMTime == resultMTime && entry.meshMTime == meshMTime)
-        {
-            entry.accessSerial = ++postResultMeshCellMapSerial();
-            return entry;
-        }
-    }
-
-    PostResultMeshCellMap entry;
-    entry.resultGrid = resultGrid;
-    entry.meshGrid = meshGrid;
-    entry.resultCells = resultCells;
-    entry.meshCells = meshCells;
-    entry.resultMTime = resultMTime;
-    entry.meshMTime = meshMTime;
-    entry.resultToMesh = postBuildResultToMeshCellMap(resultGrid, meshGrid, entry.complete);
-    entry.accessSerial = ++postResultMeshCellMapSerial();
-    cache.push_back(entry);
-
-    constexpr int maxCacheEntries = 12;
-    if (cache.size() > maxCacheEntries)
-    {
-        int oldestIndex = 0;
-        for (int i = 1; i < cache.size(); ++i)
-            if (cache[i].accessSerial < cache[oldestIndex].accessSerial)
-                oldestIndex = i;
-        cache.removeAt(oldestIndex);
-    }
-
-    for (PostResultMeshCellMap& cached : cache)
-    {
-        if (cached.resultGrid.GetPointer() == resultGrid &&
-            cached.meshGrid.GetPointer() == meshGrid &&
-            cached.resultMTime == resultMTime && cached.meshMTime == meshMTime)
-            return cached;
-    }
-
-    static PostResultMeshCellMap empty;
-    return empty;
-}
-
-
 inline QString postSortedIntSetText(const QSet<int>& values)
 {
     QList<int> ordered = values.values();
@@ -779,23 +692,22 @@ inline QString postSortedIntSetText(const QSet<int>& values)
 
 inline QString postMeshFilterSignature()
 {
+    // 后处理只跟随工程域筛选：材料 + 分层。
+    // KETYPE/TOPOLOGY_TYPE 属于网格检查维度，不参与结果显示联动。
     const QString project = PublicVariables::instance()
                                 .get(PublicConstants::kProjectDirectoryKey)
                                 .toString()
                                 .trimmed();
-    return QStringLiteral("%1|K=%2|M=%3|L=%4")
-        .arg(project,
-             postSortedIntSetText(postMeshCheckedValues(QStringLiteral("KETYPE"))),
-             postSortedIntSetText(postMeshCheckedValues(QStringLiteral("MATYPE"))),
-             postSortedIntSetText(postMeshCheckedValues(QStringLiteral("LAYER"))));
+    return QStringLiteral("%1|M=%2|L=%3")
+        .arg(project)
+        .arg(postSortedIntSetText(postMeshCheckedValues(QStringLiteral("MATYPE"))))
+        .arg(postSortedIntSetText(postMeshCheckedValues(QStringLiteral("LAYER"))));
 }
 
 struct PostFilteredResultCacheEntry
 {
     vtkWeakPointer<vtkUnstructuredGrid> sourceGrid;
-    vtkWeakPointer<vtkUnstructuredGrid> meshGrid;
     vtkMTimeType sourceMTime{0};
-    vtkMTimeType meshMTime{0};
     QString filterSignature;
     vtkSmartPointer<vtkUnstructuredGrid> output;
     PostMeshFilterReport report;
@@ -815,8 +727,8 @@ inline quint64& postFilteredResultCacheSerial()
 }
 
 inline vtkSmartPointer<vtkUnstructuredGrid> postCachedFilteredResult(
-    vtkUnstructuredGrid* source, vtkUnstructuredGrid* meshGrid,
-    const QString& signature, PostMeshFilterReport& report)
+    vtkUnstructuredGrid* source, const QString& signature,
+    PostMeshFilterReport& report)
 {
     auto& cache = postFilteredResultCache();
     for (int i = cache.size() - 1; i >= 0; --i)
@@ -826,12 +738,10 @@ inline vtkSmartPointer<vtkUnstructuredGrid> postCachedFilteredResult(
     }
 
     const vtkMTimeType sourceMTime = source ? source->GetMTime() : 0;
-    const vtkMTimeType meshMTime = meshGrid ? meshGrid->GetMTime() : 0;
     for (PostFilteredResultCacheEntry& entry : cache)
     {
         if (entry.sourceGrid.GetPointer() == source &&
-            entry.meshGrid.GetPointer() == meshGrid &&
-            entry.sourceMTime == sourceMTime && entry.meshMTime == meshMTime &&
+            entry.sourceMTime == sourceMTime &&
             entry.filterSignature == signature && entry.output)
         {
             entry.accessSerial = ++postFilteredResultCacheSerial();
@@ -843,7 +753,6 @@ inline vtkSmartPointer<vtkUnstructuredGrid> postCachedFilteredResult(
 }
 
 inline void postStoreFilteredResult(vtkUnstructuredGrid* source,
-                                    vtkUnstructuredGrid* meshGrid,
                                     const QString& signature,
                                     vtkUnstructuredGrid* output,
                                     const PostMeshFilterReport& report)
@@ -853,9 +762,7 @@ inline void postStoreFilteredResult(vtkUnstructuredGrid* source,
 
     PostFilteredResultCacheEntry entry;
     entry.sourceGrid = source;
-    entry.meshGrid = meshGrid;
     entry.sourceMTime = source->GetMTime();
-    entry.meshMTime = meshGrid ? meshGrid->GetMTime() : 0;
     entry.filterSignature = signature;
     entry.output = vtkSmartPointer<vtkUnstructuredGrid>::New();
     entry.output->ShallowCopy(output);
@@ -879,202 +786,95 @@ inline vtkSmartPointer<vtkUnstructuredGrid> postFilteredResultGrid(vtkUnstructur
 {
     PostMeshFilterReport report;
     report.requested = postSceneStyle().followMeshFilter;
-    report.customFilter = postMeshFilterIsCustom();
+    report.customFilter = false;
     report.inputCells = source ? source->GetNumberOfCells() : 0;
     report.outputCells = report.inputCells;
 
-    if (!source || !report.requested || !report.customFilter)
+    if (!source)
+    {
+        postMeshFilterReport() = report;
+        return {};
+    }
+
+    // 结果文件本身就是后处理筛选的权威数据源。
+    // PostResultGenerator 在生成 VTU 时已经把 MATYPE/LAYER/elem_id 写入 CellData，
+    // 退化单元拆分/规范化也会同步复制 CellData，因此不需要、也不应该再映射回 Mesh。
+    postPublishResultFilterSource(source);
+
+    if (!report.requested || !postMeshFilterIsCustom())
     {
         postMeshFilterReport() = report;
         return postShallowGrid(source);
     }
 
-    auto* meshService = ServiceRegistry::instance().getService<MeshModuleControllerService>();
-    vtkSmartPointer<vtkUnstructuredGrid> meshGrid =
-        meshService ? meshService->getVtkUnstructuredGrid()
-                    : vtkSmartPointer<vtkUnstructuredGrid>{};
-    vtkSmartPointer<vtkUnstructuredGrid> mappingGrid = meshGrid;
+    vtkDataArray* matype =
+        source->GetCellData() ? source->GetCellData()->GetArray("MATYPE") : nullptr;
+    vtkDataArray* layer =
+        source->GetCellData() ? source->GetCellData()->GetArray("LAYER") : nullptr;
+
+    const bool hasMatype =
+        matype && matype->GetNumberOfTuples() >= source->GetNumberOfCells();
+    const bool hasLayer =
+        layer && layer->GetNumberOfTuples() >= source->GetNumberOfCells();
+
+    if (!hasMatype && !hasLayer)
+    {
+        report.applied = false;
+        report.fullyResolved = false;
+        report.message = QStringLiteral("当前结果文件没有材料/分层分组信息");
+        postMeshFilterReport() = report;
+        return postShallowGrid(source);
+    }
+
+    const QSet<int> allMatypes = hasMatype ? postUniqueCellValues(matype) : QSet<int>{};
+    const QSet<int> allLayers = hasLayer ? postUniqueCellValues(layer) : QSet<int>{};
+    const QSet<int> checkedMatypes =
+        hasMatype ? postMeshCheckedValues(QStringLiteral("MATYPE")) : allMatypes;
+    const QSet<int> checkedLayers =
+        hasLayer ? postMeshCheckedValues(QStringLiteral("LAYER")) : allLayers;
+
+    const bool matypeRestricted = hasMatype && checkedMatypes != allMatypes;
+    const bool layerRestricted = hasLayer && checkedLayers != allLayers;
+    report.customFilter = matypeRestricted || layerRestricted;
+
+    if (!report.customFilter)
+    {
+        report.applied = true;
+        postMeshFilterReport() = report;
+        return postShallowGrid(source);
+    }
 
     const QString filterSignature = postMeshFilterSignature();
     PostMeshFilterReport cachedReport;
-    if (auto cached = postCachedFilteredResult(source, mappingGrid, filterSignature, cachedReport))
+    if (auto cached =
+            postCachedFilteredResult(source, filterSignature, cachedReport))
     {
         postMeshFilterReport() = cachedReport;
         return cached;
     }
 
-    vtkDataArray* originalIds =
-        source->GetCellData() ? source->GetCellData()->GetArray("vtkOriginalCellIds") : nullptr;
-
-    struct Category
-    {
-        const char* name;
-        QSet<int> checked;
-        QSet<int> all;
-        vtkDataArray* directArray{nullptr};
-        vtkDataArray* meshArray{nullptr};
-        bool restricted{false};
-        bool canResolve{false};
-    };
-
-    Category categories[] = {
-        {"KETYPE", postMeshCheckedValues(QStringLiteral("KETYPE"))},
-        {"MATYPE", postMeshCheckedValues(QStringLiteral("MATYPE"))},
-        {"LAYER", postMeshCheckedValues(QStringLiteral("LAYER"))},
-    };
-
-    bool anyRestricted = false;
-    bool anyResolvableRestricted = false;
-    bool allRestrictedResolved = true;
-    bool requiresCellMap = false;
-
-    // 先判断当前真正限制了哪些类别。结果文件自己已经携带分组字段时，
-    // 不再提前构建结果-原网格映射，避免第一次筛选产生无意义的大开销。
-    for (Category& category : categories)
-    {
-        category.directArray =
-            source->GetCellData() ? source->GetCellData()->GetArray(category.name) : nullptr;
-        category.meshArray =
-            mappingGrid && mappingGrid->GetCellData()
-                ? mappingGrid->GetCellData()->GetArray(category.name)
-                : nullptr;
-
-        vtkDataArray* fullArray =
-            meshGrid && meshGrid->GetCellData()
-                ? meshGrid->GetCellData()->GetArray(category.name)
-                : nullptr;
-        if (fullArray)
-            category.all = postUniqueCellValues(fullArray);
-        else if (category.meshArray)
-            category.all = postUniqueCellValues(category.meshArray);
-        else if (category.directArray)
-            category.all = postUniqueCellValues(category.directArray);
-
-        if (category.all.isEmpty())
-            continue;
-
-        category.restricted = category.checked != category.all;
-        anyRestricted = anyRestricted || category.restricted;
-    }
-
-    const PostResultMeshCellMap* cellMap = nullptr;
-    bool hasMappedCell = false;
-    bool needsCellMap = false;
-    for (const Category& category : categories)
-    {
-        if (category.restricted && !category.directArray && category.meshArray && !originalIds)
-        {
-            needsCellMap = true;
-            break;
-        }
-    }
-
-    if (needsCellMap)
-    {
-        cellMap = &postResultToMeshCellMap(source, mappingGrid);
-        for (vtkIdType mappedId : cellMap->resultToMesh)
-        {
-            if (mappedId >= 0)
-            {
-                hasMappedCell = true;
-                break;
-            }
-        }
-    }
-
-    for (Category& category : categories)
-    {
-        if (!category.restricted)
-            continue;
-        category.canResolve = category.directArray ||
-                              (category.meshArray && (originalIds || hasMappedCell));
-        if (!category.directArray && category.meshArray && !originalIds)
-            requiresCellMap = true;
-        anyResolvableRestricted = anyResolvableRestricted || category.canResolve;
-        allRestrictedResolved = allRestrictedResolved && category.canResolve;
-    }
-
-    if (!anyRestricted)
-    {
-        report.applied = true;
-        auto result = postShallowGrid(source);
-        postStoreFilteredResult(source, mappingGrid, filterSignature, result, report);
-        postMeshFilterReport() = report;
-        return result;
-    }
-
-    if (!anyResolvableRestricted || !allRestrictedResolved)
-    {
-        // 所有被限制的类别都必须能可靠关联。不能只应用 MATYPE 却悄悄忽略
-        // LAYER/KETYPE，否则画面与用户勾选条件并不一致。
-        auto emptyResult = vtkSmartPointer<vtkUnstructuredGrid>::New();
-        report.applied = false;
-        report.fullyResolved = false;
-        report.outputCells = 0;
-        report.message = QStringLiteral("当前结果无法完整应用网格筛选");
-        postStoreFilteredResult(source, mappingGrid, filterSignature, emptyResult, report);
-        postMeshFilterReport() = report;
-        return emptyResult;
-    }
-
     auto ids = vtkSmartPointer<vtkIdList>::New();
     ids->Allocate(source->GetNumberOfCells());
 
-    auto valueForCell = [&](const Category& category, vtkIdType cellId, bool& ok) -> int
-    {
-        ok = false;
-        if (category.directArray && cellId < category.directArray->GetNumberOfTuples())
-        {
-            ok = true;
-            return static_cast<int>(category.directArray->GetTuple1(cellId));
-        }
-
-        if (!category.meshArray)
-            return 0;
-
-        vtkIdType meshCellId = -1;
-        if (originalIds && cellId < originalIds->GetNumberOfTuples())
-            meshCellId = static_cast<vtkIdType>(originalIds->GetTuple1(cellId));
-        else if (cellMap && cellId >= 0 && cellId < cellMap->resultToMesh.size())
-            meshCellId = cellMap->resultToMesh.at(static_cast<int>(cellId));
-
-        if (meshCellId < 0 || meshCellId >= category.meshArray->GetNumberOfTuples())
-            return 0;
-
-        ok = true;
-        return static_cast<int>(category.meshArray->GetTuple1(meshCellId));
-    };
-
-    vtkIdType unresolvedCellCount = 0;
     for (vtkIdType cellId = 0; cellId < source->GetNumberOfCells(); ++cellId)
     {
-        bool keep = true;
-        bool unresolved = false;
-        for (const Category& category : categories)
+        if (matypeRestricted)
         {
-            if (!category.restricted)
+            const int value =
+                static_cast<int>(std::llround(matype->GetTuple1(cellId)));
+            if (!checkedMatypes.contains(value))
                 continue;
-
-            bool ok = false;
-            const int value = valueForCell(category, cellId, ok);
-            if (!ok)
-            {
-                // 未知归属的结果单元不继续显示，保证显示出来的每个单元都满足
-                // 用户当前的全部筛选条件。
-                unresolved = true;
-                keep = false;
-                break;
-            }
-            if (!category.checked.contains(value))
-            {
-                keep = false;
-                break;
-            }
         }
-        if (unresolved)
-            ++unresolvedCellCount;
-        if (keep)
-            ids->InsertNextId(cellId);
+
+        if (layerRestricted)
+        {
+            const int value =
+                static_cast<int>(std::llround(layer->GetTuple1(cellId)));
+            if (!checkedLayers.contains(value))
+                continue;
+        }
+
+        ids->InsertNextId(cellId);
     }
 
     auto extractor = vtkSmartPointer<vtkExtractCells>::New();
@@ -1087,24 +887,239 @@ inline vtkSmartPointer<vtkUnstructuredGrid> postFilteredResultGrid(vtkUnstructur
         result->ShallowCopy(extractor->GetOutput());
 
     report.applied = true;
-    report.fullyResolved = allRestrictedResolved &&
-                           (!requiresCellMap || (cellMap && cellMap->complete)) &&
-                           unresolvedCellCount == 0;
+    report.fullyResolved = true;
     report.outputCells = result->GetNumberOfCells();
     if (report.outputCells <= 0)
-    {
-        report.message = unresolvedCellCount >= report.inputCells && report.inputCells > 0
-                             ? QStringLiteral("当前结果无法可靠关联网格筛选")
-                             : QStringLiteral("当前网格筛选下没有可显示的结果");
-    }
-    else if (!report.fullyResolved)
-    {
-        report.message = QStringLiteral("已应用网格筛选，%1 个无法关联的结果单元已隐藏")
-                             .arg(unresolvedCellCount);
-    }
-    postStoreFilteredResult(source, mappingGrid, filterSignature, result, report);
+        report.message = QStringLiteral("当前材料/分层筛选下没有可显示的结果");
+
+    qInfo() << "[PostFilter] result MATYPE/LAYER"
+            << "input=" << report.inputCells
+            << "output=" << report.outputCells
+            << "matype=" << postSortedIntSetText(checkedMatypes)
+            << "layer=" << postSortedIntSetText(checkedLayers);
+
+    postStoreFilteredResult(source, filterSignature, result, report);
     postMeshFilterReport() = report;
     return result;
+}
+
+inline QByteArray postFaceKey(const QVector<vtkIdType>& pointIds)
+{
+    QVector<vtkIdType> sorted = pointIds;
+    std::sort(sorted.begin(), sorted.end());
+
+    QByteArray key;
+    key.reserve(int(sizeof(vtkIdType)) * (sorted.size() + 1));
+    const vtkIdType n = static_cast<vtkIdType>(sorted.size());
+    key.append(reinterpret_cast<const char*>(&n), int(sizeof(vtkIdType)));
+    for (vtkIdType id : sorted)
+        key.append(reinterpret_cast<const char*>(&id), int(sizeof(vtkIdType)));
+    return key;
+}
+
+// 后处理正常云图的“显示面”不是 generic GeometryFilter 的整个模型外壳。
+// 它需要保留：
+//   1) 全局外表面；
+//   2) MATYPE/LAYER 之间的内部域界面；
+// 并且一个公共界面只保留一份。
+// 这样不透明时内部域由 Z-buffer 正常遮挡；降低透明度后，同一 Actor 中已经存在的
+// 内部域界面会参与透明混合，不需要临时删除/重建域。
+//
+// 显示面完全由当前结果网格自身的 MATYPE/LAYER 与单元邻接关系生成，
+// 不读取 Mesh 当前筛选网格或 Mesh Actor。这样结果筛选、透明显示和结果文件保持同源。
+inline vtkSmartPointer<vtkPolyData> postBuildDomainAwareDisplaySurface(
+    vtkUnstructuredGrid* resultGrid, VisualWidgetService* service)
+{
+    Q_UNUSED(service);
+
+    auto out = vtkSmartPointer<vtkPolyData>::New();
+    if (!resultGrid || resultGrid->GetNumberOfPoints() <= 0 ||
+        resultGrid->GetNumberOfCells() <= 0)
+        return out;
+
+    vtkCellData* sourceCellData = resultGrid->GetCellData();
+    vtkDataArray* matype =
+        sourceCellData ? sourceCellData->GetArray("MATYPE") : nullptr;
+    vtkDataArray* layer =
+        sourceCellData ? sourceCellData->GetArray("LAYER") : nullptr;
+
+    // 没有域信息的旧结果，退回普通外表面即可。
+    if ((!matype || matype->GetNumberOfTuples() < resultGrid->GetNumberOfCells()) &&
+        (!layer || layer->GetNumberOfTuples() < resultGrid->GetNumberOfCells()))
+    {
+        auto surface = vtkSmartPointer<vtkDataSetSurfaceFilter>::New();
+        surface->SetInputData(resultGrid);
+        surface->PassThroughPointIdsOn();
+        surface->PassThroughCellIdsOn();
+        surface->Update();
+        if (surface->GetOutput())
+            out->ShallowCopy(surface->GetOutput());
+        return out;
+    }
+
+    struct FaceRecord
+    {
+        vtkIdType ownerCellId{-1};
+        QVector<vtkIdType> pointIds;
+        int cellType{VTK_EMPTY_CELL};
+        int matype{0};
+        int layer{0};
+        int count{0};
+        bool domainInterface{false};
+    };
+
+    QHash<QByteArray, FaceRecord> faces;
+    faces.reserve(static_cast<int>(
+        qMin<vtkIdType>(resultGrid->GetNumberOfCells() * 4,
+                        std::numeric_limits<int>::max() / 2)));
+
+    auto cellMatype = [&](vtkIdType cid) -> int
+    {
+        return matype && cid < matype->GetNumberOfTuples()
+                   ? static_cast<int>(std::llround(matype->GetTuple1(cid)))
+                   : 0;
+    };
+    auto cellLayer = [&](vtkIdType cid) -> int
+    {
+        return layer && cid < layer->GetNumberOfTuples()
+                   ? static_cast<int>(std::llround(layer->GetTuple1(cid)))
+                   : 0;
+    };
+
+    auto appendFace = [&](vtkIdType ownerCellId, vtkCell* face, char prefix)
+    {
+        if (!face || !face->GetPointIds() ||
+            face->GetPointIds()->GetNumberOfIds() < 3)
+            return;
+
+        QVector<vtkIdType> pointIds;
+        const vtkIdType originalPointCount = face->GetPointIds()->GetNumberOfIds();
+        pointIds.reserve(static_cast<int>(originalPointCount));
+        QSet<vtkIdType> seenPointIds;
+        for (vtkIdType i = 0; i < face->GetPointIds()->GetNumberOfIds(); ++i)
+        {
+            const vtkIdType pid = face->GetPointIds()->GetId(i);
+            // 输入拓扑异常时整张面作废。不能简单忽略越界点后继续插入，
+            // 否则会把残余点误组装成另一种单元并破坏 PolyData 拓扑。
+            if (pid < 0 || pid >= resultGrid->GetNumberOfPoints())
+                return;
+            // 退化实体的面可能仍携带重复节点。显示面先做一次轻量去重，
+            // 避免生成零面积三角形/四边形，在透明模式下表现成碎线和尖片。
+            if (seenPointIds.contains(pid))
+                continue;
+            seenPointIds.insert(pid);
+            pointIds.push_back(pid);
+        }
+        if (pointIds.size() < 3)
+            return;
+
+        // 过滤几何上已经塌缩成线/点的面。使用 Newell 法，不做三角化。
+        double nx = 0.0;
+        double ny = 0.0;
+        double nz = 0.0;
+        for (int i = 0; i < pointIds.size(); ++i)
+        {
+            double a[3] = {0.0, 0.0, 0.0};
+            double b[3] = {0.0, 0.0, 0.0};
+            resultGrid->GetPoint(pointIds[i], a);
+            resultGrid->GetPoint(pointIds[(i + 1) % pointIds.size()], b);
+            nx += (a[1] - b[1]) * (a[2] + b[2]);
+            ny += (a[2] - b[2]) * (a[0] + b[0]);
+            nz += (a[0] - b[0]) * (a[1] + b[1]);
+        }
+        const double normalLengthSquared = nx * nx + ny * ny + nz * nz;
+        if (!std::isfinite(normalLengthSquared) || normalLengthSquared <= 1.0e-24)
+            return;
+
+        QByteArray key;
+        key.reserve(1 + int(sizeof(vtkIdType)) * (pointIds.size() + 1));
+        key.append(prefix);
+        key.append(postFaceKey(pointIds));
+
+        const int ownerMatype = cellMatype(ownerCellId);
+        const int ownerLayer = cellLayer(ownerCellId);
+
+        auto it = faces.find(key);
+        if (it == faces.end())
+        {
+            FaceRecord record;
+            record.ownerCellId = ownerCellId;
+            record.pointIds = pointIds;
+            // 保持正常面（含 Pixel/TriangleStrip）的原始 VTK 类型；只有去掉
+            // 重复点、点数发生变化时才改成允许可变点数的 Polygon。
+            record.cellType = static_cast<vtkIdType>(pointIds.size()) == originalPointCount
+                                  ? face->GetCellType()
+                                  : VTK_POLYGON;
+            record.matype = ownerMatype;
+            record.layer = ownerLayer;
+            record.count = 1;
+            faces.insert(key, record);
+            return;
+        }
+
+        ++it->count;
+        if (it->matype != ownerMatype || it->layer != ownerLayer)
+            it->domainInterface = true;
+    };
+
+    for (vtkIdType cid = 0; cid < resultGrid->GetNumberOfCells(); ++cid)
+    {
+        vtkCell* cell = resultGrid->GetCell(cid);
+        if (!cell)
+            continue;
+
+        const int dimension = cell->GetCellDimension();
+        if (dimension == 3)
+        {
+            const int numberOfFaces = cell->GetNumberOfFaces();
+            for (int f = 0; f < numberOfFaces; ++f)
+                appendFace(cid, cell->GetFace(f), 'V');
+        }
+        else if (dimension == 2)
+        {
+            // 二维结果本身就是显示面，不做体单元邻接消隐。
+            appendFace(cid, cell, 'S');
+        }
+    }
+
+    out->SetPoints(resultGrid->GetPoints());
+    if (resultGrid->GetPointData())
+        out->GetPointData()->ShallowCopy(resultGrid->GetPointData());
+    out->Allocate(faces.size());
+
+    if (sourceCellData)
+        out->GetCellData()->CopyAllocate(sourceCellData, faces.size());
+
+    for (auto it = faces.constBegin(); it != faces.constEnd(); ++it)
+    {
+        const FaceRecord& record = it.value();
+
+        // 一个 owner：全局外表面；
+        // 两个以上 owner 但 MATYPE/LAYER 不同：内部域公共界面，只保留一份；
+        // 同一域内部共享面：不显示。
+        if (record.count > 1 && !record.domainInterface)
+            continue;
+        // 一个合法体网格公共面最多由两个体单元共享。多于两个 owner
+        // 属于非流形/退化连接，透明显示时宁可跳过该异常面，也不要绘制成
+        // 闪烁、颜色加深或碎片状的内部界面。
+        if (record.count > 2)
+            continue;
+        if (record.ownerCellId < 0 || record.pointIds.size() < 3)
+            continue;
+
+        const vtkIdType newCellId =
+            // 去重后的退化面已在记录阶段改成 Polygon，不能继续沿用原始
+            // VTK_QUAD 等固定点数类型。
+            out->InsertNextCell(record.cellType,
+                                static_cast<vtkIdType>(record.pointIds.size()),
+                                record.pointIds.constData());
+        if (newCellId >= 0 && sourceCellData)
+            out->GetCellData()->CopyData(
+                sourceCellData, record.ownerCellId, newCellId);
+    }
+
+    out->Squeeze();
+    return out;
 }
 
 inline void applyStandardPostLookupTable(vtkLookupTable* lut, double minV, double maxV)
@@ -1169,6 +1184,64 @@ inline void applyStandardPostLookupTable(vtkLookupTable* lut, double minV, doubl
     lut->Build();
 }
 
+inline QString resolvedPostScalarBarTitle(const QString& automaticTitle)
+{
+    const QString custom = postScalarBarStyle().customTitle.trimmed();
+    return custom.isEmpty() ? automaticTitle : custom;
+}
+
+inline bool postActorSupportsRepresentationControl(const QString& id)
+{
+    const QString lower = id.toLower();
+    // 线/文字/矢量符号本身不是结果实体，不跟随“表面/线框”切换。
+    return !lower.contains(QStringLiteral("contour")) &&
+           !lower.contains(QStringLiteral("label")) &&
+           !lower.contains(QStringLiteral("vector")) &&
+           !lower.contains(QStringLiteral("glyph")) &&
+           !lower.contains(QStringLiteral("probe"));
+}
+
+inline void applyPostActorRepresentation(vtkActor* actor)
+{
+    if (!actor || !actor->GetProperty())
+        return;
+
+    vtkProperty* property = actor->GetProperty();
+    switch (qBound(0, postSceneStyle().representationMode, 2))
+    {
+    case 1:
+        property->SetRepresentationToSurface();
+        property->EdgeVisibilityOn();
+        property->SetEdgeColor(0.12, 0.12, 0.12);
+        property->SetLineWidth(0.8);
+        break;
+    case 2:
+        property->SetRepresentationToWireframe();
+        property->EdgeVisibilityOff();
+        property->SetLineWidth(1.0);
+        break;
+    default:
+        property->SetRepresentationToSurface();
+        property->EdgeVisibilityOff();
+        break;
+    }
+}
+
+inline void applyPostSceneRepresentation(VisualWidgetService* service, bool renderNow = true)
+{
+    if (!service)
+        return;
+    for (const QString& id : service->allIds())
+    {
+        if (!isPostRegistryPropId(id) || !postActorSupportsRepresentationControl(id))
+            continue;
+        if (auto* actor = vtkActor::SafeDownCast(service->getProp(id)))
+            applyPostActorRepresentation(actor);
+    }
+    if (renderNow)
+        service->render();
+}
+
 inline void applyStandardPostScalarBar(vtkScalarBarActor* scalarBar)
 {
     if (!scalarBar)
@@ -1224,7 +1297,8 @@ inline void applyStandardPostScalarBar(VisualWidgetService* service, const QStri
     if (!scalarBar)
         return;
     applyStandardPostScalarBar(scalarBar);
-    scalarBar->SetTitle(title.toUtf8().constData());
+    const QString resolvedTitle = resolvedPostScalarBarTitle(title);
+    scalarBar->SetTitle(resolvedTitle.toUtf8().constData());
     scalarBar->Modified();
 }
 
@@ -1387,10 +1461,36 @@ inline vtkSmartPointer<vtkActor> createPostContourActor(vtkAlgorithmOutput* inpu
         return nullptr;
 
     const QByteArray name = scalarName.toUtf8();
+
+    // 通用等值线只针对“当前可见表面/切面”生成二维等值线。
+    // 不允许 vtkContourFilter 直接处理完整三维体单元，尤其是 VTK_POLYHEDRON：
+    // 退化/兼容单元可能存在非流形内部三角化，直接 Contour 会产生
+    // "A cell with a non-manifold triangulation ... cannot be contoured" 警告。
+    // vtkDataSetSurfaceFilter 对已经是 vtkPolyData 的 Slice 输入开销很小，
+    // 对 vtkUnstructuredGrid/Clip 输出则统一抽取外表面，因此所有页面共用一条安全管线。
+    auto surface = vtkSmartPointer<vtkDataSetSurfaceFilter>::New();
+    surface->SetInputConnection(inputPort);
+    // 先真正执行上游，确认当前可见表面及节点标量有效。后续不能在一条尚未
+    // 执行的管线上直接把 Mapper 设为 Static，否则 Mapper 不会再向上游请求更新。
+    surface->Update();
+    vtkPolyData* surfaceOutput = surface->GetOutput();
+    vtkPointData* pointData = surfaceOutput ? surfaceOutput->GetPointData() : nullptr;
+    vtkDataArray* scalarArray = pointData ? pointData->GetArray(name.constData()) : nullptr;
+    if (!surfaceOutput || surfaceOutput->GetNumberOfPoints() <= 0 ||
+        surfaceOutput->GetNumberOfCells() <= 0 || !scalarArray ||
+        scalarArray->GetNumberOfComponents() != 1 ||
+        scalarArray->GetNumberOfTuples() < surfaceOutput->GetNumberOfPoints())
+        return nullptr;
+    pointData->SetActiveScalars(name.constData());
+
     auto contour = vtkSmartPointer<vtkContourFilter>::New();
-    contour->SetInputConnection(inputPort);
+    contour->SetInputConnection(surface->GetOutputPort());
     contour->SetInputArrayToProcess(0, 0, 0, vtkDataObject::FIELD_ASSOCIATION_POINTS,
                                     name.constData());
+    contour->ComputeNormalsOff();
+    contour->ComputeGradientsOff();
+    contour->ComputeScalarsOn();
+    contour->UseScalarTreeOn();
     const int levels = qMax(2, postContourStyle().levels);
     contour->SetNumberOfContours(levels);
     for (int i = 0; i < levels; ++i)
@@ -1401,21 +1501,30 @@ inline vtkSmartPointer<vtkActor> createPostContourActor(vtkAlgorithmOutput* inpu
 
     auto stripper = vtkSmartPointer<vtkStripper>::New();
     stripper->SetInputConnection(contour->GetOutputPort());
+    stripper->JoinContiguousSegmentsOn();
+    stripper->Update();
+
+    vtkPolyData* contourOutput = stripper->GetOutput();
+    if (!contourOutput || contourOutput->GetNumberOfPoints() <= 0 ||
+        contourOutput->GetNumberOfLines() <= 0)
+        return nullptr;
 
     auto mapper = vtkSmartPointer<vtkPolyDataMapper>::New();
     mapper->SetInputConnection(stripper->GetOutputPort());
     mapper->ScalarVisibilityOff();
-    mapper->SetResolveCoincidentTopologyToPolygonOffset();
-    mapper->SetRelativeCoincidentTopologyLineOffsetParameters(-1.0, -1.0);
+    // 这里接的是算法端口而不是一份独立静态 PolyData。保持默认的动态管线，
+    // 切块平面等上游发生变化后才能按 VTK 的 MTime 机制更新；未修改时不会重算。
+    mapper->StaticOff();
 
     auto actor = vtkSmartPointer<vtkActor>::New();
     actor->SetMapper(mapper);
     actor->PickableOff();
     actor->GetProperty()->LightingOff();
     actor->GetProperty()->SetColor(0.10, 0.10, 0.10);
-    actor->GetProperty()->SetOpacity(0.82);
+    actor->GetProperty()->SetOpacity(1.0);
     actor->GetProperty()->SetLineWidth(1.0);
-    actor->GetProperty()->SetRenderLinesAsTubes(true);
+    // 不在 Actor 层做 Tube、Shader 或局部 depth hack。
+    // 共面关系由 setPostCoincidentTopologyActive() 在视图层统一处理。
     return actor;
 }
 
@@ -1444,6 +1553,11 @@ inline bool addPostPropByService(VisualWidgetService* service, const QString& id
     const bool ok = service->addProp(id, prop, QStringLiteral("post"), displayName,
                                      false, false);
     const bool attached = ok || service->getProp(id) == prop.GetPointer();
+    if (attached && postActorSupportsRepresentationControl(id))
+    {
+        if (auto* actor = vtkActor::SafeDownCast(service->getProp(id)))
+            applyPostActorRepresentation(actor);
+    }
     if (attached && !postSceneStyle().visible)
         service->setVisible(id, false, false);
     if (renderNow)
@@ -1496,15 +1610,13 @@ inline void showPostProcessingOnly(VisualWidgetService* service, bool renderNow 
     setPostViewActive(true);
     if (!service)
         return;
-    service->setGroupVisible("post", postSceneStyle().visible, false);
-    service->setGroupVisible("Geometry", false, false);
-    service->setGroupVisible("网格", false, false);
-    // 网格存在多条历史显示路径，进入后处理时显式压住常用 Actor，
-    // 不依赖 ProjectTree 后续再做一次场景切换，避免瞬间叠加/闪烁。
-    service->setVisible(QStringLiteral("mesh.global.surf"), false, false);
-    service->setVisible(QStringLiteral("mesh.global.wire"), false, false);
-    service->setVisible(QStringLiteral("mesh.imported.surface"), false, false);
-    service->setVisible(QStringLiteral("mesh.imported.line"), false, false);
+
+    // 后处理是独占结果视图。以前只隐藏 Geometry + 4 个固定 mesh Actor，
+    // 网格筛选/高亮/边界条件等其它 Prop 仍可能共面覆盖云图。现在按注册表
+    // 快照并隐藏全部非 post Prop，退出后处理时再恢复进入前的可见状态。
+    isolatePostProcessingScene(service);
+    service->setGroupVisible(QStringLiteral("post"), postSceneStyle().visible, false);
+
     if (auto* renderer = service->renderer())
         renderer->UseFXAAOn();
     if (renderNow)

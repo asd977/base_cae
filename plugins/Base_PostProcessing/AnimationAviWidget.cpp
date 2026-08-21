@@ -712,7 +712,7 @@ void AnimationAviWidget::buildPipelineIfNeeded()
     m_mapper = vtkSmartPointer<vtkDataSetMapper>::New();
     m_actor = vtkSmartPointer<vtkActor>::New();
     m_actor->SetMapper(m_mapper);
-    m_actor->GetProperty()->SetRepresentationToSurface();
+    applyPostActorRepresentation(m_actor);
 }
 
 void AnimationAviWidget::attachActor()

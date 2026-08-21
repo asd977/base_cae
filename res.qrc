@@ -1,4 +1,4 @@
-﻿<RCC>
+<RCC>
     <qresource prefix="/">
         <file>resources/action_parameter.png</file>
         <file>resources/close.png</file>
@@ -157,6 +157,7 @@
         <file>resources/menu/minimal/mesh-vol.svg</file>
         <file>resources/menu/minimal/mesh-face.svg</file>
         <file>resources/menu/minimal/mesh-edge.svg</file>
+        <file>resources/menu/minimal/mesh-bar-placement.svg</file>
         <file>resources/menu/minimal/mesh-edit.svg</file>
         <file>resources/menu/minimal/mesh-quality.svg</file>
         <file>resources/menu/minimal/analysis-block.svg</file>
@@ -172,6 +173,7 @@
         <file>resources/menu/minimal/load-seismic.svg</file>
         <file>resources/menu/minimal/post-nephogram.svg</file>
         <file>resources/menu/minimal/post-vector.svg</file>
+        <file>resources/menu/minimal/post-animation.svg</file>
         <file>resources/menu/minimal/post-slice.svg</file>
         <file>resources/menu/minimal/post-block.svg</file>
         <file>resources/menu/minimal/post-isosurface.svg</file>
@@ -183,6 +185,7 @@
         <file>resources/menu/minimal/analysis-dam.svg</file>
         <file>resources/menu/minimal/analysis-cave.svg</file>
         <file>resources/menu/minimal/analysis-slope.svg</file>
+        <file>resources/menu/minimal/analysis-specification.svg</file>
         <file>resources/menu/minimal/mat-hjp.svg</file>
         <file>resources/menu/minimal/mat-soil-eb.svg</file>
         <file>resources/menu/minimal/mat-dynamic.svg</file>

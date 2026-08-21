@@ -14,11 +14,8 @@ class vtkCellPicker;
 class vtkCallbackCommand;
 class vtkIntArray;
 
-class vtkPoints;
-class vtkPolyData;
-class vtkVertexGlyphFilter;
-class vtkPolyDataMapper;
-class vtkActor;
+class vtkAssembly;
+class vtkOrientationMarkerWidget;
 
 class vtkRenderer;
 class vtkRenderWindowInteractor;
@@ -49,6 +46,10 @@ class DisplacementConstraintWidget : public BasePage
     int uyFlag();
     int uzFlag();
 
+    // 刷新当前位移约束节点的全局方向指示器。
+    // 指示器固定在视口右下角，并随主视图相机旋转；约束方向通过轴端约束板表达。
+    void refreshConstraintVisualization(bool renderNow = true);
+
   private slots:
 
     void onNodePicked(const QString& domain, const QString& activeUuid, GridKind, vtkIdType,
@@ -62,8 +63,14 @@ class DisplacementConstraintWidget : public BasePage
   private:
     void refreshGroupCombo(int dimFilter);
     void updateCoordinateControlState();
+    void clearConstraintVisualization(bool renderNow = true);
+    QString constraintVisualizationPropId() const;
 
   private:
     Ui::DisplacementConstraintWidget* ui = nullptr;
     bool m_coordinateRangeLoaded = false;
+    bool m_constraintPageActive = false;
+    VisualWidgetService* m_visual = nullptr;
+    vtkSmartPointer<vtkAssembly> m_constraintMarkerAssembly;
+    vtkSmartPointer<vtkOrientationMarkerWidget> m_constraintMarkerWidget;
 };

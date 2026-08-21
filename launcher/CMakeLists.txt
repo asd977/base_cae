@@ -48,6 +48,12 @@ set(CAE_SOLVER_EXECUTABLE
     "Prebuilt solver executable deployed with CAE_BASE"
 )
 
+set(CAE_SLOPE_ENGINE_EXECUTABLE
+    "${CMAKE_SOURCE_DIR}/solver/SlopeEngine/SlopeEngine.exe"
+    CACHE FILEPATH
+    "Prebuilt SlopeEngine executable used by the slope standard-method check"
+)
+
 if(WIN32)
     set(_cae_runtime_plugin_targets
         Base_UiFrame
@@ -142,5 +148,23 @@ if(WIN32)
         message(WARNING
             "Solver executable was not found at ${CAE_SOLVER_EXECUTABLE}; "
             "set CAE_SOLVER_EXECUTABLE to a valid prebuilt solver")
+    endif()
+
+    if(EXISTS "${CAE_SLOPE_ENGINE_EXECUTABLE}")
+        add_custom_target(CAE_DEPLOY_SLOPE_ENGINE ALL
+            COMMAND ${CMAKE_COMMAND} -E make_directory
+                "${CAE_RUNTIME_DIR}/solver/SlopeEngine"
+            COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                "${CAE_SLOPE_ENGINE_EXECUTABLE}"
+                "${CAE_RUNTIME_DIR}/solver/SlopeEngine/SlopeEngine.exe"
+            DEPENDS "${CAE_SLOPE_ENGINE_EXECUTABLE}"
+            COMMENT "Deploying slope standard-method engine"
+            VERBATIM
+        )
+        add_dependencies(CAE_BASE CAE_DEPLOY_SLOPE_ENGINE)
+    else()
+        message(WARNING
+            "SlopeEngine executable was not found at ${CAE_SLOPE_ENGINE_EXECUTABLE}; "
+            "set CAE_SLOPE_ENGINE_EXECUTABLE to the delivered SlopeEngine.exe")
     endif()
 endif()

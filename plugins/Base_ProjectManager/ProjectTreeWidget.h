@@ -69,6 +69,8 @@ class ProjectTreeWidget : public QWidget
     void blockSignal(bool value);
   signals:
     void deletePageSig(const QString& uuid);
+    // 工程根节点右键“重命名”只修改工程显示名称，不修改工程目录/清单文件路径。
+    void projectRenameRequested(const QString& newName);
 
   public:
     ProjectNode* m_rootNode;       // 项目根节点指针

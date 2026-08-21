@@ -37,4 +37,8 @@ struct MaterialModel
 QVector<MaterialModel> createDefaultMaterialModels();
 QVector<MaterialModel> createSeepageSubModels();
 
+// 新建材料/切换模型时使用的默认值。
+// 仅用于缺失字段初始化，不覆盖用户已有值。
+QString defaultMaterialPropertyValue(const QString& modelKey, const QString& column);
+
 #endif // MATERIALLIBRARYDATA_H

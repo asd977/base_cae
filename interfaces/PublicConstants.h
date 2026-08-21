@@ -235,6 +235,7 @@ constexpr char kActionStressStrainKey[] = "stress_strain_analysis";
 constexpr char kActionSlopeStabilityKey[] = "slope_stability_analysis";
 constexpr char kActionCaveExcavationKey[] = "cave_excavation_analysis";
 constexpr char kActionCaveBlockStabilityKey[] = "cave_block_stability_analysis";
+constexpr char kActionSpecificationCheckKey[] = "specification_check_analysis";
 
 // =======================================================
 // Other：Key / Value / FileName（不属于 Event/Action/Page）

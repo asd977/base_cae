@@ -39,9 +39,8 @@ class MaterialManager : public QObject, public MaterialManagerService
     QMap<int, QString> calculationMaterialLabels() const override;
     QMap<int, QString> damStaticMaterialLabels() const override;
     QMap<int, QString> damWetMaterialLabels(int sourceMatype) const override;
-    QMap<int, QString> damDynamicMaterialLabels(int sourceMatype) const override;
-    bool setDamDynamicSourceMatype(int dynamicMatype, int sourceMatype) override;
-    bool generateIMATFile() override;
+    QMap<int, QString> damDynamicMaterialLabels() const override;
+    bool generateIMATFile(const QMap<int, int>& damDynamicSourceMappings = {}) override;
     bool hasConfiguredMaterials() const override;
 
     QString addMaterialToModel(const QString& modelKey, bool addToProjectTree = true);
@@ -88,7 +87,7 @@ class MaterialManager : public QObject, public MaterialManagerService
     void refreshEntryWidgetMatypes(const QString& entryId, const QSet<int>& applied,
                                    int selectedMatype);
 
-    bool generateCaculateFile();
+    bool generateCaculateFile(const QMap<int, int>& damDynamicSourceMappings = {});
     bool importIMATFile(const QString& filePath, int* importedCount = nullptr, QString* error = nullptr);
 
     QVector<QStringList> getValueStrings();
@@ -106,6 +105,7 @@ class MaterialManager : public QObject, public MaterialManagerService
     void ensureTransitionNode();
     void newProjectForPath(const QString& workPath);
     void setupTreeWidget();
+    void renameEntryFromProjectTree(const QString& entryId);
     void loadDefaultLibrary();
     void ensureEntryIds();
     void normalizeMaterialNames();

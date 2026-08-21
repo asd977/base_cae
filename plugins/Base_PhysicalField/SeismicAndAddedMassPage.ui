@@ -53,17 +53,35 @@
         <layout class="QGridLayout" name="gridLayout">
          <item row="2" column="0">
           <widget class="QLabel" name="labelAmpZ">
+ <property name="sizePolicy">
+  <sizepolicy hsizetype="Fixed" vsizetype="Preferred">
+   <horstretch>0</horstretch>
+   <verstretch>0</verstretch>
+  </sizepolicy>
+ </property>
            <property name="text">
             <string>Z 方向幅值</string>
            </property>
-          </widget>
+           <property name="wordWrap">
+  <bool>false</bool>
+ </property>
+</widget>
          </item>
          <item row="1" column="0">
           <widget class="QLabel" name="labelAmpY">
+ <property name="sizePolicy">
+  <sizepolicy hsizetype="Fixed" vsizetype="Preferred">
+   <horstretch>0</horstretch>
+   <verstretch>0</verstretch>
+  </sizepolicy>
+ </property>
            <property name="text">
             <string>Y 方向幅值</string>
            </property>
-          </widget>
+           <property name="wordWrap">
+  <bool>false</bool>
+ </property>
+</widget>
          </item>
          <item row="2" column="1">
           <widget class="QDoubleSpinBox" name="doubleSpinAmpZ">
@@ -106,15 +124,18 @@
          <item row="0" column="0">
           <widget class="QLabel" name="labelAmpX">
            <property name="sizePolicy">
-            <sizepolicy hsizetype="Fixed" vsizetype="Preferred">
-             <horstretch>0</horstretch>
-             <verstretch>0</verstretch>
-            </sizepolicy>
-           </property>
+           <sizepolicy hsizetype="Fixed" vsizetype="Preferred">
+            <horstretch>0</horstretch>
+            <verstretch>0</verstretch>
+           </sizepolicy>
+          </property>
            <property name="text">
             <string>X 方向幅值</string>
            </property>
-          </widget>
+           <property name="wordWrap">
+  <bool>false</bool>
+ </property>
+</widget>
          </item>
          <item row="0" column="1">
           <widget class="QDoubleSpinBox" name="doubleSpinAmpX">

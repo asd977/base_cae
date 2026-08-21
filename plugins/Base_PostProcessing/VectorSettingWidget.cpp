@@ -868,7 +868,8 @@ void VectorSettingWidget::rebuildPipeline()
         mapper->UseLookupTableScalarRangeOn();
 
         applyStandardPostScalarBar(scalarBar);
-        scalarBar->SetTitle(vectorLegendTitle().toUtf8().constData());
+        const QString legendTitle = resolvedPostScalarBarTitle(vectorLegendTitle());
+        scalarBar->SetTitle(legendTitle.toUtf8().constData());
         scalarBar->Modified();
         m_visualService->showScalarBar(postScalarBarShouldBeVisible(), false);
     }

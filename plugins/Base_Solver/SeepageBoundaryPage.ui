@@ -84,20 +84,38 @@
         </item>
         <item row="2" column="0">
          <widget class="QLabel" name="labelDim">
+ <property name="sizePolicy">
+  <sizepolicy hsizetype="Fixed" vsizetype="Preferred">
+   <horstretch>0</horstretch>
+   <verstretch>0</verstretch>
+  </sizepolicy>
+ </property>
           <property name="text">
            <string>分组类型</string>
           </property>
-         </widget>
+          <property name="wordWrap">
+  <bool>false</bool>
+ </property>
+</widget>
         </item>
         <item row="2" column="1" colspan="2">
          <widget class="CustomComboBox" name="comboBoxDim" />
         </item>
         <item row="3" column="0">
          <widget class="QLabel" name="labelGroup">
+ <property name="sizePolicy">
+  <sizepolicy hsizetype="Fixed" vsizetype="Preferred">
+   <horstretch>0</horstretch>
+   <verstretch>0</verstretch>
+  </sizepolicy>
+ </property>
           <property name="text">
            <string>按分组添加</string>
           </property>
-         </widget>
+          <property name="wordWrap">
+  <bool>false</bool>
+ </property>
+</widget>
         </item>
         <item row="3" column="1">
          <widget class="CustomComboBox" name="comboBoxGroup" />
@@ -120,10 +138,19 @@
        <layout class="QGridLayout" name="gridLayoutInfo">
         <item row="0" column="0">
          <widget class="QLabel" name="label1">
+ <property name="sizePolicy">
+  <sizepolicy hsizetype="Fixed" vsizetype="Preferred">
+   <horstretch>0</horstretch>
+   <verstretch>0</verstretch>
+  </sizepolicy>
+ </property>
           <property name="text">
            <string>节点</string>
           </property>
-         </widget>
+          <property name="wordWrap">
+  <bool>false</bool>
+ </property>
+</widget>
         </item>
         <item row="0" column="1">
          <widget class="QLabel" name="labelBoundaryTitle">
@@ -137,10 +164,19 @@
         </item>
         <item row="1" column="0">
          <widget class="QLabel" name="labelElevationRange">
+ <property name="sizePolicy">
+  <sizepolicy hsizetype="Fixed" vsizetype="Preferred">
+   <horstretch>0</horstretch>
+   <verstretch>0</verstretch>
+  </sizepolicy>
+ </property>
           <property name="text">
            <string>高程</string>
           </property>
-         </widget>
+          <property name="wordWrap">
+  <bool>false</bool>
+ </property>
+</widget>
         </item>
         <item row="1" column="1">
          <widget class="QLabel" name="labelElevationRangeValue">
@@ -166,10 +202,19 @@
        <layout class="QFormLayout" name="formLayoutNaturalFree">
         <item row="0" column="0">
          <widget class="QLabel" name="labelNaturalHead">
+ <property name="sizePolicy">
+  <sizepolicy hsizetype="Fixed" vsizetype="Preferred">
+   <horstretch>0</horstretch>
+   <verstretch>0</verstretch>
+  </sizepolicy>
+ </property>
           <property name="text">
            <string>初始水头</string>
           </property>
-         </widget>
+          <property name="wordWrap">
+  <bool>false</bool>
+ </property>
+</widget>
         </item>
         <item row="0" column="1">
          <widget class="QLabel" name="labelNaturalFreeHint">
@@ -180,10 +225,19 @@
         </item>
         <item row="1" column="0">
          <widget class="QLabel" name="labelNaturalCorrection">
+ <property name="sizePolicy">
+  <sizepolicy hsizetype="Fixed" vsizetype="Preferred">
+   <horstretch>0</horstretch>
+   <verstretch>0</verstretch>
+  </sizepolicy>
+ </property>
           <property name="text">
            <string>水头处理</string>
           </property>
-         </widget>
+          <property name="wordWrap">
+  <bool>false</bool>
+ </property>
+</widget>
         </item>
         <item row="1" column="1">
          <widget class="QComboBox" name="comboNaturalCorrection">
@@ -206,11 +260,17 @@
         </item>
         <item row="2" column="0" colspan="2">
          <widget class="QLabel" name="labelNaturalPreviewSummary">
+ <property name="sizePolicy">
+  <sizepolicy hsizetype="Fixed" vsizetype="Preferred">
+   <horstretch>0</horstretch>
+   <verstretch>0</verstretch>
+  </sizepolicy>
+ </property>
           <property name="text">
            <string/>
           </property>
           <property name="wordWrap">
-           <bool>true</bool>
+           <bool>false</bool>
           </property>
          </widget>
         </item>
@@ -225,20 +285,38 @@
        <layout class="QGridLayout" name="gridLayoutHydraulic">
         <item row="0" column="0">
          <widget class="QLabel" name="labelBoundaryConditionType">
+ <property name="sizePolicy">
+  <sizepolicy hsizetype="Fixed" vsizetype="Preferred">
+   <horstretch>0</horstretch>
+   <verstretch>0</verstretch>
+  </sizepolicy>
+ </property>
           <property name="text">
            <string>类型</string>
           </property>
-         </widget>
+          <property name="wordWrap">
+  <bool>false</bool>
+ </property>
+</widget>
         </item>
         <item row="0" column="1">
          <widget class="QComboBox" name="comboBoundaryConditionType" />
         </item>
         <item row="1" column="0">
          <widget class="QLabel" name="labelWaterLevel">
+ <property name="sizePolicy">
+  <sizepolicy hsizetype="Fixed" vsizetype="Preferred">
+   <horstretch>0</horstretch>
+   <verstretch>0</verstretch>
+  </sizepolicy>
+ </property>
           <property name="text">
            <string>水位</string>
           </property>
-         </widget>
+          <property name="wordWrap">
+  <bool>false</bool>
+ </property>
+</widget>
         </item>
         <item row="1" column="1">
          <widget class="QDoubleSpinBox" name="spinWaterLevel">
@@ -258,10 +336,19 @@
         </item>
         <item row="2" column="0">
          <widget class="QLabel" name="labelWaterLevelSlider">
+ <property name="sizePolicy">
+  <sizepolicy hsizetype="Fixed" vsizetype="Preferred">
+   <horstretch>0</horstretch>
+   <verstretch>0</verstretch>
+  </sizepolicy>
+ </property>
           <property name="text">
            <string>水位调节</string>
           </property>
-         </widget>
+          <property name="wordWrap">
+  <bool>false</bool>
+ </property>
+</widget>
         </item>
         <item row="2" column="1">
          <widget class="QSlider" name="sliderWaterLevel">
@@ -272,10 +359,19 @@
         </item>
         <item row="3" column="0">
          <widget class="QLabel" name="labelFlux">
+ <property name="sizePolicy">
+  <sizepolicy hsizetype="Fixed" vsizetype="Preferred">
+   <horstretch>0</horstretch>
+   <verstretch>0</verstretch>
+  </sizepolicy>
+ </property>
           <property name="text">
            <string>边界通量</string>
           </property>
-         </widget>
+          <property name="wordWrap">
+  <bool>false</bool>
+ </property>
+</widget>
         </item>
         <item row="3" column="1">
          <widget class="QDoubleSpinBox" name="spinFlux">

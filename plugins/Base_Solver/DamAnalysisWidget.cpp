@@ -1,4 +1,4 @@
-#include "DamAnalysisWidget.h"
+﻿#include "DamAnalysisWidget.h"
 
 #include <PublicConstants.h>
 #include <PublicVariables.h>
@@ -745,8 +745,15 @@ void DamAnalysisWidget::initValueEditors()
     ui->comboLine29->setItemText(0, QStringLiteral("不计算"));
     ui->comboLine29->setItemText(1, QStringLiteral("计算"));
     ui->comboLine29->setToolTip(
-        QStringLiteral("模态分析在填筑蓄水阶段中设置。"));
+        QStringLiteral("模态分析在“动力分析”子节点中设置。"));
     ui->comboLine29->setEnabled(false);
+    // 是否执行模态分析由“动力分析”子节点的 IFMODE 决定。
+    // 根页面不再重复显示派生开关。
+    ui->formLayoutDynamic->setRowVisible(ui->comboLine29, false);
+    // P030 仍按求解器格式保存在土石坝总参数中，但用户入口与模态开关统一放在“动力分析”子节点。
+    ui->formLayoutDynamic->setRowVisible(ui->editLine30, false);
+    ui->editLine30->setValidator(
+        new QIntValidator(1, std::numeric_limits<int>::max(), ui->editLine30));
 
     m_comboMethodIter->setItemData(0, "1");
     m_comboMethodIter->setItemData(1, "2");
@@ -844,6 +851,24 @@ bool DamAnalysisWidget::dynamicOnlyEnabled() const
     return ui->comboLine19->currentData().toString().toInt() == 2;
 }
 
+int DamAnalysisWidget::modalExtractionOrder() const
+{
+    bool ok = false;
+    const int order = ui->editLine30->text().trimmed().toInt(&ok);
+    return ok && order > 0 ? order : 10;
+}
+
+void DamAnalysisWidget::setModalExtractionOrder(int order)
+{
+    if (order <= 0)
+        return;
+    const QString value = QString::number(order);
+    if (ui->editLine30->text().trimmed() == value)
+        return;
+    const QSignalBlocker blocker(ui->editLine30);
+    ui->editLine30->setText(value);
+}
+
 void DamAnalysisWidget::setModalAnalysisRequired(bool required)
 {
     const QString value = required ? QStringLiteral("1") : QStringLiteral("0");
@@ -886,11 +911,17 @@ void DamAnalysisWidget::updateAnalysisModeVisibility()
     const bool staticEnabled = (type == 1 || type == 3);
     const bool dynamicEnabled = (type == 2 || type == 3);
 
-    // 参数区固定显示，只通过启用状态表达当前计算模式，避免界面反复跳动。
-    ui->groupStatic->setVisible(true);
-    ui->groupDynamic->setVisible(true);
+    // 仅静力时只显示静力设置；仅动力时只显示动力设置；联合计算同时显示。
+    ui->groupStatic->setVisible(staticEnabled);
+    ui->groupDynamic->setVisible(dynamicEnabled);
     ui->groupStatic->setEnabled(staticEnabled);
     ui->groupDynamic->setEnabled(dynamicEnabled);
+
+    // 坝体施工分层属于静力阶段模型准备；仅动力计算直接复用已有静力结果。
+    if (m_groupConstructionLayers)
+        m_groupConstructionLayers->setVisible(staticEnabled);
+    if (!staticEnabled)
+        clearConstructionLayerHighlights();
 
     updateDynamicOptionVisibility();
 }

@@ -19,32 +19,68 @@
       <property name="verticalSpacing"><number>8</number></property>
       <item row="0" column="0">
        <widget class="QLabel" name="analysisLabel">
+ <property name="sizePolicy">
+  <sizepolicy hsizetype="Fixed" vsizetype="Preferred">
+   <horstretch>0</horstretch>
+   <verstretch>0</verstretch>
+  </sizepolicy>
+ </property>
         <property name="text"><string>计算工况</string></property>
-       </widget>
+        <property name="wordWrap">
+  <bool>false</bool>
+ </property>
+</widget>
       </item>
       <item row="0" column="1">
        <widget class="QComboBox" name="analysisComboBox"/>
       </item>
       <item row="1" column="0">
        <widget class="QLabel" name="rangeLabel">
+ <property name="sizePolicy">
+  <sizepolicy hsizetype="Fixed" vsizetype="Preferred">
+   <horstretch>0</horstretch>
+   <verstretch>0</verstretch>
+  </sizepolicy>
+ </property>
         <property name="text"><string>动画范围</string></property>
-       </widget>
+        <property name="wordWrap">
+  <bool>false</bool>
+ </property>
+</widget>
       </item>
       <item row="1" column="1">
        <widget class="QComboBox" name="rangeComboBox"/>
       </item>
       <item row="2" column="0">
        <widget class="QLabel" name="resultLabel">
+ <property name="sizePolicy">
+  <sizepolicy hsizetype="Fixed" vsizetype="Preferred">
+   <horstretch>0</horstretch>
+   <verstretch>0</verstretch>
+  </sizepolicy>
+ </property>
         <property name="text"><string>结果文件</string></property>
-       </widget>
+        <property name="wordWrap">
+  <bool>false</bool>
+ </property>
+</widget>
       </item>
       <item row="2" column="1">
        <widget class="QComboBox" name="resultComboBox"/>
       </item>
       <item row="3" column="0">
        <widget class="QLabel" name="scalarLabel">
+ <property name="sizePolicy">
+  <sizepolicy hsizetype="Fixed" vsizetype="Preferred">
+   <horstretch>0</horstretch>
+   <verstretch>0</verstretch>
+  </sizepolicy>
+ </property>
         <property name="text"><string>物理量</string></property>
-       </widget>
+        <property name="wordWrap">
+  <bool>false</bool>
+ </property>
+</widget>
       </item>
       <item row="3" column="1">
        <widget class="QComboBox" name="scalarComboBox"/>
@@ -114,8 +150,17 @@
       <property name="verticalSpacing"><number>8</number></property>
       <item row="0" column="0">
        <widget class="QLabel" name="fpsLabel">
+ <property name="sizePolicy">
+  <sizepolicy hsizetype="Fixed" vsizetype="Preferred">
+   <horstretch>0</horstretch>
+   <verstretch>0</verstretch>
+  </sizepolicy>
+ </property>
         <property name="text"><string>播放速度（帧/秒）</string></property>
-       </widget>
+        <property name="wordWrap">
+  <bool>false</bool>
+ </property>
+</widget>
       </item>
       <item row="0" column="1">
        <widget class="QDoubleSpinBox" name="fpsSpin">

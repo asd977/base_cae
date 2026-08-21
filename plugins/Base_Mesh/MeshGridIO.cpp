@@ -31,11 +31,13 @@
 #include <QTextStream>
 #include <QVector3D>
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <cctype>
 #include <cstdlib>
 #include <cstring>
 #include <limits>
+#include <initializer_list>
 #include <vector>
 #include <PublicVariables.h>
 #include <PublicConstants.h>
@@ -54,9 +56,653 @@ static const QRegularExpression kWhitespaceRe(QStringLiteral("\\s+"));
 static const char* kIiinVerticalAxisArrayName = "IIIN_IVERTICAL";
 static const char* kIiinObjectTypeArrayName = "IIIN_IOBJECT";
 static const char* kIiinConnectivityPatternArrayName = "IIIN_CONNECTIVITY_PATTERN";
+static const char* kIiinTopologySchemaVersionArrayName = "IIIN_TOPOLOGY_SCHEMA_VERSION";
+constexpr int kIiinTopologySchemaVersion = 3;
 constexpr int kFirstComputableMatype = 2;
 constexpr int kDefaultCalculationMatype = 3;
 constexpr int kDefaultConstructionLayer = 1;
+
+// 自定义几何拓扑编号：只用于 CAE 的显示/筛选。
+// 能还原为标准 Tet/Pyramid/Wedge/Hex 的退化单元全部归入对应标准拓扑；
+// 不能等价为标准单元、但仍是合法闭合 Hex 塌缩体的，归入“六面体”家族，
+// 底层仅借用 VTK_POLYHEDRON 表示真实边界；只有无法形成合法闭合体的才标记“异常”。
+// KETYPE 仍保持求解器自己的单元族含义，不与这里混用。
+constexpr int kTopologyAbnormal = -1;
+
+struct LegacyHexTopologyInfo
+{
+    bool valid = false;
+    bool degenerateHexFallback = false;
+    int vtkCellType = VTK_EMPTY_CELL;
+    int topologyType = VTK_EMPTY_CELL;     // UI/筛选使用；合法非标准塌缩体并入六面体家族
+    QVector<int> localNodeSlots;           // VTK 局部节点 -> 原 IIIN 8 槽位
+    QVector<QVector<int>> polyhedronFaces; // VTK_POLYHEDRON 仅作为特殊退化 Hex 的几何容器
+    int patternCode = -1;                  // 原 IIIN 8 槽位 -> VTK 局部节点（每槽 3 bit）
+    int uniqueCount = 0;
+};
+
+static int bitCount8(quint32 mask)
+{
+    int count = 0;
+    while (mask)
+    {
+        count += int(mask & 1u);
+        mask >>= 1u;
+    }
+    return count;
+}
+
+static QVector<quint32> sortedUniqueMasks(QVector<quint32> masks)
+{
+    std::sort(masks.begin(), masks.end());
+    masks.erase(std::unique(masks.begin(), masks.end()), masks.end());
+    return masks;
+}
+
+static QVector<quint32> collapsedLegacyHexFaceMasks(const std::array<int, 8>& labels)
+{
+    static constexpr int kHexFaces[6][4] = {
+        {0, 1, 2, 3}, {4, 5, 6, 7}, {0, 4, 5, 1},
+        {1, 5, 6, 2}, {2, 6, 7, 3}, {3, 7, 4, 0},
+    };
+
+    QVector<quint32> faces;
+    faces.reserve(6);
+    for (const auto& face : kHexFaces)
+    {
+        quint32 mask = 0;
+        for (int slot : face)
+            mask |= (1u << labels[slot]);
+        if (bitCount8(mask) >= 3)
+            faces.push_back(mask);
+    }
+    return sortedUniqueMasks(faces);
+}
+
+
+static QVector<int> collapsedLegacyHexFace(const std::array<int, 8>& labels,
+                                           const int face[4])
+{
+    QVector<int> ordered;
+    ordered.reserve(4);
+    for (int i = 0; i < 4; ++i)
+    {
+        const int label = labels[face[i]];
+        if (ordered.isEmpty() || ordered.last() != label)
+            ordered.push_back(label);
+    }
+
+    if (ordered.size() > 1 && ordered.first() == ordered.last())
+        ordered.removeLast();
+
+    // 面内部出现非相邻重复点会形成自相交/折返面，不能作为 Polyhedron 面。
+    QSet<int> seen;
+    for (int label : ordered)
+    {
+        if (seen.contains(label))
+            return QVector<int>{-1}; // 非相邻重复：非法折返面
+        seen.insert(label);
+    }
+
+    if (ordered.size() < 3)
+        return {};
+    return ordered;
+}
+
+static bool buildClosedLegacyPolyhedronFaces(const std::array<int, 8>& labels,
+                                             int uniqueCount,
+                                             QVector<QVector<int>>& outFaces)
+{
+    outFaces.clear();
+    if (uniqueCount < 4 || uniqueCount > 8)
+        return false;
+
+    static constexpr int kHexFaces[6][4] = {
+        {0, 1, 2, 3}, {4, 5, 6, 7}, {0, 4, 5, 1},
+        {1, 5, 6, 2}, {2, 6, 7, 3}, {3, 7, 4, 0},
+    };
+
+    QSet<quint32> faceMasks;
+    quint32 usedVertexMask = 0;
+    QHash<int, int> edgeUseCount;
+
+    for (const auto& rawFace : kHexFaces)
+    {
+        QVector<int> face = collapsedLegacyHexFace(labels, rawFace);
+        if (face.size() == 1 && face.first() < 0)
+            return false;
+        if (face.size() < 3)
+            continue;
+
+        quint32 mask = 0;
+        for (int label : face)
+        {
+            if (label < 0 || label >= uniqueCount)
+                return false;
+            mask |= (1u << label);
+        }
+
+        // 同一个几何面可能由两个退化 Hex 面重合得到，只保留一次。
+        if (faceMasks.contains(mask))
+            continue;
+        faceMasks.insert(mask);
+        usedVertexMask |= mask;
+
+        for (int i = 0; i < face.size(); ++i)
+        {
+            const int a = face[i];
+            const int b = face[(i + 1) % face.size()];
+            if (a == b)
+                return false;
+            const int lo = qMin(a, b);
+            const int hi = qMax(a, b);
+            const int edgeKey = (lo << 4) | hi;
+            edgeUseCount[edgeKey] = edgeUseCount.value(edgeKey) + 1;
+        }
+
+        outFaces.push_back(face);
+    }
+
+    if (outFaces.size() < 4)
+        return false;
+
+    const quint32 expectedVertexMask =
+        (uniqueCount >= 32) ? 0xffffffffu : ((1u << uniqueCount) - 1u);
+    if (usedVertexMask != expectedVertexMask)
+        return false;
+
+    for (auto it = edgeUseCount.constBegin(); it != edgeUseCount.constEnd(); ++it)
+    {
+        // VTK Polyhedron 要求闭合二维流形：每条边恰好属于两个面。
+        if (it.value() != 2)
+            return false;
+    }
+
+    // 对这里由一个 Hex 拓扑塌缩得到的单连通实体，Euler 特征应为 2。
+    const int vertexCount = uniqueCount;
+    const int edgeCount = edgeUseCount.size();
+    const int faceCount = outFaces.size();
+    if (vertexCount - edgeCount + faceCount != 2)
+        return false;
+
+    return true;
+}
+
+static int firstSourceSlotForLabel(const std::array<int, 8>& labels, int label)
+{
+    for (int slot = 0; slot < 8; ++slot)
+    {
+        if (labels[slot] == label)
+            return slot;
+    }
+    return -1;
+}
+
+static int connectivityPatternCode(const std::array<int, 8>& labels,
+                                   const QVector<int>& labelToLocal)
+{
+    if (labelToLocal.isEmpty())
+        return -1;
+
+    int code = 0;
+    for (int slot = 0; slot < 8; ++slot)
+    {
+        const int label = labels[slot];
+        if (label < 0 || label >= labelToLocal.size())
+            return -1;
+        const int local = labelToLocal[label];
+        if (local < 0 || local > 7)
+            return -1;
+        code |= (local & 0x7) << (slot * 3);
+    }
+    return code;
+}
+
+static QVector<QVector<int>> standardFacesForVtkCell(int vtkCellType)
+{
+    switch (vtkCellType)
+    {
+    case VTK_TETRA:
+        return {{0, 1, 2}, {0, 3, 1}, {1, 3, 2}, {2, 3, 0}};
+    case VTK_PYRAMID:
+        return {{0, 1, 2, 3}, {0, 4, 1}, {1, 4, 2}, {2, 4, 3}, {3, 4, 0}};
+    case VTK_WEDGE:
+        return {{0, 2, 1}, {3, 4, 5}, {0, 1, 4, 3}, {1, 2, 5, 4}, {2, 0, 3, 5}};
+    case VTK_HEXAHEDRON:
+        return {{0, 1, 2, 3}, {4, 5, 6, 7}, {0, 4, 5, 1},
+                {1, 5, 6, 2}, {2, 6, 7, 3}, {3, 7, 4, 0}};
+    default:
+        return {};
+    }
+}
+
+static QVector<quint32> mappedStandardFaceMasks(int vtkCellType,
+                                                 const std::vector<int>& stdToLabel)
+{
+    QVector<quint32> masks;
+    const auto faces = standardFacesForVtkCell(vtkCellType);
+    masks.reserve(faces.size());
+    for (const QVector<int>& face : faces)
+    {
+        quint32 mask = 0;
+        for (int local : face)
+        {
+            if (local < 0 || local >= static_cast<int>(stdToLabel.size()))
+                return {};
+            mask |= (1u << stdToLabel[local]);
+        }
+        masks.push_back(mask);
+    }
+    return sortedUniqueMasks(masks);
+}
+
+// 老 IIIN 的 KETYPE=6 允许通过重复 8 节点槽位表达退化实体。
+// 读入 CAE 后优先恢复成真正的 Tet/Pyramid/Wedge/Hex。
+// 只要旧 8 槽位退化拓扑与某个标准线性实体等价，就直接归入对应标准拓扑。
+// 对不能等价为标准单元、但仍能由原 Hex 六个面塌缩成合法闭合体的记录，
+// 在用户语义上继续归入“六面体”，底层借用 VTK_POLYHEDRON 保存其真实面拓扑。
+// 只有连闭合流形都无法形成的记录才标记为“异常”。
+//
+// patternCode 仅用于 IIIN 求解器专用回写。
+static LegacyHexTopologyInfo analyzeLegacyHexTopology(const QVector<int>& nodeIds)
+{
+    LegacyHexTopologyInfo invalid;
+    if (nodeIds.size() < 8)
+        return invalid;
+
+    std::array<int, 8> labels{};
+    std::array<int, 8> uniqueNodeIds{};
+    int uniqueCount = 0;
+    quint32 cacheKey = 0;
+
+    for (int slot = 0; slot < 8; ++slot)
+    {
+        const int nid = nodeIds[slot];
+        if (nid <= 0)
+            return invalid;
+
+        int label = -1;
+        for (int i = 0; i < uniqueCount; ++i)
+        {
+            if (uniqueNodeIds[i] == nid)
+            {
+                label = i;
+                break;
+            }
+        }
+        if (label < 0)
+        {
+            if (uniqueCount >= 8)
+                return invalid;
+            label = uniqueCount;
+            uniqueNodeIds[uniqueCount++] = nid;
+        }
+        labels[slot] = label;
+        cacheKey |= (quint32(label & 0x7) << (slot * 3));
+    }
+
+    static QHash<quint32, LegacyHexTopologyInfo> cache;
+    const auto cached = cache.constFind(cacheKey);
+    if (cached != cache.constEnd())
+        return cached.value();
+
+    LegacyHexTopologyInfo info;
+    info.uniqueCount = uniqueCount;
+
+    // 常见旧 IIIN 退化模式走 O(1) 快速路径。
+    // 例如 1099 号单元：A B C C D E F F，几何上就是两个三角形端面
+    // 加三个四边形侧面的标准三棱柱，必须归入 VTK_WEDGE，而不是“异常”。
+    auto matchesLabels = [&](std::initializer_list<int> pattern) -> bool
+    {
+        if (static_cast<int>(pattern.size()) != 8)
+            return false;
+        int i = 0;
+        for (int value : pattern)
+        {
+            if (labels[i++] != value)
+                return false;
+        }
+        return true;
+    };
+
+    auto makeCanonical = [&](int vtkType, std::initializer_list<int> sourceSlots) -> LegacyHexTopologyInfo
+    {
+        LegacyHexTopologyInfo canonical;
+        canonical.valid = true;
+        canonical.uniqueCount = uniqueCount;
+        canonical.vtkCellType = vtkType;
+        canonical.topologyType = vtkType;
+        canonical.localNodeSlots.reserve(static_cast<int>(sourceSlots.size()));
+        QVector<int> labelToLocal(uniqueCount, -1);
+        int local = 0;
+        for (int slot : sourceSlots)
+        {
+            canonical.localNodeSlots.push_back(slot);
+            const int label = labels[slot];
+            if (label >= 0 && label < uniqueCount)
+                labelToLocal[label] = local;
+            ++local;
+        }
+        canonical.patternCode = connectivityPatternCode(labels, labelToLocal);
+        if (canonical.patternCode < 0)
+            canonical = LegacyHexTopologyInfo{};
+        canonical.uniqueCount = uniqueCount;
+        return canonical;
+    };
+
+    if (matchesLabels({0, 1, 2, 2, 3, 3, 3, 3}))
+    {
+        info = makeCanonical(VTK_TETRA, {0, 1, 2, 4});
+        cache.insert(cacheKey, info);
+        return info;
+    }
+    if (matchesLabels({0, 1, 2, 3, 4, 4, 4, 4}))
+    {
+        info = makeCanonical(VTK_PYRAMID, {0, 1, 2, 3, 4});
+        cache.insert(cacheKey, info);
+        return info;
+    }
+    if (matchesLabels({0, 1, 2, 2, 3, 4, 5, 5}))
+    {
+        info = makeCanonical(VTK_WEDGE, {0, 1, 2, 4, 5, 6});
+        cache.insert(cacheKey, info);
+        return info;
+    }
+
+    // 四个不同节点的三维线性实体，其几何拓扑只能是四面体。
+    // 老 IIIN 中极少数 Tet 的 8 槽位重复位置并不符合常见 A B C C D D D D，
+    // 例如 A B C D B B B B / A B C D A A A A。若继续按 Hex 的六个面
+    // 去做“塌缩面匹配”，会因为历史槽位编码差异被误判为异常。
+    // 对显示/筛选应按 4 个真实节点直接归为 Tet；原 8 槽位模式仍通过
+    // IIIN_CONNECTIVITY_PATTERN 保留，Solver IIIN 回写不会改变。
+    if (uniqueCount == 4)
+    {
+        std::array<int, 4> firstSlots = {-1, -1, -1, -1};
+        for (int slot = 0; slot < 8; ++slot)
+        {
+            const int label = labels[slot];
+            if (label >= 0 && label < 4 && firstSlots[label] < 0)
+                firstSlots[label] = slot;
+        }
+
+        if (firstSlots[0] >= 0 && firstSlots[1] >= 0 &&
+            firstSlots[2] >= 0 && firstSlots[3] >= 0)
+        {
+            info = makeCanonical(
+                VTK_TETRA,
+                {firstSlots[0], firstSlots[1], firstSlots[2], firstSlots[3]});
+            cache.insert(cacheKey, info);
+            return info;
+        }
+    }
+
+    // 其它排列/退化模式再走通用面拓扑匹配。
+    int targetType = VTK_EMPTY_CELL;
+    if (uniqueCount == 4)
+        targetType = VTK_TETRA;
+    else if (uniqueCount == 5)
+        targetType = VTK_PYRAMID;
+    else if (uniqueCount == 6)
+        targetType = VTK_WEDGE;
+    else if (uniqueCount == 8)
+        targetType = VTK_HEXAHEDRON;
+
+    if (targetType != VTK_EMPTY_CELL)
+    {
+        std::vector<int> stdToLabel(uniqueCount);
+        for (int i = 0; i < uniqueCount; ++i)
+            stdToLabel[i] = i;
+
+        const QVector<quint32> collapsedFaces = collapsedLegacyHexFaceMasks(labels);
+        bool matched = false;
+        do
+        {
+            if (mappedStandardFaceMasks(targetType, stdToLabel) == collapsedFaces)
+            {
+                matched = true;
+                break;
+            }
+        } while (std::next_permutation(stdToLabel.begin(), stdToLabel.end()));
+
+        if (matched)
+        {
+            info.valid = true;
+            info.vtkCellType = targetType;
+            info.topologyType = targetType;
+            info.localNodeSlots.resize(uniqueCount);
+
+            QVector<int> labelToStd(uniqueCount, -1);
+            for (int stdLocal = 0; stdLocal < uniqueCount; ++stdLocal)
+            {
+                const int label = stdToLabel[stdLocal];
+                labelToStd[label] = stdLocal;
+
+                const int sourceSlot = firstSourceSlotForLabel(labels, label);
+                if (sourceSlot < 0)
+                {
+                    info = LegacyHexTopologyInfo{};
+                    info.uniqueCount = uniqueCount;
+                    cache.insert(cacheKey, info);
+                    return info;
+                }
+                info.localNodeSlots[stdLocal] = sourceSlot;
+            }
+
+            info.patternCode = connectivityPatternCode(labels, labelToStd);
+            if (info.patternCode < 0)
+            {
+                info = LegacyHexTopologyInfo{};
+                info.uniqueCount = uniqueCount;
+            }
+
+            cache.insert(cacheKey, info);
+            return info;
+        }
+    }
+
+    // 标准单元匹配失败时，不再把重复节点直接塞回 vtkHexahedron。
+    // 只要原 Hex 的六个面塌缩后仍能组成合法闭合体，就认为这是
+    // “正常的退化六面体”：VTK_POLYHEDRON 仅作为几何容器，筛选仍归入“六面体”。
+    QVector<QVector<int>> polyFaces;
+    if (buildClosedLegacyPolyhedronFaces(labels, uniqueCount, polyFaces))
+    {
+        info.valid = true;
+        info.degenerateHexFallback = true;
+        info.vtkCellType = VTK_POLYHEDRON;
+        info.topologyType = VTK_HEXAHEDRON;
+        info.polyhedronFaces = polyFaces;
+        info.localNodeSlots.resize(uniqueCount);
+
+        QVector<int> labelToLocal(uniqueCount, -1);
+        for (int label = 0; label < uniqueCount; ++label)
+        {
+            const int sourceSlot = firstSourceSlotForLabel(labels, label);
+            if (sourceSlot < 0)
+            {
+                info = LegacyHexTopologyInfo{};
+                info.uniqueCount = uniqueCount;
+                cache.insert(cacheKey, info);
+                return info;
+            }
+            // Polyhedron 的点顺序直接采用“首次出现”的 label 顺序。
+            info.localNodeSlots[label] = sourceSlot;
+            labelToLocal[label] = label;
+        }
+
+        info.patternCode = connectivityPatternCode(labels, labelToLocal);
+        if (info.patternCode < 0)
+        {
+            info = LegacyHexTopologyInfo{};
+            info.uniqueCount = uniqueCount;
+        }
+
+        cache.insert(cacheKey, info);
+        return info;
+    }
+
+    cache.insert(cacheKey, info);
+    return info;
+}
+
+static bool rebuildLegacyEightSlotConnectivity(int patternCode,
+                                               const QVector<int>& vtkNodeIds,
+                                               QVector<int>& outConn)
+{
+    if (patternCode < 0 || vtkNodeIds.isEmpty() || vtkNodeIds.size() > 8)
+        return false;
+
+    QVector<int> rebuilt;
+    rebuilt.reserve(8);
+    for (int slot = 0; slot < 8; ++slot)
+    {
+        const int local = (patternCode >> (slot * 3)) & 0x7;
+        if (local < 0 || local >= vtkNodeIds.size())
+            return false;
+        rebuilt.push_back(vtkNodeIds[local]);
+    }
+    outConn = rebuilt;
+    return true;
+}
+
+
+static bool buildOrientedPolyhedronFaceStream(vtkPoints* points,
+                                              const QVector<vtkIdType>& pointIds,
+                                              const QVector<QVector<int>>& localFaces,
+                                              QVector<vtkIdType>& faceStream)
+{
+    faceStream.clear();
+    if (!points || pointIds.size() < 4 || localFaces.size() < 4)
+        return false;
+
+    double cellCenter[3] = {0.0, 0.0, 0.0};
+    for (vtkIdType pid : pointIds)
+    {
+        double p[3] = {0.0, 0.0, 0.0};
+        points->GetPoint(pid, p);
+        cellCenter[0] += p[0];
+        cellCenter[1] += p[1];
+        cellCenter[2] += p[2];
+    }
+    const double invPointCount = 1.0 / static_cast<double>(pointIds.size());
+    cellCenter[0] *= invPointCount;
+    cellCenter[1] *= invPointCount;
+    cellCenter[2] *= invPointCount;
+
+    faceStream.reserve(localFaces.size() * 5);
+    for (QVector<int> face : localFaces)
+    {
+        if (face.size() < 3)
+            return false;
+
+        double faceCenter[3] = {0.0, 0.0, 0.0};
+        double normal[3] = {0.0, 0.0, 0.0};
+
+        for (int i = 0; i < face.size(); ++i)
+        {
+            const int localA = face[i];
+            const int localB = face[(i + 1) % face.size()];
+            if (localA < 0 || localA >= pointIds.size() ||
+                localB < 0 || localB >= pointIds.size())
+                return false;
+
+            double a[3] = {0.0, 0.0, 0.0};
+            double b[3] = {0.0, 0.0, 0.0};
+            points->GetPoint(pointIds[localA], a);
+            points->GetPoint(pointIds[localB], b);
+
+            faceCenter[0] += a[0];
+            faceCenter[1] += a[1];
+            faceCenter[2] += a[2];
+
+            // Newell 法：对三角形/四边形都稳定，且不依赖前三点恰好不共线。
+            normal[0] += (a[1] - b[1]) * (a[2] + b[2]);
+            normal[1] += (a[2] - b[2]) * (a[0] + b[0]);
+            normal[2] += (a[0] - b[0]) * (a[1] + b[1]);
+        }
+
+        const double invFacePointCount = 1.0 / static_cast<double>(face.size());
+        faceCenter[0] *= invFacePointCount;
+        faceCenter[1] *= invFacePointCount;
+        faceCenter[2] *= invFacePointCount;
+
+        const double n2 =
+            normal[0] * normal[0] + normal[1] * normal[1] + normal[2] * normal[2];
+        if (n2 <= 1.0e-24)
+            return false;
+
+        const double outward[3] = {
+            faceCenter[0] - cellCenter[0],
+            faceCenter[1] - cellCenter[1],
+            faceCenter[2] - cellCenter[2],
+        };
+        const double dot =
+            normal[0] * outward[0] + normal[1] * outward[1] + normal[2] * outward[2];
+        if (dot < 0.0)
+            std::reverse(face.begin(), face.end());
+
+        faceStream.push_back(static_cast<vtkIdType>(face.size()));
+        for (int local : face)
+            faceStream.push_back(pointIds[local]);
+    }
+
+    return true;
+}
+
+static bool isLinear3DSolverSolid(vtkCell* cell)
+{
+    if (!cell)
+        return false;
+    switch (cell->GetCellType())
+    {
+    case VTK_TETRA:
+    case VTK_PYRAMID:
+    case VTK_WEDGE:
+    case VTK_HEXAHEDRON:
+        return true;
+    default:
+        return false;
+    }
+}
+
+// 当前求解器的混合三维网格协议仍是统一 8 节点槽位。
+// 对 CAE 内部的标准线性单元，仅在 IIIN 求解器导出边界做一次适配。
+static bool buildSolverEightSlotConnectivity(int vtkCellType,
+                                             const QVector<int>& vtkNodeIds,
+                                             QVector<int>& outConn)
+{
+    QVector<int> conn;
+    conn.reserve(8);
+    switch (vtkCellType)
+    {
+    case VTK_TETRA:
+        if (vtkNodeIds.size() != 4)
+            return false;
+        conn = {vtkNodeIds[0], vtkNodeIds[1], vtkNodeIds[2], vtkNodeIds[2],
+                vtkNodeIds[3], vtkNodeIds[3], vtkNodeIds[3], vtkNodeIds[3]};
+        break;
+    case VTK_PYRAMID:
+        if (vtkNodeIds.size() != 5)
+            return false;
+        conn = {vtkNodeIds[0], vtkNodeIds[1], vtkNodeIds[2], vtkNodeIds[3],
+                vtkNodeIds[4], vtkNodeIds[4], vtkNodeIds[4], vtkNodeIds[4]};
+        break;
+    case VTK_WEDGE:
+        if (vtkNodeIds.size() != 6)
+            return false;
+        conn = {vtkNodeIds[0], vtkNodeIds[1], vtkNodeIds[2], vtkNodeIds[2],
+                vtkNodeIds[3], vtkNodeIds[4], vtkNodeIds[5], vtkNodeIds[5]};
+        break;
+    case VTK_HEXAHEDRON:
+        if (vtkNodeIds.size() != 8)
+            return false;
+        conn = vtkNodeIds;
+        break;
+    default:
+        return false;
+    }
+    outConn = conn;
+    return true;
+}
 
 static int normalizedVerticalAxis(int axis, int fallback = 2)
 {
@@ -1789,6 +2435,7 @@ vtkSmartPointer<vtkUnstructuredGrid> MeshGridIO::loadIiinFile(const QString& fil
     elemNodeIds.resize(manod);
     vtkIdType ptIdsBuf[32];
     QMap<vtkIdType, int> connectivityPatterns;
+    QMap<vtkIdType, int> topologyOverrides;
 
     auto vtkTypeDimension = [](int vtkCellType) -> int
     {
@@ -1808,6 +2455,7 @@ vtkSmartPointer<vtkUnstructuredGrid> MeshGridIO::loadIiinFile(const QString& fil
         case VTK_HEXAHEDRON:
         case VTK_WEDGE:
         case VTK_PYRAMID:
+        case VTK_POLYHEDRON:
         case VTK_QUADRATIC_HEXAHEDRON:
             return 3;
         default:
@@ -1843,6 +2491,53 @@ vtkSmartPointer<vtkUnstructuredGrid> MeshGridIO::loadIiinFile(const QString& fil
         tail2Arr->InsertNextValue(tail2);
         originalCellIds->InsertNextValue(cellId);
         cellDimArr->InsertNextValue(vtkTypeDimension(vtkCellType));
+    };
+
+
+    auto addLegacyPolyhedronPiece = [&](const LegacyHexTopologyInfo& topology,
+                                        int elemId, int ketype, int matype, int layer,
+                                        int tail1, int tail2, int part) -> vtkIdType
+    {
+        if (!topology.valid || topology.vtkCellType != VTK_POLYHEDRON ||
+            topology.localNodeSlots.size() < 4 || topology.polyhedronFaces.size() < 4)
+            return -1;
+
+        QVector<vtkIdType> pointIds;
+        pointIds.reserve(topology.localNodeSlots.size());
+        for (int sourceSlot : topology.localNodeSlots)
+        {
+            if (sourceSlot < 0 || sourceSlot >= elemNodeIds.size())
+                return -1;
+            const vtkIdType pid = pointIdOfNode(elemNodeIds[sourceSlot]);
+            if (pid < 0)
+                return -1;
+            pointIds.push_back(pid);
+        }
+
+        QVector<vtkIdType> faceStream;
+        if (!buildOrientedPolyhedronFaceStream(
+                pts, pointIds, topology.polyhedronFaces, faceStream))
+            return -1;
+
+        const vtkIdType cellId = grid->InsertNextCell(
+            VTK_POLYHEDRON,
+            static_cast<vtkIdType>(pointIds.size()),
+            pointIds.constData(),
+            static_cast<vtkIdType>(topology.polyhedronFaces.size()),
+            faceStream.constData());
+        if (cellId < 0)
+            return -1;
+
+        matypeArr->InsertNextValue(matype);
+        elemIdArr->InsertNextValue(elemId);
+        ketypeArr->InsertNextValue(ketype);
+        layerArr->InsertNextValue(layer);
+        partArr->InsertNextValue(part);
+        tail1Arr->InsertNextValue(tail1);
+        tail2Arr->InsertNextValue(tail2);
+        originalCellIds->InsertNextValue(cellId);
+        cellDimArr->InsertNextValue(3);
+        return cellId;
     };
 
     auto addPiecesByKetype = [&](int elemId, int ketype, int matype, int layer, int tail1, int tail2) -> bool
@@ -1964,6 +2659,12 @@ vtkSmartPointer<vtkUnstructuredGrid> MeshGridIO::loadIiinFile(const QString& fil
     };
 
     int readElems = 0;
+    int legacyTetCount = 0;
+    int legacyPyramidCount = 0;
+    int legacyWedgeCount = 0;
+    int legacyHexCount = 0;
+    int legacyCollapsedHexCount = 0;
+    int legacyInvalidCount = 0;
     for (int elemIndex = 0; elemIndex < nelem; ++elemIndex)
     {
         int elemId = 0;
@@ -2065,8 +2766,102 @@ vtkSmartPointer<vtkUnstructuredGrid> MeshGridIO::loadIiinFile(const QString& fil
             }
         }
 
+        bool invalidLegacyDegenerateHex = false;
+
+        // KETYPE=6 是老求解器的 8 槽位三维实体。历史工程会通过重复节点
+        // 表达 Tet/Pyramid/Wedge 等标准退化形式；能正常退化的全部归入标准拓扑。
+        // 无法归入标准拓扑但仍能形成闭合体的记录，底层可用 VTK_POLYHEDRON 保存，
+        // 对用户只统一标记为“异常”。
+        if (ketype == 6 && manod >= 8)
+        {
+            const LegacyHexTopologyInfo legacy = analyzeLegacyHexTopology(elemNodeIds);
+            if (legacy.valid && !legacy.localNodeSlots.isEmpty())
+            {
+                vtkIdType cellId = -1;
+                if (legacy.vtkCellType == VTK_POLYHEDRON)
+                {
+                    cellId = addLegacyPolyhedronPiece(
+                        legacy, elemId, ketype, matype, layer, tail1, tail2, 0);
+                }
+                else
+                {
+                    const vtkIdType before = grid->GetNumberOfCells();
+                    addCellPiece(legacy.vtkCellType, legacy.localNodeSlots.constData(),
+                                 legacy.localNodeSlots.size(), elemId, ketype, matype, layer,
+                                 tail1, tail2, 0);
+                    if (grid->GetNumberOfCells() > before)
+                        cellId = before;
+                }
+
+                if (cellId >= 0)
+                {
+                    connectivityPatterns.insert(cellId, legacy.patternCode);
+                    if (legacy.topologyType != VTK_EMPTY_CELL &&
+                        legacy.topologyType != legacy.vtkCellType)
+                    {
+                        topologyOverrides.insert(cellId, legacy.topologyType);
+                    }
+
+                    switch (legacy.topologyType)
+                    {
+                    case VTK_TETRA:
+                        ++legacyTetCount;
+                        break;
+                    case VTK_PYRAMID:
+                        ++legacyPyramidCount;
+                        break;
+                    case VTK_WEDGE:
+                        ++legacyWedgeCount;
+                        break;
+                    case VTK_HEXAHEDRON:
+                        ++legacyHexCount;
+                        if (legacy.vtkCellType == VTK_POLYHEDRON)
+                            ++legacyCollapsedHexCount;
+                        break;
+                    case kTopologyAbnormal:
+                        break;
+                    default:
+                        break;
+                    }
+                    ++readElems;
+                    continue;
+                }
+
+                // 拓扑闭合但几何构造失败：保留原 8 槽位 Hex，同时明确标记异常。
+                invalidLegacyDegenerateHex = true;
+                ++legacyInvalidCount;
+            }
+            else if (legacy.uniqueCount > 0 && legacy.uniqueCount < 8)
+            {
+                invalidLegacyDegenerateHex = true;
+                ++legacyInvalidCount;
+            }
+        }
+
+        const vtkIdType fallbackCellId = grid->GetNumberOfCells();
         if (addPiecesByKetype(elemId, ketype, matype, layer, tail1, tail2))
+        {
+            if (invalidLegacyDegenerateHex && grid->GetNumberOfCells() > fallbackCellId)
+                topologyOverrides.insert(fallbackCellId, kTopologyAbnormal);
             ++readElems;
+        }
+    }
+
+    if (legacyTetCount + legacyPyramidCount + legacyWedgeCount +
+            legacyCollapsedHexCount > 0)
+    {
+        qInfo() << "[IIIN] legacy KETYPE=6 normalized:"
+                << "tet=" << legacyTetCount
+                << "pyramid=" << legacyPyramidCount
+                << "wedge=" << legacyWedgeCount
+                << "hex=" << legacyHexCount
+                << "collapsedHex=" << legacyCollapsedHexCount;
+    }
+    if (legacyInvalidCount > 0)
+    {
+        qWarning() << "[IIIN] invalid collapsed KETYPE=6 cells="
+                   << legacyInvalidCount
+                   << "; these cells are kept for inspection and marked as abnormal.";
     }
 
     grid->GetCellData()->AddArray(matypeArr);
@@ -2079,6 +2874,21 @@ vtkSmartPointer<vtkUnstructuredGrid> MeshGridIO::loadIiinFile(const QString& fil
     grid->GetCellData()->AddArray(originalCellIds);
     grid->GetCellData()->AddArray(cellDimArr);
 
+    // 明确区分“求解器单元族 KETYPE”和“真实几何拓扑”。
+    // 例如老 IIIN 中 Tet/Pyramid/Wedge/Hex 都可能仍是 KETYPE=6；
+    // 筛选/着色应使用 TOPOLOGY_TYPE（值采用 VTK 标准 CellType 编号）。
+    auto topologyTypeArr = vtkSmartPointer<vtkIntArray>::New();
+    topologyTypeArr->SetName("TOPOLOGY_TYPE");
+    topologyTypeArr->SetNumberOfComponents(1);
+    topologyTypeArr->SetNumberOfTuples(grid->GetNumberOfCells());
+    for (vtkIdType cid = 0; cid < grid->GetNumberOfCells(); ++cid)
+    {
+        const auto it = topologyOverrides.constFind(cid);
+        topologyTypeArr->SetValue(
+            cid, it != topologyOverrides.constEnd() ? it.value() : grid->GetCellType(cid));
+    }
+    grid->GetCellData()->AddArray(topologyTypeArr);
+
     auto connectivityPatternArr = vtkSmartPointer<vtkIntArray>::New();
     connectivityPatternArr->SetName(kIiinConnectivityPatternArrayName);
     connectivityPatternArr->SetNumberOfComponents(1);
@@ -2087,6 +2897,18 @@ vtkSmartPointer<vtkUnstructuredGrid> MeshGridIO::loadIiinFile(const QString& fil
     for (auto it = connectivityPatterns.cbegin(); it != connectivityPatterns.cend(); ++it)
         connectivityPatternArr->SetValue(it.key(), it.value());
     grid->GetCellData()->AddArray(connectivityPatternArr);
+
+    // 二进制 mesh_snapshot.cache.vtu 只是加速缓存。拓扑恢复算法升级后，
+    // 旧 VTU 中可能还缓存着上一版的“异常/Polyhedron”分类（例如 1099 号单元）。
+    // 把解析器拓扑版本写入 FieldData，工程恢复时据此判断缓存能否继续复用；
+    // 版本不一致时必须回到权威 IIIN 快照重新解析一次。
+    auto topologySchemaVersion = vtkSmartPointer<vtkIntArray>::New();
+    topologySchemaVersion->SetName(kIiinTopologySchemaVersionArrayName);
+    topologySchemaVersion->SetNumberOfComponents(1);
+    topologySchemaVersion->SetNumberOfTuples(1);
+    topologySchemaVersion->SetValue(0, kIiinTopologySchemaVersion);
+    grid->GetFieldData()->RemoveArray(kIiinTopologySchemaVersionArrayName);
+    grid->GetFieldData()->AddArray(topologySchemaVersion);
 
     normalizePhysicalTagSets(m_mshPickMap, QStringLiteral("IIIN"));
     return grid;
@@ -2162,6 +2984,42 @@ bool MeshGridIO::exportIiinFile(const QString& fileName, vtkUnstructuredGrid* gr
 
     const vtkIdType ncell = static_cast<vtkIdType>(exportCellIds.size());
 
+    // 当前求解器的 IIIN 对混合线性三维实体仍使用统一 8 节点槽位。
+    // 只要存在 Hex/Wedge/Pyramid，或网格来自旧 KETYPE=6 退化实体，
+    // 就在求解器导出边界统一采用该协议；CAE 内部拓扑不受影响。
+    bool useSolverEightSlotSolidProtocol = false;
+    if (madim >= 3)
+    {
+        for (vtkIdType cid : exportCellIds)
+        {
+            vtkCell* c = grid->GetCell(cid);
+            if (!c)
+                continue;
+
+            const int storedKetype =
+                (ketypeArr && cid < ketypeArr->GetNumberOfTuples()) ? ketypeArr->GetValue(cid) : 0;
+            const int connectivityPattern =
+                (connectivityPatternArr && cid < connectivityPatternArr->GetNumberOfTuples())
+                    ? connectivityPatternArr->GetValue(cid)
+                    : -1;
+
+            const bool legacyEightSlotCell =
+                storedKetype == 6 && connectivityPattern >= 0 &&
+                c->GetCellDimension() == 3 &&
+                (isLinear3DSolverSolid(c) || c->GetCellType() == VTK_POLYHEDRON);
+
+            if (legacyEightSlotCell ||
+                (isLinear3DSolverSolid(c) &&
+                 (c->GetCellType() == VTK_HEXAHEDRON ||
+                  c->GetCellType() == VTK_WEDGE ||
+                  c->GetCellType() == VTK_PYRAMID)))
+            {
+                useSolverEightSlotSolidProtocol = true;
+                break;
+            }
+        }
+    }
+
            // 统计 manod（导出单元中的最大节点数）
     int manod = 0;
     QVector<int> cellKetype(static_cast<int>(ncell), 0);
@@ -2177,25 +3035,48 @@ bool MeshGridIO::exportIiinFile(const QString& fileName, vtkUnstructuredGrid* gr
             unsupported++;
             continue;
         }
-        int k = 0, expN = 0;
-        if (!mapVtkCellToKetypeExt(c->GetCellType(), static_cast<int>(c->GetNumberOfPoints()), k,
-                                   expN))
-        {
-            unsupported++;
-            continue;
-        }
-
         const int storedKetype =
             (ketypeArr && cid < ketypeArr->GetNumberOfTuples()) ? ketypeArr->GetValue(cid) : 0;
         const int connectivityPattern =
             (connectivityPatternArr && cid < connectivityPatternArr->GetNumberOfTuples())
                 ? connectivityPatternArr->GetValue(cid)
                 : -1;
-        if (c->GetCellType() == VTK_TRIANGLE && storedKetype == 3 &&
-            connectivityPattern >= 0)
+
+        const bool legacyKetype6Solid =
+            storedKetype == 6 && connectivityPattern >= 0 &&
+            c->GetCellDimension() == 3 &&
+            (isLinear3DSolverSolid(c) || c->GetCellType() == VTK_POLYHEDRON);
+
+        int k = 0, expN = 0;
+        if (legacyKetype6Solid)
         {
-            k = 3;
-            expN = 4;
+            // 从旧 IIIN 恢复出的标准单元或 Polyhedron，写回求解器时都恢复
+            // 原来的 KETYPE=6 + 8 槽位连接。
+            k = 6;
+            expN = 8;
+        }
+        else
+        {
+            if (!mapVtkCellToKetypeExt(c->GetCellType(),
+                                       static_cast<int>(c->GetNumberOfPoints()), k, expN))
+            {
+                unsupported++;
+                continue;
+            }
+
+            const bool solverEightSlotSolid =
+                useSolverEightSlotSolidProtocol && isLinear3DSolverSolid(c);
+            if (solverEightSlotSolid)
+            {
+                k = 6;
+                expN = 8;
+            }
+            else if (c->GetCellType() == VTK_TRIANGLE && storedKetype == 3 &&
+                     connectivityPattern >= 0)
+            {
+                k = 3;
+                expN = 4;
+            }
         }
         cellKetype[oi] = k;
         cellExpN[oi] = expN;
@@ -2278,8 +3159,44 @@ bool MeshGridIO::exportIiinFile(const QString& fileName, vtkUnstructuredGrid* gr
             (connectivityPatternArr && cid < connectivityPatternArr->GetNumberOfTuples())
                 ? connectivityPatternArr->GetValue(cid)
                 : -1;
+        const int storedKetype =
+            (ketypeArr && cid < ketypeArr->GetNumberOfTuples()) ? ketypeArr->GetValue(cid) : 0;
+        const bool legacyKetype6Solid =
+            storedKetype == 6 && connectivityPattern >= 0 &&
+            c->GetCellDimension() == 3 &&
+            (isLinear3DSolverSolid(c) || c->GetCellType() == VTK_POLYHEDRON);
+        const bool solverEightSlotSolid =
+            useSolverEightSlotSolidProtocol && isLinear3DSolverSolid(c);
 
-        if (k == 3 && vtkNodeIds.size() == 3 && connectivityPattern >= 0)
+        if (legacyKetype6Solid)
+        {
+            if (!rebuildLegacyEightSlotConnectivity(connectivityPattern, vtkNodeIds, outConn))
+            {
+                if (errMsg)
+                    *errMsg = QObject::tr("旧 IIIN 8 槽位连接恢复失败，cell=%1").arg(cid);
+                f.close();
+                return false;
+            }
+            // 旧 IIIN round-trip：恢复原来的 8 槽位连接关系。
+        }
+        else if (solverEightSlotSolid)
+        {
+            // 新建/导入的标准混合实体只在 Solver IIIN 出口转换。
+            // 纯 Tet 工程仍可走 KETYPE=35 / MANOD=4 的正常路径。
+            if (c->GetCellType() == VTK_TETRA && vtkNodeIds.size() == 4 &&
+                signedTetraVolume(grid, c) < 0.0)
+            {
+                std::swap(vtkNodeIds[1], vtkNodeIds[2]);
+            }
+            if (!buildSolverEightSlotConnectivity(c->GetCellType(), vtkNodeIds, outConn))
+            {
+                if (errMsg)
+                    *errMsg = QObject::tr("无法生成求解器 8 槽位连接关系，cell=%1").arg(cid);
+                f.close();
+                return false;
+            }
+        }
+        else if (k == 3 && vtkNodeIds.size() == 3 && connectivityPattern >= 0)
         {
             for (int i = 0; i < 4; ++i)
             {
@@ -2311,7 +3228,7 @@ bool MeshGridIO::exportIiinFile(const QString& fileName, vtkUnstructuredGrid* gr
         {
             std::swap(outConn[1], outConn[2]);
         }
-        else if (k == 6 && c->GetCellType() == VTK_HEXAHEDRON)
+        else if (k == 6 && c->GetCellType() == VTK_HEXAHEDRON && !legacyKetype6Solid)
         {
             orientHex8Positive(grid, c, outConn);
         }
@@ -4026,6 +4943,7 @@ void MeshGridIO::ensureDefaultArrays(vtkUnstructuredGrid* grid) const
     auto matype = getOrCreateCellIntArray(grid, "MATYPE");
     auto layer = getOrCreateCellIntArray(grid, "LAYER");
     auto ketype = getOrCreateCellIntArray(grid, "KETYPE");
+    auto topologyType = getOrCreateCellIntArray(grid, "TOPOLOGY_TYPE");
     auto elemId = getOrCreateCellIntArray(grid, "elem_id");
     auto part = getOrCreateCellIntArray(grid, "src_part");
     auto tail1 = getOrCreateCellIntArray(grid, "TAIL1");
@@ -4049,6 +4967,7 @@ void MeshGridIO::ensureDefaultArrays(vtkUnstructuredGrid* grid) const
     resizeAndInitIfNeeded(matype);
     resizeAndInitIfNeeded(layer);
     resizeAndInitIfNeeded(ketype);
+    resizeAndInitIfNeeded(topologyType);
     resizeAndInitIfNeeded(elemId);
     resizeAndInitIfNeeded(part);
     resizeAndInitIfNeeded(tail1);
@@ -4066,6 +4985,10 @@ void MeshGridIO::ensureDefaultArrays(vtkUnstructuredGrid* grid) const
 
         int k = 0, expN = 0;
         vtkCell* c = grid->GetCell(cid);
+        // 已有 TOPOLOGY_TYPE 可能是“异常”的自定义编号，不能用
+        // VTK_POLYHEDRON 覆盖掉；仅在缺省值为 0 时补真实 VTK CellType。
+        if (c && topologyType->GetValue(cid) == 0)
+            topologyType->SetValue(cid, c->GetCellType());
         if (c && mapVtkCellToKetypeExt(c->GetCellType(), static_cast<int>(c->GetNumberOfPoints()),
                                        k, expN))
         {

@@ -5,8 +5,10 @@
 
 #include <QJsonObject>
 #include <QMap>
+#include <QPointer>
 
 class QWidget;
+class SlopeStandardMethodDialog;
 
 namespace Ui
 {
@@ -29,6 +31,7 @@ class SlopeStabilityWidget : public BasePage
 
     QJsonObject saveJson() override;
     void loadJson(const QJsonObject& obj) override;
+    void openStandardMethodDialog();
 
   signals:
     void computeRequested();
@@ -37,6 +40,7 @@ class SlopeStabilityWidget : public BasePage
 
   private slots:
     void onComputeClicked();
+    void onStandardComputeClicked();
     void setComputing(bool computing);
 
 
@@ -59,6 +63,9 @@ class SlopeStabilityWidget : public BasePage
   private:
     Ui::SlopeStabilityWidget* ui;
     QMap<int, QWidget*> m_lineEditors;
+    QPointer<SlopeStandardMethodDialog> m_standardDialog;
+    QString m_standardDatText;
+    QString m_standardLastJobDirectory;
     bool exportTdtraceDatFile() const;
     bool exportMaterialMappingsFile() const;
 };

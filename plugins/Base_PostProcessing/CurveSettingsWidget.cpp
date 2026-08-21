@@ -58,6 +58,7 @@ CurveSettingsWidget::CurveSettingsWidget(VisualWidgetService* visualService, QWi
 
     ui->xFieldComboBox->addItem(QStringLiteral("计算步"), QStringLiteral("ISTEP"));
     ui->xFieldComboBox->addItem(QStringLiteral("迭代次数"), QStringLiteral("LOOP"));
+    ui->xFieldComboBox->addItem(QStringLiteral("安全系数"), QStringLiteral("FOS"));
     // 默认只显示最常用的两条曲线，避免不同量纲的 4 条曲线首次打开时挤在一起。
     ui->fosCheckBox->setChecked(true);
     ui->ptotCheckBox->setChecked(false);
@@ -314,19 +315,29 @@ QStringList CurveSettingsWidget::selectedYFields() const
 
 void CurveSettingsWidget::updateLoopAvailability()
 {
-    const bool loopIsXAxis =
-        ui->xFieldComboBox->currentData().toString() == QStringLiteral("LOOP");
+    const QString xField = ui->xFieldComboBox->currentData().toString();
+    const bool loopIsXAxis = xField == QStringLiteral("LOOP");
+    const bool fosIsXAxis = xField == QStringLiteral("FOS");
 
     if (loopIsXAxis && ui->loopCheckBox->isChecked())
     {
         const QSignalBlocker blocker(ui->loopCheckBox);
         ui->loopCheckBox->setChecked(false);
     }
+    if (fosIsXAxis && ui->fosCheckBox->isChecked())
+    {
+        const QSignalBlocker blocker(ui->fosCheckBox);
+        ui->fosCheckBox->setChecked(false);
+    }
 
     ui->loopCheckBox->setEnabled(!loopIsXAxis);
     ui->loopCheckBox->setToolTip(loopIsXAxis
                                      ? QStringLiteral("横轴已选择迭代次数，不能同时作为纵轴")
                                      : QString());
+    ui->fosCheckBox->setEnabled(!fosIsXAxis);
+    ui->fosCheckBox->setToolTip(fosIsXAxis
+                                    ? QStringLiteral("横轴已选择安全系数，不能同时作为纵轴")
+                                    : QString());
 }
 
 void CurveSettingsWidget::setStatus(const QString& text, bool error)

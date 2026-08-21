@@ -231,7 +231,8 @@ bool CurvePlotWidget::loadDataFromTraceFile(const QString& filePath, const QStri
     }
 
     const QString canonicalX = canonicalFieldName(xField);
-    if (canonicalX != QStringLiteral("ISTEP") && canonicalX != QStringLiteral("LOOP"))
+    if (canonicalX != QStringLiteral("ISTEP") && canonicalX != QStringLiteral("LOOP") &&
+        canonicalX != QStringLiteral("FOS"))
     {
         const QString msg = tr("不支持的横轴字段：%1").arg(xField);
         if (errMsg)
@@ -245,9 +246,8 @@ bool CurvePlotWidget::loadDataFromTraceFile(const QString& filePath, const QStri
     orderedFields.removeAll(canonicalX);
     if (orderedFields.isEmpty())
     {
-        const QString msg = canonicalX == QStringLiteral("LOOP")
-                                ? tr("横轴已使用迭代次数，请再选择其他纵轴曲线。")
-                                : tr("至少选择一条纵轴曲线。");
+        const QString msg = tr("横轴已使用%1，请再选择其他纵轴曲线。")
+                                .arg(fieldDisplayName(canonicalX));
         if (errMsg)
             *errMsg = msg;
         updateStatus(msg, true);
@@ -312,8 +312,9 @@ bool CurvePlotWidget::parseTraceLine(const QString& line, TracePoint& point) con
         }
     }
 
-    // 没有横轴的数据不能稳定绘制。TRACE 的常规格式至少应包含 ISTEP。
-    return foundAny && point.hasIstep;
+    // 保留任何识别到的 TRACE 数据。具体横轴是否有值在 buildPlotTable() 中按
+    // 当前选择判断，这样 FOS 可以直接作为横轴。
+    return foundAny;
 }
 
 void CurvePlotWidget::renderPlot()
@@ -344,7 +345,7 @@ void CurvePlotWidget::renderPlot()
         plot->SetWidth(2.0f);
     }
 
-    const QString xTitle = m_xField == QStringLiteral("LOOP") ? tr("迭代次数") : tr("计算步");
+    const QString xTitle = fieldDisplayName(m_xField);
     m_chart->GetAxis(vtkAxis::BOTTOM)->SetTitle(xTitle.toUtf8().constData());
     m_chart->GetAxis(vtkAxis::LEFT)
         ->SetTitle((m_normalized ? tr("相对变化（0–1）") : tr("数值")).toUtf8().constData());

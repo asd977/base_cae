@@ -27,6 +27,7 @@ class MaterialEntryWidget : public BasePage
     void setEntry(const QString& modelKey, const QString& entryId);
 
     void refreshAppliedMatypes(const QSet<int>& appliedMatypes, int selectedMatype);
+    void refreshEntryName();
 
     void beforeLoad() override;
     void beforeUnload() override;
@@ -66,6 +67,7 @@ class MaterialEntryWidget : public BasePage
     MaterialEntry* lookupEntry(MaterialModel** model = nullptr) const;
 
     void updateAppliedListColors(); // ★ list 里“预删除/选中”两色
+    void setAssignmentControlsEnabled(bool enabled);
 
   private:
     MaterialManager* m_materialManager;
@@ -79,6 +81,8 @@ class MaterialEntryWidget : public BasePage
     QFormLayout* m_formLayout;
 
     QLineEdit* m_nameEdit;
+    QFormLayout* m_basicLayout = nullptr;
+    QFormLayout* m_advancedLayout = nullptr;
     QComboBox* m_modelCombo = nullptr;
     QMap<QString, QLineEdit*> m_valueEdits;
     CustomComboBox* m_seepageCombo = nullptr;
@@ -97,6 +101,7 @@ class MaterialEntryWidget : public BasePage
     QPushButton* m_removeButton = nullptr;
     QCheckBox* m_transitionOnlyCheck = nullptr;
     QSpinBox* m_transitionMatypeSpin = nullptr;
+    QWidget* m_assignmentWidget = nullptr;
 
     int m_lastHoveredIndex = -1;
 

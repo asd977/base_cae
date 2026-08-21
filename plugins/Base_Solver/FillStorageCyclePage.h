@@ -49,17 +49,29 @@ class FillStorageCyclePage : public BasePage
     QString seepageSourceName() const;
     QString seepageResultType() const;
     QString seepageTransientStep() const;
+    QString seepageTransientResultLabel() const;
     void setAvailableSeepageSources(const QVector<QPair<QString, QString>>& sources);
-    void setAvailableTransientResults(const QVector<int>& steps, bool hasFinalResult);
+    void setAvailableTransientResults(const QVector<int>& steps, bool hasFinalResult,
+                                      const QMap<int, QString>& labels = {});
     void setPreparedSeepageFiles(const QString& headFile, const QString& bodyFile);
     void clearPreparedSeepageFiles();
+    // 父级“计算类型”只决定当前工况显示静力设置、动力设置或两者。
+    // 1=仅静力，2=仅动力（复用已有静力结果），3=先静力后动力。
+    void setAnalysisMode(int calculationType);
     void setDynamicOptionsAvailable(bool available);
+    // 动力分析现在由同一土石坝工况下的“动力分析”子节点维护。
+    // 计算前将该节点状态同步到本页隐藏的求解器字段，以保持 IFILL.DAT 格式不变。
+    void applyDynamicAnalysisState(const QJsonObject& state, bool dynamicAvailable);
+    int modalExtractionOrder() const;
+    void setModalExtractionOrder(int order);
     bool hasCreepCalculation() const;
     bool usesModalAnalysis() const;
     bool usesWaveAnalysis() const;
     bool usesPermanentSettlement() const;
     bool usesWaterDrop() const;
     bool usesWetting() const;
+    // 当前工况实际参与动力计算的“静力材料 -> 动力材料”关系。
+    QVector<QPair<int, int>> activeDynamicMaterialMappings() const;
     int cycleCount() const;
     QString finalStaticStateDirectoryName(int caseIndex, int maximumDamLayer) const;
     bool hasEffectiveWaterFill(int oneBasedCircle) const;
@@ -75,6 +87,8 @@ class FillStorageCyclePage : public BasePage
 
   signals:
     void requirementsChanged();
+    // P030 是土石坝分析级统一参数，但用户入口与每个工况的模态开关放在一起。
+    void modalExtractionOrderChanged(int order);
 
   private:
     void initValueEditors();
@@ -143,6 +157,7 @@ class FillStorageCyclePage : public BasePage
     QLabel* m_dynamicMaterialHint = nullptr;
     QLabel* m_dynamicMaterialSummary = nullptr;
     QTableWidget* m_activeMaterialTable = nullptr;
+    bool m_staticOptionsAvailable = true;
     bool m_dynamicOptionsAvailable = true;
     bool m_materialHighlightActive = false;
     QString m_savedSeepageSourceUuid;

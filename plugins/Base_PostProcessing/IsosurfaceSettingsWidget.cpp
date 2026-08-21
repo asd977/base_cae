@@ -653,7 +653,7 @@ void IsosurfaceSettingsWidget::updateOverallColoring()
 
     m_actorOverall = vtkSmartPointer<vtkActor>::New();
     m_actorOverall->SetMapper(mapper);
-    m_actorOverall->GetProperty()->SetRepresentationToSurface();
+    applyPostActorRepresentation(m_actorOverall);
 
     if (m_visualService)
     {
@@ -756,7 +756,7 @@ bool IsosurfaceSettingsWidget::ensureSinglePipeline()
     {
         m_actorSingle = vtkSmartPointer<vtkActor>::New();
         m_actorSingle->SetMapper(m_mapperSingle);
-        m_actorSingle->GetProperty()->SetRepresentationToSurface();
+        applyPostActorRepresentation(m_actorSingle);
     }
 
     double dataRange[2];
@@ -886,7 +886,7 @@ void IsosurfaceSettingsWidget::buildMultiIsoResult()
 
     auto actor = vtkSmartPointer<vtkActor>::New();
     actor->SetMapper(mapper);
-    actor->GetProperty()->SetRepresentationToSurface();
+    applyPostActorRepresentation(actor);
 
     m_multiContours << contour;
     m_multiMappers << mapper;

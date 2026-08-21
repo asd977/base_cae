@@ -19,6 +19,9 @@ inline bool isInternalField(const QString& rawName)
         QStringLiteral("ELEMENTID"), QStringLiteral("CELL_ID"),
         QStringLiteral("VTKORIGINALPOINTIDS"), QStringLiteral("VTKORIGINALCELLIDS"),
         QStringLiteral("KETYPE"), QStringLiteral("MATYPE"), QStringLiteral("LAYER"),
+        // 后处理内部拓扑兼容/筛选字段，不属于可选结果物理量。
+        // 同时兼容 "TOPOLOGY_TYPE" 与 Tecplot/旧文件中的 "TOPOLOGY TYPE"。
+        QStringLiteral("TOPOLOGY_TYPE"), QStringLiteral("TOPOLOGYTYPE"),
         QStringLiteral("REGIONID"), QStringLiteral("ZONEID"),
         QStringLiteral("BAR_GROUP"), QStringLiteral("SRC_PART")
     };

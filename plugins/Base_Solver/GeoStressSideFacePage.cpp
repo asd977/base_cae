@@ -337,6 +337,13 @@ EdgeRow makeFaceRow(vtkDataArray* elemIdArr, vtkDataArray* nodeIdArr, vtkIdType 
         row.jd3 = int(nodeIdArr->GetTuple1(ids->GetId(2)));
     if (cornerCount >= 4)
         row.jd4 = int(nodeIdArr->GetTuple1(ids->GetId(3)));
+    else if (cornerCount == 3)
+    {
+        // 旧 Fortran 的三维面文件固定读取 4 个面节点。
+        // 标准化后的 Tet/Wedge/Pyramid 会产生真实三角面，不能把 JD4 留成 0；
+        // 使用退化四边形 A-B-C-C 与老 IIIN/IIJX 的约定保持一致。
+        row.jd4 = row.jd3;
+    }
     return row;
 }
 
@@ -529,6 +536,9 @@ void GeoStressSideFacePage::beforeLoad()
     updateHeightSliderRange();
     restoreSelectedBoundaryHighlight();
     schedulePressurePreview();
+    // 工程首次打开时，后续的页面/选择状态恢复可能再次刷新选中面的红色高亮。
+    // 再延后一帧重建侧压预览，确保首次进入就显示最终的压力渐变，而无需拖动滑块触发。
+    QTimer::singleShot(180, this, &GeoStressSideFacePage::updatePressurePreview);
 }
 
 void GeoStressSideFacePage::beforeUnload()
@@ -740,6 +750,22 @@ bool GeoStressSideFacePage::exportDatFile() const
 
     QTextStream os(&file);
     const bool isFaceMode = (currentPickMode() == PickMode::Face);
+
+    // 防止标准三角面转换后出现 JD4=0 并传入旧 Fortran。
+    // 对三维面文件，JD1~JD4 必须全部是有效节点号。
+    if (isFaceMode)
+    {
+        for (const EdgeRow& row : rows)
+        {
+            if (row.jd1 <= 0 || row.jd2 <= 0 || row.jd3 <= 0 || row.jd4 <= 0)
+            {
+                file.close();
+                QFile::remove(inputDir.filePath(faceFile()));
+                return false;
+            }
+        }
+    }
+
     if (isFaceMode)
     {
         os << QString("%1        6     NJX   MAKOD\n").arg(rows.size());
@@ -1009,11 +1035,15 @@ void GeoStressSideFacePage::syncHeightSliderFromSpinBox()
 
 void GeoStressSideFacePage::setPreviewStatus(const QString& text, bool warning)
 {
+    Q_UNUSED(text);
+    Q_UNUSED(warning);
     if (!ui->previewStatusLabel)
         return;
-    ui->previewStatusLabel->setText(warning ? QStringLiteral("提示：%1").arg(text) : text);
+
+    // 侧立面页面只保留计算公式，避免把预览状态、颜色说明等开发式提示堆给用户。
+    ui->previewStatusLabel->setText(QStringLiteral("p = ρg·max(H-z, 0) + p₀"));
     QFont font = ui->previewStatusLabel->font();
-    font.setBold(warning);
+    font.setBold(false);
     ui->previewStatusLabel->setFont(font);
 }
 
@@ -1079,6 +1109,7 @@ void GeoStressSideFacePage::updatePressurePreview()
     loadedBoundaries.reserve(selectedKeys.size());
     double selectedBounds[6];
     resetBounds(selectedBounds);
+    double minimumPressure = std::numeric_limits<double>::max();
     double maximumPressure = 0.0;
 
     for (vtkIdType key : selectedKeys)
@@ -1151,9 +1182,10 @@ void GeoStressSideFacePage::updatePressurePreview()
 
         for (const PreviewPoint& point : std::as_const(boundary.points))
         {
-            maximumPressure = std::max(
-                maximumPressure,
-                std::abs(pressureAt(point, verticalAxis, height, gama, pgrout)));
+            const double pressure =
+                std::abs(pressureAt(point, verticalAxis, height, gama, pgrout));
+            minimumPressure = std::min(minimumPressure, pressure);
+            maximumPressure = std::max(maximumPressure, pressure);
         }
         loadedBoundaries.push_back(boundary);
     }
@@ -1302,6 +1334,23 @@ void GeoStressSideFacePage::updatePressurePreview()
         pressureDisplayScale = 1.0e-3;
     }
     const double maximumDisplayPressure = maximumPressure * pressureDisplayScale;
+    double minimumDisplayPressure = 0.0;
+    if (minimumPressure != std::numeric_limits<double>::max()
+        && std::isfinite(minimumPressure))
+    {
+        minimumDisplayPressure = minimumPressure * pressureDisplayScale;
+    }
+
+    // 色标按当前实际可见压力范围自动拉伸。旧逻辑固定从 0 开始，
+    // 当侧压高程高于整个侧立面时，所有压力都接近最大值，首次进入会几乎全红；
+    // 拖动滑块把 H 拉回模型范围后才出现渐变。自动范围不会修改计算值，只改善显示。
+    double colorRangeMinimum = minimumDisplayPressure;
+    double colorRangeMaximum = maximumDisplayPressure;
+    const double colorSpan = colorRangeMaximum - colorRangeMinimum;
+    const double colorTolerance =
+        std::max(std::abs(colorRangeMaximum) * 1.0e-10, 1.0e-12);
+    if (!(colorSpan > colorTolerance))
+        colorRangeMinimum = 0.0;
 
     if (maximumPressure > 1.0e-9 && !loadedBoundaries.isEmpty())
     {
@@ -1336,12 +1385,12 @@ void GeoStressSideFacePage::updatePressurePreview()
         pressureLut->SetHueRange(0.13, 0.0);
         pressureLut->SetSaturationRange(0.88, 1.0);
         pressureLut->SetValueRange(1.0, 0.88);
-        pressureLut->SetTableRange(0.0, maximumDisplayPressure);
+        pressureLut->SetTableRange(colorRangeMinimum, colorRangeMaximum);
         pressureLut->Build();
         auto pressureMapper = vtkSmartPointer<vtkPolyDataMapper>::New();
         pressureMapper->SetInputData(pressurePolyData);
         pressureMapper->SetLookupTable(pressureLut);
-        pressureMapper->SetScalarRange(0.0, maximumDisplayPressure);
+        pressureMapper->SetScalarRange(colorRangeMinimum, colorRangeMaximum);
         pressureMapper->ScalarVisibilityOn();
         pressureMapper->SetResolveCoincidentTopologyToPolygonOffset();
         auto pressureActor = vtkSmartPointer<vtkActor>::New();

@@ -25,7 +25,8 @@ class MeshGridIO
     ~MeshGridIO() = default;
 
   public:
-    // 直接返回 vtk 网格
+    // 读取 IIIN：兼容旧 KETYPE=6 的 8 槽位退化实体，并在 CAE 内部规范化为
+    // 标准 VTK Tet/Pyramid/Wedge/Hex；无标准等价但面拓扑闭合时转 Polyhedron。
     vtkSmartPointer<vtkUnstructuredGrid> loadIiinFile(const QString& fileName,
                                                       QString* errMsg = nullptr);
     vtkSmartPointer<vtkUnstructuredGrid> importFlac3D(const QString& fileName,
@@ -34,7 +35,9 @@ class MeshGridIO
                                                    QString* errMsg = nullptr);
     vtkSmartPointer<vtkUnstructuredGrid> importNastran(const QString& fileName,
                                                        QString* errMsg = nullptr);
-    // 从 vtk 网格导出 IIIN.DAT
+    // 求解器专用 IIIN.DAT 导出：旧 KETYPE=6 单元恢复原 8 槽位连接；
+    // 标准混合 Tet/Pyramid/Wedge/Hex 也仅在 Solver 出口适配为当前 8 槽位协议。
+    // MSH/VTK 等通用导出仍保持标准拓扑，不受这里影响。
     bool exportIiinFile(const QString& fileName, vtkUnstructuredGrid* grid,
                         QString* errMsg = nullptr, int verticalAxis = 0) const;
 
@@ -56,7 +59,7 @@ class MeshGridIO
                                                          QString* errMsg = nullptr);
 
     // 确保网格上有这些数组：point: node_id；cell:
-    // MATYPE/LAYER/KETYPE/elem_id/src_part/TAIL1/TAIL2
+    // MATYPE/LAYER/KETYPE/TOPOLOGY_TYPE/elem_id/src_part/TAIL1/TAIL2
     void ensureDefaultArrays(vtkUnstructuredGrid* grid) const;
 
     void clearPickMap();

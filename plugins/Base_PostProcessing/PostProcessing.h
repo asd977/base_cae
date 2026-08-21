@@ -42,6 +42,7 @@ class PostProcessing : public QObject, public PostProcessingService
     void newCurveSettingWidget();
     void newPostContourReaderWidget();
     void prepareResultRootAsync(const QString& projectDir, const QString& resultRoot);
+    void prewarmResultFileAsync(const QString& filePath);
     VisualWidgetService* visualService();
 
   private:
@@ -57,6 +58,7 @@ class PostProcessing : public QObject, public PostProcessingService
     ProjectNode* m_root{nullptr};
     QSet<QString> m_preparingResultRoots;
     QSet<QString> m_pendingResultRoots;
+    QSet<QString> m_prewarmingResultFiles;
 
     QMap<QString, std::function<BasePage*(VisualWidgetService*)>> m_pageFactory;
 

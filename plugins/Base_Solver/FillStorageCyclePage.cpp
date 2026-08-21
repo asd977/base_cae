@@ -1,4 +1,4 @@
-﻿#include "FillStorageCyclePage.h"
+#include "FillStorageCyclePage.h"
 
 #include <PickManager.h>
 #include <PublicConstants.h>
@@ -16,18 +16,21 @@
 #include <QDialogButtonBox>
 #include <QFontMetrics>
 #include <QFrame>
+#include <QFormLayout>
 #include <QGroupBox>
 #include <QHBoxLayout>
 #include <QPushButton>
 #include <QVBoxLayout>
 #include <QHeaderView>
 #include <QItemSelectionModel>
+#include <QIntValidator>
 #include <QJsonArray>
 #include <QLineEdit>
 #include <QLabel>
 #include <QMessageBox>
 #include <QSet>
 #include <QSignalBlocker>
+#include <QStringList>
 #include <QStyle>
 #include <QStyleOptionHeader>
 #include <QTableWidget>
@@ -36,6 +39,7 @@
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <limits>
 
 #include <vtkActor.h>
 #include <vtkBillboardTextActor3D.h>
@@ -356,6 +360,8 @@ void FillStorageCyclePage::initValueEditors()
     ui->comboIFIIWL_SEEP->addItem(
         QStringLiteral("均质坝固定不单独施加"), QStringLiteral("0"));
     ui->comboIFIIWL_SEEP->setEnabled(false);
+    // 当前仅支持均质坝，该项固定为 0，不向用户显示无可操作意义的固定字段。
+    ui->formLayoutStaticLoad->setRowVisible(ui->comboIFIIWL_SEEP, false);
     ui->comboIFIIWL_BODY->setItemData(0, "0");
     ui->comboIFIIWL_BODY->setItemData(1, "2");
     ui->comboIFIIWL_FACE->setItemData(0, "0");
@@ -381,6 +387,10 @@ void FillStorageCyclePage::initValueEditors()
     ui->comboSeepageResultType->setItemData(1, QStringLiteral("transient"));
     ui->comboSeepageTransientStep->setItemData(0, QString());
     ui->labelWOMI1->setText(QStringLiteral("一阶圆频率 ω1"));
+    ui->editModalOrder->setValidator(
+        new QIntValidator(1, std::numeric_limits<int>::max(), ui->editModalOrder));
+    ui->editModalOrder->setToolTip(
+        QStringLiteral("兼容旧工程的隐藏字段；实际模态阶数请在“动力分析”子节点设置。"));
     ui->editWOMI1->setToolTip(QStringLiteral("未做模态分析时填写。"));
 
     connect(ui->groupWet, &QGroupBox::toggled, this,
@@ -417,6 +427,14 @@ void FillStorageCyclePage::initValueEditors()
             });
     connect(ui->comboIFMODE, qOverload<int>(&QComboBox::currentIndexChanged), this,
             [this]() { updateConditionalVisibility(); });
+    connect(ui->editModalOrder, &QLineEdit::textChanged, this,
+            [this](const QString& text)
+            {
+                bool ok = false;
+                const int order = text.trimmed().toInt(&ok);
+                if (ok && order > 0)
+                    emit modalExtractionOrderChanged(order);
+            });
     connect(ui->comboIFWAVE, qOverload<int>(&QComboBox::currentIndexChanged), this,
             [this]() { updateConditionalVisibility(); });
     connect(ui->comboIFSETT, qOverload<int>(&QComboBox::currentIndexChanged), this,
@@ -476,7 +494,7 @@ void FillStorageCyclePage::initValueEditors()
     };
 
     m_wetTable = mkTable({"坝体当前材料", "浸润后材料"}, false);
-    m_dynamicMaterialTable = mkTable({"网格静力材料", "动力本构材料"}, false);
+    m_dynamicMaterialTable = mkTable({"静力材料", "动力材料"}, false);
     m_dropTable = mkTable({"骤降前水位", "骤降后水位"}, false);
     m_circleTable = mkTable({"填筑起始层", "填筑结束层", "填筑后流变时间", "起始水位", "目标水位",
                              "蓄水后流变时间", "填筑", "填筑流变", "蓄水",
@@ -497,7 +515,7 @@ void FillStorageCyclePage::initValueEditors()
     m_dynamicMaterialTable->setSelectionBehavior(QAbstractItemView::SelectRows);
     m_dynamicMaterialTable->setSelectionMode(QAbstractItemView::SingleSelection);
     m_dynamicMaterialTable->setToolTip(
-        QStringLiteral("用于动力分析的材料对应关系。"));
+        QStringLiteral("当前工况使用的静力材料到动力材料转换关系。"));
     m_dynamicMaterialTable->setAlternatingRowColors(true);
 
     m_dropTable->setRowCount(1);
@@ -578,12 +596,12 @@ void FillStorageCyclePage::initValueEditors()
                 updateConditionalVisibility();
             });
     m_dynamicMaterialGroup =
-        new QGroupBox(QStringLiteral("动力材料对应"), this);
+        new QGroupBox(QStringLiteral("静力－动力材料转换"), this);
     auto* dynamicMaterialGroupLayout = new QVBoxLayout(m_dynamicMaterialGroup);
     dynamicMaterialGroupLayout->setContentsMargins(9, 9, 9, 9);
     dynamicMaterialGroupLayout->setSpacing(6);
     m_dynamicMaterialHint = new QLabel(
-        QStringLiteral("启用模态或地震波分析后可设置。"),
+        QStringLiteral("仅对当前工况生效；启用模态或地震波分析后参与计算。"),
         m_dynamicMaterialGroup);
     m_dynamicMaterialHint->setWordWrap(true);
     dynamicMaterialGroupLayout->addWidget(m_dynamicMaterialHint);
@@ -599,10 +617,12 @@ void FillStorageCyclePage::initValueEditors()
     dynamicMappingLayout->addStretch();
     dynamicMaterialGroupLayout->addWidget(m_dynamicMaterialControls);
     dynamicMaterialGroupLayout->addWidget(m_dynamicMaterialTable);
-    const int dynamicGroupIndex = ui->verticalLayoutContent->indexOf(ui->groupDynamic);
-    ui->verticalLayoutContent->insertWidget(
-        dynamicGroupIndex >= 0 ? dynamicGroupIndex + 1 : ui->verticalLayoutContent->count(),
-        m_dynamicMaterialGroup);
+    // 兼容旧工程：原静动材料转换控件保留为隐藏求解器字段，用户入口已迁移到“动力分析”子节点。
+    ui->formLayoutDynamic->addRow(m_dynamicMaterialGroup);
+
+    // 本页只负责当前土石坝工况的填筑、蓄水及相关静力过程设置。
+    ui->verticalLayoutContent->removeWidget(ui->groupCycle);
+    ui->verticalLayoutContent->insertWidget(0, ui->groupCycle);
     connect(m_addDynamicMaterialButton, &QPushButton::clicked, this,
             [this]() { addMaterialMappingRow(m_dynamicMaterialTable); });
     connect(m_removeDynamicMaterialButton, &QPushButton::clicked, this,
@@ -775,19 +795,14 @@ void FillStorageCyclePage::openConstructionStageEditor()
         table->setColumnHidden(column, true);
 
     QHeaderView* header = table->horizontalHeader();
-    header->setSectionResizeMode(QHeaderView::Interactive);
+    // 施工阶段表格需要随停靠窗口宽度实时伸缩，而不是只按内容宽度占据左侧一部分。
+    // 可见列统一使用 Stretch：窗口变宽时自动铺满，变窄时按最小列宽限制并出现横向滚动。
+    header->setMinimumSectionSize(90);
     header->setStretchLastSection(false);
-    header->setMinimumSectionSize(72);
-    const QFontMetrics metrics(header->font());
-    for (int column = 0; column < 6 && column < headers.size(); ++column)
+    for (int column = 0; column < table->columnCount(); ++column)
     {
-        QStyleOptionHeader option;
-        option.initFrom(header);
-        option.text = headers.at(column);
-        const QSize textSize(metrics.horizontalAdvance(option.text), metrics.height());
-        const int headerWidth = header->style()->sizeFromContents(
-            QStyle::CT_HeaderSection, &option, textSize, header).width() + 16;
-        table->setColumnWidth(column, qMax(header->minimumSectionSize(), headerWidth));
+        if (!table->isColumnHidden(column))
+            header->setSectionResizeMode(column, QHeaderView::Stretch);
     }
     layout->addWidget(table, 1);
 
@@ -1429,17 +1444,26 @@ void FillStorageCyclePage::updateConditionalVisibility()
     const bool hasSource =
         m_availableSeepageSourceUuids.contains(seepageSourceUuid());
 
-    // 关联区域始终显示；不适用时整体置灰，避免页面布局跳动。
-    ui->groupSeepageAssociation->setEnabled(needsAssociation);
+    // 当前页面只负责“填筑蓄水”及其静力过程设置。
+    // 动力任务已拆到同一土石坝工况下的“动力分析”兄弟节点。
+    // 仅动力计算时本节点仍保留，用于查看/匹配此前形成的静力状态，
+    // 但求解流程不会重新执行静力填筑蓄水。
+    ui->groupCycle->setVisible(m_staticOptionsAvailable);
+    ui->groupStaticLoad->setVisible(m_staticOptionsAvailable);
+    ui->groupSeepageAssociation->setVisible(m_staticOptionsAvailable);
+    ui->groupSeepageTransientStep->setVisible(m_staticOptionsAvailable);
+    ui->groupWet->setVisible(m_staticOptionsAvailable);
+    ui->groupDrop->setVisible(m_staticOptionsAvailable);
+
+    ui->groupSeepageAssociation->setEnabled(
+        m_staticOptionsAvailable && needsAssociation);
     ui->groupSeepageTransientStep->setEnabled(
-        needsAssociation && transientResult && hasSource);
-    ui->groupDynamic->setVisible(true);
-    ui->labelDynamicHint->setVisible(true);
-    ui->labelDynamicHint->setText(
-        m_dynamicOptionsAvailable
-            ? QStringLiteral("动力参数已启用。")
-            : QStringLiteral("当前为静力计算，动力参数不参与计算。"));
-    ui->groupDynamic->setEnabled(m_dynamicOptionsAvailable);
+        m_staticOptionsAvailable && needsAssociation && transientResult && hasSource);
+
+    // 动力控件仅作为兼容旧工程和生成 IFILL.DAT 的隐藏字段，不再出现在本页。
+    ui->groupDynamic->setVisible(false);
+    ui->groupDynamic->setEnabled(false);
+    ui->labelDynamicHint->setVisible(false);
 
     const bool wetEnabled = ui->groupWet->isChecked();
     const bool dropEnabled = ui->groupDrop->isChecked();
@@ -1467,6 +1491,8 @@ void FillStorageCyclePage::updateConditionalVisibility()
     }
 
     const bool modeEnabled = ui->comboIFMODE->currentData().toString() == QStringLiteral("1");
+    ui->labelModalOrderInline->setEnabled(m_dynamicOptionsAvailable && modeEnabled);
+    ui->editModalOrder->setEnabled(m_dynamicOptionsAvailable && modeEnabled);
     const bool waveEnabled = ui->comboIFWAVE->currentData().toString() == QStringLiteral("1");
     if (!waveEnabled && ui->comboIFSETT->currentData().toString() == QStringLiteral("1"))
     {
@@ -1507,25 +1533,25 @@ void FillStorageCyclePage::updateConditionalVisibility()
     ui->editWOMI1->setEnabled(needFallbackFrequency);
     if (m_dynamicMaterialGroup)
     {
-        m_dynamicMaterialGroup->setVisible(true);
-        m_dynamicMaterialGroup->setEnabled(true);
+        m_dynamicMaterialGroup->setVisible(false);
+        m_dynamicMaterialGroup->setEnabled(false);
     }
     if (m_dynamicMaterialHint)
     {
-        m_dynamicMaterialHint->setVisible(true);
+        m_dynamicMaterialHint->setVisible(false);
         m_dynamicMaterialHint->setText(
             dynamicMaterialMappingEnabled
-                ? QStringLiteral("动力材料关系已启用。")
-                : QStringLiteral("动力材料关系当前不参与计算。"));
+                ? QStringLiteral("当前工况将使用下列静力材料到动力材料转换关系。")
+                : QStringLiteral("启用模态分析或地震波时程分析后使用下列材料转换关系。"));
     }
     if (m_dynamicMaterialControls)
     {
-        m_dynamicMaterialControls->setVisible(true);
+        m_dynamicMaterialControls->setVisible(false);
         m_dynamicMaterialControls->setEnabled(dynamicMaterialMappingEnabled);
     }
     if (m_dynamicMaterialTable)
     {
-        m_dynamicMaterialTable->setVisible(true);
+        m_dynamicMaterialTable->setVisible(false);
         m_dynamicMaterialTable->setEnabled(dynamicMaterialMappingEnabled);
     }
 
@@ -1558,12 +1584,114 @@ void FillStorageCyclePage::updateConditionalVisibility()
     }
 }
 
+int FillStorageCyclePage::modalExtractionOrder() const
+{
+    bool ok = false;
+    const int order = ui->editModalOrder->text().trimmed().toInt(&ok);
+    return ok && order > 0 ? order : 10;
+}
+
+void FillStorageCyclePage::setModalExtractionOrder(int order)
+{
+    if (order <= 0)
+        return;
+    const QString value = QString::number(order);
+    if (ui->editModalOrder->text().trimmed() == value)
+        return;
+    const QSignalBlocker blocker(ui->editModalOrder);
+    ui->editModalOrder->setText(value);
+}
+
+void FillStorageCyclePage::setAnalysisMode(int calculationType)
+{
+    // “填筑蓄水”节点始终可查看。仅动力计算不会重新执行这些静力步骤，
+    // 但需要保留本工况的静力设置来匹配/复用既有静力结果。
+    const bool staticAvailable = true;
+    const bool dynamicAvailable = calculationType == 2 || calculationType == 3;
+    if (m_staticOptionsAvailable == staticAvailable
+        && m_dynamicOptionsAvailable == dynamicAvailable)
+        return;
+
+    m_staticOptionsAvailable = staticAvailable;
+    m_dynamicOptionsAvailable = dynamicAvailable;
+    updateConditionalVisibility();
+}
+
 void FillStorageCyclePage::setDynamicOptionsAvailable(bool available)
 {
     if (m_dynamicOptionsAvailable == available)
         return;
     m_dynamicOptionsAvailable = available;
     updateConditionalVisibility();
+}
+
+void FillStorageCyclePage::applyDynamicAnalysisState(const QJsonObject& state, bool dynamicAvailable)
+{
+    m_dynamicOptionsAvailable = dynamicAvailable;
+    const QJsonObject values = state.value(QStringLiteral("values")).toObject();
+    const QStringList keys = {QStringLiteral("IFMODE"), QStringLiteral("IFWAVE"),
+                              QStringLiteral("IFSETT"), QStringLiteral("DT"),
+                              QStringLiteral("TSTA"), QStringLiteral("TEND"),
+                              QStringLiteral("WOMI_1")};
+    for (const QString& key : keys)
+    {
+        QString value = values.value(key).toVariant().toString().trimmed();
+        if (value.isEmpty())
+        {
+            if (key == QStringLiteral("DT"))
+                value = QStringLiteral("0.020000");
+            else if (key == QStringLiteral("IFMODE") || key == QStringLiteral("IFWAVE")
+                     || key == QStringLiteral("IFSETT"))
+                value = QStringLiteral("0");
+            else
+                value = QStringLiteral("0.000000");
+        }
+        if (!dynamicAvailable && (key == QStringLiteral("IFMODE")
+                                  || key == QStringLiteral("IFWAVE")
+                                  || key == QStringLiteral("IFSETT")))
+            value = QStringLiteral("0");
+        if (QWidget* editor = m_editors.value(key, nullptr))
+        {
+            const QSignalBlocker blocker(editor);
+            setValueOf(key, value);
+        }
+        else
+        {
+            setValueOf(key, value);
+        }
+    }
+
+    QVector<QPair<int, int>> mappings;
+    if (dynamicAvailable)
+    {
+        const QJsonArray rows = state.value(QStringLiteral("dynamic_material_table")).toArray();
+        mappings.reserve(rows.size());
+        for (const QJsonValue& value : rows)
+        {
+            int source = 0;
+            int target = 0;
+            if (value.isArray())
+            {
+                const QJsonArray columns = value.toArray();
+                source = columns.size() > 0 ? columns.at(0).toVariant().toInt() : 0;
+                target = columns.size() > 1 ? columns.at(1).toVariant().toInt() : 0;
+            }
+            else if (value.isObject())
+            {
+                const QJsonObject mapping = value.toObject();
+                source = mapping.value(QStringLiteral("source")).toInt();
+                target = mapping.value(QStringLiteral("target")).toInt();
+            }
+            if (source > 0 || target > 0)
+                mappings.push_back(qMakePair(source, target));
+        }
+    }
+    setMaterialMappings(m_dynamicMaterialTable, mappings);
+
+    const int modalOrder = state.value(QStringLiteral("modal_order")).toInt(10);
+    setModalExtractionOrder(modalOrder > 0 ? modalOrder : 10);
+    updateConditionalVisibility();
+    updatePreview();
 }
 
 bool FillStorageCyclePage::usesDamBaseUplift() const
@@ -1627,6 +1755,11 @@ QString FillStorageCyclePage::seepageTransientStep() const
     return ui->comboSeepageTransientStep->currentData().toString().trimmed();
 }
 
+QString FillStorageCyclePage::seepageTransientResultLabel() const
+{
+    return ui->comboSeepageTransientStep->currentText().trimmed();
+}
+
 void FillStorageCyclePage::setAvailableSeepageSources(
     const QVector<QPair<QString, QString>>& sources)
 {
@@ -1672,7 +1805,7 @@ void FillStorageCyclePage::setAvailableSeepageSources(
 }
 
 void FillStorageCyclePage::setAvailableTransientResults(
-    const QVector<int>& steps, bool hasFinalResult)
+    const QVector<int>& steps, bool hasFinalResult, const QMap<int, QString>& labels)
 {
     QString selectedStep = seepageTransientStep();
     if (selectedStep.isEmpty())
@@ -1681,23 +1814,38 @@ void FillStorageCyclePage::setAvailableTransientResults(
     const QSignalBlocker blocker(ui->comboSeepageTransientStep);
     ui->comboSeepageTransientStep->clear();
     ui->comboSeepageTransientStep->addItem(
-        QStringLiteral("请选择非稳态结果步"), QString());
+        QStringLiteral("请选择非稳态计算时刻"), QString());
 
     m_availableTransientSteps.clear();
     m_hasTransientFinalResult = hasFinalResult;
-    if (hasFinalResult)
-    {
-        ui->comboSeepageTransientStep->addItem(
-            QStringLiteral("最终结果"), QStringLiteral("final"));
-    }
+    const int finalStep = hasFinalResult && !steps.isEmpty() ? steps.constLast() : -1;
     for (int step : steps)
     {
         if (step < 0)
             continue;
         m_availableTransientSteps.insert(step);
+        if (step == finalStep)
+            continue;
         ui->comboSeepageTransientStep->addItem(
-            QStringLiteral("结果步 %1").arg(step), QString::number(step));
+            labels.value(step, QStringLiteral("计算时刻索引 %1").arg(step)),
+            QString::number(step));
     }
+    if (hasFinalResult)
+    {
+        QString finalLabel = labels.value(finalStep);
+        if (finalLabel.isEmpty())
+            finalLabel = QStringLiteral("最终计算时刻");
+        else if (finalLabel.startsWith(QStringLiteral("计算时刻")))
+            finalLabel.replace(0, QStringLiteral("计算时刻").size(),
+                               QStringLiteral("最终时刻"));
+        else
+            finalLabel += QStringLiteral("（最终时刻）");
+        ui->comboSeepageTransientStep->addItem(finalLabel, QStringLiteral("final"));
+    }
+
+    // 旧工程可能保存了最后一个内部编号；它与最终文件是同一时刻，加载时自动归一。
+    if (hasFinalResult && selectedStep == QString::number(finalStep))
+        selectedStep = QStringLiteral("final");
 
     int index = selectedStep.isEmpty()
                     ? 0
@@ -1708,8 +1856,8 @@ void FillStorageCyclePage::setAvailableTransientResults(
 
     ui->labelSeepageTransientHint->setText(
         ui->comboSeepageTransientStep->count() > 1
-            ? QStringLiteral("所选渗流结果将用于最后一个蓄水阶段。")
-            : QStringLiteral("关联工况暂无可用的非稳态结果。"));
+            ? QStringLiteral("按实际计算时间选择；括号内为该时刻的边界水位。所选渗流场将用于最后一个蓄水阶段。")
+            : QStringLiteral("关联工况暂无可用的非稳态时刻结果。"));
 }
 
 void FillStorageCyclePage::setPreparedSeepageFiles(
@@ -1748,6 +1896,13 @@ bool FillStorageCyclePage::usesWaveAnalysis() const
 {
     return m_dynamicOptionsAvailable
            && valueOf(QStringLiteral("IFWAVE")) == QStringLiteral("1");
+}
+
+QVector<QPair<int, int>> FillStorageCyclePage::activeDynamicMaterialMappings() const
+{
+    if (!usesModalAnalysis() && !usesWaveAnalysis())
+        return {};
+    return materialMappings(m_dynamicMaterialTable);
 }
 
 bool FillStorageCyclePage::usesPermanentSettlement() const
@@ -1895,6 +2050,14 @@ bool FillStorageCyclePage::validateInputs(QString* errorMessage) const
         return false;
     };
 
+    if (usesModalAnalysis())
+    {
+        bool orderOk = false;
+        const int order = ui->editModalOrder->text().trimmed().toInt(&orderOk);
+        if (!orderOk || order <= 0)
+            return fail(QStringLiteral("启用模态分析时，模态提取阶数必须为正整数。"));
+    }
+
     if (needsSeepageAssociation())
     {
         const QString sourceUuid = seepageSourceUuid();
@@ -1907,18 +2070,18 @@ bool FillStorageCyclePage::validateInputs(QString* errorMessage) const
         {
             const QString step = seepageTransientStep();
             if (step.isEmpty())
-                return fail(QStringLiteral("请选择一个明确的非稳态结果步。"));
+                return fail(QStringLiteral("请选择一个明确的非稳态计算时刻。"));
             if (step == QStringLiteral("final"))
             {
                 if (!m_hasTransientFinalResult)
-                    return fail(QStringLiteral("关联工况没有可用的非稳态最终结果。"));
+                    return fail(QStringLiteral("关联工况没有可用的非稳态最终时刻结果。"));
             }
             else
             {
                 bool stepOk = false;
                 const int stepNumber = step.toInt(&stepOk);
                 if (!stepOk || !m_availableTransientSteps.contains(stepNumber))
-                    return fail(QStringLiteral("所选非稳态结果步已不存在，请重新选择。"));
+                    return fail(QStringLiteral("所选非稳态计算时刻已不存在，请重新选择。"));
             }
         }
     }
@@ -2002,7 +2165,7 @@ bool FillStorageCyclePage::validateInputs(QString* errorMessage) const
         const int finalCycle = m_circleTable->rowCount();
         if (!hasEffectiveWaterFill(finalCycle))
             return fail(QStringLiteral(
-                "读取渗流结果时，最后一个填筑蓄水阶段必须执行蓄水。"));
+                "读取渗流结果时，最后一个施工阶段必须执行蓄水。"));
         if (usesWaterDrop())
             return fail(QStringLiteral(
                 "读取渗流结果时，暂不能同时启用水位骤降。请关闭其中一项。"));
@@ -2350,7 +2513,7 @@ QMap<int, QString> FillStorageCyclePage::materialTargetOptions(QTableWidget* tab
     if (table == m_wetTable)
         return materialService->damWetMaterialLabels(sourceMaterial);
     if (table == m_dynamicMaterialTable)
-        return materialService->damDynamicMaterialLabels(sourceMaterial);
+        return materialService->damDynamicMaterialLabels();
     return {};
 }
 
@@ -2516,16 +2679,7 @@ bool FillStorageCyclePage::validateMaterialMappings(QTableWidget* table,
                             ? QStringLiteral("请选择可用的浸润后材料。")
                             : QStringLiteral("请选择可用的动力材料。"));
         }
-        if (table == m_dynamicMaterialTable)
-        {
-            auto* materialService =
-                ServiceRegistry::instance().getService<MaterialManagerService>();
-            if (!materialService ||
-                !materialService->setDamDynamicSourceMatype(target, source))
-            {
-                return fail(QStringLiteral("无法保存动力材料关系。请检查材料设置后重试。"));
-            }
-        }
+        // 这里只校验当前工况，不再把关系写回全局材料库。
         usedSources.insert(source);
         usedTargets.insert(target);
     }
@@ -2663,10 +2817,7 @@ QString FillStorageCyclePage::sectionText(int caseIndex) const
     if (dynamicStateDirectory.isEmpty())
         dynamicStateDirectory = QStringLiteral("DISK00");
     text += QStringLiteral("'%1'     DIRDYNA\n").arg(dynamicStateDirectory);
-    QVector<QPair<int, int>> dynamicMappings;
-    if (valueOf("IFMODE") == QStringLiteral("1") ||
-        valueOf("IFWAVE") == QStringLiteral("1"))
-        dynamicMappings = materialMappings(m_dynamicMaterialTable);
+    const QVector<QPair<int, int>> dynamicMappings = activeDynamicMaterialMappings();
     text += QString("%1   NUM_DYNA\n").arg(dynamicMappings.size());
     for (int i = 0; i < dynamicMappings.size(); ++i)
     {
@@ -2689,8 +2840,14 @@ QJsonObject FillStorageCyclePage::saveJson()
     synchronizeAutomaticCycleBranches(m_circleTable);
     QJsonObject obj;
     QJsonObject values;
+    const QSet<QString> dynamicKeys = {
+        QStringLiteral("IFMODE"), QStringLiteral("IFWAVE"), QStringLiteral("IFSETT"),
+        QStringLiteral("DT"), QStringLiteral("TSTA"), QStringLiteral("TEND"),
+        QStringLiteral("WOMI_1")};
     for (auto it = m_editors.cbegin(); it != m_editors.cend(); ++it)
     {
+        if (dynamicKeys.contains(it.key()))
+            continue;
         if (auto* combo = qobject_cast<QComboBox*>(it.value()))
             values[it.key()] = combo->currentData().toString();
         else if (auto* edit = qobject_cast<QLineEdit*>(it.value()))
@@ -2698,7 +2855,6 @@ QJsonObject FillStorageCyclePage::saveJson()
     }
     obj["values"] = values;
     obj["wet_table"] = tableToJson(m_wetTable);
-    obj["dynamic_material_table"] = tableToJson(m_dynamicMaterialTable);
     obj["drop_table"] = tableToJson(m_dropTable);
     obj["circle_table"] = tableToJson(m_circleTable);
     obj["seepage_source_uuid"] = seepageSourceUuid();

@@ -19,6 +19,7 @@
 #include <QDirIterator>
 #include <QJsonDocument>
 #include <QJsonObject>
+#include <QLabel>
 #include <QMessageBox>
 #include <QSettings>
 #include <QTimer>
@@ -119,6 +120,61 @@ ProjectManager::ProjectManager()
             [this](QString uuid)
             {
                 this->onDeletePageSig(uuid);
+            });
+    connect(m_projectTreeWidget, &ProjectTreeWidget::projectRenameRequested, this,
+            [this](const QString& requestedName)
+            {
+                const QString newName = requestedName.trimmed();
+                if (!m_rootNode || newName.isEmpty() || newName == m_projectName)
+                    return;
+
+                const QString oldName = m_projectName;
+                m_projectName = newName;
+                m_rootNode->setName(newName);
+                m_rootNode->setText(0, newName);
+
+                // 根节点的 DashboardPage 可能已经创建，立即同步标题，避免必须切换页面
+                // 才看到新名称。
+                if (BasePage* page = m_rootNode->getPage())
+                {
+                    if (QWidget* widget = page->getWidget())
+                    {
+                        if (QLabel* header = widget->findChild<QLabel*>(
+                                QStringLiteral("pageHeaderLabel")))
+                        {
+                            header->setText(newName + QStringLiteral(" - 管理面板"));
+                        }
+                    }
+                }
+
+                // 仅更新 manifest 中的 <Name>，不重命名工程目录和工程 .xml 文件。
+                // 如果写入失败则回滚 UI 和内存状态，避免树名称与磁盘不一致。
+                if (!writeProjectManifest())
+                {
+                    m_projectName = oldName;
+                    m_rootNode->setName(oldName);
+                    m_rootNode->setText(0, oldName);
+                    if (BasePage* page = m_rootNode->getPage())
+                    {
+                        if (QWidget* widget = page->getWidget())
+                        {
+                            if (QLabel* header = widget->findChild<QLabel*>(
+                                    QStringLiteral("pageHeaderLabel")))
+                            {
+                                header->setText(oldName + QStringLiteral(" - 管理面板"));
+                            }
+                        }
+                    }
+                    QMessageBox::warning(nullptr, QStringLiteral("重命名工程"),
+                                         QStringLiteral("工程名称保存失败，已恢复原名称。"));
+                    return;
+                }
+
+                if (m_outputService)
+                {
+                    m_outputService->outputLog(
+                        QStringLiteral("工程名称已修改为：%1（工程路径保持不变）").arg(newName));
+                }
             });
     EventManager::instance().registerHandler(
         PublicConstants::kEventLoadComplete, this,

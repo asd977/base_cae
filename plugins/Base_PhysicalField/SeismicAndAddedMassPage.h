@@ -33,6 +33,9 @@ class SeismicAndAddedMassPage : public BasePage
     QVector<QPair<double, double>> seriesY() const; // (T, AY)
     QVector<QPair<double, double>> seriesZ() const; // (T, AZ)
 
+    // 校验用户表格本身，不依赖已经生成到计算目录中的 WAVE-*.DAT。
+    bool validateWaveInput(QString* errorMessage = nullptr) const;
+
   private slots:
     void on_btnAddRow_clicked();
     void on_btnDeleteRow_clicked();

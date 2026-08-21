@@ -33,7 +33,8 @@ class GridEditingWidget : public BasePage
         None = 0,
         Ketype = 1,
         Matype = 2,
-        Layer = 3
+        Layer = 3,
+        Topology = 4
     };
 
     explicit GridEditingWidget(QWidget* parent = nullptr);
@@ -99,13 +100,15 @@ class GridEditingWidget : public BasePage
 
     QString m_sourceName;
 
+    QSet<int> m_allTopologies;
     QSet<int> m_allKetypes;
     QSet<int> m_allMatypes;
     QSet<int> m_allLayers;
 
-    QSet<int> m_filterKetypes; // 当前勾选保留的 KETYPE
-    QSet<int> m_filterMatypes; // 当前勾选保留的 MATYPE
-    QSet<int> m_filterLayers;  // 当前勾选保留的 LAYER
+    QSet<int> m_filterTopologies; // 当前勾选保留的真实 VTK 拓扑类型
+    QSet<int> m_filterKetypes;    // 当前勾选保留的求解器 KETYPE
+    QSet<int> m_filterMatypes;    // 当前勾选保留的 MATYPE
+    QSet<int> m_filterLayers;     // 当前勾选保留的 LAYER
 
     ColorMode m_colorMode = ColorMode::None;
 

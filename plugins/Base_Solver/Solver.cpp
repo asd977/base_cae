@@ -1,4 +1,4 @@
-#include "Solver.h"
+﻿#include "Solver.h"
 
 #include <ContextMenuHub.h>
 #include <EventManager.h>
@@ -75,6 +75,7 @@
 #include "SeepageWidget.h"
 #include "StressBoundaryPage.h"
 #include "DamAnalysisWidget.h"
+#include "DamDynamicAnalysisPage.h"
 #include "GeoStressRegressionWidget.h"
 #include "GeoStressMeasurePointPage.h"
 #include "GeoStressOuterForcePage.h"
@@ -248,6 +249,194 @@ QVector<int> transientResultSteps(const QString& resultDir, bool needHead, bool 
         steps.push_back(step);
     std::sort(steps.begin(), steps.end());
     return steps;
+}
+
+struct TransientTimeInfo
+{
+    bool valid = false;
+    double start = 0.0;
+    double increment = 0.0;
+    QString unit = QStringLiteral("s");
+};
+
+struct WaterLevelCurve
+{
+    QVector<QPair<double, double>> samples;
+};
+
+QString resultDisplayNumber(double value)
+{
+    const double rounded = std::round(value);
+    return std::abs(value - rounded) < 1.0e-9
+               ? QString::number(static_cast<qint64>(rounded))
+               : QString::number(value, 'g', 12);
+}
+
+TransientTimeInfo transientTimeInfo(const QString& resultDir)
+{
+    QString keyPath;
+    for (const QString& name : {QStringLiteral("IKEY.DAT"), QStringLiteral("IKEY.TXT")})
+    {
+        const QString candidate = QDir(resultDir).filePath(name);
+        if (QFileInfo(candidate).isFile())
+        {
+            keyPath = candidate;
+            break;
+        }
+    }
+    QFile file(keyPath);
+    if (keyPath.isEmpty() || !file.open(QIODevice::ReadOnly | QIODevice::Text))
+        return {};
+
+    QTextStream in(&file);
+    while (!in.atEnd())
+    {
+        const QString header = in.readLine().simplified();
+        if (!header.contains(QStringLiteral("TSTA"), Qt::CaseInsensitive) ||
+            !header.contains(QStringLiteral("DT"), Qt::CaseInsensitive))
+            continue;
+        const QStringList names = header.split(QLatin1Char(' '), Qt::SkipEmptyParts);
+        int startIndex = -1;
+        int incrementIndex = -1;
+        for (int i = 0; i < names.size(); ++i)
+        {
+            if (names.at(i).compare(QStringLiteral("TSTA"), Qt::CaseInsensitive) == 0)
+                startIndex = i;
+            else if (names.at(i).compare(QStringLiteral("DT"), Qt::CaseInsensitive) == 0)
+                incrementIndex = i;
+        }
+        if (startIndex < 0 || incrementIndex < 0)
+            continue;
+        while (!in.atEnd())
+        {
+            const QString valuesLine = in.readLine().simplified();
+            if (valuesLine.isEmpty())
+                continue;
+            const QStringList values =
+                valuesLine.split(QLatin1Char(' '), Qt::SkipEmptyParts);
+            if (values.size() <= qMax(startIndex, incrementIndex))
+                break;
+            bool startOk = false;
+            bool incrementOk = false;
+            const double start = values.at(startIndex).toDouble(&startOk);
+            const double increment = values.at(incrementIndex).toDouble(&incrementOk);
+            if (!startOk || !incrementOk || !std::isfinite(start) ||
+                !std::isfinite(increment) || increment <= 0.0)
+                break;
+            return {true, start, increment, QStringLiteral("s")};
+        }
+    }
+    return {};
+}
+
+QString workspaceInputFile(const QString& workspace, const QString& fileName)
+{
+    const QStringList inputDirectories = {
+        QDir(workspace).filePath(QString::fromUtf8(PublicConstants::kAnalysisInputDirectoryName)),
+        QDir(workspace).filePath(QString::fromUtf8(PublicConstants::kProjectInputDirectoryName)),
+        QDir(workspace).filePath(QString::fromLatin1(PublicConstants::kLegacyInputDirectoryName))};
+    for (const QString& inputDirectory : inputDirectories)
+    {
+        const QDir dir(inputDirectory);
+        const QFileInfoList files = dir.entryInfoList(QDir::Files);
+        for (const QFileInfo& info : files)
+        {
+            if (info.fileName().compare(fileName, Qt::CaseInsensitive) == 0)
+                return info.absoluteFilePath();
+        }
+    }
+    return {};
+}
+
+WaterLevelCurve waterLevelCurve(const QString& workspace, const QString& fileName)
+{
+    QFile file(workspaceInputFile(workspace, fileName));
+    if (!file.exists() || !file.open(QIODevice::ReadOnly | QIODevice::Text))
+        return {};
+
+    WaterLevelCurve curve;
+    QTextStream in(&file);
+    static const QRegularExpression whitespace(QStringLiteral("\\s+"));
+    while (!in.atEnd())
+    {
+        const QStringList values =
+            in.readLine().trimmed().split(whitespace, Qt::SkipEmptyParts);
+        if (values.size() < 2)
+            continue;
+        bool timeOk = false;
+        bool levelOk = false;
+        const double time = values.at(0).toDouble(&timeOk);
+        const double level = values.at(1).toDouble(&levelOk);
+        if (timeOk && levelOk && std::isfinite(time) && std::isfinite(level))
+            curve.samples.push_back(qMakePair(time, level));
+    }
+    std::sort(curve.samples.begin(), curve.samples.end(),
+              [](const auto& left, const auto& right) { return left.first < right.first; });
+    return curve;
+}
+
+bool waterLevelAtTime(const WaterLevelCurve& curve, double time, double* level)
+{
+    if (!level || curve.samples.isEmpty() || !std::isfinite(time))
+        return false;
+    constexpr double tolerance = 1.0e-9;
+    if (time < curve.samples.first().first - tolerance ||
+        time > curve.samples.last().first + tolerance)
+        return false;
+    if (time <= curve.samples.first().first + tolerance)
+    {
+        *level = curve.samples.first().second;
+        return true;
+    }
+    for (int i = 1; i < curve.samples.size(); ++i)
+    {
+        const auto& right = curve.samples.at(i);
+        if (time > right.first + tolerance)
+            continue;
+        const auto& left = curve.samples.at(i - 1);
+        const double duration = right.first - left.first;
+        *level = duration <= tolerance
+                     ? right.second
+                     : left.second + (right.second - left.second) *
+                                           ((time - left.first) / duration);
+        return std::isfinite(*level);
+    }
+    return false;
+}
+
+QMap<int, QString> transientResultLabels(const QString& workspace,
+                                         const QString& resultDir,
+                                         const QVector<int>& steps)
+{
+    QMap<int, QString> labels;
+    const TransientTimeInfo timeInfo = transientTimeInfo(resultDir);
+    const WaterLevelCurve upstream =
+        waterLevelCurve(workspace, QStringLiteral("HWDROP_UP.DAT"));
+    const WaterLevelCurve downstream =
+        waterLevelCurve(workspace, QStringLiteral("HWDROP_DW.DAT"));
+    for (int step : steps)
+    {
+        if (step < 0)
+            continue;
+        if (!timeInfo.valid)
+        {
+            labels.insert(step, QStringLiteral("计算时刻索引 %1").arg(step));
+            continue;
+        }
+        const double time = timeInfo.start + timeInfo.increment * step;
+        QString label = QStringLiteral("计算时刻 %1 %2")
+                            .arg(resultDisplayNumber(time), timeInfo.unit);
+        QStringList levels;
+        double level = 0.0;
+        if (waterLevelAtTime(upstream, time, &level))
+            levels.push_back(QStringLiteral("上游水位 %1 m").arg(resultDisplayNumber(level)));
+        if (waterLevelAtTime(downstream, time, &level))
+            levels.push_back(QStringLiteral("下游水位 %1 m").arg(resultDisplayNumber(level)));
+        if (!levels.isEmpty())
+            label += QStringLiteral("（%1）").arg(levels.join(QStringLiteral("，")));
+        labels.insert(step, label);
+    }
+    return labels;
 }
 
 struct SolverRuntimeOptions
@@ -623,7 +812,7 @@ bool validateDamFillRanges(const QString& filePath,
             if (errorMessage)
             {
                 *errorMessage =
-                    QStringLiteral("第 %1 个填筑蓄水阶段设置为第 %2 至 %3 层，但网格坝体最大层号为 %4。")
+                    QStringLiteral("第 %1 个计算工况的施工阶段设置为第 %2 至 %3 层，但网格坝体最大层号为 %4。")
                         .arg(i + 1)
                         .arg(startLayer)
                         .arg(endLayer)
@@ -953,7 +1142,8 @@ QString solverNodeBaseTitle(const QString& kind)
         {QStringLiteral("SlopeStabilityAnalysis"), QStringLiteral("边坡分析")},
         {QStringLiteral("CaveExcavationAnalysis"), QStringLiteral("洞室开挖工程")},
         {QStringLiteral("CaveBlockStabilityAnalysis"), QStringLiteral("块体稳定分析")},
-        {QStringLiteral("FillStorageCycle"), QStringLiteral("填筑蓄水阶段")},
+        {QStringLiteral("FillStorageCycle"), QStringLiteral("填筑蓄水")},
+        {QStringLiteral("DamDynamicAnalysis"), QStringLiteral("动力分析")},
         {QStringLiteral("GeoStressRegression"), QStringLiteral("地应力回归分析")},
         {QStringLiteral("GeoStressRegressionSideFace"), QStringLiteral("侧立面")},
         {QStringLiteral("GeoStressRegressionMeasurePoint"), QStringLiteral("实测地应力点")},
@@ -976,7 +1166,8 @@ QString solverNodeRelationshipHint(ProjectNode* node)
     const QString kind = node->data(0, ProjectNode::RoleKind).toString();
     // 只保留对客户真正有帮助、且仅凭节点名称不容易判断的说明。
     static const QHash<QString, QString> hints = {
-        {QStringLiteral("FillStorageCycle"), QStringLiteral("填筑、蓄水及流变阶段")},
+        {QStringLiteral("FillStorageCycle"), QStringLiteral("设置本工况的填筑、蓄水、渗流关联、湿化和水位骤降")},
+        {QStringLiteral("DamDynamicAnalysis"), QStringLiteral("设置本工况的模态、地震时程、永久沉降及静动材料转换")},
         {QStringLiteral("CaveLiningInnerBoundary"),
          QStringLiteral("衬砌与洞腔接触的内表面")},
         {QStringLiteral("CaveLiningOuterBoundary"),
@@ -992,7 +1183,7 @@ bool solverNodeUsesAutomaticIndex(const QString& kind)
     static const QSet<QString> repeatableKinds = {
         QStringLiteral("SeepageAnalysis"), QStringLiteral("DamAnalysis"),
         QStringLiteral("SlopeStabilityAnalysis"), QStringLiteral("CaveExcavationAnalysis"),
-        QStringLiteral("CaveBlockStabilityAnalysis"), QStringLiteral("FillStorageCycle"),
+        QStringLiteral("CaveBlockStabilityAnalysis"),
         QStringLiteral("GeoStressRegressionSideFace"), QStringLiteral("CaveExcavationBody"),
         QStringLiteral("CaveBlockPlane"), QStringLiteral("SeepageNaturalBoundary")};
     return repeatableKinds.contains(kind);
@@ -1003,7 +1194,7 @@ bool solverNodeCanRename(const QString& kind)
     static const QSet<QString> renamableKinds = {
         QStringLiteral("SeepageAnalysis"), QStringLiteral("DamAnalysis"),
         QStringLiteral("SlopeStabilityAnalysis"), QStringLiteral("CaveExcavationAnalysis"),
-        QStringLiteral("CaveBlockStabilityAnalysis"), QStringLiteral("FillStorageCycle"),
+        QStringLiteral("CaveBlockStabilityAnalysis"),
         QStringLiteral("GeoStressRegressionSideFace"), QStringLiteral("CaveExcavationBody"),
         QStringLiteral("CaveBlockPlane"), QStringLiteral("SeepageNaturalBoundary")};
     return renamableKinds.contains(kind);
@@ -1012,7 +1203,7 @@ bool solverNodeCanRename(const QString& kind)
 bool solverNodeCanMove(const QString& kind)
 {
     static const QSet<QString> movableKinds = {
-        QStringLiteral("FillStorageCycle"), QStringLiteral("GeoStressRegressionSideFace"),
+        QStringLiteral("GeoStressRegressionSideFace"),
         QStringLiteral("CaveBlockPlane"), QStringLiteral("SeepageNaturalBoundary")};
     return movableKinds.contains(kind);
 }
@@ -1029,6 +1220,7 @@ int solverChildOrderRank(ProjectNode* parent, ProjectNode* child)
     if (parentKind == QStringLiteral("DamAnalysis"))
     {
         if (childKind == QStringLiteral("FillStorageCycle")) return 0;
+        if (childKind == QStringLiteral("DamDynamicAnalysis")) return 1;
         if (pageType == QStringLiteral("StressBoundaryDamUpstream")) return 10;
         if (childKind == QStringLiteral("DamIceRegion")) return 11;
     }
@@ -1368,6 +1560,8 @@ bool Solver::loadProject()
             continue;
 
         bool hasFillStorageCycleNode = false;
+        bool hasDamDynamicAnalysisNode = false;
+        QJsonObject legacyDamDynamicState;
         bool hasSeepageUpstreamBoundaryNode = false;
         bool hasSeepageDownstreamBoundaryNode = false;
         bool hasSeepageNaturalBoundaryNode = false;
@@ -1432,6 +1626,11 @@ bool Solver::loadProject()
                 page = new FillStorageCyclePage();
                 hasFillStorageCycleNode = true;
             }
+            else if (type == "DamDynamicAnalysis")
+            {
+                page = new DamDynamicAnalysisPage();
+                hasDamDynamicAnalysisNode = true;
+            }
             else if (type == "GeoStressRegressionAnalysis")
             {
                 page = new GeoStressRegressionWidget();
@@ -1490,12 +1689,18 @@ bool Solver::loadProject()
                 childTitle = QStringLiteral("天然渗流初始面");
             else if (type == QStringLiteral("StressBoundaryDamUpstream"))
                 childTitle = QStringLiteral("上游水压力作用面");
+            else if (type == QStringLiteral("FillStorageCycle"))
+                childTitle = QStringLiteral("填筑蓄水");
+            else if (type == QStringLiteral("DamDynamicAnalysis"))
+                childTitle = QStringLiteral("动力分析");
 
             auto* node = new ProjectNode(
                 childTitle,
                 childObj.value("uuid").toString(QUuid::createUuid().toString()), page);
             if (type == "FillStorageCycle")
                 setupNodeRole(node, "FillStorageCycle");
+            else if (type == "DamDynamicAnalysis")
+                setupNodeRole(node, "DamDynamicAnalysis");
             else if (type == "GeoStressRegressionAnalysis")
                 setupNodeRole(node, "GeoStressRegression");
             else if (type == "GeoStressRegressionSideFace")
@@ -1566,7 +1771,32 @@ bool Solver::loadProject()
                 connect(cyclePage, &FillStorageCyclePage::requirementsChanged, this,
                         [this, analysisNode]() { syncDamConditionalNodes(analysisNode); });
             }
-            const QJsonObject childState = childObj.value("state").toObject();
+            else if (auto* dynamicPage = dynamic_cast<DamDynamicAnalysisPage*>(page))
+            {
+                connect(dynamicPage, &DamDynamicAnalysisPage::requirementsChanged, this,
+                        [this, analysisNode]() { syncDamConditionalNodes(analysisNode); });
+                connect(dynamicPage, &DamDynamicAnalysisPage::modalExtractionOrderChanged, this,
+                        [this, analysisNode](int order)
+                        {
+                            if (auto* damPage =
+                                    dynamic_cast<DamAnalysisWidget*>(analysisNode->getPage()))
+                                damPage->setModalExtractionOrder(order);
+                        });
+            }
+            QJsonObject childState = childObj.value("state").toObject();
+            if (dynamic_cast<FillStorageCyclePage*>(page))
+            {
+                // 旧版把动力任务和静动材料转换存放在“填筑蓄水/计算工况”页面。
+                // 先记录下来，加载结束后迁移到新的“动力分析”兄弟节点。
+                QJsonObject legacyState = childState;
+                const QJsonArray rootMappings =
+                    analysisState.value(QStringLiteral("dynamic_material_table")).toArray();
+                if (legacyState.value(QStringLiteral("dynamic_material_table")).toArray().isEmpty()
+                    && !rootMappings.isEmpty())
+                    legacyState[QStringLiteral("dynamic_material_table")] = rootMappings;
+                if (legacyDamDynamicState.isEmpty())
+                    legacyDamDynamicState = legacyState;
+            }
             page->loadJson(childState);
             if (analysisType == "CaveExcavationAnalysis" && type == "CaveSupportComputation"
                 && !hasAnyIcaveLineKey(childState) && hasAnyIcaveLineValue(analysisState))
@@ -1751,6 +1981,11 @@ bool Solver::loadProject()
             addFillStorageCycleNode(analysisNode, false);
         }
         if ((analysisType == "StressStrainAnalysis" || analysisType == "DamAnalysis")
+            && !hasDamDynamicAnalysisNode)
+        {
+            addDamDynamicAnalysisNode(analysisNode, false, legacyDamDynamicState);
+        }
+        if ((analysisType == "StressStrainAnalysis" || analysisType == "DamAnalysis")
             && !hasDamUpstreamBoundaryNode)
         {
             auto* page = new StressBoundaryPage("StressBoundaryDamUpstream", "上游水压力作用面",
@@ -1843,6 +2078,7 @@ bool Solver::loadProject()
             setupNodeRole(analysisNode, "CaveBlockStabilityAnalysis");
         restoreSolverCustomTitle(analysisNode, analysisObj);
 
+        normalizeChildNodeOrder(analysisNode);
         syncDamAnalysisMCase(analysisNode);
         syncChildNodeNames(analysisNode);
         for (ProjectNode* child : analysisNode->getChildren())
@@ -1915,6 +2151,11 @@ void Solver::initAction()
                        {
                            onSlopeStabilityAction();
                        });
+    em.registerHandler(PublicConstants::kActionSpecificationCheckKey,
+                       [this](const QVariantMap&)
+                       {
+                           onSpecificationCheckAction();
+                       });
 }
 
 void Solver::initTreeMenu()
@@ -1960,19 +2201,6 @@ void Solver::initTreeMenu()
                         auto* analysisNode = pm ? pm->findNodeByUuid(uuid) : nullptr;
                         if (analysisNode)
                             addSeepageNaturalBoundaryNode(analysisNode, true);
-                    });
-            }
-            else if (kind == QStringLiteral("DamAnalysis"))
-            {
-                ContextMenuHub::addSeparator(menu);
-                ContextMenuHub::addAction(
-                    menu, this, "新增填筑蓄水阶段",
-                    [this, uuid]()
-                    {
-                        auto* pm = ServiceRegistry::instance().getService<ProjectManagerService>();
-                        auto* analysisNode = pm ? pm->findNodeByUuid(uuid) : nullptr;
-                        if (analysisNode)
-                            addFillStorageCycleNode(analysisNode, true);
                     });
             }
             else if (kind == QStringLiteral("CaveExcavationAnalysis"))
@@ -2108,11 +2336,19 @@ void Solver::deleteNodeRecursively(ProjectNode* node) const
     const auto children = node->getChildren();
     for (ProjectNode* child : children)
     {
+        // QTreeWidgetItem owns its attached children.  Detach each child
+        // before deleting it recursively; otherwise deleting the parent below
+        // asks Qt to delete the same child a second time and corrupts the heap
+        // during project switching.
+        node->removeChild(child);
         deleteNodeRecursively(child);
     }
 
-    if (node->getPage())
-        delete node->getPage();
+    if (BasePage* page = node->getPage())
+    {
+        node->setPage(nullptr);
+        delete page;
+    }
 
     delete node;
 }
@@ -2883,6 +3119,16 @@ void Solver::addFillStorageCycleNode(ProjectNode* analysisNode, bool setCurrent)
     if (!analysisNode)
         return;
 
+    if (ProjectNode* existing = findChildByPageType(analysisNode, QStringLiteral("FillStorageCycle")))
+    {
+        if (setCurrent)
+        {
+            if (auto* pm = ServiceRegistry::instance().getService<ProjectManagerService>())
+                pm->setCurrentItem(existing);
+        }
+        return;
+    }
+
     auto* fillStorageCyclePage = new FillStorageCyclePage();
     if (auto* damPage = dynamic_cast<DamAnalysisWidget*>(analysisNode->getPage()))
     {
@@ -2891,12 +3137,13 @@ void Solver::addFillStorageCycleNode(ProjectNode* analysisNode, bool setCurrent)
             fillStorageCyclePage->setFillLayerRange(range.first, range.second);
     }
     auto* fillStorageCycleNode = new ProjectNode(
-        QStringLiteral("填筑蓄水阶段"), QUuid::createUuid().toString(), fillStorageCyclePage);
+        QStringLiteral("填筑蓄水"), QUuid::createUuid().toString(), fillStorageCyclePage);
     setupNodeRole(fillStorageCycleNode, "FillStorageCycle");
     analysisNode->addChild(fillStorageCycleNode);
     analysisNode->setExpanded(true);
     connect(fillStorageCyclePage, &FillStorageCyclePage::requirementsChanged, this,
             [this, analysisNode]() { syncDamConditionalNodes(analysisNode); });
+    normalizeChildNodeOrder(analysisNode);
     syncDamAnalysisMCase(analysisNode);
     syncDamConditionalNodes(analysisNode);
 
@@ -2904,6 +3151,53 @@ void Solver::addFillStorageCycleNode(ProjectNode* analysisNode, bool setCurrent)
     {
         if (auto* pm = ServiceRegistry::instance().getService<ProjectManagerService>())
             pm->setCurrentItem(fillStorageCycleNode);
+    }
+}
+
+void Solver::addDamDynamicAnalysisNode(ProjectNode* analysisNode, bool setCurrent,
+                                       const QJsonObject& initialState) const
+{
+    if (!analysisNode)
+        return;
+
+    if (ProjectNode* existing = findChildByPageType(analysisNode, QStringLiteral("DamDynamicAnalysis")))
+    {
+        if (setCurrent)
+        {
+            if (auto* pm = ServiceRegistry::instance().getService<ProjectManagerService>())
+                pm->setCurrentItem(existing);
+        }
+        return;
+    }
+
+    auto* dynamicPage = new DamDynamicAnalysisPage();
+    if (!initialState.isEmpty())
+        dynamicPage->loadLegacyFillStorageState(initialState);
+    if (auto* damPage = dynamic_cast<DamAnalysisWidget*>(analysisNode->getPage()))
+        dynamicPage->setModalExtractionOrder(damPage->modalExtractionOrder());
+
+    auto* node = new ProjectNode(QStringLiteral("动力分析"),
+                                 QUuid::createUuid().toString(), dynamicPage);
+    setupNodeRole(node, QStringLiteral("DamDynamicAnalysis"));
+    analysisNode->addChild(node);
+    analysisNode->setExpanded(true);
+
+    connect(dynamicPage, &DamDynamicAnalysisPage::requirementsChanged, this,
+            [this, analysisNode]() { syncDamConditionalNodes(analysisNode); });
+    connect(dynamicPage, &DamDynamicAnalysisPage::modalExtractionOrderChanged, this,
+            [this, analysisNode](int order)
+            {
+                if (auto* damPage = dynamic_cast<DamAnalysisWidget*>(analysisNode->getPage()))
+                    damPage->setModalExtractionOrder(order);
+            });
+
+    normalizeChildNodeOrder(analysisNode);
+    syncChildNodeNames(analysisNode);
+    syncDamConditionalNodes(analysisNode);
+    if (setCurrent)
+    {
+        if (auto* pm = ServiceRegistry::instance().getService<ProjectManagerService>())
+            pm->setCurrentItem(node);
     }
 }
 
@@ -3413,6 +3707,7 @@ void Solver::onStressStrainAction()
     connectBoundaryStatus(iceRegionNode);
 
     addFillStorageCycleNode(analysisNode, false);
+    addDamDynamicAnalysisNode(analysisNode, false);
     syncDamAnalysisMCase(analysisNode);
 
     m_root->addChild(analysisNode);
@@ -3489,6 +3784,44 @@ void Solver::onSlopeStabilityAction()
     syncAnalysisNodeNames();
     if (auto* pm = ServiceRegistry::instance().getService<ProjectManagerService>())
         pm->setCurrentItem(analysisNode);
+}
+
+void Solver::onSpecificationCheckAction()
+{
+    if (!m_root)
+        return;
+
+    // 规范验算是边坡分析的一种计算方式。优先复用最新的边坡分析，使其 DAT
+    // 输入和最近一次结果继续随该分析节点保存；工程中尚无边坡分析时自动创建。
+    ProjectNode* analysisNode = nullptr;
+    const auto children = m_root->getChildren();
+    for (auto it = children.crbegin(); it != children.crend(); ++it)
+    {
+        ProjectNode* candidate = *it;
+        if (candidate && candidate->data(0, ProjectNode::RoleKind).toString()
+                             == QStringLiteral("SlopeStabilityAnalysis"))
+        {
+            analysisNode = candidate;
+            break;
+        }
+    }
+
+    if (!analysisNode)
+    {
+        onSlopeStabilityAction();
+        const auto updatedChildren = m_root->getChildren();
+        if (!updatedChildren.isEmpty())
+            analysisNode = updatedChildren.last();
+    }
+
+    auto* page = analysisNode
+                     ? dynamic_cast<SlopeStabilityWidget*>(analysisNode->getPage())
+                     : nullptr;
+    if (!page)
+        return;
+    if (auto* pm = ServiceRegistry::instance().getService<ProjectManagerService>())
+        pm->setCurrentItem(analysisNode);
+    QTimer::singleShot(0, page, [page]() { page->openStandardMethodDialog(); });
 }
 
 void Solver::onComputeSeepage(ProjectNode* analysisNode)
@@ -3754,6 +4087,24 @@ void Solver::onComputeStressStrain(ProjectNode* analysisNode)
         return;
     }
     syncDamConditionalNodes(analysisNode);
+    auto* dynamicNode = findChildByPageType(analysisNode, QStringLiteral("DamDynamicAnalysis"));
+    auto* dynamicPage = dynamicNode
+        ? dynamic_cast<DamDynamicAnalysisPage*>(dynamicNode->getPage()) : nullptr;
+    if (stressPage->dynamicAnalysisEnabled())
+    {
+        if (!dynamicPage)
+        {
+            QMessageBox::warning(nullptr, QStringLiteral("请完善动力分析"),
+                                 QStringLiteral("当前工况缺少“动力分析”子节点，请重新打开工程。"));
+            return;
+        }
+        QString dynamicError;
+        if (!dynamicPage->validateInputs(&dynamicError))
+        {
+            QMessageBox::warning(nullptr, QStringLiteral("请完善动力分析"), dynamicError);
+            return;
+        }
+    }
     QString parameterError;
     if (!stressPage->validateInputs(&parameterError))
     {
@@ -3775,18 +4126,17 @@ void Solver::onComputeStressStrain(ProjectNode* analysisNode)
         if (!cycle->validateInputs(&error))
         {
             QMessageBox::warning(
-                nullptr, QStringLiteral("请完善施工阶段"),
-                QStringLiteral("第 %1 个填筑蓄水阶段：%2")
-                    .arg(cycleIndex).arg(error));
+                nullptr, QStringLiteral("请完善填筑蓄水"),
+                error);
             return;
         }
-        needsFaceBoundary = needsFaceBoundary || cycle->usesDamFacePressure();
+        needsFaceBoundary = needsFaceBoundary || (!stressPage->dynamicOnlyEnabled() && cycle->usesDamFacePressure());
     }
     if (cycleIndex == 0)
     {
         QMessageBox::warning(
-            nullptr, QStringLiteral("请添加施工阶段"),
-            QStringLiteral("土石坝分析至少需要一个填筑蓄水阶段。"));
+            nullptr, QStringLiteral("缺少填筑蓄水设置"),
+            QStringLiteral("当前土石坝工况缺少“填筑蓄水”子节点。"));
         return;
     }
     if (cyclePages.size() > 99)
@@ -3817,26 +4167,36 @@ void Solver::onComputeStressStrain(ProjectNode* analysisNode)
         }
     }
 
-    const bool hasModal = std::any_of(
-        cyclePages.cbegin(), cyclePages.cend(),
-        [](const FillStorageCyclePage* cycle)
-        {
-            return cycle && cycle->usesModalAnalysis();
-        });
-    const bool hasWave = std::any_of(
-        cyclePages.cbegin(), cyclePages.cend(),
-        [](const FillStorageCyclePage* cycle)
-        {
-            return cycle && cycle->usesWaveAnalysis();
-        });
+    const bool hasModal = dynamicPage && dynamicPage->usesModalAnalysis();
+    const bool hasWave = dynamicPage && dynamicPage->usesWaveAnalysis();
     if (stressPage->dynamicOnlyEnabled() && !hasModal && !hasWave)
     {
         QMessageBox::warning(
             nullptr, QStringLiteral("请设置动力分析"),
-            QStringLiteral("当前选择了“仅动力计算”，但所有工况都没有启用模态分析或地震波时程分析。"));
+            QStringLiteral("当前选择了“仅动力计算”，但“动力分析”中没有启用模态分析或地震波时程分析。"));
         return;
     }
     stressPage->setModalAnalysisRequired(hasModal);
+
+    // 地震加速度表由“约束与荷载”统一维护；动力工况只通过 IFWAVE 决定是否使用。
+    // 在生成求解文件前直接校验页面数据，避免没有/重复/空表时直到 Fortran 阶段才报错。
+    if (hasWave)
+    {
+        auto* physicalFieldService =
+            ServiceRegistry::instance().getService<PhysicalFieldService>();
+        QString waveError;
+        if (!physicalFieldService
+            || !physicalFieldService->validateSeismicAcceleration(&waveError))
+        {
+            if (waveError.isEmpty())
+                waveError = QStringLiteral("无法读取“约束与荷载”中的地震加速度设置。");
+            QMessageBox::warning(
+                nullptr, QStringLiteral("请设置地震加速度"),
+                QStringLiteral("%1\n\n请在“约束与荷载 → 地震加速度”中检查后重试。")
+                    .arg(waveError));
+            return;
+        }
+    }
 
     // 结冰分支同样把初始状态固定指向 CASE(ICASE)FILL(ICASE)，并且不会继承
     // 后续 WETT / DROP / 最后一循环 FLIU。只允许求解器能够明确闭环的组合。
@@ -3910,7 +4270,15 @@ void Solver::onComputeStressStrain(ProjectNode* analysisNode)
                 .arg(missingNodes.join(QLatin1Char('\n'))));
         return;
     }
-    if (!beginCommonCompute(analysisNode, "土石坝分析"))
+    // 静力->动力材料关系属于当前土石坝工况的“动力分析”子节点。
+    QMap<int, int> dynamicSourceByMaterial; // key=动力材料，value=静力材料
+    if (dynamicPage)
+    {
+        for (const auto& mapping : dynamicPage->activeDynamicMaterialMappings())
+            dynamicSourceByMaterial.insert(mapping.second, mapping.first);
+    }
+
+    if (!beginCommonCompute(analysisNode, "土石坝分析", dynamicSourceByMaterial))
         return;
 
     if (hasWave)
@@ -3928,8 +4296,10 @@ void Solver::onComputeStressStrain(ProjectNode* analysisNode)
         if (!invalidWaveFiles.isEmpty())
         {
             QMessageBox::warning(
-                nullptr, QStringLiteral("地震波数据无效"),
-                QStringLiteral("三向地震波数据不完整或格式无效，请重新检查地震波输入。"));
+                nullptr, QStringLiteral("地震波数据生成失败"),
+                QStringLiteral("地震加速度已通过页面校验，但生成的求解输入仍存在问题：\n%1\n\n"
+                               "请返回“约束与荷载 → 地震加速度”检查数据。")
+                    .arg(invalidWaveFiles.join(QLatin1Char('\n'))));
             clearSolverRunDirectory();
             return;
         }
@@ -3943,9 +4313,7 @@ void Solver::onComputeStressStrain(ProjectNode* analysisNode)
         {
             QMessageBox::warning(
                 nullptr, QStringLiteral("渗流结果关联失败"),
-                QStringLiteral("第 %1 个填筑蓄水阶段：%2")
-                    .arg(i + 1)
-                    .arg(associationError));
+                associationError);
             clearSolverRunDirectory();
             return;
         }
@@ -4011,7 +4379,7 @@ void Solver::onComputeStressStrain(ProjectNode* analysisNode)
             clearSolverRunDirectory();
             return;
         }
-        if ((cycle->usesModalAnalysis() || cycle->usesWaveAnalysis())
+        if ((hasModal || hasWave)
             && stateDirectoryName == QStringLiteral("DISK00"))
         {
             QMessageBox::warning(
@@ -4024,7 +4392,7 @@ void Solver::onComputeStressStrain(ProjectNode* analysisNode)
 
         const QString dynamicStatePath = damRunRoot.filePath(stateDirectoryName);
         if (stressPage->dynamicOnlyEnabled()
-            && (cycle->usesModalAnalysis() || cycle->usesWaveAnalysis()))
+            && (hasModal || hasWave))
         {
             QString sourcePath = dynamicStatePath;
             QString sourceDescription = stateDirectoryName;
@@ -5905,7 +6273,8 @@ bool Solver::canDeleteNode(ProjectNode* node) const
         QStringLiteral("CaveLiningInnerBoundary"),
         QStringLiteral("CaveLiningOuterBoundary"),
         QStringLiteral("CaveCraneBeamArea"),
-        QStringLiteral("DamIceRegion")};
+        QStringLiteral("DamIceRegion"),
+        QStringLiteral("DamDynamicAnalysis")};
     if (fixedKinds.contains(kind))
         return false;
 
@@ -5942,7 +6311,6 @@ void Solver::updateBoundaryNodeStatus(ProjectNode* node, int selectionCount, boo
 {
     if (!node)
         return;
-    node->setHidden(false);
     node->setData(0, ProjectNode::RoleDimmed, !enabled);
     node->setForeground(0, enabled ? QBrush() : QBrush(QColor(QStringLiteral("#8a95a5"))));
     node->setIcon(0, QIcon());
@@ -6186,11 +6554,14 @@ bool Solver::prepareDamSeepageFiles(FillStorageCyclePage* cyclePage,
     {
         const QString selectedStep = cyclePage->seepageTransientStep();
         if (selectedStep.isEmpty())
-            return fail(QStringLiteral("请选择一个明确的非稳态结果步。"));
+            return fail(QStringLiteral("请选择一个明确的非稳态计算时刻。"));
+
+        description = cyclePage->seepageTransientResultLabel();
+        if (description.isEmpty())
+            description = QStringLiteral("所选非稳态计算时刻");
 
         if (selectedStep == QStringLiteral("final"))
         {
-            description = QStringLiteral("非稳态最终结果");
             if (!transientDir.isEmpty())
             {
                 headPath =
@@ -6204,9 +6575,8 @@ bool Solver::prepareDamSeepageFiles(FillStorageCyclePage* cyclePage,
             bool stepOk = false;
             const int step = selectedStep.toInt(&stepOk);
             if (!stepOk || step < 0)
-                return fail(QStringLiteral("所选非稳态结果步无效。"));
+                return fail(QStringLiteral("所选非稳态计算时刻无效。"));
 
-            description = QStringLiteral("非稳态 STEP%1").arg(step);
             if (!transientDir.isEmpty())
             {
                 headPath = QDir(transientDir).filePath(
@@ -6289,52 +6659,109 @@ void Solver::syncDamConditionalNodes(ProjectNode* analysisNode) const
     if (!page)
         return;
 
-    const QVector<QPair<QString, QString>> seepageSources =
-        seepageAnalysisSources();
-    bool usesFace = false;
-    bool usesModal = false;
+    const int calculationType = page->dynamicOnlyEnabled()
+                                    ? 2
+                                    : (page->dynamicAnalysisEnabled() ? 3 : 1);
+    const bool staticEnabled = calculationType == 1 || calculationType == 3;
+    const bool dynamicEnabled = calculationType == 2 || calculationType == 3;
+
+    FillStorageCyclePage* fillPage = nullptr;
+    ProjectNode* dynamicNode = nullptr;
+    DamDynamicAnalysisPage* dynamicPage = nullptr;
     for (ProjectNode* child : analysisNode->getChildren())
     {
-        auto* cycle = child ? dynamic_cast<FillStorageCyclePage*>(child->getPage()) : nullptr;
-        if (!cycle)
+        if (!child || !child->getPage())
             continue;
+        if (!fillPage)
+        {
+            if (auto* candidate = dynamic_cast<FillStorageCyclePage*>(child->getPage()))
+            {
+                fillPage = candidate;
+                continue;
+            }
+        }
+        if (!dynamicPage)
+        {
+            if (auto* candidate = dynamic_cast<DamDynamicAnalysisPage*>(child->getPage()))
+            {
+                dynamicPage = candidate;
+                dynamicNode = child;
+            }
+        }
+    }
 
-        cycle->setAvailableSeepageSources(seepageSources);
+    // 一个土石坝分析节点本身就是一个工况；两个兄弟子节点始终保留。
+    // “填筑蓄水”在仅动力计算时仍用于查看/匹配既有静力状态；
+    // “动力分析”在仅静力计算时参照“结冰区域”的交互方式置灰，而不是隐藏。
+    if (dynamicNode)
+    {
+        dynamicNode->setData(0, ProjectNode::RoleDimmed, !dynamicEnabled);
+        dynamicNode->setForeground(
+            0, dynamicEnabled ? QBrush() : QBrush(QColor(QStringLiteral("#8a95a5"))));
+
+        Qt::ItemFlags flags = dynamicNode->flags();
+        flags.setFlag(Qt::ItemIsEnabled, dynamicEnabled);
+        flags.setFlag(Qt::ItemIsSelectable, dynamicEnabled);
+        dynamicNode->setFlags(flags);
+        if (dynamicNode->getPage() && dynamicNode->getPage()->getWidget())
+            dynamicNode->getPage()->getWidget()->setEnabled(dynamicEnabled);
+
+        QStringList tooltip;
+        const QString relationship = solverNodeRelationshipHint(dynamicNode);
+        if (!relationship.isEmpty())
+            tooltip.push_back(relationship);
+        if (!dynamicEnabled)
+            tooltip.push_back(QStringLiteral("当前为仅静力计算，动力分析不参与本次计算"));
+        dynamicNode->setToolTip(0, tooltip.join(QLatin1Char('\n')));
+    }
+
+    if (dynamicPage)
+    {
+        dynamicPage->setAnalysisEnabled(dynamicEnabled);
+        dynamicPage->setModalExtractionOrder(page->modalExtractionOrder());
+    }
+
+    const QVector<QPair<QString, QString>> seepageSources = seepageAnalysisSources();
+    bool usesFace = false;
+    if (fillPage)
+    {
+        fillPage->setAnalysisMode(calculationType);
+        fillPage->setAvailableSeepageSources(seepageSources);
+        if (dynamicPage)
+            fillPage->applyDynamicAnalysisState(dynamicPage->solverState(), dynamicEnabled);
+        else
+            fillPage->applyDynamicAnalysisState(QJsonObject(), false);
 
         QVector<int> transientSteps;
+        QMap<int, QString> transientLabels;
         bool hasTransientFinal = false;
-        ProjectNode* sourceNode =
-            findAnalysisNodeByUuid(cycle->seepageSourceUuid());
-        if (sourceNode && cycle->needsSeepageAssociation())
+        ProjectNode* sourceNode = findAnalysisNodeByUuid(fillPage->seepageSourceUuid());
+        if (sourceNode && fillPage->needsSeepageAssociation())
         {
             const QString transientDir =
-                seepageResultDirectory(
-                    analysisWorkspace(sourceNode),
-                    QStringLiteral("SEEPDYNA01"));
-            const bool needHead = cycle->usesImportedSeepageHead();
-            const bool needBody = cycle->usesImportedSeepageBody();
+                seepageResultDirectory(analysisWorkspace(sourceNode), QStringLiteral("SEEPDYNA01"));
+            const bool needHead = fillPage->usesImportedSeepageHead();
+            const bool needBody = fillPage->usesImportedSeepageBody();
             if (!transientDir.isEmpty())
             {
-                transientSteps =
-                    transientResultSteps(transientDir, needHead, needBody);
-                const QFileInfo finalHead(
-                    QDir(transientDir).filePath(QStringLiteral("IIDISP.TXT")));
-                const QFileInfo finalBody(
-                    QDir(transientDir).filePath(QStringLiteral("INBODY.TXT")));
+                transientSteps = transientResultSteps(transientDir, needHead, needBody);
+                transientLabels = transientResultLabels(
+                    analysisWorkspace(sourceNode), transientDir, transientSteps);
+                const QFileInfo finalHead(QDir(transientDir).filePath(QStringLiteral("IIDISP.TXT")));
+                const QFileInfo finalBody(QDir(transientDir).filePath(QStringLiteral("INBODY.TXT")));
                 hasTransientFinal =
                     (!needHead || (finalHead.isFile() && finalHead.size() > 0))
                     && (!needBody || (finalBody.isFile() && finalBody.size() > 0));
             }
         }
-        if (cycle->needsSeepageAssociation())
-            cycle->setAvailableTransientResults(
-                transientSteps, hasTransientFinal);
-        cycle->setDynamicOptionsAvailable(page->dynamicAnalysisEnabled());
-        usesFace = usesFace || cycle->usesDamFacePressure();
-        usesModal = usesModal || cycle->usesModalAnalysis();
+        if (fillPage->needsSeepageAssociation())
+            fillPage->setAvailableTransientResults(
+                transientSteps, hasTransientFinal, transientLabels);
+        usesFace = staticEnabled && fillPage->usesDamFacePressure();
     }
 
-    page->setModalAnalysisRequired(page->dynamicAnalysisEnabled() && usesModal);
+    const bool usesModal = dynamicPage && dynamicPage->usesModalAnalysis();
+    page->setModalAnalysisRequired(dynamicEnabled && usesModal);
 
     // 当前仅提供均质坝，坝基渗透荷载与折减参数均不参与计算。
     page->setUpliftReductionRequired(false);
@@ -6343,21 +6770,32 @@ void Solver::syncDamConditionalNodes(ProjectNode* analysisNode) const
         if (auto* boundary = child ? dynamic_cast<StressBoundaryPage*>(child->getPage()) : nullptr)
         {
             const QString pageType = boundary->getPageType();
-            const bool enabled = pageType == QStringLiteral("StressBoundaryDamUpstream")
-                                     ? usesFace
-                                     : false;
-            const QString reason = pageType == QStringLiteral("StressBoundaryDamUpstream")
-                                       ? QStringLiteral("坝体水面压力未启用")
-                                       : QStringLiteral("均质坝不使用坝基扬压力边界");
+            const bool upstreamBoundary =
+                pageType == QStringLiteral("StressBoundaryDamUpstream");
+            const bool enabled = upstreamBoundary ? usesFace : false;
+
+            QString reason;
+            if (upstreamBoundary)
+            {
+                reason = !staticEnabled
+                             ? QStringLiteral("当前为仅动力计算，坝体水面压力边界不参与本次计算")
+                             : QStringLiteral("坝体水面压力未启用");
+            }
+            else
+            {
+                reason = QStringLiteral("均质坝不使用坝基扬压力边界");
+            }
+
+            // 土石坝工况的固定子节点始终保留在树中。
+            // 条件不满足时仅置灰并禁用，不再通过隐藏/显示改变树结构。
             updateBoundaryNodeStatus(child, boundary->selectionCount(), enabled, reason);
         }
         else if (auto* region = child ? dynamic_cast<SeepageBoundaryPage*>(child->getPage()) : nullptr)
         {
             const bool enabled = region->getPageType() != QStringLiteral("DamIceRegion")
                                  || page->freezeThawEnabled();
-            updateBoundaryNodeStatus(
-                child, region->selectionCount(), enabled,
-                QStringLiteral("结冰区域变形未启用"));
+            updateBoundaryNodeStatus(child, region->selectionCount(), enabled,
+                                     QStringLiteral("结冰区域变形未启用"));
         }
     }
 }
@@ -6707,7 +7145,9 @@ void Solver::stopSolverExecutable()
     finishSolverProcess(true);
 }
 
-bool Solver::beginCommonCompute(ProjectNode* analysisNode, const QString& analysisType)
+bool Solver::beginCommonCompute(
+    ProjectNode* analysisNode, const QString& analysisType,
+    const QMap<int, int>& damDynamicSourceMappings)
 {
     try
     {
@@ -6810,7 +7250,8 @@ bool Solver::beginCommonCompute(ProjectNode* analysisNode, const QString& analys
     }
 
     auto* materialManagerService = ServiceRegistry::instance().getService<MaterialManagerService>();
-    if (materialManagerService && !materialManagerService->generateIMATFile())
+    if (materialManagerService &&
+        !materialManagerService->generateIMATFile(damDynamicSourceMappings))
     {
         if (materialManagerService->hasConfiguredMaterials())
         {
@@ -7469,15 +7910,50 @@ bool Solver::exportInouseDatFile()
 
     vtkSmartPointer<vtkUnstructuredGrid> solidGrid = vtkSmartPointer<vtkUnstructuredGrid>::New();
     solidGrid->SetPoints(grid->GetPoints());
+    solidGrid->Allocate(static_cast<vtkIdType>(solidCellIds.size()));
     QVector<int> solidLocalToGlobal;
     solidLocalToGlobal.reserve(solidCellIds.size());
     for (vtkIdType sourceCellId : std::as_const(solidCellIds))
     {
         vtkCell* solid = grid->GetCell(sourceCellId);
-        if (!solid || !solid->GetPointIds())
+        vtkIdList* pointIds = solid ? solid->GetPointIds() : nullptr;
+        const vtkIdType pointCount = pointIds ? pointIds->GetNumberOfIds() : 0;
+        if (!solid || !pointIds || pointCount <= 0)
             continue;
-        solidGrid->InsertNextCell(solid->GetCellType(), solid->GetPointIds());
-        solidLocalToGlobal.push_back(calculationElementByCell.value(sourceCellId));
+
+        vtkIdType insertedCellId = -1;
+        if (solid->GetCellType() == VTK_POLYHEDRON)
+        {
+            // vtkPolyhedron 不能只复制 GetPointIds()：多面体的拓扑还依赖独立的 face stream。
+            // 若使用普通 InsertNextCell(type, pointIds) 重建，会丢失面连接信息，并可能在
+            // VTK 9.2 内部访问无效的多面体面数据。这里完整复制“点 + 面流”。
+            vtkIdType faceCount = 0;
+            const vtkIdType* faceStream = nullptr;
+            grid->GetFaceStream(sourceCellId, faceCount, faceStream);
+            if (faceCount > 0 && faceStream)
+            {
+                insertedCellId = solidGrid->InsertNextCell(
+                    VTK_POLYHEDRON,
+                    pointCount,
+                    pointIds->GetPointer(0),
+                    faceCount,
+                    faceStream);
+            }
+            else
+            {
+                qWarning() << "INOUSE: polyhedron cell has no valid face stream, source cell id ="
+                           << sourceCellId;
+            }
+        }
+        else
+        {
+            insertedCellId = solidGrid->InsertNextCell(solid->GetCellType(), pointIds);
+        }
+
+        // solidLocalToGlobal 必须和 solidGrid 的本地 cellId 严格一一对应。
+        // 插入失败时不追加映射，避免 locator 返回的本地编号映射到错误计算单元。
+        if (insertedCellId >= 0)
+            solidLocalToGlobal.push_back(calculationElementByCell.value(sourceCellId));
     }
     auto solidLocator = vtkSmartPointer<vtkStaticCellLocator>::New();
     if (solidGrid->GetNumberOfCells() > 0)

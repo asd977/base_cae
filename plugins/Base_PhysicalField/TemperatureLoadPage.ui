@@ -119,17 +119,35 @@
         <layout class="QGridLayout" name="gridLayout">
          <item row="0" column="0">
           <widget class="QLabel" name="labelAlfa">
+ <property name="sizePolicy">
+  <sizepolicy hsizetype="Fixed" vsizetype="Preferred">
+   <horstretch>0</horstretch>
+   <verstretch>0</verstretch>
+  </sizepolicy>
+ </property>
            <property name="text">
             <string>线膨胀系数</string>
            </property>
-          </widget>
+           <property name="wordWrap">
+  <bool>false</bool>
+ </property>
+</widget>
          </item>
          <item row="1" column="0">
           <widget class="QLabel" name="labelDT">
+ <property name="sizePolicy">
+  <sizepolicy hsizetype="Fixed" vsizetype="Preferred">
+   <horstretch>0</horstretch>
+   <verstretch>0</verstretch>
+  </sizepolicy>
+ </property>
            <property name="text">
             <string>温度变化量</string>
            </property>
-          </widget>
+           <property name="wordWrap">
+  <bool>false</bool>
+ </property>
+</widget>
          </item>
          <item row="0" column="1">
           <widget class="QLineEdit" name="lineEditAlfa">
@@ -174,10 +192,19 @@
         <layout class="QGridLayout" name="gridLayoutPick">
          <item row="0" column="0">
           <widget class="QLabel" name="labelNodeId">
+ <property name="sizePolicy">
+  <sizepolicy hsizetype="Fixed" vsizetype="Preferred">
+   <horstretch>0</horstretch>
+   <verstretch>0</verstretch>
+  </sizepolicy>
+ </property>
            <property name="text">
             <string>节点编号</string>
            </property>
-          </widget>
+           <property name="wordWrap">
+  <bool>false</bool>
+ </property>
+</widget>
          </item>
          <item row="0" column="1">
           <widget class="QLabel" name="labelNodeIdValue">
@@ -188,10 +215,19 @@
          </item>
          <item row="1" column="0">
           <widget class="QLabel" name="labelX">
+ <property name="sizePolicy">
+  <sizepolicy hsizetype="Fixed" vsizetype="Preferred">
+   <horstretch>0</horstretch>
+   <verstretch>0</verstretch>
+  </sizepolicy>
+ </property>
            <property name="text">
             <string>X</string>
            </property>
-          </widget>
+           <property name="wordWrap">
+  <bool>false</bool>
+ </property>
+</widget>
          </item>
          <item row="1" column="1">
           <widget class="QLabel" name="labelXValue">
@@ -202,10 +238,19 @@
          </item>
          <item row="2" column="0">
           <widget class="QLabel" name="labelY">
+ <property name="sizePolicy">
+  <sizepolicy hsizetype="Fixed" vsizetype="Preferred">
+   <horstretch>0</horstretch>
+   <verstretch>0</verstretch>
+  </sizepolicy>
+ </property>
            <property name="text">
             <string>Y</string>
            </property>
-          </widget>
+           <property name="wordWrap">
+  <bool>false</bool>
+ </property>
+</widget>
          </item>
          <item row="2" column="1">
           <widget class="QLabel" name="labelYValue">
@@ -216,10 +261,19 @@
          </item>
          <item row="3" column="0">
           <widget class="QLabel" name="labelZ">
+ <property name="sizePolicy">
+  <sizepolicy hsizetype="Fixed" vsizetype="Preferred">
+   <horstretch>0</horstretch>
+   <verstretch>0</verstretch>
+  </sizepolicy>
+ </property>
            <property name="text">
             <string>Z</string>
            </property>
-          </widget>
+           <property name="wordWrap">
+  <bool>false</bool>
+ </property>
+</widget>
          </item>
          <item row="3" column="1">
           <widget class="QLabel" name="labelZValue">
@@ -230,10 +284,19 @@
          </item>
          <item row="4" column="0">
           <widget class="QLabel" name="labelPrevOwner">
+ <property name="sizePolicy">
+  <sizepolicy hsizetype="Fixed" vsizetype="Preferred">
+   <horstretch>0</horstretch>
+   <verstretch>0</verstretch>
+  </sizepolicy>
+ </property>
            <property name="text">
             <string>移除</string>
            </property>
-          </widget>
+           <property name="wordWrap">
+  <bool>false</bool>
+ </property>
+</widget>
          </item>
          <item row="4" column="1">
           <widget class="QLabel" name="labelPrevOwnerValue">

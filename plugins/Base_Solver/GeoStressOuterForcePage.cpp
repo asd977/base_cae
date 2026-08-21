@@ -156,6 +156,13 @@ QVector<EdgeRow> collectRows(vtkUnstructuredGrid* grid, const QString& domain, c
                 r.jd3 = int(nodeIdArr->GetTuple1(ids->GetId(2)));
             if (r.nodeCount >= 4)
                 r.jd4 = int(nodeIdArr->GetTuple1(ids->GetId(3)));
+            else if (r.nodeCount == 3)
+            {
+                // FAROOF.DAT 仍采用旧 Fortran 的四节点面格式。
+                // 标准三角面按 A-B-C-C 回写；nodeCount 保持 3，
+                // 因此 FTLOAD.DAT 仍会按真实三节点面输出，不受影响。
+                r.jd4 = r.jd3;
+            }
             rows.push_back(r);
         };
 
@@ -351,6 +358,22 @@ bool GeoStressOuterForcePage::exportRoofFile() const
 
     QTextStream roofOs(&roofFile);
     const bool isFaceMode = (currentPickMode() == PickMode::Face);
+
+    // FAROOF.DAT 的三维面记录固定包含 JD1~JD4。
+    // 禁止把 0 节点号交给旧 Fortran，避免后续数组越界/NaN。
+    if (isFaceMode)
+    {
+        for (const EdgeRow& row : rows)
+        {
+            if (row.jd1 <= 0 || row.jd2 <= 0 || row.jd3 <= 0 || row.jd4 <= 0)
+            {
+                roofFile.close();
+                QFile::remove(inputDir.filePath(kRoofFileName));
+                return false;
+            }
+        }
+    }
+
     if (isFaceMode)
     {
         roofOs << QString("%1        6     NJX   MAKOD\n").arg(rows.size());

@@ -26,6 +26,7 @@
 #include <QRegularExpression>
 #include <QScrollBar>
 #include <QSettings>
+#include <QSet>
 #include <QSizePolicy>
 #include <QTableView>
 #include <QTableWidget>
@@ -550,11 +551,65 @@ inline void polishPage(QWidget* page)
         }
     }
 
+    // 参数名标签使用“自适应的固定宽度”：不写死像素值，而是由 QLabel
+    // 的 sizeHint（文字 + 当前字体）决定宽度。QFormLayout/QGridLayout 会让同一
+    // 标签列自动采用其中最宽项，因此输入控件自然对齐，同时标签不会被挤成两行。
+    QSet<QLabel*> fieldLabels;
+    for (QFormLayout* form : formLayouts)
+    {
+        if (!form)
+            continue;
+        for (int row = 0; row < form->rowCount(); ++row)
+        {
+            QLayoutItem* item = form->itemAt(row, QFormLayout::LabelRole);
+            if (item)
+            {
+                if (auto* label = qobject_cast<QLabel*>(item->widget()))
+                    fieldLabels.insert(label);
+            }
+        }
+    }
+
+    for (QGridLayout* grid : gridLayouts)
+    {
+        if (!grid)
+            continue;
+        QSet<int> rowsWithField;
+        for (int index = 0; index < grid->count(); ++index)
+        {
+            int row = 0, column = 0, rowSpan = 1, columnSpan = 1;
+            grid->getItemPosition(index, &row, &column, &rowSpan, &columnSpan);
+            if (column >= 1)
+                rowsWithField.insert(row);
+        }
+        for (int index = 0; index < grid->count(); ++index)
+        {
+            int row = 0, column = 0, rowSpan = 1, columnSpan = 1;
+            grid->getItemPosition(index, &row, &column, &rowSpan, &columnSpan);
+            if (column != 0 || !rowsWithField.contains(row))
+                continue;
+            QLayoutItem* item = grid->itemAt(index);
+            if (item)
+            {
+                if (auto* label = qobject_cast<QLabel*>(item->widget()))
+                    fieldLabels.insert(label);
+            }
+        }
+    }
+
     const auto labels = page->findChildren<QLabel*>();
     for (QLabel* label : labels)
     {
-        setHorizontalSizing(label, QSizePolicy::Preferred);
-        label->setWordWrap(true);
+        if (fieldLabels.contains(label))
+        {
+            setHorizontalSizing(label, QSizePolicy::Fixed);
+            label->setWordWrap(false);
+        }
+        else
+        {
+            setHorizontalSizing(label, QSizePolicy::Preferred);
+            label->setWordWrap(true);
+        }
     }
 
     const auto combos = page->findChildren<QComboBox*>();

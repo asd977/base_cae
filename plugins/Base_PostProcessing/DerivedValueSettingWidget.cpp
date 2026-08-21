@@ -408,7 +408,11 @@ void DerivedValueSettingWidget::rebuildScalarCatalog()
                 vtkDataArray* array = pointData->GetArray(i);
                 const char* name = pointData->GetArrayName(i);
                 if (array && name && *name)
-                    m_pointArrays.insert(QString::fromUtf8(name));
+                {
+                    const QString qName = QString::fromUtf8(name);
+                    if (!ResultDisplayNames::isInternalField(qName))
+                        m_pointArrays.insert(qName);
+                }
             }
         }
         if (auto* cellData = grid->GetCellData())
@@ -418,7 +422,11 @@ void DerivedValueSettingWidget::rebuildScalarCatalog()
                 vtkDataArray* array = cellData->GetArray(i);
                 const char* name = cellData->GetArrayName(i);
                 if (array && name && *name)
-                    m_cellArrays.insert(QString::fromUtf8(name));
+                {
+                    const QString qName = QString::fromUtf8(name);
+                    if (!ResultDisplayNames::isInternalField(qName))
+                        m_cellArrays.insert(qName);
+                }
             }
         }
     }

@@ -96,6 +96,7 @@ class VisualizationWidget : public QWidget, public VisualWidgetService
     void updateProjectionButtonIcon();
     void updateScaleButtonIcon();
     void applyGlobalOpacity(double alpha, bool renderNow = true);
+    void updateTransparencyRendering();
     void updateScaleActorBounds();
     void applyUiTheme(const QString& themeName);
     void updateToolbarIcons();
@@ -141,4 +142,6 @@ class VisualizationWidget : public QWidget, public VisualWidgetService
     vtkSmartPointer<vtkCubeAxesActor> m_cubeAxesActor;
     bool m_isScaleVisible = false;
     double m_globalOpacity = 1.0;
+    int m_defaultMultiSamples = 0;
+    bool m_transparencyRenderingEnabled = false;
 };

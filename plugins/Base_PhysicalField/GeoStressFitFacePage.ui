@@ -63,17 +63,35 @@
         <layout class="QGridLayout" name="gridLayout">
          <item row="5" column="0">
           <widget class="QLabel" name="labelHeight">
+ <property name="sizePolicy">
+  <sizepolicy hsizetype="Fixed" vsizetype="Preferred">
+   <horstretch>0</horstretch>
+   <verstretch>0</verstretch>
+  </sizepolicy>
+ </property>
            <property name="text">
             <string>荷载高度</string>
            </property>
-          </widget>
+           <property name="wordWrap">
+  <bool>false</bool>
+ </property>
+</widget>
          </item>
          <item row="8" column="0">
           <widget class="QLabel" name="labelII">
+ <property name="sizePolicy">
+  <sizepolicy hsizetype="Fixed" vsizetype="Preferred">
+   <horstretch>0</horstretch>
+   <verstretch>0</verstretch>
+  </sizepolicy>
+ </property>
            <property name="text">
             <string>边界序号</string>
            </property>
-          </widget>
+           <property name="wordWrap">
+  <bool>false</bool>
+ </property>
+</widget>
          </item>
          <item row="7" column="1">
           <widget class="QDoubleSpinBox" name="spinPgrout">
@@ -119,10 +137,19 @@
          </item>
          <item row="3" column="0">
           <widget class="QLabel" name="labelFname">
+ <property name="sizePolicy">
+  <sizepolicy hsizetype="Fixed" vsizetype="Preferred">
+   <horstretch>0</horstretch>
+   <verstretch>0</verstretch>
+  </sizepolicy>
+ </property>
            <property name="text">
             <string>边界名称</string>
            </property>
-          </widget>
+           <property name="wordWrap">
+  <bool>false</bool>
+ </property>
+</widget>
          </item>
          <item row="8" column="1">
           <widget class="QSpinBox" name="spinII">
@@ -145,10 +172,19 @@
          </item>
          <item row="4" column="0">
           <widget class="QLabel" name="labelIdir">
+ <property name="sizePolicy">
+  <sizepolicy hsizetype="Fixed" vsizetype="Preferred">
+   <horstretch>0</horstretch>
+   <verstretch>0</verstretch>
+  </sizepolicy>
+ </property>
            <property name="text">
             <string>法向方向</string>
            </property>
-          </widget>
+           <property name="wordWrap">
+  <bool>false</bool>
+ </property>
+</widget>
          </item>
          <item row="1" column="0" colspan="2">
           <layout class="QHBoxLayout" name="horizontalLayoutGroupSelect">
@@ -213,10 +249,19 @@
          </item>
          <item row="7" column="0">
           <widget class="QLabel" name="labelPgrout">
+ <property name="sizePolicy">
+  <sizepolicy hsizetype="Fixed" vsizetype="Preferred">
+   <horstretch>0</horstretch>
+   <verstretch>0</verstretch>
+  </sizepolicy>
+ </property>
            <property name="text">
             <string>灌浆压力</string>
            </property>
-          </widget>
+           <property name="wordWrap">
+  <bool>false</bool>
+ </property>
+</widget>
          </item>
          <item row="2" column="1">
           <widget class="QRadioButton" name="radionButtonFace">
@@ -234,10 +279,19 @@
          </item>
          <item row="6" column="0">
           <widget class="QLabel" name="labelRou">
+ <property name="sizePolicy">
+  <sizepolicy hsizetype="Fixed" vsizetype="Preferred">
+   <horstretch>0</horstretch>
+   <verstretch>0</verstretch>
+  </sizepolicy>
+ </property>
            <property name="text">
             <string>重度</string>
            </property>
-          </widget>
+           <property name="wordWrap">
+  <bool>false</bool>
+ </property>
+</widget>
          </item>
          <item row="4" column="1">
           <widget class="QComboBox" name="comboIdir">

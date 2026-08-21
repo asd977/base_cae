@@ -31,7 +31,9 @@
 #include <cmath>
 #include <QDialog>
 #include <QHeaderView>
+#include <QInputDialog>
 #include <QLabel>
+#include <QLineEdit>
 #include <QListWidget>
 #include <QMessageBox>
 #include <QPushButton>
@@ -70,6 +72,64 @@ bool isDamStaticModel(const QString& modelKey)
         QStringLiteral("soil_emu"), QStringLiteral("soil_nanshui"),
         QStringLiteral("soil_emu_crush")};
     return keys.contains(modelKey);
+}
+
+void migrateLegacyMaterialProperties(const QString& modelKey,
+                                     QMap<QString, QString>* properties)
+{
+    if (!properties)
+        return;
+
+    auto copyIfMissing = [properties](const QString& target, const QString& source)
+    {
+        if (!properties->contains(target) && properties->contains(source))
+            properties->insert(target, properties->value(source));
+    };
+
+    if (modelKey == QStringLiteral("soil_eb"))
+    {
+        // 旧版导出固定 Nur=n。
+        copyIfMissing(QStringLiteral("Nur"), QStringLiteral("n"));
+    }
+    else if (modelKey == QStringLiteral("soil_emu") ||
+             modelKey == QStringLiteral("soil_emu_crush"))
+    {
+        // 旧版导出固定 Kur=1.5*K、Nur=n。
+        if (!properties->contains(QStringLiteral("Kur")) &&
+            properties->contains(QStringLiteral("K")))
+        {
+            bool ok = false;
+            const double k = properties->value(QStringLiteral("K")).toDouble(&ok);
+            if (ok && std::isfinite(k))
+                properties->insert(QStringLiteral("Kur"), QString::number(1.5 * k, 'g', 15));
+        }
+        copyIfMissing(QStringLiteral("Nur"), QStringLiteral("n"));
+    }
+    else if (modelKey == QStringLiteral("soil_nanshui"))
+    {
+        // 旧版导出固定 Nur=n。
+        copyIfMissing(QStringLiteral("Nur"), QStringLiteral("n"));
+    }
+    else if (modelKey == QStringLiteral("soil_kg"))
+    {
+        // 旧版 UI 把加载/卸载参数合并为一组；升级时先复制，保持原计算结果。
+        copyIfMissing(QStringLiteral("Kie(10^5Pa)"), QStringLiteral("Ki,Kie(10^5Pa)"));
+        copyIfMissing(QStringLiteral("αke"), QStringLiteral("αk,αke"));
+        copyIfMissing(QStringLiteral("Gie(10^5Pa)"), QStringLiteral("Gi,Gie(10^5Pa)"));
+        copyIfMissing(QStringLiteral("αGe"), QStringLiteral("αG,αGe"));
+    }
+    else if (modelKey == QStringLiteral("huangjinping_bar_element"))
+    {
+        // 旧版锚杆把 E1/E2、Rc/Rt/Ryc/Ryt 分别绑成同一个输入值。
+        copyIfMissing(QStringLiteral("屈服后变模E2（GPa）"),
+                      QStringLiteral("变模E1,E2（GPa）"));
+        copyIfMissing(QStringLiteral("极限抗压强度Rc（MPa）"),
+                      QStringLiteral("抗拉（压）强度ft（MPa）"));
+        copyIfMissing(QStringLiteral("屈服抗拉强度Ryt（MPa）"),
+                      QStringLiteral("抗拉（压）强度ft（MPa）"));
+        copyIfMissing(QStringLiteral("屈服抗压强度Ryc（MPa）"),
+                      QStringLiteral("抗拉（压）强度ft（MPa）"));
+    }
 }
 
 bool defaultMaterialNameIndex(const QString& name, int* index)
@@ -160,22 +220,23 @@ QVector<ReferenceTableData> buildMaterialReferenceTables()
               << "K"
               << "N"
               << "Kur"
+              << "Nur"
               << "Kb"
               << "m";
-    t.rows.append(QStringList() << "2A垫层" << "7" << "2.209" << "2.29" << "2.397" << "51.6" << "5.7" << "231.4" << "0.69" << "1082" << "0.27" << "2164" << "545" << "0.25");
-    t.rows.append(QStringList() << "3A过渡料" << "8" << "2.13" << "2.22" << "2.334" << "53.8" << "8.8" << "236.6" << "0.75" << "968" << "0.23" << "1936" << "328" << "0.17");
-    t.rows.append(QStringList() << "3B堆石" << "9" << "2.077" << "2.14" << "2.284" << "52.9" << "9.3" << "196.6" << "0.76" << "985" << "0.28" << "1722" << "238" << "0.21");
-    t.rows.append(QStringList() << "1B弃渣盖重" << "10" << "2.08" << "2.19" << "2.3" << "38.3" << "3.5" << "0.0" << "0.75" << "695" << "0.29" << "1390" << "352" << "0.29");
-    t.rows.append(QStringList() << "1A铺盖" << "12" << "1.42" << "1.71" << "2.3" << "31.0" << "0.0" << "0.0" << "0.72" << "350" << "0.43" << "700" << "350" << "0.18");
-    t.rows.append(QStringList() << "2B特殊垫层" << "13" << "2.218" << "2.30" << "2.396" << "42.6" << "4.5" << "85" << "0.71" << "832" << "0.35" << "1664" << "470" << "0.39");
-    t.rows.append(QStringList() << "3C反滤料" << "16" << "2.12" << "2.17" << "2.20" << "48" << "8.0" << "0.0" << "0.68" << "1035" << "0.33" << "2070" << "526" << "0.24");
-    t.rows.append(QStringList() << "P下游砌石" << "17" << "2.01" << "2.07" << "2.17" << "51.8" << "9.8" << "0.0" << "0.78" << "850" << "0.53" << "1700" << "325" << "0.33");
-    t.rows.append(QStringList() << "①gl+fglQ3" << "21" << "2.09" << "2.119" << "2.3" << "42.6" << "4.5" << "85" << "0.7" << "752" << "0.29" << "1504" << "276" << "0.29");
-    t.rows.append(QStringList() << "④ColQ4" << "22" << "2.1" << "2.19" << "2.3" << "38.3" << "3.5" << "0.0" << "0.75" << "695" << "0.29" << "1390" << "352" << "0.29");
-    t.rows.append(QStringList() << "③Col+dlQ4" << "23" << "1.42" << "1.71" << "1.9" << "31.0" << "0" << "0.0" << "0.72" << "350" << "0.43" << "700" << "350" << "0.18");
-    t.rows.append(QStringList() << "④alQ4" << "24" << "2.09" << "2.119" << "2.3" << "42.6" << "4.5" << "85" << "0.7" << "752" << "0.29" << "1504" << "276" << "0.29");
-    t.rows.append(QStringList() << "泥皮" << "26" << "1.67" << "1.67" << "1.67" << "10.0" << "0.0" << "50" << "0.86" << "1400" << "0.66" << "2000" << "600" << "0.26");
-    t.rows.append(QStringList() << "el+dlQ4" << "28" << "2.12" << "2.22" << "2.3" << "40.2" << "4.0" << "0.0" << "0.73" << "760" << "0.27" << "1520" << "405" << "0.23");
+    t.rows.append(QStringList() << "2A垫层" << "7" << "2.209" << "2.29" << "2.397" << "51.6" << "5.7" << "231.4" << "0.69" << "1082" << "0.27" << "2164" << "0.27" << "545" << "0.25");
+    t.rows.append(QStringList() << "3A过渡料" << "8" << "2.13" << "2.22" << "2.334" << "53.8" << "8.8" << "236.6" << "0.75" << "968" << "0.23" << "1936" << "0.23" << "328" << "0.17");
+    t.rows.append(QStringList() << "3B堆石" << "9" << "2.077" << "2.14" << "2.284" << "52.9" << "9.3" << "196.6" << "0.76" << "985" << "0.28" << "1722" << "0.28" << "238" << "0.21");
+    t.rows.append(QStringList() << "1B弃渣盖重" << "10" << "2.08" << "2.19" << "2.3" << "38.3" << "3.5" << "0.0" << "0.75" << "695" << "0.29" << "1390" << "0.29" << "352" << "0.29");
+    t.rows.append(QStringList() << "1A铺盖" << "12" << "1.42" << "1.71" << "2.3" << "31.0" << "0.0" << "0.0" << "0.72" << "350" << "0.43" << "700" << "0.43" << "350" << "0.18");
+    t.rows.append(QStringList() << "2B特殊垫层" << "13" << "2.218" << "2.30" << "2.396" << "42.6" << "4.5" << "85" << "0.71" << "832" << "0.35" << "1664" << "0.35" << "470" << "0.39");
+    t.rows.append(QStringList() << "3C反滤料" << "16" << "2.12" << "2.17" << "2.20" << "48" << "8.0" << "0.0" << "0.68" << "1035" << "0.33" << "2070" << "0.33" << "526" << "0.24");
+    t.rows.append(QStringList() << "P下游砌石" << "17" << "2.01" << "2.07" << "2.17" << "51.8" << "9.8" << "0.0" << "0.78" << "850" << "0.53" << "1700" << "0.53" << "325" << "0.33");
+    t.rows.append(QStringList() << "①gl+fglQ3" << "21" << "2.09" << "2.119" << "2.3" << "42.6" << "4.5" << "85" << "0.7" << "752" << "0.29" << "1504" << "0.29" << "276" << "0.29");
+    t.rows.append(QStringList() << "④ColQ4" << "22" << "2.1" << "2.19" << "2.3" << "38.3" << "3.5" << "0.0" << "0.75" << "695" << "0.29" << "1390" << "0.29" << "352" << "0.29");
+    t.rows.append(QStringList() << "③Col+dlQ4" << "23" << "1.42" << "1.71" << "1.9" << "31.0" << "0" << "0.0" << "0.72" << "350" << "0.43" << "700" << "0.43" << "350" << "0.18");
+    t.rows.append(QStringList() << "④alQ4" << "24" << "2.09" << "2.119" << "2.3" << "42.6" << "4.5" << "85" << "0.7" << "752" << "0.29" << "1504" << "0.29" << "276" << "0.29");
+    t.rows.append(QStringList() << "泥皮" << "26" << "1.67" << "1.67" << "1.67" << "10.0" << "0.0" << "50" << "0.86" << "1400" << "0.66" << "2000" << "0.66" << "600" << "0.26");
+    t.rows.append(QStringList() << "el+dlQ4" << "28" << "2.12" << "2.22" << "2.3" << "40.2" << "4.0" << "0.0" << "0.73" << "760" << "0.27" << "1520" << "0.27" << "405" << "0.23");
     tables.append(t);
 
     t = {};
@@ -217,47 +278,47 @@ QVector<ReferenceTableData> buildMaterialReferenceTables()
     t = {};
     t.modelName = QStringLiteral("E-μ本构");
     t.tableName = QStringLiteral("样表5 土体E-μ模型参数(IB=-3)");
-    t.columns << "材料" << "编号" << "干容重" << "天然容重" << "饱和容重" << "φ0" << "Δφ" << "c" << "Rf" << "K" << "n" << "G" << "D" << "F";
-    t.rows.append(QStringList() << "上游铺盖（回填石渣料）" << "4" << "1.8" << "2.0" << "2.2" << "35" << "0" << "0.0" << "0.75" << "500" << "0.4" << "0.38" << "2.7" << "0.15");
-    t.rows.append(QStringList() << "上游堆石料" << "5" << "2.0" << "2.1" << "2.2" << "35" << "0" << "0.0" << "0.8" << "1000" << "0.3" << "0.37" << "11" << "0.1");
-    t.rows.append(QStringList() << "上游过渡层" << "6" << "2.10" << "2.15" << "2.20" << "33" << "0" << "0" << "0.78" << "900" << "0.3" << "0.42" << "11" << "0.08");
-    t.rows.append(QStringList() << "沥青砼心墙" << "7" << "2.10" << "2.35" << "2.40" << "24" << "0" << "120" << "0.82" << "600" << "0.4" << "0.42" << "7" << "0.08");
-    t.rows.append(QStringList() << "下游过渡层" << "9" << "2.10" << "2.15" << "2.20" << "33" << "0" << "0" << "0.78" << "900" << "0.3" << "0.42" << "11" << "0.08");
-    t.rows.append(QStringList() << "下游堆石料" << "10" << "2.0" << "2.1" << "2.2" << "35" << "0" << "0.0" << "0.8" << "1000" << "0.3" << "0.37" << "11" << "0.1");
-    t.rows.append(QStringList() << "上游1级找平堆石" << "15" << "2.0" << "2.1" << "2.2" << "35" << "0" << "0.0" << "0.8" << "1000" << "0.3" << "0.37" << "11" << "0.1");
-    t.rows.append(QStringList() << "下游1级找平堆石" << "16" << "2.0" << "2.1" << "2.2" << "35" << "0" << "0.0" << "0.8" << "1000" << "0.3" << "0.37" << "11" << "0.1");
-    t.rows.append(QStringList() << "K5沉积粘土" << "42" << "1.85" << "1.90" << "2.00" << "16.4" << "0.0" << "21.8" << "0.87" << "270" << "0.47" << "0.46" << "0.05" << "0.58");
+    t.columns << "材料" << "编号" << "干容重" << "天然容重" << "饱和容重" << "φ0" << "Δφ" << "c" << "Rf" << "K" << "n" << "Kur" << "Nur" << "G" << "D" << "F";
+    t.rows.append(QStringList() << "上游铺盖（回填石渣料）" << "4" << "1.8" << "2.0" << "2.2" << "35" << "0" << "0.0" << "0.75" << "500" << "0.4" << "750" << "0.4" << "0.38" << "2.7" << "0.15");
+    t.rows.append(QStringList() << "上游堆石料" << "5" << "2.0" << "2.1" << "2.2" << "35" << "0" << "0.0" << "0.8" << "1000" << "0.3" << "1500" << "0.3" << "0.37" << "11" << "0.1");
+    t.rows.append(QStringList() << "上游过渡层" << "6" << "2.10" << "2.15" << "2.20" << "33" << "0" << "0" << "0.78" << "900" << "0.3" << "1350" << "0.3" << "0.42" << "11" << "0.08");
+    t.rows.append(QStringList() << "沥青砼心墙" << "7" << "2.10" << "2.35" << "2.40" << "24" << "0" << "120" << "0.82" << "600" << "0.4" << "900" << "0.4" << "0.42" << "7" << "0.08");
+    t.rows.append(QStringList() << "下游过渡层" << "9" << "2.10" << "2.15" << "2.20" << "33" << "0" << "0" << "0.78" << "900" << "0.3" << "1350" << "0.3" << "0.42" << "11" << "0.08");
+    t.rows.append(QStringList() << "下游堆石料" << "10" << "2.0" << "2.1" << "2.2" << "35" << "0" << "0.0" << "0.8" << "1000" << "0.3" << "1500" << "0.3" << "0.37" << "11" << "0.1");
+    t.rows.append(QStringList() << "上游1级找平堆石" << "15" << "2.0" << "2.1" << "2.2" << "35" << "0" << "0.0" << "0.8" << "1000" << "0.3" << "1500" << "0.3" << "0.37" << "11" << "0.1");
+    t.rows.append(QStringList() << "下游1级找平堆石" << "16" << "2.0" << "2.1" << "2.2" << "35" << "0" << "0.0" << "0.8" << "1000" << "0.3" << "1500" << "0.3" << "0.37" << "11" << "0.1");
+    t.rows.append(QStringList() << "K5沉积粘土" << "42" << "1.85" << "1.90" << "2.00" << "16.4" << "0.0" << "21.8" << "0.87" << "270" << "0.47" << "405" << "0.47" << "0.46" << "0.05" << "0.58");
     tables.append(t);
 
     t = {};
     t.modelName = QStringLiteral("E-μ破碎本构");
     t.tableName = QStringLiteral("样表15 土体E-μ破碎模型参数(IB=-6)");
-    t.columns << "材料" << "编号" << "干容重" << "天然容重" << "饱和容重" << "φ0" << "Δφ" << "c" << "Rf" << "K" << "n" << "C1" << "n1" << "C2" << "n2" << "C3" << "n3";
-    t.rows.append(QStringList() << "上游铺盖（回填石渣料）" << "4" << "1.8" << "2.0" << "2.2" << "35" << "0" << "0.0" << "0.75" << "500" << "0.4" << "0.38" << "2.7" << "0.38" << "2.7" << "0.38" << "2.7");
-    t.rows.append(QStringList() << "上游堆石料" << "5" << "2.0" << "2.1" << "2.2" << "35" << "0" << "0.0" << "0.8" << "1000" << "0.3" << "0.37" << "11" << "0.37" << "11" << "0.37" << "11");
-    t.rows.append(QStringList() << "上游过渡层" << "6" << "2.10" << "2.15" << "2.20" << "33" << "0" << "0" << "0.78" << "900" << "0.3" << "0.42" << "11" << "0.42" << "11" << "0.42" << "11");
-    t.rows.append(QStringList() << "沥青砼心墙" << "7" << "2.10" << "2.35" << "2.40" << "24" << "0" << "120" << "0.82" << "600" << "0.4" << "0.42" << "7" << "0.42" << "7" << "0.42" << "7");
-    t.rows.append(QStringList() << "下游过渡层" << "9" << "2.10" << "2.15" << "2.20" << "33" << "0" << "0" << "0.78" << "900" << "0.3" << "0.42" << "11" << "0.42" << "11" << "0.42" << "11");
-    t.rows.append(QStringList() << "下游堆石料" << "10" << "2.0" << "2.1" << "2.2" << "35" << "0" << "0.0" << "0.8" << "1000" << "0.3" << "0.37" << "11" << "0.37" << "11" << "0.37" << "11");
-    t.rows.append(QStringList() << "上游1级找平堆石" << "15" << "2.0" << "2.1" << "2.2" << "35" << "0" << "0.0" << "0.8" << "1000" << "0.3" << "0.37" << "11" << "0.37" << "11" << "0.37" << "11");
-    t.rows.append(QStringList() << "下游1级找平堆石" << "16" << "2.0" << "2.1" << "2.2" << "35" << "0" << "0.0" << "0.8" << "1000" << "0.3" << "0.37" << "11" << "0.37" << "11" << "0.37" << "11");
-    t.rows.append(QStringList() << "K5沉积粘土" << "42" << "1.85" << "1.90" << "2.00" << "16.4" << "0.0" << "21.8" << "0.87" << "270" << "0.47" << "0.46" << "0.05" << "0.46" << "0.05" << "0.46" << "0.05");
+    t.columns << "材料" << "编号" << "干容重" << "天然容重" << "饱和容重" << "φ0" << "Δφ" << "c" << "Rf" << "K" << "n" << "Kur" << "Nur" << "C1" << "n1" << "C2" << "n2" << "C3" << "n3";
+    t.rows.append(QStringList() << "上游铺盖（回填石渣料）" << "4" << "1.8" << "2.0" << "2.2" << "35" << "0" << "0.0" << "0.75" << "500" << "0.4" << "750" << "0.4" << "0.38" << "2.7" << "0.38" << "2.7" << "0.38" << "2.7");
+    t.rows.append(QStringList() << "上游堆石料" << "5" << "2.0" << "2.1" << "2.2" << "35" << "0" << "0.0" << "0.8" << "1000" << "0.3" << "1500" << "0.3" << "0.37" << "11" << "0.37" << "11" << "0.37" << "11");
+    t.rows.append(QStringList() << "上游过渡层" << "6" << "2.10" << "2.15" << "2.20" << "33" << "0" << "0" << "0.78" << "900" << "0.3" << "1350" << "0.3" << "0.42" << "11" << "0.42" << "11" << "0.42" << "11");
+    t.rows.append(QStringList() << "沥青砼心墙" << "7" << "2.10" << "2.35" << "2.40" << "24" << "0" << "120" << "0.82" << "600" << "0.4" << "900" << "0.4" << "0.42" << "7" << "0.42" << "7" << "0.42" << "7");
+    t.rows.append(QStringList() << "下游过渡层" << "9" << "2.10" << "2.15" << "2.20" << "33" << "0" << "0" << "0.78" << "900" << "0.3" << "1350" << "0.3" << "0.42" << "11" << "0.42" << "11" << "0.42" << "11");
+    t.rows.append(QStringList() << "下游堆石料" << "10" << "2.0" << "2.1" << "2.2" << "35" << "0" << "0.0" << "0.8" << "1000" << "0.3" << "1500" << "0.3" << "0.37" << "11" << "0.37" << "11" << "0.37" << "11");
+    t.rows.append(QStringList() << "上游1级找平堆石" << "15" << "2.0" << "2.1" << "2.2" << "35" << "0" << "0.0" << "0.8" << "1000" << "0.3" << "1500" << "0.3" << "0.37" << "11" << "0.37" << "11" << "0.37" << "11");
+    t.rows.append(QStringList() << "下游1级找平堆石" << "16" << "2.0" << "2.1" << "2.2" << "35" << "0" << "0.0" << "0.8" << "1000" << "0.3" << "1500" << "0.3" << "0.37" << "11" << "0.37" << "11" << "0.37" << "11");
+    t.rows.append(QStringList() << "K5沉积粘土" << "42" << "1.85" << "1.90" << "2.00" << "16.4" << "0.0" << "21.8" << "0.87" << "270" << "0.47" << "405" << "0.47" << "0.46" << "0.05" << "0.46" << "0.05" << "0.46" << "0.05");
     tables.append(t);
 
     t = {};
     t.modelName = QStringLiteral("锚杆单元模型");
     t.tableName = QStringLiteral("样表6 杆单元参数（黄金坪地下厂房）");
-    t.columns << "杆单元类型" << "序号" << "E1,E2" << "容重" << "面积" << "ft" << "间距" << "排距" << "预应力T" << "预应系数";
-    t.rows.append(QStringList() << "15m预应力锚索1500KN虚拟杆面积" << "20" << "206" << "7.80" << "0.002" << "1800" << "4.5" << "4.5" << "1500.0" << "1.0");
-    t.rows.append(QStringList() << "8m/9m普通锚杆φ32" << "21" << "206" << "7.80" << "0.000804" << "390" << "1.8" << "1.8" << "0.0" << "1.0");
-    t.rows.append(QStringList() << "6m/7m普通锚杆φ28" << "22" << "206" << "7.80" << "0.000616" << "390" << "1.8" << "1.8" << "0.0" << "0.85");
-    t.rows.append(QStringList() << "8m/9m普通锚杆φ32" << "23" << "206" << "7.80" << "0.000804" << "390" << "1.5" << "1.5" << "0.0" << "0.85");
-    t.rows.append(QStringList() << "15m预应力锚索1500KN虚拟杆面积" << "24" << "206" << "7.80" << "0.002" << "1800" << "4.0" << "4.0" << "1500" << "0.70");
-    t.rows.append(QStringList() << "20m预应力锚索1750KN虚拟杆面积" << "25" << "206" << "7.80" << "0.002" << "1800" << "4.0" << "4.0" << "1750" << "0.9");
-    t.rows.append(QStringList() << "45m对穿预应力锚索1750KN虚拟杆面积" << "26" << "206" << "7.80" << "0.002" << "1800" << "4.0" << "4.0" << "1750" << "0.9");
-    t.rows.append(QStringList() << "6m/7m普通锚杆φ28间排距1.5m" << "27" << "206" << "7.80" << "0.000616" << "390" << "1.5" << "1.5" << "0.0" << "0.9");
-    t.rows.append(QStringList() << "4.5m/5m普通锚杆φ25" << "28" << "206" << "7.80" << "0.000491" << "390" << "1.5" << "1.5" << "0.0" << "0.0");
-    t.rows.append(QStringList() << "20m预应力锚索1750KN虚拟杆面积" << "29" << "206" << "7.80" << "0.002" << "1800" << "4.5" << "4.5" << "1750" << "1.0");
+    t.columns << "杆单元类型" << "序号" << "E1" << "E2" << "容重" << "面积" << "Rt" << "Rc" << "Ryt" << "Ryc" << "间距" << "排距" << "预应力T" << "预应系数";
+    t.rows.append(QStringList() << "15m预应力锚索1500KN虚拟杆面积" << "20" << "206" << "206" << "7.80" << "0.002" << "1800" << "1800" << "1800" << "1800" << "4.5" << "4.5" << "1500.0" << "1.0");
+    t.rows.append(QStringList() << "8m/9m普通锚杆φ32" << "21" << "206" << "206" << "7.80" << "0.000804" << "390" << "390" << "390" << "390" << "1.8" << "1.8" << "0.0" << "1.0");
+    t.rows.append(QStringList() << "6m/7m普通锚杆φ28" << "22" << "206" << "206" << "7.80" << "0.000616" << "390" << "390" << "390" << "390" << "1.8" << "1.8" << "0.0" << "0.85");
+    t.rows.append(QStringList() << "8m/9m普通锚杆φ32" << "23" << "206" << "206" << "7.80" << "0.000804" << "390" << "390" << "390" << "390" << "1.5" << "1.5" << "0.0" << "0.85");
+    t.rows.append(QStringList() << "15m预应力锚索1500KN虚拟杆面积" << "24" << "206" << "206" << "7.80" << "0.002" << "1800" << "1800" << "1800" << "1800" << "4.0" << "4.0" << "1500" << "0.70");
+    t.rows.append(QStringList() << "20m预应力锚索1750KN虚拟杆面积" << "25" << "206" << "206" << "7.80" << "0.002" << "1800" << "1800" << "1800" << "1800" << "4.0" << "4.0" << "1750" << "0.9");
+    t.rows.append(QStringList() << "45m对穿预应力锚索1750KN虚拟杆面积" << "26" << "206" << "206" << "7.80" << "0.002" << "1800" << "1800" << "1800" << "1800" << "4.0" << "4.0" << "1750" << "0.9");
+    t.rows.append(QStringList() << "6m/7m普通锚杆φ28间排距1.5m" << "27" << "206" << "206" << "7.80" << "0.000616" << "390" << "390" << "390" << "390" << "1.5" << "1.5" << "0.0" << "0.9");
+    t.rows.append(QStringList() << "4.5m/5m普通锚杆φ25" << "28" << "206" << "206" << "7.80" << "0.000491" << "390" << "390" << "390" << "390" << "1.5" << "1.5" << "0.0" << "0.0");
+    t.rows.append(QStringList() << "20m预应力锚索1750KN虚拟杆面积" << "29" << "206" << "206" << "7.80" << "0.002" << "1800" << "1800" << "1800" << "1800" << "4.5" << "4.5" << "1750" << "1.0");
     tables.append(t);
 
     t = {};
@@ -290,26 +351,26 @@ QVector<ReferenceTableData> buildMaterialReferenceTables()
     t = {};
     t.modelName = QStringLiteral("南水非线性本构");
     t.tableName = QStringLiteral("样表9 土体南水模型参数（IB=-5）");
-    t.columns << "材料" << "编号" << "干容重" << "天然容重" << "饱和容重" << "φ0" << "Δφ" << "c" << "Rf" << "K" << "Kur" << "n" << "cd" << "nd" << "Rd";
-    t.rows.append(QStringList() << "垫层料" << "7" << "2.10" << "2.15" << "2.20" << "46.0" << "6.0" << "0.0" << "0.79" << "867" << "1133" << "0.39" << "0.0043" << "0.62" << "0.72");
-    t.rows.append(QStringList() << "过渡料" << "8" << "2.10" << "2.15" << "2.20" << "50.0" << "8.0" << "0.0" << "0.75" << "683" << "1000" << "0.31" << "0.0060" << "0.78" << "0.70");
-    t.rows.append(QStringList() << "堆石料" << "9" << "2.00" << "2.10" << "2.20" << "48.0" << "9.0" << "0.0" << "0.77" << "500" << "750" << "0.20" << "0.0100" << "0.75" << "0.75");
-    t.rows.append(QStringList() << "弱风化料" << "10" << "1.90" << "2.05" << "2.20" << "48.0" << "12.0" << "0.0" << "0.80" << "320" << "480" << "0.20" << "0.0150" << "0.56" << "0.80");
-    t.rows.append(QStringList() << "强风化料" << "11" << "1.80" << "2.00" << "2.20" << "43.0" << "11.0" << "0.0" << "0.63" << "120" << "180" << "0.37" << "0.0200" << "0.25" << "0.63");
-    t.rows.append(QStringList() << "超径石" << "12" << "2.00" << "2.10" << "2.20" << "48.0" << "9.0" << "0.0" << "0.77" << "500" << "750" << "0.20" << "0.0100" << "0.75" << "0.75");
+    t.columns << "材料" << "编号" << "干容重" << "天然容重" << "饱和容重" << "φ0" << "Δφ" << "c" << "Rf" << "K" << "n" << "Kur" << "Nur" << "cd" << "nd" << "Rd";
+    t.rows.append(QStringList() << "垫层料" << "7" << "2.10" << "2.15" << "2.20" << "46.0" << "6.0" << "0.0" << "0.79" << "867" << "0.39" << "1133" << "0.39" << "0.0043" << "0.62" << "0.72");
+    t.rows.append(QStringList() << "过渡料" << "8" << "2.10" << "2.15" << "2.20" << "50.0" << "8.0" << "0.0" << "0.75" << "683" << "0.31" << "1000" << "0.31" << "0.0060" << "0.78" << "0.70");
+    t.rows.append(QStringList() << "堆石料" << "9" << "2.00" << "2.10" << "2.20" << "48.0" << "9.0" << "0.0" << "0.77" << "500" << "0.20" << "750" << "0.20" << "0.0100" << "0.75" << "0.75");
+    t.rows.append(QStringList() << "弱风化料" << "10" << "1.90" << "2.05" << "2.20" << "48.0" << "12.0" << "0.0" << "0.80" << "320" << "0.20" << "480" << "0.20" << "0.0150" << "0.56" << "0.80");
+    t.rows.append(QStringList() << "强风化料" << "11" << "1.80" << "2.00" << "2.20" << "43.0" << "11.0" << "0.0" << "0.63" << "120" << "0.37" << "180" << "0.37" << "0.0200" << "0.25" << "0.63");
+    t.rows.append(QStringList() << "超径石" << "12" << "2.00" << "2.10" << "2.20" << "48.0" << "9.0" << "0.0" << "0.77" << "500" << "0.20" << "750" << "0.20" << "0.0100" << "0.75" << "0.75");
     tables.append(t);
 
     t = {};
     t.modelName = QStringLiteral("K-G本构");
     t.tableName = QStringLiteral("样表10 土体科大K-G模型参数(IB=-2)");
-    t.columns << "材料" << "编号" << "干容重" << "天然容重" << "饱和容重" << "Ki,Kie" << "αk,αke" << "Gi,Gie" << "αG,αGe" << "βG" << "a" << "b";
-    t.rows.append(QStringList() << "覆盖层3" << "4" << "1.8" << "2.0" << "2.2" << "168" << "68" << "114" << "115" << "-60" << "190" << "1.92");
-    t.rows.append(QStringList() << "覆盖层2" << "5" << "2.0" << "2.1" << "2.2" << "33" << "70" << "22" << "64" << "-35" << "63" << "1.83");
-    t.rows.append(QStringList() << "心墙掺砾料" << "6" << "2.10" << "2.15" << "2.20" << "80" << "94" << "106" << "112" << "-80" << "132" << "1.40");
-    t.rows.append(QStringList() << "反滤层1" << "7" << "2.10" << "2.35" << "2.40" << "168" << "110" << "114" << "194" << "-97" << "118" << "2.00");
-    t.rows.append(QStringList() << "反滤层2" << "9" << "2.10" << "2.15" << "2.20" << "170" << "110" << "104" << "187" << "-90" << "116" << "2.08");
-    t.rows.append(QStringList() << "过渡层" << "10" << "2.0" << "2.1" << "2.2" << "230" << "75" << "100" << "133" << "-70" << "140" << "1.90");
-    t.rows.append(QStringList() << "主堆石" << "15" << "2.0" << "2.1" << "2.2" << "300" << "41" << "120" << "108" << "-60" << "200" << "1.80");
+    t.columns << "材料" << "编号" << "干容重" << "天然容重" << "饱和容重" << "Ki" << "αk" << "Gi" << "αG" << "βG" << "a" << "b" << "Kie" << "αke" << "Gie" << "αGe";
+    t.rows.append(QStringList() << "覆盖层3" << "4" << "1.8" << "2.0" << "2.2" << "168" << "68" << "114" << "115" << "-60" << "190" << "1.92" << "168" << "68" << "114" << "115");
+    t.rows.append(QStringList() << "覆盖层2" << "5" << "2.0" << "2.1" << "2.2" << "33" << "70" << "22" << "64" << "-35" << "63" << "1.83" << "33" << "70" << "22" << "64");
+    t.rows.append(QStringList() << "心墙掺砾料" << "6" << "2.10" << "2.15" << "2.20" << "80" << "94" << "106" << "112" << "-80" << "132" << "1.40" << "80" << "94" << "106" << "112");
+    t.rows.append(QStringList() << "反滤层1" << "7" << "2.10" << "2.35" << "2.40" << "168" << "110" << "114" << "194" << "-97" << "118" << "2.00" << "168" << "110" << "114" << "194");
+    t.rows.append(QStringList() << "反滤层2" << "9" << "2.10" << "2.15" << "2.20" << "170" << "110" << "104" << "187" << "-90" << "116" << "2.08" << "170" << "110" << "104" << "187");
+    t.rows.append(QStringList() << "过渡层" << "10" << "2.0" << "2.1" << "2.2" << "230" << "75" << "100" << "133" << "-70" << "140" << "1.90" << "230" << "75" << "100" << "133");
+    t.rows.append(QStringList() << "主堆石" << "15" << "2.0" << "2.1" << "2.2" << "300" << "41" << "120" << "108" << "-60" << "200" << "1.80" << "300" << "41" << "120" << "108");
     tables.append(t);
 
     return tables;
@@ -730,16 +791,30 @@ bool MaterialManager::loadProject()
                 const QJsonObject properties = entryObj.value(QStringLiteral("properties")).toObject();
                 for (auto it = properties.constBegin(); it != properties.constEnd(); ++it)
                 {
+                    // 旧工程曾把静力->动力关系误存为动力材料属性。新版本按工况保存，
+                    // 加载时直接丢弃旧字段，避免它被当成“自定义列”重新加入材料模型。
+                    if (key == QStringLiteral("dam_dynamic") &&
+                        (it.key() == QStringLiteral("静力计算编号") ||
+                         it.key() == QStringLiteral("静力母材料编号")))
+                    {
+                        continue;
+                    }
                     entry.properties.insert(it.key(), it.value().toString());
                     if (!m_models[modelIndex].columns.contains(it.key()))
                     {
                         m_models[modelIndex].columns.append(it.key());
                     }
                 }
+                migrateLegacyMaterialProperties(key, &entry.properties);
                 for (const QString& column : m_models[modelIndex].columns)
                 {
                     if (!entry.properties.contains(column))
-                        entry.properties.insert(column, QStringLiteral("0"));
+                    {
+                        entry.properties.insert(
+                            column, MaterialManager::isAutoNumberColumn(column)
+                                        ? QString()
+                                        : defaultMaterialPropertyValue(key, column));
+                    }
                 }
 
                 const QJsonArray applied = entryObj.value(QStringLiteral("applied_matypes")).toArray();
@@ -777,6 +852,30 @@ bool MaterialManager::loadProject()
                 {
                     entry.seepageProperties.insert(it.key(), it.value().toString());
                 }
+
+                // 旧工程可能没有保存后来新增的高级参数。只补缺失项，不覆盖已有值。
+                const auto ensureSupplementalDefaults =
+                    [this, &entry](const QString& supplementalKey)
+                    {
+                        if (supplementalKey.isEmpty())
+                            return;
+                        for (const MaterialModel& supplemental : m_seepageModels)
+                        {
+                            if (supplemental.key != supplementalKey)
+                                continue;
+                            for (const QString& column : supplemental.columns)
+                            {
+                                if (isAutoNumberColumn(column) ||
+                                    entry.seepageProperties.contains(column))
+                                    continue;
+                                entry.seepageProperties.insert(
+                                    column, defaultMaterialPropertyValue(supplemental.key, column));
+                            }
+                            break;
+                        }
+                    };
+                ensureSupplementalDefaults(entry.seepageModelKey);
+                ensureSupplementalDefaults(entry.creepModelKey);
 
                 syncAutoNumberProperties(&m_models[modelIndex], &entry);
 
@@ -958,7 +1057,9 @@ QString MaterialManager::addMaterialToModel(const QString& modelKey, bool addToP
     entry.name = makeUniqueMaterialName(QString("材料%1").arg(maxIndex + 1));
     for (const QString& column : model->columns)
     {
-        entry.properties.insert(column, isAutoNumberColumn(column) ? QString() : QStringLiteral("0"));
+        entry.properties.insert(
+            column, isAutoNumberColumn(column) ? QString()
+                                               : defaultMaterialPropertyValue(model->key, column));
     }
 
     model->materials.append(entry);
@@ -990,6 +1091,11 @@ void MaterialManager::setupTreeWidget()
             if (kind == "MaterialEntry")
             {
                 ContextMenuHub::addSeparator(menu);
+                ContextMenuHub::addAction(menu, this, "重命名",
+                                          [this, uuid]
+                                          {
+                                              renameEntryFromProjectTree(uuid);
+                                          });
                 ContextMenuHub::addAction(menu, this, "删除",
                                           [this, uuid]
                                           {
@@ -1036,6 +1142,40 @@ void MaterialManager::setupTreeWidget()
         {
             return ctx.value("module").toString() == "Material";
         });
+}
+
+void MaterialManager::renameEntryFromProjectTree(const QString& entryId)
+{
+    MaterialEntry* entry = findEntry(entryId);
+    if (!entry)
+        return;
+
+    const QString currentName = entry->name.trimmed();
+    bool ok = false;
+    QString requestedName = QInputDialog::getText(
+        nullptr, QStringLiteral("重命名材料"), QStringLiteral("请输入新名称："),
+        QLineEdit::Normal, currentName, &ok);
+    if (!ok)
+        return;
+
+    requestedName = requestedName.trimmed();
+    if (requestedName.isEmpty())
+    {
+        QMessageBox::warning(nullptr, QStringLiteral("名称无效"),
+                             QStringLiteral("材料名称不能为空。"));
+        return;
+    }
+
+    const QString uniqueName = makeUniqueMaterialName(requestedName, entryId);
+    if (uniqueName == currentName)
+        return;
+
+    entry->name = uniqueName;
+    notifyEntryUpdated(entryId, true);
+    if (auto* widget = m_entryWidgets.value(entryId, nullptr))
+        widget->refreshEntryName();
+    if (m_materialManagerWidget)
+        m_materialManagerWidget->refreshSummary(m_models);
 }
 
 void MaterialManager::loadDefaultLibrary()
@@ -1228,14 +1368,17 @@ bool MaterialManager::changeEntryModel(const QString& entryId,
     MaterialModel& targetModel = m_models[targetModelIndex];
 
     // 不删除旧模型参数：当前模型只读取自身 columns，保留旧值可避免用户切回时丢失数据。
-    // 目标模型缺少的字段再补默认值。
+    // 目标模型缺少的字段再补默认值。若目标模型是旧版已存在的模型，先按旧规则补出
+    // 新拆分字段，避免切换后计算结果突然变化。
+    migrateLegacyMaterialProperties(targetModel.key, &movedEntry.properties);
     for (const QString& column : targetModel.columns)
     {
         if (!movedEntry.properties.contains(column))
         {
-            movedEntry.properties.insert(column,
-                                         isAutoNumberColumn(column) ? QString()
-                                                                    : QStringLiteral("0"));
+            movedEntry.properties.insert(
+                column, isAutoNumberColumn(column)
+                            ? QString()
+                            : defaultMaterialPropertyValue(targetModel.key, column));
         }
     }
 
@@ -1279,6 +1422,9 @@ void MaterialManager::notifyEntryUpdated(const QString& entryId, bool nameChange
         if (item && entry)
         {
             item->setText(0, entry->name);
+            item->setName(entry->name);
+            if (BasePage* page = item->getPage())
+                page->setDisplayName(entry->name);
         }
     }
 }
@@ -1399,10 +1545,16 @@ void MaterialManager::setValueStrings(QVector<QStringList> values)
                 m_models[index].columns.append(columnName);
             }
         }
+        migrateLegacyMaterialProperties(key, &entry.properties);
         for (const QString& column : m_models[index].columns)
         {
             if (!entry.properties.contains(column))
-                entry.properties.insert(column, QStringLiteral("0"));
+            {
+                entry.properties.insert(
+                    column, isAutoNumberColumn(column)
+                                ? QString()
+                                : defaultMaterialPropertyValue(m_models[index].key, column));
+            }
         }
 
         m_models[index].materials.append(entry);
@@ -1655,9 +1807,8 @@ QMap<int, QString> MaterialManager::damWetMaterialLabels(int sourceMatype) const
     return labels;
 }
 
-QMap<int, QString> MaterialManager::damDynamicMaterialLabels(int sourceMatype) const
+QMap<int, QString> MaterialManager::damDynamicMaterialLabels() const
 {
-    Q_UNUSED(sourceMatype);
     QMap<int, QString> labels;
     for (const auto& model : m_models)
     {
@@ -1677,30 +1828,6 @@ QMap<int, QString> MaterialManager::damDynamicMaterialLabels(int sourceMatype) c
         }
     }
     return labels;
-}
-
-bool MaterialManager::setDamDynamicSourceMatype(int dynamicMatype, int sourceMatype)
-{
-    if (!isComputableMatype(dynamicMatype) || !isComputableMatype(sourceMatype))
-        return false;
-    for (auto& model : m_models)
-    {
-        if (model.key != QStringLiteral("dam_dynamic"))
-            continue;
-        for (auto& entry : model.materials)
-        {
-            if (!m_addedEntryIds.contains(entry.id) || !entry.transitionOnly ||
-                entry.transitionMatype != dynamicMatype)
-            {
-                continue;
-            }
-            entry.properties.insert(QStringLiteral("静力计算编号"),
-                                    QString::number(sourceMatype));
-            notifyEntryUpdated(entry.id, false);
-            return true;
-        }
-    }
-    return false;
 }
 
 void MaterialManager::focusOnMaterial(const QString& entryId)
@@ -2347,7 +2474,8 @@ void MaterialManager::refreshEntryWidgetMatypes(const QString& entryId, const QS
     widget->refreshAppliedMatypes(applied, selectedMatype);
 }
 
-bool MaterialManager::generateCaculateFile()
+bool MaterialManager::generateCaculateFile(
+    const QMap<int, int>& damDynamicSourceMappings)
 {
     // ===== 1) 收集：只要“已添加到工程 + 关联了 MATYPE”的材料，并建立 matype ->
     // (model, entry) 映射 =====
@@ -2406,27 +2534,81 @@ bool MaterialManager::generateCaculateFile()
         return false;
     }
 
+    // 本次求解传入的静动关系必须同时指向已配置的坝体静力材料和动力材料。
+    // 这里校验的是“工况输入”，不会修改任何 MaterialEntry。
+    for (auto mappingIt = damDynamicSourceMappings.constBegin();
+         mappingIt != damDynamicSourceMappings.constEnd(); ++mappingIt)
+    {
+        const int dynamicMatype = mappingIt.key();
+        const int sourceMatype = mappingIt.value();
+        const auto dynamicIt = matypeMap.constFind(dynamicMatype);
+        const auto sourceIt = matypeMap.constFind(sourceMatype);
+        const bool dynamicOk =
+            isComputableMatype(dynamicMatype) && dynamicIt != matypeMap.constEnd() &&
+            dynamicIt->model && dynamicIt->model->key == QStringLiteral("dam_dynamic");
+        const bool sourceOk =
+            isComputableMatype(sourceMatype) && sourceMatype != dynamicMatype &&
+            sourceIt != matypeMap.constEnd() && sourceIt->model &&
+            isDamStaticModel(sourceIt->model->key);
+        if (!dynamicOk || !sourceOk)
+        {
+            QMessageBox::warning(
+                nullptr, QStringLiteral("动力材料关系无效"),
+                QStringLiteral("当前工况中的静动材料关系 %1 -> %2 无效。"
+                               "请检查静力材料是否已施加到坝体，以及动力材料是否已配置。")
+                    .arg(sourceMatype)
+                    .arg(dynamicMatype));
+            return false;
+        }
+    }
+
     for (auto it = matypeMap.constBegin(); it != matypeMap.constEnd(); ++it)
     {
         const MatInfo& info = it.value();
         if (!info.model || !info.entry)
             continue;
 
-        for (const QString& column : info.model->columns)
+        for (int columnIndex = 0; columnIndex < info.model->columns.size(); ++columnIndex)
         {
+            const QString& column = info.model->columns.at(columnIndex);
             if (isAutoNumberColumn(column))
                 continue;
-            bool ok = false;
-            info.entry->properties.value(column).trimmed().toDouble(&ok);
-            if (!ok)
+
+            // 围岩开挖模型中这两个参数是条件写入 CONMAT 的；未启用时不应因为
+            // 历史工程中的空值阻止计算。
+            if (info.model->key == QStringLiteral("huangjinping_underground_plant"))
             {
+                const QString excavationState =
+                    info.entry->properties.value(QStringLiteral("岩类分区"));
+                if (column == QStringLiteral("半开挖区荷载释放系数") &&
+                    excavationState != QStringLiteral("-1"))
+                {
+                    continue;
+                }
+                if (column == QStringLiteral("再生时对应开挖级") &&
+                    excavationState != QStringLiteral("1"))
+                {
+                    continue;
+                }
+            }
+
+            bool ok = false;
+            const double numericValue =
+                info.entry->properties.value(column).trimmed().toDouble(&ok);
+            if (!ok || !std::isfinite(numericValue))
+            {
+                const QString displayColumn =
+                    columnIndex < info.model->displayColumns.size() &&
+                            !info.model->displayColumns.at(columnIndex).trimmed().isEmpty()
+                        ? info.model->displayColumns.at(columnIndex)
+                        : column;
                 QMessageBox::warning(
                     nullptr, QStringLiteral("材料参数不完整"),
                     QStringLiteral("材料“%1”的“%2”必须填写为数值。")
                         .arg(info.entry->name.trimmed().isEmpty()
                                  ? QStringLiteral("未命名材料")
                                  : info.entry->name.trimmed(),
-                             column));
+                             displayColumn));
                 return false;
             }
         }
@@ -2448,13 +2630,21 @@ bool MaterialManager::generateCaculateFile()
             }
             if (!supplementalModel)
                 continue;
-            for (const QString& column : supplementalModel->columns)
+            for (int columnIndex = 0; columnIndex < supplementalModel->columns.size();
+                 ++columnIndex)
             {
+                const QString& column = supplementalModel->columns.at(columnIndex);
                 if (isAutoNumberColumn(column))
                     continue;
                 bool ok = false;
-                info.entry->seepageProperties.value(column).trimmed().toDouble(&ok);
-                if (!ok)
+                const double numericValue =
+                    info.entry->seepageProperties.value(column).trimmed().toDouble(&ok);
+                const QString displayColumn =
+                    columnIndex < supplementalModel->displayColumns.size() &&
+                            !supplementalModel->displayColumns.at(columnIndex).trimmed().isEmpty()
+                        ? supplementalModel->displayColumns.at(columnIndex)
+                        : column;
+                if (!ok || !std::isfinite(numericValue))
                 {
                     QMessageBox::warning(
                         nullptr, QStringLiteral("材料参数不完整"),
@@ -2462,34 +2652,33 @@ bool MaterialManager::generateCaculateFile()
                             .arg(info.entry->name.trimmed().isEmpty()
                                      ? QStringLiteral("未命名材料")
                                      : info.entry->name.trimmed(),
-                                 column));
+                                 displayColumn));
+                    return false;
+                }
+
+                const bool isPermeability =
+                    column == QStringLiteral("渗透系数K(Lu)") ||
+                    column == QStringLiteral("渗透系数Kx(Lu)") ||
+                    column == QStringLiteral("渗透系数Ky(Lu)") ||
+                    column == QStringLiteral("渗透系数Kz(Lu)");
+                const bool mustBePositive = isPermeability ||
+                                            column == QStringLiteral("比储量S") ||
+                                            column == QStringLiteral("允许比降");
+                if (mustBePositive && numericValue <= 0.0)
+                {
+                    QMessageBox::warning(
+                        nullptr, QStringLiteral("渗流参数无效"),
+                        QStringLiteral("材料“%1”的“%2”必须大于 0。")
+                            .arg(info.entry->name.trimmed().isEmpty()
+                                     ? QStringLiteral("未命名材料")
+                                     : info.entry->name.trimmed(),
+                                 displayColumn));
                     return false;
                 }
             }
         }
 
-        if (info.model->key == QStringLiteral("dam_dynamic"))
-        {
-            bool sourceOk = false;
-            const double sourceValue =
-                info.entry->properties.value(QStringLiteral("静力计算编号")).toDouble(&sourceOk);
-            const int sourceMatype =
-                sourceOk ? static_cast<int>(std::llround(sourceValue)) : -1;
-            const auto sourceIt = matypeMap.constFind(sourceMatype);
-            if (!sourceOk || std::fabs(sourceValue - sourceMatype) > 1.0e-8 ||
-                sourceMatype == it.key() || sourceIt == matypeMap.constEnd() ||
-                !sourceIt->model || sourceIt->model->key == QStringLiteral("dam_dynamic"))
-            {
-                QMessageBox::warning(
-                    nullptr, QStringLiteral("动力材料设置不完整"),
-                    QStringLiteral("材料“%1”需要选择一个已经配置的静力母材料编号，且不能指向动力材料自身。")
-                        .arg(info.entry->name.trimmed().isEmpty()
-                                 ? QStringLiteral("未命名材料")
-                                 : info.entry->name.trimmed()));
-                return false;
-            }
-        }
-        else if (info.model->key == QStringLiteral("huangjinping_underground_plant"))
+        if (info.model->key == QStringLiteral("huangjinping_underground_plant"))
         {
             bool sourceOk = false;
             const double sourceValue =
@@ -2634,11 +2823,13 @@ bool MaterialManager::generateCaculateFile()
         {
             const double tol = 1.0e-3;
             const double akLu = seepageValueOf(entry, QStringLiteral("渗透系数K(Lu)"));
+            const double specificStorage = seepageValueOf(entry, QStringLiteral("比储量S"));
             const double rip = seepageValueOf(entry, QStringLiteral("允许比降"));
             const double ak = akLu * 1.0e-7;
             setRow(96, ak);
             setRow(97, ak);
             setRow(98, ak);
+            setRow(101, specificStorage);
             setRow(60, rip);
             setRow(14, 1.0);
             setRow(15, 0.0);
@@ -2655,8 +2846,37 @@ bool MaterialManager::generateCaculateFile()
                 setRow(89, 2.0e3);
             if (values[90 - 1][matIndex] < tol)
                 setRow(90, 2.0e3);
-            if (values[101 - 1][matIndex] < tol)
-                setRow(101, 1.0);
+            return;
+        }
+        if (seepageModelKey == QStringLiteral("jk_corewall_anisotropic_seepage"))
+        {
+            const double tol = 1.0e-3;
+            const double kx = seepageValueOf(entry, QStringLiteral("渗透系数Kx(Lu)")) * 1.0e-7;
+            const double ky = seepageValueOf(entry, QStringLiteral("渗透系数Ky(Lu)")) * 1.0e-7;
+            const double kz = seepageValueOf(entry, QStringLiteral("渗透系数Kz(Lu)")) * 1.0e-7;
+            const double specificStorage = seepageValueOf(entry, QStringLiteral("比储量S"));
+            const double rip = seepageValueOf(entry, QStringLiteral("允许比降"));
+            setRow(96, kx);
+            setRow(97, ky);
+            setRow(98, kz);
+            setRow(101, specificStorage);
+            setRow(60, rip);
+            // 求解器当前直接按全局 X/Y/Z 使用 Kx/Ky/Kz，方向矩阵保持单位阵。
+            setRow(14, 1.0);
+            setRow(15, 0.0);
+            setRow(16, 0.0);
+            setRow(17, 0.0);
+            setRow(18, 1.0);
+            setRow(19, 0.0);
+            setRow(20, 0.0);
+            setRow(21, 0.0);
+            setRow(22, 1.0);
+            if (values[7 - 1][matIndex] < tol)
+                setRow(7, 2.0e3);
+            if (values[89 - 1][matIndex] < tol)
+                setRow(89, 2.0e3);
+            if (values[90 - 1][matIndex] < tol)
+                setRow(90, 2.0e3);
             return;
         }
         if (seepageModelKey == QStringLiteral("shenzhujiang_creep"))
@@ -2842,6 +3062,12 @@ bool MaterialManager::generateCaculateFile()
             const double rouTm3 = valueOf(info.entry, QStringLiteral("容重t/m3"));
             const double ff = valueOf(info.entry, QStringLiteral("抗剪断强度内摩擦系数"));
             const double coMpa = valueOf(info.entry, QStringLiteral("凝聚力C‘（MPa）"));
+            const double rcInputMpa = valueOf(info.entry, QStringLiteral("抗压强度Rc（MPa）"));
+            const double rtInputMpa = valueOf(info.entry, QStringLiteral("抗拉强度Rt（MPa）"));
+            const double residualFf =
+                valueOf(info.entry, QStringLiteral("残余抗剪断强度内摩擦系数"));
+            const double residualCoMpa =
+                valueOf(info.entry, QStringLiteral("残余凝聚力C‘（MPa）"));
             const double dilationAngle = valueOf(info.entry, QStringLiteral("剪胀角(°)"));
 
             const double ibuck = 2.0;
@@ -2856,27 +3082,42 @@ bool MaterialManager::generateCaculateFile()
             const double fai = std::atan(ff) * 180.0 / 3.141592653589793;
             const double gg = (std::fabs(1.0 + pu) > 1.0e-12) ? (ee / 2.0 / (1.0 + pu)) : 0.0;
 
-            // 默认替代：用 Mohr-Coulomb 近似计算 RC/RT（原 DEFAULT_RTRC 未给出）
-            double rt = 0.0;
-            double rc = 0.0;
+            // Rc/Rt 填 0 时保持旧版自动推导；大于 0 时使用用户独立输入。
+            double rt = rtInputMpa > 0.0 ? rtInputMpa * 1.0e6 : 0.0;
+            double rc = rcInputMpa > 0.0 ? rcInputMpa * 1.0e6 : 0.0;
 
-            if (co > CO_THRESHOLD)
+            if (rt <= 0.0 || rc <= 0.0)
             {
-                const double faiRad = fai * 3.141592653589793 / 180.0;
-                const double sinF = std::sin(faiRad);
-                const double cosF = std::cos(faiRad);
+                double autoRt = 0.0;
+                double autoRc = 0.0;
+                if (co > CO_THRESHOLD)
+                {
+                    const double faiRad = fai * 3.141592653589793 / 180.0;
+                    const double sinF = std::sin(faiRad);
+                    const double cosF = std::cos(faiRad);
 
-                rt = 2.0 * co * cosF / (1.0 + sinF);
-                rc = 2.0 * co * cosF / (1.0 - sinF);
+                    autoRt = 2.0 * co * cosF / (1.0 + sinF);
+                    autoRc = 2.0 * co * cosF / (1.0 - sinF);
+                    if (autoRt < co)
+                        autoRt = co;
+                }
+                else
+                {
+                    autoRt = 1.0;
+                    autoRc = 2.0;
+                }
 
-                if (rt < co)
-                    rt = co;
+                if (rt <= 0.0)
+                    rt = autoRt;
+                if (rc <= 0.0)
+                    rc = autoRc;
             }
-            else
-            {
-                rt = 1.0;
-                rc = 2.0;
-            }
+
+            const double faiResidual =
+                residualFf > 0.0
+                    ? std::atan(residualFf) * 180.0 / 3.141592653589793
+                    : fai;
+            const double coResidual = residualCoMpa > 0.0 ? residualCoMpa * 1.0e6 : co;
 
             auto setRow = [&](int row, double value)
             {
@@ -2917,8 +3158,8 @@ bool MaterialManager::generateCaculateFile()
             setRow(84, matypeOri);
             setRow(91, rc);
             setRow(92, rt);
-            setRow(94, fai);
-            setRow(95, co);
+            setRow(94, faiResidual);
+            setRow(95, coResidual);
             setRow(99, dilationAngle);
             setRow(100, itagEx);
 
@@ -2946,6 +3187,7 @@ bool MaterialManager::generateCaculateFile()
             const double dryK = valueOf(info.entry, QStringLiteral("K"));
             const double dryN = valueOf(info.entry, QStringLiteral("n"));
             const double dryKur = valueOf(info.entry, QStringLiteral("Kur"));
+            const double dryNur = valueOf(info.entry, QStringLiteral("Nur"));
             const double dryKb = valueOf(info.entry, QStringLiteral("Kb"));
             const double dryM = valueOf(info.entry, QStringLiteral("m"));
 
@@ -2972,7 +3214,7 @@ bool MaterialManager::generateCaculateFile()
             setRow(70, dryN);
             setRow(71, rf);
             setRow(72, dryKur);
-            setRow(73, dryN);
+            setRow(73, dryNur);
             setRow(74, dryKb);
             setRow(75, dryM);
             setRow(76, dFai);
@@ -2996,6 +3238,8 @@ bool MaterialManager::generateCaculateFile()
             const double rf = valueOf(info.entry, QStringLiteral("Rf"));
             const double dryK = valueOf(info.entry, QStringLiteral("K"));
             const double dryN = valueOf(info.entry, QStringLiteral("n"));
+            const double dryKur = valueOf(info.entry, QStringLiteral("Kur"));
+            const double dryNur = valueOf(info.entry, QStringLiteral("Nur"));
             const double g = valueOf(info.entry, QStringLiteral("G"));
             const double d = valueOf(info.entry, QStringLiteral("D"));
             const double f = valueOf(info.entry, QStringLiteral("F"));
@@ -3021,8 +3265,8 @@ bool MaterialManager::generateCaculateFile()
             setRow(69, dryK);
             setRow(70, dryN);
             setRow(71, rf);
-            setRow(72, dryK * 1.5);   // 对应 DRYK * 1.5 (公式中提到的 KUR)
-            setRow(73, dryN);          // 对应 DRYN (公式中提到的 NUR)
+            setRow(72, dryKur);
+            setRow(73, dryNur);
             setRow(77, g);             // 对应 DRYG
             setRow(78, d);             // 对应 DRYD
             setRow(79, f);             // 对应 DRYF
@@ -3049,6 +3293,8 @@ bool MaterialManager::generateCaculateFile()
             const double rf = valueOf(info.entry, QStringLiteral("Rf"));
             const double dryK = valueOf(info.entry, QStringLiteral("K"));
             const double dryN = valueOf(info.entry, QStringLiteral("n"));
+            const double dryKur = valueOf(info.entry, QStringLiteral("Kur"));
+            const double dryNur = valueOf(info.entry, QStringLiteral("Nur"));
             const double cbk1 = valueOf(info.entry, QStringLiteral("C1"));
             const double cn1 = valueOf(info.entry, QStringLiteral("n1"));
             const double cbk2 = valueOf(info.entry, QStringLiteral("C2"));
@@ -3077,8 +3323,8 @@ bool MaterialManager::generateCaculateFile()
             setRow(69, dryK);
             setRow(70, dryN);
             setRow(71, rf);
-            setRow(72, dryK * 1.5);
-            setRow(73, dryN);
+            setRow(72, dryKur);
+            setRow(73, dryNur);
             setRow(75, dryN);
             setRow(76, dFai);
             setRow(11, fai);
@@ -3105,8 +3351,9 @@ bool MaterialManager::generateCaculateFile()
             const double coKpa = valueOf(info.entry, QStringLiteral("c(KPa)"));
             const double rf = valueOf(info.entry, QStringLiteral("Rf"));
             const double dryK = valueOf(info.entry, QStringLiteral("K"));
-            const double dryKur = valueOf(info.entry, QStringLiteral("Kur"));
             const double dryN = valueOf(info.entry, QStringLiteral("n"));
+            const double dryKur = valueOf(info.entry, QStringLiteral("Kur"));
+            const double dryNur = valueOf(info.entry, QStringLiteral("Nur"));
             const double dryCd = valueOf(info.entry, QStringLiteral("cd"));
             const double dryNd = valueOf(info.entry, QStringLiteral("nd"));
             const double dryRd = valueOf(info.entry, QStringLiteral("Rd"));
@@ -3133,7 +3380,7 @@ bool MaterialManager::generateCaculateFile()
             setRow(70, dryN);
             setRow(71, rf);
             setRow(72, dryKur);
-            setRow(73, dryN);
+            setRow(73, dryNur);
             setRow(77, dryCd);
             setRow(78, dryNd);
             setRow(79, dryRd);
@@ -3158,6 +3405,10 @@ bool MaterialManager::generateCaculateFile()
             const double betag = valueOf(info.entry, QStringLiteral("βG"));
             const double akg = valueOf(info.entry, QStringLiteral("a(10^5Pa)"));
             const double bkg = valueOf(info.entry, QStringLiteral("b"));
+            const double akie = valueOf(info.entry, QStringLiteral("Kie(10^5Pa)"));
+            const double alfake = valueOf(info.entry, QStringLiteral("αke"));
+            const double agie = valueOf(info.entry, QStringLiteral("Gie(10^5Pa)"));
+            const double alfage = valueOf(info.entry, QStringLiteral("αGe"));
 
             const double dryRou = dryRouTm3 * 1.0e3;
             const double pacRou = pacRouTm3 * 1.0e3;
@@ -3183,10 +3434,10 @@ bool MaterialManager::generateCaculateFile()
             setRow(75, betag);
             setRow(72, akg);
             setRow(73, bkg);
-            setRow(76, aki);
-            setRow(78, alfak);
-            setRow(77, agi);
-            setRow(79, alfag);
+            setRow(76, akie);
+            setRow(78, alfake);
+            setRow(77, agie);
+            setRow(79, alfage);
             applySupplementalModels(info.entry, matIndex);
             continue;
         }
@@ -3307,7 +3558,9 @@ bool MaterialManager::generateCaculateFile()
 
         if (info.model->key == QStringLiteral("dam_dynamic")) // 坝料动力
         {
-            const double maori = valueOf(info.entry, QStringLiteral("静力计算编号"));
+            // MAORI 是本次计算中的工况关系，不是动力材料的固有属性。
+            const int sourceMatype = damDynamicSourceMappings.value(matype, 0);
+            const double maori = static_cast<double>(sourceMatype);
             const double ifliqd = valueOf(info.entry, QStringLiteral("是否液化"));
             const double dryk1 = valueOf(info.entry, QStringLiteral("DRYK1(KPa)"));
             const double dryn1 = valueOf(info.entry, QStringLiteral("DRYN1"));
@@ -3336,16 +3589,6 @@ bool MaterialManager::generateCaculateFile()
                 cnp = 0.9;
 
             const double co = coKpa * 1.0e3;
-
-            const int maoriInt = qRound64(maori);
-            if (maoriInt > 0 && maoriInt <= nmat)
-            {
-                const int maoriIndex = maoriInt - 1;
-                for (int row = 0; row < ncon; ++row)
-                {
-                    values[row][matIndex] = values[row][maoriIndex];
-                }
-            }
 
             auto setRow = [&](int row, double value)
             {
@@ -3391,6 +3634,7 @@ bool MaterialManager::generateCaculateFile()
         {
             const double tol = 1.0e-3;
             const double akLu = valueOf(info.entry, QStringLiteral("渗透系数K(Lu)"));
+            const double specificStorage = valueOf(info.entry, QStringLiteral("比储量S"));
             const double rip = valueOf(info.entry, QStringLiteral("允许比降"));
             const double ak = akLu * 1.0e-7;
 
@@ -3405,6 +3649,7 @@ bool MaterialManager::generateCaculateFile()
             setRow(96, ak);
             setRow(97, ak);
             setRow(98, ak);
+            setRow(101, specificStorage);
             setRow(60, rip);
             setRow(14, 1.0);
             setRow(15, 0.0);
@@ -3422,17 +3667,58 @@ bool MaterialManager::generateCaculateFile()
                 setRow(89, 2.0e3);
             if (values[90 - 1][matIndex] < tol)
                 setRow(90, 2.0e3);
-            if (values[101 - 1][matIndex] < tol)
-                setRow(101, 1.0);
+            continue;
+        }
+
+        if (info.model->key == QStringLiteral("jk_corewall_anisotropic_seepage"))
+        {
+            const double tol = 1.0e-3;
+            const double kx = valueOf(info.entry, QStringLiteral("渗透系数Kx(Lu)")) * 1.0e-7;
+            const double ky = valueOf(info.entry, QStringLiteral("渗透系数Ky(Lu)")) * 1.0e-7;
+            const double kz = valueOf(info.entry, QStringLiteral("渗透系数Kz(Lu)")) * 1.0e-7;
+            const double specificStorage = valueOf(info.entry, QStringLiteral("比储量S"));
+            const double rip = valueOf(info.entry, QStringLiteral("允许比降"));
+
+            auto setRow = [&](int row, double value)
+            {
+                if (row >= 1 && row <= ncon)
+                    values[row - 1][matIndex] = value;
+            };
+
+            setRow(96, kx);
+            setRow(97, ky);
+            setRow(98, kz);
+            setRow(101, specificStorage);
+            setRow(60, rip);
+            setRow(14, 1.0);
+            setRow(15, 0.0);
+            setRow(16, 0.0);
+            setRow(17, 0.0);
+            setRow(18, 1.0);
+            setRow(19, 0.0);
+            setRow(20, 0.0);
+            setRow(21, 0.0);
+            setRow(22, 1.0);
+
+            if (values[7 - 1][matIndex] < tol)
+                setRow(7, 2.0e3);
+            if (values[89 - 1][matIndex] < tol)
+                setRow(89, 2.0e3);
+            if (values[90 - 1][matIndex] < tol)
+                setRow(90, 2.0e3);
             continue;
         }
 
         if (info.model->key == QStringLiteral("huangjinping_bar_element")) // 黄金坪杆单元
         {
             const double ee1 = valueOf(info.entry, QStringLiteral("变模E1,E2（GPa）"));
+            const double ee2 = valueOf(info.entry, QStringLiteral("屈服后变模E2（GPa）"));
             const double dryRou = valueOf(info.entry, QStringLiteral("容重t/m3"));
             const double area = valueOf(info.entry, QStringLiteral("杆面积（m2）"));
-            const double dryRt = valueOf(info.entry, QStringLiteral("抗拉（压）强度ft（MPa）"));
+            const double rtMpa = valueOf(info.entry, QStringLiteral("抗拉（压）强度ft（MPa）"));
+            const double rcMpa = valueOf(info.entry, QStringLiteral("极限抗压强度Rc（MPa）"));
+            const double rytMpa = valueOf(info.entry, QStringLiteral("屈服抗拉强度Ryt（MPa）"));
+            const double rycMpa = valueOf(info.entry, QStringLiteral("屈服抗压强度Ryc（MPa）"));
             const double ba = valueOf(info.entry, QStringLiteral("间距(m)"));
             const double bb = valueOf(info.entry, QStringLiteral("排距(m)"));
             const double fbar = valueOf(info.entry, QStringLiteral("预应力T（KN）"));
@@ -3448,15 +3734,16 @@ bool MaterialManager::generateCaculateFile()
 
             setRow(1, 1.0);
             setRow(13, 2.0);
-            setRow(12, dryRt * 1.0e6 * 0.512);
+            // 杆单元的 c 项沿用旧版由抗拉强度构造的兼容值。
+            setRow(12, rtMpa * 1.0e6 * 0.512);
             setRow(2, ee1 * 1.0e9);
-            setRow(3, ee1 * 1.0e9);
+            setRow(3, ee2 * 1.0e9);
             setRow(7, dryRou * 1.0e3);
             setRow(8, area);
-            setRow(10, dryRt * 1.0e6);
-            setRow(92, dryRt * 1.0e6);
-            setRow(9, dryRt * 1.0e6);
-            setRow(91, dryRt * 1.0e6);
+            setRow(10, rtMpa * 1.0e6);
+            setRow(9, rcMpa * 1.0e6);
+            setRow(92, rytMpa * 1.0e6);
+            setRow(91, rycMpa * 1.0e6);
             setRow(93, fbar * 1.0e3);
             setRow(38, ba);
             setRow(37, bb);
@@ -3501,9 +3788,13 @@ bool MaterialManager::generateCaculateFile()
         }
 
         const int matIndex = it.key() - 1;
-        const int sourceMatype =
-            qRound64(valueOf(info.entry, QStringLiteral("静力计算编号")));
+        const auto mappingIt = damDynamicSourceMappings.constFind(it.key());
+        if (mappingIt == damDynamicSourceMappings.constEnd())
+            continue; // 本次计算没有使用该动力材料，不建立静力继承关系。
+        const int sourceMatype = mappingIt.value();
         const int sourceIndex = sourceMatype - 1;
+        if (sourceIndex < 0 || sourceIndex >= nmat)
+            continue; // 前置校验已处理正常错误，这里仅做越界保护。
         QMap<int, double> overrides;
         for (int row : dynamicOverrideRows)
             overrides.insert(row, values[row - 1][matIndex]);
@@ -3933,11 +4224,24 @@ bool MaterialManager::importIMATFile(const QString& filePath, int* importedCount
         const double k1 = rowValue(matIndex, 96);
         const double k2 = rowValue(matIndex, 97);
         const double k3 = rowValue(matIndex, 98);
+        const double specificStorage = rowValue(matIndex, 101);
         const double rip = rowValue(matIndex, 60);
-        if (!nearlyEqual(k1, 0.0) && nearlyEqual(k1, k2) && nearlyEqual(k1, k3))
+        const bool hasPermeability =
+            !nearlyEqual(k1, 0.0) || !nearlyEqual(k2, 0.0) || !nearlyEqual(k3, 0.0);
+        if (hasPermeability && nearlyEqual(k1, k2) && nearlyEqual(k1, k3))
         {
             entry.seepageModelKey = QStringLiteral("jk_corewall_steady_seepage");
             setSeepageProperty(entry, QStringLiteral("渗透系数K(Lu)"), k1 / 1.0e-7);
+            setSeepageProperty(entry, QStringLiteral("比储量S"), specificStorage);
+            setSeepageProperty(entry, QStringLiteral("允许比降"), rip);
+        }
+        else if (hasPermeability)
+        {
+            entry.seepageModelKey = QStringLiteral("jk_corewall_anisotropic_seepage");
+            setSeepageProperty(entry, QStringLiteral("渗透系数Kx(Lu)"), k1 / 1.0e-7);
+            setSeepageProperty(entry, QStringLiteral("渗透系数Ky(Lu)"), k2 / 1.0e-7);
+            setSeepageProperty(entry, QStringLiteral("渗透系数Kz(Lu)"), k3 / 1.0e-7);
+            setSeepageProperty(entry, QStringLiteral("比储量S"), specificStorage);
             setSeepageProperty(entry, QStringLiteral("允许比降"), rip);
         }
 
@@ -4042,15 +4346,30 @@ bool MaterialManager::importIMATFile(const QString& filePath, int* importedCount
             setProperty(entry, QStringLiteral("抗剪断强度内摩擦系数"),
                         std::tan(rowValue(matIndex, 11) * 3.141592653589793 / 180.0));
             setProperty(entry, QStringLiteral("凝聚力C‘（MPa）"), rowValue(matIndex, 12) / 1.0e6);
+            setProperty(entry, QStringLiteral("抗压强度Rc（MPa）"), rowValue(matIndex, 9) / 1.0e6);
+            setProperty(entry, QStringLiteral("抗拉强度Rt（MPa）"), rowValue(matIndex, 10) / 1.0e6);
+            setProperty(entry, QStringLiteral("残余抗剪断强度内摩擦系数"),
+                        std::tan(rowValue(matIndex, 94) * 3.141592653589793 / 180.0));
+            setProperty(entry, QStringLiteral("残余凝聚力C‘（MPa）"),
+                        rowValue(matIndex, 95) / 1.0e6);
             setProperty(entry, QStringLiteral("剪胀角(°)"), rowValue(matIndex, 99));
         }
         else if (model->key == QStringLiteral("huangjinping_bar_element"))
         {
             setProperty(entry, QStringLiteral("序号"), matype);
             setProperty(entry, QStringLiteral("变模E1,E2（GPa）"), rowValue(matIndex, 2) / 1.0e9);
+            setProperty(entry, QStringLiteral("屈服后变模E2（GPa）"),
+                        rowValue(matIndex, 3) / 1.0e9);
             setProperty(entry, QStringLiteral("容重t/m3"), rowValue(matIndex, 7) / 1.0e3);
             setProperty(entry, QStringLiteral("杆面积（m2）"), rowValue(matIndex, 8));
-            setProperty(entry, QStringLiteral("抗拉（压）强度ft（MPa）"), rowValue(matIndex, 10) / 1.0e6);
+            setProperty(entry, QStringLiteral("抗拉（压）强度ft（MPa）"),
+                        rowValue(matIndex, 10) / 1.0e6);
+            setProperty(entry, QStringLiteral("极限抗压强度Rc（MPa）"),
+                        rowValue(matIndex, 9) / 1.0e6);
+            setProperty(entry, QStringLiteral("屈服抗拉强度Ryt（MPa）"),
+                        rowValue(matIndex, 92) / 1.0e6);
+            setProperty(entry, QStringLiteral("屈服抗压强度Ryc（MPa）"),
+                        rowValue(matIndex, 91) / 1.0e6);
             setProperty(entry, QStringLiteral("间距(m)"), rowValue(matIndex, 38));
             setProperty(entry, QStringLiteral("排距(m)"), rowValue(matIndex, 37));
             setProperty(entry, QStringLiteral("预应力T（KN）"), rowValue(matIndex, 93) / 1.0e3);
@@ -4059,7 +4378,7 @@ bool MaterialManager::importIMATFile(const QString& filePath, int* importedCount
         else if (model->key == QStringLiteral("dam_dynamic"))
         {
             setProperty(entry, QStringLiteral("编号"), matype);
-            setProperty(entry, QStringLiteral("静力计算编号"), rowValue(matIndex, 84));
+            // CONMAT(84) 属于求解时的静动关联，不导入为材料固有属性。
             setProperty(entry, QStringLiteral("是否液化"), rowValue(matIndex, 13));
             setProperty(entry, QStringLiteral("DRYK1(KPa)"), rowValue(matIndex, 80));
             setProperty(entry, QStringLiteral("DRYN1"), rowValue(matIndex, 81));
@@ -4143,6 +4462,10 @@ bool MaterialManager::importIMATFile(const QString& filePath, int* importedCount
                 setProperty(entry, QStringLiteral("βG"), rowValue(matIndex, 75));
                 setProperty(entry, QStringLiteral("a(10^5Pa)"), rowValue(matIndex, 72));
                 setProperty(entry, QStringLiteral("b"), rowValue(matIndex, 73));
+                setProperty(entry, QStringLiteral("Kie(10^5Pa)"), rowValue(matIndex, 76));
+                setProperty(entry, QStringLiteral("αke"), rowValue(matIndex, 78));
+                setProperty(entry, QStringLiteral("Gie(10^5Pa)"), rowValue(matIndex, 77));
+                setProperty(entry, QStringLiteral("αGe"), rowValue(matIndex, 79));
             }
             else
             {
@@ -4152,11 +4475,14 @@ bool MaterialManager::importIMATFile(const QString& filePath, int* importedCount
                 if (ib == -1)
                 {
                     setProperty(entry, QStringLiteral("Kur"), rowValue(matIndex, 72));
+                    setProperty(entry, QStringLiteral("Nur"), rowValue(matIndex, 73));
                     setProperty(entry, QStringLiteral("Kb"), rowValue(matIndex, 74));
                     setProperty(entry, QStringLiteral("m"), rowValue(matIndex, 75));
                 }
                 else if (ib == -3)
                 {
+                    setProperty(entry, QStringLiteral("Kur"), rowValue(matIndex, 72));
+                    setProperty(entry, QStringLiteral("Nur"), rowValue(matIndex, 73));
                     setProperty(entry, QStringLiteral("G"), rowValue(matIndex, 77));
                     setProperty(entry, QStringLiteral("D"), rowValue(matIndex, 78));
                     setProperty(entry, QStringLiteral("F"), rowValue(matIndex, 79));
@@ -4164,12 +4490,15 @@ bool MaterialManager::importIMATFile(const QString& filePath, int* importedCount
                 else if (ib == -5)
                 {
                     setProperty(entry, QStringLiteral("Kur"), rowValue(matIndex, 72));
+                    setProperty(entry, QStringLiteral("Nur"), rowValue(matIndex, 73));
                     setProperty(entry, QStringLiteral("cd"), rowValue(matIndex, 77));
                     setProperty(entry, QStringLiteral("nd"), rowValue(matIndex, 78));
                     setProperty(entry, QStringLiteral("Rd"), rowValue(matIndex, 79));
                 }
                 else if (ib == -6)
                 {
+                    setProperty(entry, QStringLiteral("Kur"), rowValue(matIndex, 72));
+                    setProperty(entry, QStringLiteral("Nur"), rowValue(matIndex, 73));
                     setProperty(entry, QStringLiteral("C1"), rowValue(matIndex, 109));
                     setProperty(entry, QStringLiteral("n1"), rowValue(matIndex, 110));
                     setProperty(entry, QStringLiteral("C2"), rowValue(matIndex, 111));
@@ -4217,9 +4546,10 @@ bool MaterialManager::importIMATFile(const QString& filePath, int* importedCount
     return true;
 }
 
-bool MaterialManager::generateIMATFile()
+bool MaterialManager::generateIMATFile(
+    const QMap<int, int>& damDynamicSourceMappings)
 {
-    return generateCaculateFile();
+    return generateCaculateFile(damDynamicSourceMappings);
 }
 
 void MaterialManager::clearMatypeHighlight(const QString& entryId)

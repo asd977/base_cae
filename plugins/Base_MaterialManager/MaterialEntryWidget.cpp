@@ -3,21 +3,32 @@
 #include <CustomComboBox.h>
 
 #include <QAbstractItemView>
+#include <QAbstractScrollArea>
 #include <QBrush>
 #include <QCheckBox>
 #include <QColor>
 #include <QDoubleValidator>
+#include <QLocale>
+#include <QPointer>
 #include <QFontDatabase>
+#include <QFrame>
 #include <QHBoxLayout>
 #include <QLabel>
 #include <QMessageBox>
+#include <QPainter>
+#include <QPainterPath>
 #include <QMetaObject>
+#include <QMouseEvent>
+#include <QResizeEvent>
+#include <QPaintEvent>
 #include <QScopedValueRollback>
+#include <QScrollBar>
 #include <QSet>
 #include <QSizePolicy>
 #include <QSignalBlocker>
 #include <QSpinBox>
 #include <QTimer>
+#include <QToolButton>
 #include <QVBoxLayout>
 #include <algorithm>
 #include <PickManager.h>
@@ -29,6 +40,111 @@
 
 namespace
 {
+
+
+
+class CollapsibleSectionButton final : public QToolButton
+{
+  public:
+    explicit CollapsibleSectionButton(const QString& title, bool expanded, QWidget* parent = nullptr)
+        : QToolButton(parent)
+    {
+        setText(title);
+        setCheckable(true);
+        setChecked(expanded);
+        setAutoRaise(true);
+        setFocusPolicy(Qt::NoFocus);
+        setCursor(Qt::PointingHandCursor);
+        setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
+        setMinimumHeight(34);
+        setToolButtonStyle(Qt::ToolButtonTextOnly);
+    }
+
+    QSize sizeHint() const override
+    {
+        QSize hint = QToolButton::sizeHint();
+        hint.setHeight(qMax(34, hint.height()));
+        return hint;
+    }
+
+  protected:
+    void paintEvent(QPaintEvent*) override
+    {
+        QPainter painter(this);
+        painter.setRenderHint(QPainter::Antialiasing, true);
+
+        if (underMouse())
+        {
+            QColor hover = palette().color(QPalette::AlternateBase);
+            hover.setAlpha(80);
+            painter.fillRect(rect(), hover);
+        }
+
+        const QColor divider = palette().color(QPalette::Midlight);
+        painter.setPen(divider);
+        painter.drawLine(0, height() - 1, width(), height() - 1);
+
+        QPen arrowPen(palette().color(QPalette::Text));
+        arrowPen.setWidthF(1.5);
+        arrowPen.setCapStyle(Qt::RoundCap);
+        arrowPen.setJoinStyle(Qt::RoundJoin);
+        painter.setPen(arrowPen);
+        painter.setBrush(Qt::NoBrush);
+
+        const qreal centerY = height() / 2.0;
+        QPainterPath arrow;
+        if (isChecked())
+        {
+            arrow.moveTo(7.5, centerY - 2.5);
+            arrow.lineTo(11.5, centerY + 1.5);
+            arrow.lineTo(15.5, centerY - 2.5);
+        }
+        else
+        {
+            arrow.moveTo(9.0, centerY - 4.0);
+            arrow.lineTo(13.0, centerY);
+            arrow.lineTo(9.0, centerY + 4.0);
+        }
+        painter.drawPath(arrow);
+
+        QFont titleFont = font();
+        titleFont.setWeight(QFont::DemiBold);
+        painter.setFont(titleFont);
+        const QPalette::ColorGroup textGroup =
+            isEnabled() ? QPalette::Active : QPalette::Disabled;
+        painter.setPen(palette().color(textGroup, QPalette::Text));
+        painter.drawText(rect().adjusted(24, 0, -4, 0),
+                         Qt::AlignLeft | Qt::AlignVCenter, text());
+    }
+};
+
+class AppliedRegionListWidget final : public QListWidget
+{
+  public:
+    explicit AppliedRegionListWidget(QWidget* parent = nullptr) : QListWidget(parent) {}
+
+  protected:
+    void paintEvent(QPaintEvent* event) override
+    {
+        QListWidget::paintEvent(event);
+        if (count() != 0)
+            return;
+
+        QPainter painter(viewport());
+        const QColor base = palette().color(QPalette::Base);
+        const QColor text = palette().color(QPalette::WindowText);
+        const qreal weight = 0.48;
+        const QColor muted = QColor::fromRgbF(
+            base.redF() * (1.0 - weight) + text.redF() * weight,
+            base.greenF() * (1.0 - weight) + text.greenF() * weight,
+            base.blueF() * (1.0 - weight) + text.blueF() * weight);
+        painter.setPen(muted);
+        painter.drawText(viewport()->rect().adjusted(10, 0, -10, 0),
+                         Qt::AlignLeft | Qt::AlignVCenter,
+                         QStringLiteral("暂无已施加区域"));
+    }
+};
+
 constexpr int FIRST_COMPUTABLE_MATYPE = 2;
 constexpr int FIRST_SUGGESTED_MATYPE = 3;
 constexpr int MAX_SOLVER_MATYPE = 300;
@@ -45,6 +161,460 @@ bool isDamStaticMaterialModel(const QString& modelKey)
         QStringLiteral("soil_emu"), QStringLiteral("soil_nanshui"),
         QStringLiteral("soil_emu_crush")};
     return keys.contains(modelKey);
+}
+
+// “基本参数”区域只保留日常建模最常修改的主参数。
+// 这里只控制界面分组，不改变 MaterialEntry 的存储，也不改变 IMAT/CONMAT 输出。
+bool isBasicMaterialColumn(const QString& modelKey, const QString& column)
+{
+    if (modelKey == QStringLiteral("huangjinping_underground_plant"))
+    {
+        static const QSet<QString> columns = {
+            QStringLiteral("变形模量E（GPa）"), QStringLiteral("泊松比μ"),
+            QStringLiteral("容重t/m3"), QStringLiteral("抗剪断强度内摩擦系数"),
+            QStringLiteral("凝聚力C‘（MPa）")};
+        return columns.contains(column);
+    }
+
+    if (modelKey == QStringLiteral("dagangshan_isotropic"))
+    {
+        static const QSet<QString> columns = {
+            QStringLiteral("变形模量E（GPa）"), QStringLiteral("泊松比μ"),
+            QStringLiteral("容重t/m3"), QStringLiteral("抗剪断强度内摩擦系数"),
+            QStringLiteral("凝聚力C‘（MPa）")};
+        return columns.contains(column);
+    }
+
+    if (modelKey == QStringLiteral("huangjinping_bar_element"))
+    {
+        static const QSet<QString> columns = {
+            QStringLiteral("变模E1,E2（GPa）"), QStringLiteral("屈服后变模E2（GPa）"),
+            QStringLiteral("容重t/m3"), QStringLiteral("杆面积（m2）"),
+            QStringLiteral("抗拉（压）强度ft（MPa）"),
+            QStringLiteral("极限抗压强度Rc（MPa）")};
+        return columns.contains(column);
+    }
+
+    if (modelKey == QStringLiteral("soil_eb") ||
+        modelKey == QStringLiteral("soil_emu") ||
+        modelKey == QStringLiteral("soil_emu_crush"))
+    {
+        static const QSet<QString> columns = {
+            QStringLiteral("干容重(t/m3)"), QStringLiteral("天然容重(t/m3)"),
+            QStringLiteral("饱和容重(t/m3)"), QStringLiteral("φ0(°)"),
+            QStringLiteral("c(KPa)"), QStringLiteral("Rf"), QStringLiteral("K"),
+            QStringLiteral("n")};
+        return columns.contains(column);
+    }
+
+    if (modelKey == QStringLiteral("soil_nanshui"))
+    {
+        static const QSet<QString> columns = {
+            QStringLiteral("干容重(t/m3)"), QStringLiteral("天然容重(t/m3)"),
+            QStringLiteral("饱和容重(t/m3)"), QStringLiteral("φ0"),
+            QStringLiteral("c(KPa)"), QStringLiteral("Rf"), QStringLiteral("K"),
+            QStringLiteral("n")};
+        return columns.contains(column);
+    }
+
+    if (modelKey == QStringLiteral("soil_kg"))
+    {
+        static const QSet<QString> columns = {
+            QStringLiteral("干容重(t/m3)"), QStringLiteral("天然容重(t/m3)"),
+            QStringLiteral("饱和容重(t/m3)"), QStringLiteral("Ki,Kie(10^5Pa)"),
+            QStringLiteral("Gi,Gie(10^5Pa)"), QStringLiteral("Kie(10^5Pa)"),
+            QStringLiteral("Gie(10^5Pa)")};
+        return columns.contains(column);
+    }
+
+    if (modelKey == QStringLiteral("dam_dynamic"))
+    {
+        static const QSet<QString> columns = {
+            QStringLiteral("DRYK1(KPa)"), QStringLiteral("DRYN1"),
+            QStringLiteral("FAI(°)"), QStringLiteral("CO(KPa)"),
+            QStringLiteral("PU"), QStringLiteral("DRYDAM")};
+        return columns.contains(column);
+    }
+
+    return false;
+}
+
+void configureParameterFormLayout(QFormLayout* layout)
+{
+    if (!layout)
+        return;
+    layout->setContentsMargins(10, 10, 8, 10);
+    layout->setHorizontalSpacing(14);
+    layout->setVerticalSpacing(8);
+    layout->setFieldGrowthPolicy(QFormLayout::AllNonFixedFieldsGrow);
+    layout->setRowWrapPolicy(QFormLayout::DontWrapRows);
+    layout->setLabelAlignment(Qt::AlignLeft | Qt::AlignVCenter);
+    layout->setFormAlignment(Qt::AlignTop);
+}
+
+QString parameterUnit(const QString& modelKey, const QString& column)
+{
+    if (column == QStringLiteral("变形模量E（GPa）") ||
+        column == QStringLiteral("变模E1,E2（GPa）") ||
+        column == QStringLiteral("屈服后变模E2（GPa）") ||
+        column == QStringLiteral("瞬时弹性模量E1（GPa）") ||
+        column == QStringLiteral("粘塑性模量E2（GPa）"))
+        return QStringLiteral("GPa");
+
+    if (column == QStringLiteral("干容重(t/m3)") ||
+        column == QStringLiteral("天然容重(t/m3)") ||
+        column == QStringLiteral("饱和容重(t/m3)") ||
+        column == QStringLiteral("容重t/m3"))
+        return QStringLiteral("t/m³");
+
+    if (column == QStringLiteral("φ0(°)") || column == QStringLiteral("Δφ(°)") ||
+        column == QStringLiteral("FAI(°)") || column == QStringLiteral("剪胀角(°)") ||
+        ((column == QStringLiteral("φ0") || column == QStringLiteral("Δφ")) &&
+         modelKey == QStringLiteral("soil_nanshui")))
+        return QStringLiteral("°");
+
+    if (column == QStringLiteral("c(KPa)") || column == QStringLiteral("CO(KPa)") ||
+        column == QStringLiteral("DRYK1(KPa)"))
+        return QStringLiteral("kPa");
+
+    if (column == QStringLiteral("凝聚力C‘（MPa）") ||
+        column == QStringLiteral("抗拉（压）强度ft（MPa）") ||
+        column == QStringLiteral("极限抗压强度Rc（MPa）") ||
+        column == QStringLiteral("屈服抗拉强度Ryt（MPa）") ||
+        column == QStringLiteral("屈服抗压强度Ryc（MPa）") ||
+        column == QStringLiteral("抗压强度Rc（MPa）") ||
+        column == QStringLiteral("抗拉强度Rt（MPa）") ||
+        column == QStringLiteral("残余凝聚力C‘（MPa）"))
+        return QStringLiteral("MPa");
+
+    if (column == QStringLiteral("杆面积（m2）"))
+        return QStringLiteral("m²");
+
+    if (column == QStringLiteral("间距(m)") || column == QStringLiteral("排距(m)"))
+        return QStringLiteral("m");
+
+    if (column == QStringLiteral("预应力T（KN）"))
+        return QStringLiteral("kN");
+
+    if (column == QStringLiteral("Ki,Kie(10^5Pa)") ||
+        column == QStringLiteral("Gi,Gie(10^5Pa)") ||
+        column == QStringLiteral("Kie(10^5Pa)") ||
+        column == QStringLiteral("Gie(10^5Pa)") ||
+        column == QStringLiteral("a(10^5Pa)"))
+        return QStringLiteral("10⁵ Pa");
+
+    if (column == QStringLiteral("渗透系数K(Lu)") ||
+        column == QStringLiteral("渗透系数Kx(Lu)") ||
+        column == QStringLiteral("渗透系数Ky(Lu)") ||
+        column == QStringLiteral("渗透系数Kz(Lu)"))
+        return QStringLiteral("Lu");
+
+    if (column == QStringLiteral("比储量S"))
+        return QStringLiteral("1/m");
+
+    return QString();
+}
+
+QString parameterDisplayName(const QString& displayName, const QString& unit)
+{
+    if (unit.isEmpty())
+        return displayName;
+
+    const QString suffix = QStringLiteral("（%1）").arg(unit);
+    if (displayName.endsWith(suffix))
+        return displayName.left(displayName.size() - suffix.size());
+    return displayName;
+}
+
+QWidget* createParameterFieldWidget(QLineEdit* editor, const QString& unit, QWidget* parent)
+{
+    auto* field = new QWidget(parent);
+    auto* layout = new QHBoxLayout(field);
+    layout->setContentsMargins(0, 0, 0, 0);
+    layout->setSpacing(10);
+
+    editor->setMinimumHeight(30);
+    layout->addWidget(editor, 1);
+
+    auto* unitLabel = new QLabel(unit, field);
+    unitLabel->setObjectName(QStringLiteral("materialUnitLabel"));
+    unitLabel->setMinimumWidth(48);
+    unitLabel->setMaximumWidth(58);
+    unitLabel->setAlignment(Qt::AlignLeft | Qt::AlignVCenter);
+
+    // 单位属于辅助信息，但不能淡到看不清。根据当前主题在正文色和底色之间取中间色。
+    const QColor textColor = unitLabel->palette().color(QPalette::WindowText);
+    const QColor baseColor = unitLabel->palette().color(QPalette::Base);
+    const qreal weight = 0.62;
+    const QColor muted = QColor::fromRgbF(
+        baseColor.redF() * (1.0 - weight) + textColor.redF() * weight,
+        baseColor.greenF() * (1.0 - weight) + textColor.greenF() * weight,
+        baseColor.blueF() * (1.0 - weight) + textColor.blueF() * weight);
+    QPalette unitPalette = unitLabel->palette();
+    unitPalette.setColor(QPalette::WindowText, muted);
+    unitLabel->setPalette(unitPalette);
+
+    QFont unitFont = unitLabel->font();
+    unitFont.setPointSizeF(qMax<qreal>(8.0, unitFont.pointSizeF() - 0.5));
+    unitLabel->setFont(unitFont);
+    layout->addWidget(unitLabel, 0);
+
+    return field;
+}
+
+QLabel* createSubsectionLabel(const QString& text, QWidget* parent)
+{
+    auto* label = new QLabel(text, parent);
+    label->setObjectName(QStringLiteral("materialSubsectionLabel"));
+    QFont font = label->font();
+    font.setBold(true);
+    label->setFont(font);
+    label->setContentsMargins(0, 8, 0, 3);
+    return label;
+}
+
+QColor blendColor(const QColor& base, const QColor& accent, qreal accentWeight)
+{
+    const qreal w = qBound<qreal>(0.0, accentWeight, 1.0);
+    return QColor::fromRgbF(base.redF() * (1.0 - w) + accent.redF() * w,
+                            base.greenF() * (1.0 - w) + accent.greenF() * w,
+                            base.blueF() * (1.0 - w) + accent.blueF() * w);
+}
+
+QDoubleValidator* createMaterialNumberValidator(QObject* parent)
+{
+    auto* validator = new QDoubleValidator(parent);
+    validator->setNotation(QDoubleValidator::ScientificNotation);
+
+    // IMAT.DAT / Fortran 输入使用小数点；固定 C locale，避免系统区域设置导致
+    // 界面允许“1,25”而导出阶段无法识别。
+    QLocale locale = QLocale::c();
+    locale.setNumberOptions(QLocale::RejectGroupSeparator);
+    validator->setLocale(locale);
+    return validator;
+}
+
+QString parameterHelpText(const QString& modelKey, const QString& column)
+{
+    QString text;
+
+    if (column.contains(QStringLiteral("干容重")))
+        text = QStringLiteral("用于干燥状态下的自重计算。");
+    else if (column.contains(QStringLiteral("天然容重")))
+        text = QStringLiteral("用于天然状态下的自重计算。");
+    else if (column.contains(QStringLiteral("饱和容重")))
+        text = QStringLiteral("用于饱和状态下的自重计算。");
+    else if (column == QStringLiteral("容重t/m3"))
+        text = QStringLiteral("用于材料自重和质量计算。");
+    else if (column == QStringLiteral("变模E1,E2（GPa）"))
+        text = QStringLiteral("锚杆未屈服阶段的初始弹性模量 E1，对应求解器 CONMAT(:,2)。");
+    else if (column == QStringLiteral("屈服后变模E2（GPa）"))
+        text = QStringLiteral("锚杆进入屈服区后的切线弹性模量 E2，对应求解器 CONMAT(:,3)。");
+    else if (column.contains(QStringLiteral("变形模量")))
+        text = QStringLiteral("反映材料整体变形刚度。");
+    else if (column.contains(QStringLiteral("瞬时弹性模量")))
+        text = QStringLiteral("控制加载瞬间的弹性变形刚度。");
+    else if (column.contains(QStringLiteral("粘塑性模量")))
+        text = QStringLiteral("控制长期黏塑性变形刚度。");
+    else if (column == QStringLiteral("泊松比μ") || column == QStringLiteral("PU"))
+        text = QStringLiteral("控制横向变形与轴向变形的关系。");
+    else if (column == QStringLiteral("泊松比μ1") || column == QStringLiteral("泊松比μ2"))
+        text = QStringLiteral("控制对应流变阶段的横向变形。");
+    else if (column == QStringLiteral("φ0(°)") || column == QStringLiteral("φ0") ||
+             column == QStringLiteral("FAI(°)"))
+        text = QStringLiteral("反映材料的摩擦抗剪能力。");
+    else if (column == QStringLiteral("Δφ(°)") || column == QStringLiteral("Δφ"))
+        text = QStringLiteral("控制摩擦角随应力状态的变化。");
+    else if (column == QStringLiteral("c(KPa)") || column == QStringLiteral("CO(KPa)"))
+        text = QStringLiteral("反映材料的黏聚抗剪能力。");
+    else if (column == QStringLiteral("抗剪断强度内摩擦系数"))
+        text = QStringLiteral("反映岩体的摩擦抗剪能力。");
+    else if (column == QStringLiteral("凝聚力C‘（MPa）"))
+        text = QStringLiteral("反映岩体的黏聚抗剪能力。");
+    else if (column == QStringLiteral("抗压强度Rc（MPa）"))
+        text = QStringLiteral("独立抗压强度 Rc；填 0 时仍按旧逻辑由 c、φ 自动推导。");
+    else if (column == QStringLiteral("抗拉强度Rt（MPa）"))
+        text = QStringLiteral("独立抗拉强度 Rt；填 0 时仍按旧逻辑由 c、φ 自动推导。");
+    else if (column == QStringLiteral("残余抗剪断强度内摩擦系数"))
+        text = QStringLiteral("破坏后的残余内摩擦系数；填 0 时沿用峰值内摩擦系数。");
+    else if (column == QStringLiteral("残余凝聚力C‘（MPa）"))
+        text = QStringLiteral("破坏后的残余凝聚力；填 0 时沿用峰值凝聚力。");
+    else if (column == QStringLiteral("剪胀角(°)"))
+        text = QStringLiteral("控制剪切破坏时的体积膨胀程度。");
+    else if (column == QStringLiteral("Rf"))
+        text = QStringLiteral("控制应力-应变曲线接近破坏的程度。");
+    else if (column == QStringLiteral("K"))
+        text = QStringLiteral("控制材料应力相关的刚度水平。");
+    else if (column == QStringLiteral("n"))
+        text = QStringLiteral("控制刚度随应力状态变化的程度。");
+    else if (column == QStringLiteral("Kur"))
+        text = QStringLiteral("控制卸载和重新加载阶段的刚度系数，对应求解器 CONMAT(:,72)。");
+    else if (column == QStringLiteral("Nur"))
+        text = QStringLiteral("控制卸载和重新加载刚度随应力变化的指数，对应求解器 CONMAT(:,73)。");
+    else if (column == QStringLiteral("Kb"))
+        text = QStringLiteral("控制材料体积变形相关的刚度。");
+    else if (column == QStringLiteral("m") && modelKey == QStringLiteral("soil_eb"))
+        text = QStringLiteral("控制体积刚度随应力状态变化的程度。");
+    else if (column == QStringLiteral("G") || column == QStringLiteral("D") ||
+             column == QStringLiteral("F"))
+        text = QStringLiteral("E-μ 模型中与泊松比变化相关的拟合参数。");
+    else if ((column == QStringLiteral("C1") || column == QStringLiteral("C2") ||
+              column == QStringLiteral("C3")) &&
+             modelKey == QStringLiteral("soil_emu_crush"))
+        text = QStringLiteral("E-μ 破碎模型的破碎拟合系数。");
+    else if ((column == QStringLiteral("n1") || column == QStringLiteral("n2") ||
+              column == QStringLiteral("n3")) &&
+             modelKey == QStringLiteral("soil_emu_crush"))
+        text = QStringLiteral("E-μ 破碎模型的破碎拟合指数。");
+    else if (column == QStringLiteral("Ki,Kie(10^5Pa)"))
+        text = QStringLiteral("K-G 模型加载阶段体积刚度常数 Ki，对应 CONMAT(:,69)。");
+    else if (column == QStringLiteral("αk,αke"))
+        text = QStringLiteral("K-G 模型加载阶段体积刚度压力系数 αk，对应 CONMAT(:,70)。");
+    else if (column == QStringLiteral("Gi,Gie(10^5Pa)"))
+        text = QStringLiteral("K-G 模型加载阶段剪切刚度常数 Gi，对应 CONMAT(:,74)。");
+    else if (column == QStringLiteral("αG,αGe"))
+        text = QStringLiteral("K-G 模型加载阶段剪切刚度压力系数 αG，对应 CONMAT(:,71)。");
+    else if (column == QStringLiteral("βG"))
+        text = QStringLiteral("K-G 模型加载阶段剪切刚度的广义剪应力修正系数 βG，对应 CONMAT(:,75)。");
+    else if (column == QStringLiteral("a(10^5Pa)") || column == QStringLiteral("b"))
+        text = QStringLiteral("K-G 模型强度/应力水平计算参数，对应 CONMAT(:,72~73)。");
+    else if (column == QStringLiteral("Kie(10^5Pa)"))
+        text = QStringLiteral("K-G 模型卸载/再加载阶段体积刚度常数 Kie，对应 CONMAT(:,76)。");
+    else if (column == QStringLiteral("αke"))
+        text = QStringLiteral("K-G 模型卸载/再加载阶段体积刚度压力系数 αke，对应 CONMAT(:,78)。");
+    else if (column == QStringLiteral("Gie(10^5Pa)"))
+        text = QStringLiteral("K-G 模型卸载/再加载阶段剪切刚度常数 Gie，对应 CONMAT(:,77)。");
+    else if (column == QStringLiteral("αGe"))
+        text = QStringLiteral("K-G 模型卸载/再加载阶段剪切刚度压力系数 αGe，对应 CONMAT(:,79)。");
+    else if (column == QStringLiteral("DRYK1(KPa)"))
+        text = QStringLiteral("坝料动力模型的刚度系数。");
+    else if (column == QStringLiteral("DRYN1"))
+        text = QStringLiteral("坝料动力模型的刚度指数。");
+    else if (column == QStringLiteral("DRYDAM"))
+        text = QStringLiteral("控制材料的最大动力阻尼水平。");
+    else if (column.startsWith(QStringLiteral("RATIAO")))
+        text = QStringLiteral("用于液化判定的循环次数参数。");
+    else if (column == QStringLiteral("Kv") || column == QStringLiteral("Kp"))
+        text = QStringLiteral("坝料动力计算的回归系数。");
+    else if (column == QStringLiteral("nv") || column == QStringLiteral("np"))
+        text = QStringLiteral("坝料动力计算的回归指数。");
+    else if (column == QStringLiteral("杆面积（m2）"))
+        text = QStringLiteral("决定锚杆轴向刚度和承载面积。");
+    else if (column == QStringLiteral("抗拉（压）强度ft（MPa）"))
+        text = QStringLiteral("锚杆极限抗拉强度 Rt，对应求解器 CONMAT(:,10)。");
+    else if (column == QStringLiteral("极限抗压强度Rc（MPa）"))
+        text = QStringLiteral("锚杆极限抗压强度 Rc，对应求解器 CONMAT(:,9)。");
+    else if (column == QStringLiteral("屈服抗拉强度Ryt（MPa）"))
+        text = QStringLiteral("锚杆进入拉伸屈服段的强度 Ryt，对应求解器 CONMAT(:,92)。");
+    else if (column == QStringLiteral("屈服抗压强度Ryc（MPa）"))
+        text = QStringLiteral("锚杆进入压缩屈服段的强度 Ryc，对应求解器 CONMAT(:,91)。");
+    else if (column == QStringLiteral("间距(m)"))
+        text = QStringLiteral("设置同排锚杆之间的间距。");
+    else if (column == QStringLiteral("排距(m)"))
+        text = QStringLiteral("设置相邻锚杆排之间的距离。");
+    else if (column == QStringLiteral("预应力T（KN）"))
+        text = QStringLiteral("设置锚杆或锚索的初始预应力。");
+    else if (column == QStringLiteral("预应系数"))
+        text = QStringLiteral("用于修正实际施加的预应力水平。");
+    else if (column == QStringLiteral("母岩材料编号"))
+        text = QStringLiteral("指定开挖或再生材料对应的原始母岩。");
+    else if (column == QStringLiteral("岩类分区"))
+        text = QStringLiteral("用于区分普通、开挖、再生和加固材料。");
+    else if (column == QStringLiteral("半开挖区荷载释放系数"))
+        text = QStringLiteral("控制半开挖阶段释放的荷载比例。");
+    else if (column == QStringLiteral("再生时对应开挖级"))
+        text = QStringLiteral("指定再生材料对应的开挖阶段。");
+    else if (column == QStringLiteral("洞室边缘松弛系数α0"))
+        text = QStringLiteral("控制洞室边缘岩体的松弛程度。");
+    else if (column == QStringLiteral("松弛距离d0"))
+        text = QStringLiteral("控制洞室边缘松弛的影响距离。");
+    else if (column == QStringLiteral("cd"))
+        text = QStringLiteral("南水模型的拟合系数。");
+    else if (column == QStringLiteral("nd"))
+        text = QStringLiteral("南水模型的拟合指数。");
+    else if (column == QStringLiteral("Rd"))
+        text = QStringLiteral("南水模型的修正系数。");
+    else if (column == QStringLiteral("渗透系数K(Lu)"))
+        text = QStringLiteral("各向同性渗透系数；导出到求解器 CONMAT(:,96~98)。");
+    else if (column == QStringLiteral("渗透系数Kx(Lu)"))
+        text = QStringLiteral("全局 X 方向渗透系数，对应求解器 CONMAT(:,96)。");
+    else if (column == QStringLiteral("渗透系数Ky(Lu)"))
+        text = QStringLiteral("全局 Y 方向渗透系数，对应求解器 CONMAT(:,97)。");
+    else if (column == QStringLiteral("渗透系数Kz(Lu)"))
+        text = QStringLiteral("全局 Z 方向渗透系数，对应求解器 CONMAT(:,98)。");
+    else if (column == QStringLiteral("比储量S"))
+        text = QStringLiteral("非稳态渗流的储水参数，对应求解器 CONMAT(:,101)，控制水头随时间变化的快慢。");
+    else if (column == QStringLiteral("允许比降"))
+        text = QStringLiteral("用于判断水力比降是否超过允许值。");
+    else if (column.contains(QStringLiteral("应变速率系数")))
+        text = QStringLiteral("控制材料变形随时间发展的速度。");
+    else if (column.contains(QStringLiteral("体积流变系数")))
+        text = QStringLiteral("控制材料长期体积变形的幅度。");
+    else if (column.contains(QStringLiteral("剪切流变系数")))
+        text = QStringLiteral("控制材料长期剪切变形的幅度。");
+    else if (column.contains(QStringLiteral("体积流变指数")))
+        text = QStringLiteral("控制体积流变随应力和时间的非线性。");
+    else if (column.contains(QStringLiteral("剪切流变指数")))
+        text = QStringLiteral("控制剪切流变随应力和时间的非线性。");
+    else if (column.contains(QStringLiteral("主应变")))
+        text = QStringLiteral("用于拟合主应变随时间的发展规律。");
+    else if (column.contains(QStringLiteral("粘弹性系数")))
+        text = QStringLiteral("控制可恢复的时间相关变形。");
+    else if (column.contains(QStringLiteral("粘塑性系数")))
+        text = QStringLiteral("控制不可恢复的时间相关变形。");
+
+    if (text.isEmpty())
+        text = QStringLiteral("用于该材料模型的计算参数。");
+
+    return text;
+}
+
+QAbstractScrollArea* findParentScrollArea(QWidget* widget)
+{
+    for (QWidget* parent = widget ? widget->parentWidget() : nullptr; parent;
+         parent = parent->parentWidget())
+    {
+        if (auto* scrollArea = qobject_cast<QAbstractScrollArea*>(parent))
+            return scrollArea;
+    }
+    return nullptr;
+}
+
+QLabel* createParameterLabel(const QString& text, const QString& toolTip, QWidget* parent)
+{
+    auto* label = new QLabel(text, parent);
+    label->setToolTip(toolTip);
+    label->setAlignment(Qt::AlignLeft | Qt::AlignVCenter);
+    return label;
+}
+
+void updateConditionalParameterVisibility(const QString& modelKey, const MaterialEntry* entry,
+                                          QFormLayout* advancedLayout,
+                                          const QMap<QString, QLineEdit*>& valueEdits)
+{
+    if (!entry || !advancedLayout ||
+        modelKey != QStringLiteral("huangjinping_underground_plant"))
+    {
+        return;
+    }
+
+    // 与 MaterialManager 写 CONMAT 的条件保持一致：
+    // ITAG_EX=-1 才写荷载释放系数；ITAG_EX=1 才写再生开挖级。
+    const QString excavationState =
+        entry->properties.value(QStringLiteral("岩类分区"), QStringLiteral("0"));
+
+    const auto setVisible = [advancedLayout, &valueEdits](const QString& column, bool visible) {
+        const auto it = valueEdits.constFind(column);
+        if (it == valueEdits.constEnd() || !it.value())
+            return;
+        QWidget* fieldWidget = it.value()->parentWidget();
+        advancedLayout->setRowVisible(fieldWidget ? fieldWidget : it.value(), visible);
+    };
+
+    setVisible(QStringLiteral("半开挖区荷载释放系数"),
+               excavationState == QStringLiteral("-1"));
+    setVisible(QStringLiteral("再生时对应开挖级"),
+               excavationState == QStringLiteral("1"));
 }
 
 QString matypeDisplayText(int matype, const MshPickMap* pickMap = nullptr)
@@ -82,12 +652,37 @@ MaterialEntryWidget::MaterialEntryWidget(MaterialManager* manager, QWidget* pare
 {
     setAttribute(Qt::WA_StyledBackground, true);
 
-    m_formLayout->setContentsMargins(9, 9, 9, 9);
-    m_formLayout->setHorizontalSpacing(8);
-    m_formLayout->setVerticalSpacing(6);
+    m_formLayout->setContentsMargins(16, 12, 16, 14);
+    m_formLayout->setHorizontalSpacing(14);
+    m_formLayout->setVerticalSpacing(9);
     m_formLayout->setFieldGrowthPolicy(QFormLayout::AllNonFixedFieldsGrow);
+    m_formLayout->setRowWrapPolicy(QFormLayout::DontWrapRows);
     m_formLayout->setLabelAlignment(Qt::AlignLeft | Qt::AlignVCenter);
     m_formLayout->setFormAlignment(Qt::AlignTop);
+
+    // 材料页使用轻量分区：不套 GroupBox，折叠标题由控件自身绘制。
+    setStyleSheet(QStringLiteral(
+        "QLabel#materialSectionTitle {"
+        "  font-weight: 600;"
+        "}"
+        "QLabel#materialSubsectionLabel {"
+        "  font-weight: 600;"
+        "}"
+        "QLabel#materialUnitLabel {"
+        "  padding-left: 1px;"
+        "}"
+        "QPushButton#materialCompactAction {"
+        "  min-width: 64px;"
+        "  min-height: 28px;"
+        "  padding-left: 10px;"
+        "  padding-right: 10px;"
+        "}"
+        "QListWidget#appliedMatypesList {"
+        "  border: 1px solid palette(mid);"
+        "  border-radius: 2px;"
+        "  background: palette(base);"
+        "  padding: 2px;"
+        "}"));
 
     auto* container = new QWidget(this);
     container->setObjectName(QStringLiteral("materialEntryContent"));
@@ -188,6 +783,19 @@ void MaterialEntryWidget::setEntry(const QString& modelKey, const QString& entry
     MaterialModel* model = nullptr;
     MaterialEntry* entry = lookupEntry(&model);
     rebuildForm(model, entry);
+}
+
+void MaterialEntryWidget::refreshEntryName()
+{
+    if (!m_nameEdit)
+        return;
+
+    MaterialEntry* entry = lookupEntry();
+    if (!entry || m_nameEdit->text() == entry->name)
+        return;
+
+    const QSignalBlocker blocker(m_nameEdit);
+    m_nameEdit->setText(entry->name);
 }
 
 void MaterialEntryWidget::onNameEdited(const QString& text)
@@ -291,6 +899,7 @@ void MaterialEntryWidget::onOptionValueChanged(int)
 
     const QString column = combo->property("columnName").toString();
     entry->properties.insert(column, combo->currentData().toString());
+    updateConditionalParameterVisibility(model->key, entry, m_advancedLayout, m_valueEdits);
     m_materialManager->notifyEntryUpdated(m_entryId, false);
 }
 
@@ -304,9 +913,41 @@ void MaterialEntryWidget::onSeepageModelChanged(int)
     if (!entry || !model)
         return;
 
-    entry->seepageModelKey = m_seepageCombo->currentData().toString();
-    m_materialManager->notifyEntryUpdated(m_entryId, false);
+    const QString oldKey = entry->seepageModelKey;
+    const QString newKey = m_seepageCombo->currentData().toString();
+    const QString isotropicKey = QStringLiteral("jk_corewall_steady_seepage");
+    const QString anisotropicKey = QStringLiteral("jk_corewall_anisotropic_seepage");
+
+    // 第一次由各向同性切换为各向异性时，沿用当前 K，避免三个方向突然回到默认值。
+    if (oldKey == isotropicKey && newKey == anisotropicKey)
+    {
+        const QString k = entry->seepageProperties.value(
+            QStringLiteral("渗透系数K(Lu)"),
+            defaultMaterialPropertyValue(isotropicKey, QStringLiteral("渗透系数K(Lu)")));
+        const QStringList directionalKeys = {QStringLiteral("渗透系数Kx(Lu)"),
+                                             QStringLiteral("渗透系数Ky(Lu)"),
+                                             QStringLiteral("渗透系数Kz(Lu)")};
+        for (const QString& key : directionalKeys)
+        {
+            if (!entry->seepageProperties.contains(key))
+                entry->seepageProperties.insert(key, k);
+        }
+    }
+    // 若材料最初就是各向异性且从未设置过各向同性 K，切回时以 Kx 作为兼容值。
+    else if (oldKey == anisotropicKey && newKey == isotropicKey &&
+             !entry->seepageProperties.contains(QStringLiteral("渗透系数K(Lu)")))
+    {
+        entry->seepageProperties.insert(
+            QStringLiteral("渗透系数K(Lu)"),
+            entry->seepageProperties.value(
+                QStringLiteral("渗透系数Kx(Lu)"),
+                defaultMaterialPropertyValue(anisotropicKey,
+                                             QStringLiteral("渗透系数Kx(Lu)"))));
+    }
+
+    entry->seepageModelKey = newKey;
     rebuildSeepageFields(entry);
+    m_materialManager->notifyEntryUpdated(m_entryId, false);
 }
 
 void MaterialEntryWidget::onCreepModelChanged(int)
@@ -320,8 +961,8 @@ void MaterialEntryWidget::onCreepModelChanged(int)
         return;
 
     entry->creepModelKey = m_creepCombo->currentData().toString();
-    m_materialManager->notifyEntryUpdated(m_entryId, false);
     rebuildCreepFields(entry);
+    m_materialManager->notifyEntryUpdated(m_entryId, false);
 }
 
 void MaterialEntryWidget::onSeepageValueEdited(const QString& text)
@@ -371,8 +1012,8 @@ void MaterialEntryWidget::rebuildSeepageFields(MaterialEntry* entry)
             break;
         }
     }
-    if (m_seepageFieldsWidget && m_formLayout)
-        m_formLayout->setRowVisible(m_seepageFieldsWidget, selectedSeepageModel != nullptr);
+    if (m_seepageFieldsWidget && m_advancedLayout)
+        m_advancedLayout->setRowVisible(m_seepageFieldsWidget, selectedSeepageModel != nullptr);
     if (!selectedSeepageModel)
         return;
 
@@ -384,20 +1025,28 @@ void MaterialEntryWidget::rebuildSeepageFields(MaterialEntry* entry)
             continue;
         }
         if (!entry->seepageProperties.contains(column))
-            entry->seepageProperties.insert(column, QStringLiteral("0"));
-        auto* seepageValueEdit =
-            new QLineEdit(entry->seepageProperties.value(column, QStringLiteral("0")), this);
+            entry->seepageProperties.insert(
+                column, defaultMaterialPropertyValue(selectedSeepageModel->key, column));
+        auto* seepageValueEdit = new QLineEdit(
+            entry->seepageProperties.value(
+                column, defaultMaterialPropertyValue(selectedSeepageModel->key, column)),
+            this);
         seepageValueEdit->setMinimumWidth(10);
-        auto* validator = new QDoubleValidator(seepageValueEdit);
-        validator->setNotation(QDoubleValidator::ScientificNotation);
-        seepageValueEdit->setValidator(validator);
+        seepageValueEdit->setValidator(createMaterialNumberValidator(seepageValueEdit));
         seepageValueEdit->setProperty("columnName", column);
         connect(seepageValueEdit, &QLineEdit::textEdited, this,
                 &MaterialEntryWidget::onSeepageValueEdited);
-        const QString label = columnIndex < selectedSeepageModel->displayColumns.size()
-                                  ? selectedSeepageModel->displayColumns.at(columnIndex)
-                                  : column;
-        m_seepageFieldsLayout->addRow(label, seepageValueEdit);
+        const QString displayLabel = columnIndex < selectedSeepageModel->displayColumns.size()
+                                         ? selectedSeepageModel->displayColumns.at(columnIndex)
+                                         : column;
+        const QString unit = parameterUnit(selectedSeepageModel->key, column);
+        const QString label = parameterDisplayName(displayLabel, unit);
+        const QString toolTip = parameterHelpText(selectedSeepageModel->key, column);
+        seepageValueEdit->setToolTip(toolTip);
+        QWidget* fieldWidget =
+            createParameterFieldWidget(seepageValueEdit, unit, m_seepageFieldsWidget);
+        m_seepageFieldsLayout->addRow(
+            createParameterLabel(label, toolTip, m_seepageFieldsWidget), fieldWidget);
         m_seepageValueEdits.insert(column, seepageValueEdit);
     }
 }
@@ -426,14 +1075,15 @@ void MaterialEntryWidget::rebuildCreepFields(MaterialEntry* entry)
     for (const auto& model : supplementalModels)
     {
         if (model.key == creepModelKey &&
-            model.key != QStringLiteral("jk_corewall_steady_seepage"))
+            model.key != QStringLiteral("jk_corewall_steady_seepage") &&
+            model.key != QStringLiteral("jk_corewall_anisotropic_seepage"))
         {
             selectedModel = &model;
             break;
         }
     }
-    if (m_creepFieldsWidget && m_formLayout)
-        m_formLayout->setRowVisible(m_creepFieldsWidget, selectedModel != nullptr);
+    if (m_creepFieldsWidget && m_advancedLayout)
+        m_advancedLayout->setRowVisible(m_creepFieldsWidget, selectedModel != nullptr);
     if (!selectedModel)
         return;
 
@@ -443,21 +1093,28 @@ void MaterialEntryWidget::rebuildCreepFields(MaterialEntry* entry)
         if (MaterialManager::isAutoNumberColumn(column))
             continue;
         if (!entry->seepageProperties.contains(column))
-            entry->seepageProperties.insert(column, QStringLiteral("0"));
+            entry->seepageProperties.insert(
+                column, defaultMaterialPropertyValue(selectedModel->key, column));
 
-        auto* valueEdit =
-            new QLineEdit(entry->seepageProperties.value(column, QStringLiteral("0")), this);
+        auto* valueEdit = new QLineEdit(
+            entry->seepageProperties.value(
+                column, defaultMaterialPropertyValue(selectedModel->key, column)),
+            this);
         valueEdit->setMinimumWidth(10);
-        auto* validator = new QDoubleValidator(valueEdit);
-        validator->setNotation(QDoubleValidator::ScientificNotation);
-        valueEdit->setValidator(validator);
+        valueEdit->setValidator(createMaterialNumberValidator(valueEdit));
         valueEdit->setProperty("columnName", column);
         connect(valueEdit, &QLineEdit::textEdited, this,
                 &MaterialEntryWidget::onSeepageValueEdited);
-        const QString label = columnIndex < selectedModel->displayColumns.size()
-                                  ? selectedModel->displayColumns.at(columnIndex)
-                                  : column;
-        m_creepFieldsLayout->addRow(label, valueEdit);
+        const QString displayLabel = columnIndex < selectedModel->displayColumns.size()
+                                         ? selectedModel->displayColumns.at(columnIndex)
+                                         : column;
+        const QString unit = parameterUnit(selectedModel->key, column);
+        const QString label = parameterDisplayName(displayLabel, unit);
+        const QString toolTip = parameterHelpText(selectedModel->key, column);
+        valueEdit->setToolTip(toolTip);
+        QWidget* fieldWidget = createParameterFieldWidget(valueEdit, unit, m_creepFieldsWidget);
+        m_creepFieldsLayout->addRow(
+            createParameterLabel(label, toolTip, m_creepFieldsWidget), fieldWidget);
         m_creepValueEdits.insert(column, valueEdit);
     }
 }
@@ -473,15 +1130,14 @@ void MaterialEntryWidget::rebuildForm(MaterialModel* model, MaterialEntry* entry
         return;
     }
 
-    // ===== 名称 =====
+    // ===== 通用信息：不属于“基本/高级参数”，始终显示 =====
     m_nameEdit = new QLineEdit(entry->name, this);
     m_nameEdit->setMinimumWidth(10);
     connect(m_nameEdit, &QLineEdit::textEdited, this, &MaterialEntryWidget::onNameEdited);
     connect(m_nameEdit, &QLineEdit::editingFinished, this,
             &MaterialEntryWidget::onNameEditingFinished);
-    m_formLayout->addRow(QString("材料名称"), m_nameEdit);
+    m_formLayout->addRow(QStringLiteral("材料名称"), m_nameEdit);
 
-    // ===== 材料模型：材料条目可直接在已有模型之间切换 =====
     m_modelCombo = new QComboBox(this);
     m_modelCombo->setMinimumWidth(10);
     m_modelCombo->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
@@ -492,28 +1148,48 @@ void MaterialEntryWidget::rebuildForm(MaterialModel* model, MaterialEntry* entry
     const int modelIndex = m_modelCombo->findData(model->key);
     m_modelCombo->setCurrentIndex(modelIndex >= 0 ? modelIndex : 0);
     m_modelCombo->setToolTip(
-        QStringLiteral("切换后保留材料名称、网格关联、附加模型和已有参数；新模型缺少的参数初始化为 0。"));
+        QStringLiteral("切换材料本构模型；已有材料名称和关联关系保持不变。"));
     connect(m_modelCombo, QOverload<int>::of(&QComboBox::activated), this,
             &MaterialEntryWidget::onMaterialModelActivated);
     m_formLayout->addRow(QStringLiteral("材料模型"), m_modelCombo);
 
-    // 先取 appliedList，后面初始化要用
     QList<int> appliedList = entry->appliedMatypes.values();
     std::sort(appliedList.begin(), appliedList.end());
 
-    // ===== MATYPE 选择 + 施加（放到动态字段上面）=====
-    QWidget* matypeRowWidget = new QWidget(this);
+    // ===== 材料与网格关联：直接呈现内容，不额外显示分区标题或分隔线 =====
+    auto* assignmentCard = new QWidget(this);
+    assignmentCard->setObjectName(QStringLiteral("materialAssignmentSection"));
+    assignmentCard->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Maximum);
+    assignmentCard->setToolTip(QStringLiteral("将当前材料与网格材料编号建立关联。"));
+    m_assignmentWidget = assignmentCard;
+
+    auto* assignmentLayout = new QVBoxLayout(assignmentCard);
+    assignmentLayout->setContentsMargins(0, 4, 0, 4);
+    assignmentLayout->setSpacing(8);
+
+    auto* assignmentForm = new QFormLayout;
+    assignmentForm->setContentsMargins(0, 0, 0, 0);
+    assignmentForm->setHorizontalSpacing(14);
+    assignmentForm->setVerticalSpacing(8);
+    assignmentForm->setFieldGrowthPolicy(QFormLayout::AllNonFixedFieldsGrow);
+    assignmentForm->setRowWrapPolicy(QFormLayout::DontWrapRows);
+    assignmentForm->setLabelAlignment(Qt::AlignLeft | Qt::AlignVCenter);
+    assignmentForm->setFormAlignment(Qt::AlignTop);
+    assignmentLayout->addLayout(assignmentForm);
+
+    QWidget* matypeRowWidget = new QWidget(assignmentCard);
     auto* rowLayout = new QHBoxLayout(matypeRowWidget);
     rowLayout->setContentsMargins(0, 0, 0, 0);
-    rowLayout->setSpacing(6);
+    rowLayout->setSpacing(8);
 
     m_matypeCombo = new CustomComboBox(matypeRowWidget);
-    m_matypeCombo->setMinimumWidth(84);
+    m_matypeCombo->setMinimumWidth(120);
+    m_matypeCombo->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
     m_matypeCombo->setSizeAdjustPolicy(QComboBox::AdjustToMinimumContentsLengthWithIcon);
     m_matypeCombo->setMinimumContentsLength(4);
     m_matypeCombo->setToolTip(
-        QStringLiteral("编号 1 不参加计算；编号 2 仅兼容旧数据；新材料使用 3 至 300。"));
-    m_matypeCombo->addItem(QString("未选择"), QVariant());
+        QStringLiteral("选择要分配的网格材料编号。编号 1 不参加计算；编号 2 兼容旧数据；新材料使用 3 至 300。"));
+    m_matypeCombo->addItem(QStringLiteral("未选择"), QVariant());
     m_matypeOptionsLoaded = false;
     for (int value : appliedList)
         appendMatypeOption(value);
@@ -533,136 +1209,251 @@ void MaterialEntryWidget::rebuildForm(MaterialModel* model, MaterialEntry* entry
     connect(m_matypeCombo, QOverload<int>::of(&QComboBox::activated), this,
             &MaterialEntryWidget::onMatypeActivated);
 
-    m_applyButton = new QPushButton(QString("施加到网格"), matypeRowWidget);
-    connect(m_applyButton, &QPushButton::clicked, this, &MaterialEntryWidget::onApplyMatypeClicked);
+    m_applyButton = new QPushButton(QStringLiteral("施加到网格"), matypeRowWidget);
+    m_applyButton->setObjectName(QStringLiteral("materialCompactAction"));
+    m_applyButton->setToolTip(QStringLiteral("将当前材料施加到所选网格区域。"));
+    connect(m_applyButton, &QPushButton::clicked, this,
+            &MaterialEntryWidget::onApplyMatypeClicked);
 
-    rowLayout->addWidget(m_matypeCombo);
-    rowLayout->addWidget(m_applyButton);
-    rowLayout->addStretch();
+    rowLayout->addWidget(m_matypeCombo, 1);
+    rowLayout->addWidget(m_applyButton, 0);
+    assignmentForm->addRow(
+        createParameterLabel(QStringLiteral("材料编号"),
+                             QStringLiteral("对应求解器 MATYPE，用于把材料与网格区域建立关联。"),
+                             assignmentCard),
+        matypeRowWidget);
 
-    m_formLayout->addRow(QString("关联MATYPE"), matypeRowWidget);
-
-    // ===== 已施加 MATYPE 列表：列表占满整行，操作按钮放在下方 =====
-    QWidget* appliedRowWidget = new QWidget(this);
-    appliedRowWidget->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
-    auto* appliedLayout = new QVBoxLayout(appliedRowWidget);
+    QWidget* appliedRowWidget = new QWidget(assignmentCard);
+    appliedRowWidget->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
+    auto* appliedLayout = new QHBoxLayout(appliedRowWidget);
     appliedLayout->setContentsMargins(0, 0, 0, 0);
-    appliedLayout->setSpacing(5);
+    appliedLayout->setSpacing(8);
 
-    m_appliedMatypesList = new QListWidget(appliedRowWidget);
+    m_appliedMatypesList = new AppliedRegionListWidget(appliedRowWidget);
     m_appliedMatypesList->setObjectName(QStringLiteral("appliedMatypesList"));
-    m_appliedMatypesList->setFixedHeight(96);
+    m_appliedMatypesList->setFrameShape(QFrame::StyledPanel);
+    m_appliedMatypesList->setFrameShadow(QFrame::Plain);
+    m_appliedMatypesList->setLineWidth(1);
+    // 这里既是当前分配结果，也是用户检查材料施加是否正确的主要区域。
+    // 保留足够可视高度；数量较多时再在列表内部滚动。
+    const int appliedListHeight =
+        appliedList.isEmpty() ? 88 : qBound(88, 34 + appliedList.size() * 24, 136);
+    m_appliedMatypesList->setFixedHeight(appliedListHeight);
     m_appliedMatypesList->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
     m_appliedMatypesList->setVerticalScrollMode(QAbstractItemView::ScrollPerPixel);
     m_appliedMatypesList->setUniformItemSizes(true);
+    m_appliedMatypesList->setToolTip(QStringLiteral("当前材料已经关联的网格区域。"));
     for (int value : appliedList)
     {
         auto* item = new QListWidgetItem(matypeDisplayText(value), m_appliedMatypesList);
         item->setData(Qt::UserRole, value);
     }
-
     connect(m_appliedMatypesList, &QListWidget::currentTextChanged, this,
             &MaterialEntryWidget::onAppliedMatypeSelected);
 
-    m_removeButton = new QPushButton(QString("移除选中"), appliedRowWidget);
+    m_removeButton = new QPushButton(QStringLiteral("移除"), appliedRowWidget);
+    m_removeButton->setObjectName(QStringLiteral("materialCompactAction"));
+    m_removeButton->setToolTip(QStringLiteral("移除当前选中的网格区域关联。"));
+    m_removeButton->setEnabled(false);
     connect(m_removeButton, &QPushButton::clicked, this,
             &MaterialEntryWidget::onRemoveMatypeClicked);
 
-    auto* removeRow = new QHBoxLayout;
-    removeRow->setContentsMargins(0, 0, 0, 0);
-    removeRow->setSpacing(0);
-    removeRow->addStretch(1);
-    removeRow->addWidget(m_removeButton);
+    appliedLayout->addWidget(m_appliedMatypesList, 1);
+    appliedLayout->addWidget(m_removeButton, 0, Qt::AlignTop);
 
-    appliedLayout->addWidget(m_appliedMatypesList);
-    appliedLayout->addLayout(removeRow);
+    auto* appliedLabel = createParameterLabel(
+        QStringLiteral("已施加区域"), QStringLiteral("显示当前材料已施加到哪些网格区域。"),
+        assignmentCard);
+    appliedLabel->setAlignment(Qt::AlignLeft | Qt::AlignTop);
+    appliedLabel->setContentsMargins(0, 7, 0, 0);
+    assignmentForm->addRow(appliedLabel, appliedRowWidget);
 
-    m_formLayout->addRow(QString("已施加材料单元"), appliedRowWidget);
+    m_formLayout->addRow(assignmentCard);
 
+    // ===== 参数区域：保留展开/收起，不使用 Tab，也不使用 GroupBox =====
+    auto* parameterContainer = new QWidget(this);
+    parameterContainer->setObjectName(QStringLiteral("materialParameterContainer"));
+    parameterContainer->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Maximum);
+
+    auto* parameterLayout = new QVBoxLayout(parameterContainer);
+    parameterLayout->setContentsMargins(0, 4, 0, 0);
+    parameterLayout->setSpacing(12);
+
+    const auto createCollapsibleSection =
+        [parameterContainer, parameterLayout](const QString& title, bool expanded,
+                                              QWidget*& content, QFormLayout*& formLayout) {
+            auto* section = new QWidget(parameterContainer);
+            section->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Maximum);
+
+            auto* sectionLayout = new QVBoxLayout(section);
+            sectionLayout->setContentsMargins(0, 0, 0, 0);
+            sectionLayout->setSpacing(6);
+
+            // 整个标题栏都可点击；使用细线 Chevron，不显示“展开/收起”文字。
+            auto* toggle = new CollapsibleSectionButton(title, expanded, section);
+
+            content = new QWidget(section);
+            content->setObjectName(QStringLiteral("materialSectionContent"));
+            content->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Maximum);
+            content->setVisible(expanded);
+            formLayout = new QFormLayout(content);
+            configureParameterFormLayout(formLayout);
+            formLayout->setContentsMargins(10, 6, 8, 2);
+
+            QObject::connect(toggle, &QToolButton::toggled, section,
+                             [content, toggle, parameterContainer](bool checked) {
+                                 QAbstractScrollArea* scrollArea =
+                                     findParentScrollArea(parameterContainer);
+                                 QPointer<QScrollBar> vBar =
+                                     scrollArea ? scrollArea->verticalScrollBar() : nullptr;
+                                 const int oldScrollValue = vBar ? vBar->value() : 0;
+
+                                 toggle->setToolTip(checked ? QStringLiteral("点击收起")
+                                                            : QStringLiteral("点击展开"));
+
+                                 parameterContainer->setUpdatesEnabled(false);
+                                 content->setVisible(checked);
+                                 parameterContainer->updateGeometry();
+                                 parameterContainer->setUpdatesEnabled(true);
+                                 parameterContainer->update();
+
+                                 if (vBar)
+                                 {
+                                     QTimer::singleShot(
+                                         0, parameterContainer,
+                                         [vBar, oldScrollValue]() {
+                                             if (!vBar)
+                                                 return;
+                                             const QSignalBlocker blocker(vBar);
+                                             vBar->setValue(qBound(vBar->minimum(), oldScrollValue,
+                                                                   vBar->maximum()));
+                                         });
+                                 }
+                             });
+
+            sectionLayout->addWidget(toggle);
+            sectionLayout->addWidget(content);
+            parameterLayout->addWidget(section);
+            return toggle;
+        };
+
+    QWidget* basicPage = nullptr;
+    QWidget* advancedPage = nullptr;
+    auto* basicToggle = createCollapsibleSection(
+        QStringLiteral("基本参数"), true, basicPage, m_basicLayout);
+    auto* advancedToggle = createCollapsibleSection(
+        QStringLiteral("高级参数"), false, advancedPage, m_advancedLayout);
+    basicToggle->setToolTip(QStringLiteral("常用材料参数，主要控制强度、刚度和自重等基本响应。"));
+    advancedToggle->setToolTip(
+        QStringLiteral("低频专业参数，主要用于特定本构、开挖、动力、渗流或流变计算。"));
+
+    m_formLayout->addRow(parameterContainer);
+
+    // ===== 计算阶段设置：属于求解控制，在高级区内单独分组 =====
     const bool isDynamicMaterial = model->key == QStringLiteral("dam_dynamic");
     const bool supportsCalculationStage =
         isDynamicMaterial || isDamStaticMaterialModel(model->key);
     if (supportsCalculationStage)
     {
-        QWidget* transitionRowWidget = new QWidget(this);
-        auto* transitionLayout = new QHBoxLayout(transitionRowWidget);
-        transitionLayout->setContentsMargins(0, 0, 0, 0);
+        m_advancedLayout->addRow(createSubsectionLabel(QStringLiteral("计算设置"), advancedPage));
+
         const QString stageUseText =
             isDynamicMaterial ? QStringLiteral("作为计算阶段材料（动力及地震波动）")
                               : QStringLiteral("作为计算阶段材料（浸润）");
         const QString stageUseTip =
             isDynamicMaterial
-                ? QStringLiteral("该材料只供土石坝动力及地震波动计算的材料对应关系选择，不直接分配给网格。")
-                : QStringLiteral("该材料只供土石坝浸润计算的材料对应关系选择，不直接分配给网格。");
-        m_transitionOnlyCheck = new QCheckBox(stageUseText, transitionRowWidget);
+                ? QStringLiteral("仅用于土石坝动力及地震波动计算的材料对应关系，不直接施加到网格。")
+                : QStringLiteral("仅用于土石坝浸润计算的材料对应关系，不直接施加到网格。");
+
+        m_transitionOnlyCheck = new QCheckBox(stageUseText, advancedPage);
         m_transitionOnlyCheck->setChecked(entry->transitionOnly);
         m_transitionOnlyCheck->setToolTip(stageUseTip);
-        m_transitionMatypeSpin = new QSpinBox(transitionRowWidget);
+        // 复选项本身已经表达用途，不再额外占一列显示“材料用途”。
+        m_advancedLayout->addRow(m_transitionOnlyCheck);
+
+        m_transitionMatypeSpin = new QSpinBox(advancedPage);
         m_transitionMatypeSpin->setMinimumWidth(10);
         m_transitionMatypeSpin->setRange(FIRST_SUGGESTED_MATYPE, MAX_SOLVER_MATYPE);
         m_transitionMatypeSpin->setValue(isComputableMatype(entry->transitionMatype)
                                              ? entry->transitionMatype
                                              : FIRST_SUGGESTED_MATYPE);
-        m_transitionMatypeSpin->setToolTip(stageUseTip);
-        m_transitionMatypeSpin->setEnabled(true);
-        transitionLayout->addWidget(m_transitionOnlyCheck);
-        transitionLayout->addWidget(new QLabel(QStringLiteral("编号"), transitionRowWidget));
-        transitionLayout->addWidget(m_transitionMatypeSpin);
-        transitionLayout->addStretch();
+        m_transitionMatypeSpin->setToolTip(QStringLiteral("指定该计算阶段材料对应的材料编号。"));
+        m_transitionMatypeSpin->setEnabled(entry->transitionOnly);
+        m_advancedLayout->addRow(QStringLiteral("阶段材料编号"), m_transitionMatypeSpin);
+
         connect(m_transitionOnlyCheck, &QCheckBox::stateChanged, this,
                 &MaterialEntryWidget::onTransitionModeChanged);
         connect(m_transitionMatypeSpin, qOverload<int>(&QSpinBox::valueChanged), this,
                 &MaterialEntryWidget::onTransitionMatypeChanged);
-        m_formLayout->addRow(QStringLiteral("材料用途"), transitionRowWidget);
-    }
-    if (m_transitionOnlyCheck && entry->transitionOnly)
-    {
-        if (m_matypeCombo)
-            m_matypeCombo->setEnabled(false);
-        if (m_applyButton)
-            m_applyButton->setEnabled(false);
-        if (m_appliedMatypesList)
-            m_appliedMatypesList->setEnabled(false);
-        if (m_removeButton)
-            m_removeButton->setEnabled(false);
     }
 
-    // ===== 动态字段（放在 MATYPE 区域下面）=====
+    setAssignmentControlsEnabled(!(m_transitionOnlyCheck && entry->transitionOnly));
+
+    bool hasAdvancedModelParameters = false;
+    for (const QString& column : model->columns)
+    {
+        if (MaterialManager::isAutoNumberColumn(column))
+            continue;
+        if (model->key == QStringLiteral("dam_dynamic") &&
+            column == QStringLiteral("静力计算编号"))
+            continue;
+        if (!isBasicMaterialColumn(model->key, column))
+        {
+            hasAdvancedModelParameters = true;
+            break;
+        }
+    }
+    if (hasAdvancedModelParameters)
+        m_advancedLayout->addRow(createSubsectionLabel(QStringLiteral("模型参数"), advancedPage));
+
+    // ===== 本构参数：常用参数进“基本参数”，其余进“高级参数” =====
     for (int columnIndex = 0; columnIndex < model->columns.size(); ++columnIndex)
     {
         const QString& column = model->columns.at(columnIndex);
         if (MaterialManager::isAutoNumberColumn(column))
-        {
             continue;
-        }
+
+        // 静力－动力材料转换由具体土石坝计算工况设置，不在材料参数页重复编辑。
         if (model->key == QStringLiteral("dam_dynamic") &&
             column == QStringLiteral("静力计算编号"))
         {
             continue;
         }
-        const QString label = columnIndex < model->displayColumns.size()
-                                  ? model->displayColumns.at(columnIndex)
-                                  : column;
+
+        QFormLayout* targetLayout =
+            isBasicMaterialColumn(model->key, column) ? m_basicLayout : m_advancedLayout;
+        QWidget* targetParent =
+            (targetLayout == m_basicLayout) ? basicPage : advancedPage;
+
+        const QString displayLabel = columnIndex < model->displayColumns.size()
+                                         ? model->displayColumns.at(columnIndex)
+                                         : column;
+        const QString unit = parameterUnit(model->key, column);
+        const QString label = parameterDisplayName(displayLabel, unit);
+
         if (model->key == QStringLiteral("dam_dynamic") &&
             column == QStringLiteral("是否液化"))
         {
-            auto* optionBox = new QComboBox(this);
+            auto* optionBox = new QComboBox(targetParent);
             optionBox->addItem(QStringLiteral("否"), QStringLiteral("0"));
             optionBox->addItem(QStringLiteral("是"), QStringLiteral("1"));
             const int optionIndex = optionBox->findData(entry->properties.value(column));
             if (optionIndex < 0)
-                entry->properties.insert(column, QStringLiteral("0"));
+                entry->properties.insert(
+                    column, defaultMaterialPropertyValue(model->key, column));
             optionBox->setCurrentIndex(optionIndex >= 0 ? optionIndex : 0);
             optionBox->setProperty("columnName", column);
+            optionBox->setToolTip(QStringLiteral("是否启用该材料的液化相关动力参数。"));
             connect(optionBox, QOverload<int>::of(&QComboBox::currentIndexChanged), this,
                     &MaterialEntryWidget::onOptionValueChanged);
-            m_formLayout->addRow(QStringLiteral("是否液化"), optionBox);
+            targetLayout->addRow(QStringLiteral("是否液化"), optionBox);
             continue;
         }
+
         if (model->key == QStringLiteral("huangjinping_underground_plant") &&
             column == QStringLiteral("岩类分区"))
         {
-            auto* optionBox = new QComboBox(this);
+            auto* optionBox = new QComboBox(targetParent);
             optionBox->addItem(QStringLiteral("普通围岩"), QStringLiteral("0"));
             optionBox->addItem(QStringLiteral("半开挖区"), QStringLiteral("-1"));
             optionBox->addItem(QStringLiteral("开挖区"), QStringLiteral("-2"));
@@ -678,92 +1469,100 @@ void MaterialEntryWidget::rebuildForm(MaterialModel* model, MaterialEntry* entry
             }
             optionBox->setCurrentIndex(optionIndex >= 0 ? optionIndex : 0);
             optionBox->setProperty("columnName", column);
+            optionBox->setToolTip(QStringLiteral("用于区分普通围岩、半开挖、开挖、再生及加固材料。"));
             connect(optionBox, QOverload<int>::of(&QComboBox::currentIndexChanged), this,
                     &MaterialEntryWidget::onOptionValueChanged);
-            m_formLayout->addRow(QStringLiteral("开挖状态"), optionBox);
+            targetLayout->addRow(QStringLiteral("开挖状态"), optionBox);
             continue;
         }
-        auto* valueEdit = new QLineEdit(entry->properties.value(column), this);
+
+        if (!entry->properties.contains(column))
+            entry->properties.insert(column, defaultMaterialPropertyValue(model->key, column));
+        auto* valueEdit = new QLineEdit(entry->properties.value(column), targetParent);
         valueEdit->setMinimumWidth(10);
-        auto* validator = new QDoubleValidator(valueEdit);
-        validator->setNotation(QDoubleValidator::ScientificNotation);
-        valueEdit->setValidator(validator);
+        valueEdit->setValidator(createMaterialNumberValidator(valueEdit));
         valueEdit->setProperty("columnName", column);
+        const QString toolTip = parameterHelpText(model->key, column);
+        valueEdit->setToolTip(toolTip);
         connect(valueEdit, &QLineEdit::textEdited, this, &MaterialEntryWidget::onValueEdited);
-        m_formLayout->addRow(label, valueEdit);
+        QWidget* fieldWidget = createParameterFieldWidget(valueEdit, unit, targetParent);
+        targetLayout->addRow(createParameterLabel(label, toolTip, targetParent), fieldWidget);
         m_valueEdits.insert(column, valueEdit);
     }
 
-    // ===== 渗流与流变是两个可同时启用的附加模型 =====
-    m_seepageCombo = new CustomComboBox(this);
+    updateConditionalParameterVisibility(model->key, entry, m_advancedLayout, m_valueEdits);
+
+    // ===== 附加渗流 / 流变模型属于专业扩展，统一放在“高级参数” =====
+    m_advancedLayout->addRow(createSubsectionLabel(QStringLiteral("附加模型"), advancedPage));
+
+    m_seepageCombo = new CustomComboBox(advancedPage);
     m_seepageCombo->setMinimumWidth(10);
+    m_seepageCombo->setToolTip(QStringLiteral("选择附加渗流模型；选中后可调整下方渗流参数。"));
     m_seepageCombo->addItem(QStringLiteral("无"), QString());
     const auto& seepageModels = m_materialManager->seepageModels();
     for (const auto& seepageModel : seepageModels)
     {
-        if (seepageModel.key == QStringLiteral("jk_corewall_steady_seepage"))
+        if (seepageModel.key == QStringLiteral("jk_corewall_steady_seepage") ||
+            seepageModel.key == QStringLiteral("jk_corewall_anisotropic_seepage"))
+        {
             m_seepageCombo->addItem(seepageModel.displayName, seepageModel.key);
+        }
     }
-    int seepageIndex = m_seepageCombo->findData(entry->seepageModelKey);
+    const int seepageIndex = m_seepageCombo->findData(entry->seepageModelKey);
     m_seepageCombo->setCurrentIndex(seepageIndex >= 0 ? seepageIndex : 0);
     connect(m_seepageCombo, QOverload<int>::of(&QComboBox::currentIndexChanged), this,
             &MaterialEntryWidget::onSeepageModelChanged);
-    m_formLayout->addRow(QStringLiteral("渗流模型"), m_seepageCombo);
-    m_seepageFieldsWidget = new QWidget(this);
+    m_advancedLayout->addRow(QStringLiteral("渗流模型"), m_seepageCombo);
+
+    m_seepageFieldsWidget = new QWidget(advancedPage);
     m_seepageFieldsLayout = new QFormLayout(m_seepageFieldsWidget);
-    m_seepageFieldsLayout->setContentsMargins(0, 0, 0, 0);
-    m_seepageFieldsLayout->setHorizontalSpacing(8);
-    m_seepageFieldsLayout->setVerticalSpacing(6);
-    m_seepageFieldsLayout->setFieldGrowthPolicy(QFormLayout::AllNonFixedFieldsGrow);
-    m_formLayout->addRow(QStringLiteral("渗流参数"), m_seepageFieldsWidget);
+    configureParameterFormLayout(m_seepageFieldsLayout);
+    m_seepageFieldsLayout->setContentsMargins(16, 2, 0, 6);
+    m_advancedLayout->addRow(m_seepageFieldsWidget);
     rebuildSeepageFields(entry);
 
-    m_creepCombo = new CustomComboBox(this);
+    m_creepCombo = new CustomComboBox(advancedPage);
     m_creepCombo->setMinimumWidth(10);
+    m_creepCombo->setToolTip(QStringLiteral("选择附加流变模型；选中后可调整下方流变参数。"));
     m_creepCombo->addItem(QStringLiteral("无"), QString());
     for (const auto& creepModel : seepageModels)
     {
-        if (creepModel.key != QStringLiteral("jk_corewall_steady_seepage"))
+        if (creepModel.key != QStringLiteral("jk_corewall_steady_seepage") &&
+            creepModel.key != QStringLiteral("jk_corewall_anisotropic_seepage"))
+        {
             m_creepCombo->addItem(creepModel.displayName, creepModel.key);
+        }
     }
     const int creepIndex = m_creepCombo->findData(entry->creepModelKey);
     m_creepCombo->setCurrentIndex(creepIndex >= 0 ? creepIndex : 0);
     connect(m_creepCombo, QOverload<int>::of(&QComboBox::currentIndexChanged), this,
             &MaterialEntryWidget::onCreepModelChanged);
-    m_formLayout->addRow(QStringLiteral("流变模型"), m_creepCombo);
-    m_creepFieldsWidget = new QWidget(this);
+    m_advancedLayout->addRow(QStringLiteral("流变模型"), m_creepCombo);
+
+    m_creepFieldsWidget = new QWidget(advancedPage);
     m_creepFieldsLayout = new QFormLayout(m_creepFieldsWidget);
-    m_creepFieldsLayout->setContentsMargins(0, 0, 0, 0);
-    m_creepFieldsLayout->setHorizontalSpacing(8);
-    m_creepFieldsLayout->setVerticalSpacing(6);
-    m_creepFieldsLayout->setFieldGrowthPolicy(QFormLayout::AllNonFixedFieldsGrow);
-    m_formLayout->addRow(QStringLiteral("流变参数"), m_creepFieldsWidget);
+    configureParameterFormLayout(m_creepFieldsLayout);
+    m_creepFieldsLayout->setContentsMargins(16, 2, 0, 6);
+    m_advancedLayout->addRow(m_creepFieldsWidget);
     rebuildCreepFields(entry);
 
     // ===== 初始化选中 MATYPE =====
     int initialMatype = m_materialManager->selectedMatypeForEntry(m_entryId);
     if (initialMatype < 0 && !appliedList.isEmpty())
-    {
         initialMatype = appliedList.first();
-    }
 
     int comboIndex = (initialMatype >= 0) ? m_matypeCombo->findData(initialMatype) : -1;
     m_matypeCombo->setCurrentIndex(comboIndex >= 0 ? comboIndex : 0);
-
     m_materialManager->setSelectedMatypeForEntry(m_entryId, initialMatype);
 
-    // 初始化：清空 preview / predelete
     m_previewMatype = -1;
     m_preDeleteMatype = -1;
     m_materialManager->setPreviewMatypeForEntry(m_entryId, -1);
     m_materialManager->setPreDeleteMatypeForEntry(m_entryId, -1);
 
     m_isUpdating = false;
-
     updateAppliedListColors();
-    // 这里仅重建页面控件，不主动触发网格高亮刷新。
-    // 高亮由 beforeLoad()/用户交互路径触发，避免在“创建材料/重建树”时对未激活页面
-    // 执行 PickManager 刷新导致的崩溃风险。
+    // 这里只重建控件，不主动刷新网格高亮；高亮仍由 beforeLoad()/用户交互触发。
 }
 
 void MaterialEntryWidget::clearForm()
@@ -781,6 +1580,8 @@ void MaterialEntryWidget::clearForm()
 
     m_nameEdit = nullptr;
     m_modelCombo = nullptr;
+    m_basicLayout = nullptr;
+    m_advancedLayout = nullptr;
     m_valueEdits.clear();
     m_seepageCombo = nullptr;
     m_seepageFieldsWidget = nullptr;
@@ -798,6 +1599,7 @@ void MaterialEntryWidget::clearForm()
     m_removeButton = nullptr;
     m_transitionOnlyCheck = nullptr;
     m_transitionMatypeSpin = nullptr;
+    m_assignmentWidget = nullptr;
 
     m_lastHoveredIndex = -1;
     m_matypeDropdownOpen = false;
@@ -875,6 +1677,8 @@ void MaterialEntryWidget::refreshAppliedMatypes(const QSet<int>& appliedMatypes,
         auto* item = new QListWidgetItem(matypeDisplayText(value), m_appliedMatypesList);
         item->setData(Qt::UserRole, value);
     }
+    m_appliedMatypesList->setFixedHeight(
+        appliedList.isEmpty() ? 42 : qMin(78, 30 + appliedList.size() * 24));
 
     int comboIndex = (selectedMatype >= 0) ? m_matypeCombo->findData(selectedMatype) : 0;
     if (comboIndex < 0)
@@ -886,6 +1690,9 @@ void MaterialEntryWidget::refreshAppliedMatypes(const QSet<int>& appliedMatypes,
     m_previewMatype = -1;
     m_materialManager->setPreDeleteMatypeForEntry(m_entryId, -1);
     m_materialManager->setPreviewMatypeForEntry(m_entryId, -1);
+
+    if (m_removeButton)
+        m_removeButton->setEnabled(false);
 
     m_isUpdating = false;
 
@@ -961,6 +1768,9 @@ void MaterialEntryWidget::onAppliedMatypeSelected(const QString& text)
         return;
 
     auto* item = m_appliedMatypesList ? m_appliedMatypesList->currentItem() : nullptr;
+    if (m_removeButton)
+        m_removeButton->setEnabled(item != nullptr &&
+                                   (!m_assignmentWidget || m_assignmentWidget->isEnabled()));
     if (!item)
     {
         // 清选择 => 取消预删除
@@ -995,14 +1805,8 @@ void MaterialEntryWidget::onTransitionModeChanged(int state)
     {
         entry->transitionOnly = false;
         entry->transitionMatype = m_transitionMatypeSpin->value();
-        if (m_matypeCombo)
-            m_matypeCombo->setEnabled(true);
-        if (m_applyButton)
-            m_applyButton->setEnabled(true);
-        if (m_appliedMatypesList)
-            m_appliedMatypesList->setEnabled(true);
-        if (m_removeButton)
-            m_removeButton->setEnabled(true);
+        m_transitionMatypeSpin->setEnabled(false);
+        setAssignmentControlsEnabled(true);
         m_materialManager->notifyEntryUpdated(entry->id, false);
         return;
     }
@@ -1013,30 +1817,17 @@ void MaterialEntryWidget::onTransitionModeChanged(int state)
         QMessageBox::warning(this, QStringLiteral("提示"), error);
         QSignalBlocker blocker(m_transitionOnlyCheck);
         m_transitionOnlyCheck->setCheckState(Qt::Unchecked);
-        m_transitionOnlyCheck->setEnabled(false);
+        m_transitionOnlyCheck->setEnabled(true);
+        m_transitionMatypeSpin->setEnabled(false);
         entry->transitionOnly = false;
-        if (m_matypeCombo)
-            m_matypeCombo->setEnabled(true);
-        if (m_applyButton)
-            m_applyButton->setEnabled(true);
-        if (m_appliedMatypesList)
-            m_appliedMatypesList->setEnabled(true);
-        if (m_removeButton)
-            m_removeButton->setEnabled(true);
+        setAssignmentControlsEnabled(true);
         return;
     }
     entry->transitionOnly = true;
     entry->transitionMatype = matype;
     m_transitionOnlyCheck->setEnabled(true);
     m_transitionMatypeSpin->setEnabled(true);
-    if (m_matypeCombo)
-        m_matypeCombo->setEnabled(false);
-    if (m_applyButton)
-        m_applyButton->setEnabled(false);
-    if (m_appliedMatypesList)
-        m_appliedMatypesList->setEnabled(false);
-    if (m_removeButton)
-        m_removeButton->setEnabled(false);
+    setAssignmentControlsEnabled(false);
     m_materialManager->notifyEntryUpdated(entry->id, false);
 }
 
@@ -1082,7 +1873,10 @@ void MaterialEntryWidget::onMatypeHovered(int index)
     }
     if (index >= 0)
     {
-        m_matypeCombo->setItemData(index, QColor(230, 247, 255), Qt::BackgroundRole);
+        const QColor hoverColor =
+            blendColor(m_matypeCombo->palette().color(QPalette::Base),
+                       m_matypeCombo->palette().color(QPalette::Highlight), 0.16);
+        m_matypeCombo->setItemData(index, hoverColor, Qt::BackgroundRole);
         m_lastHoveredIndex = index;
     }
     else
@@ -1191,8 +1985,10 @@ void MaterialEntryWidget::updateAppliedListColors()
     if (!m_appliedMatypesList)
         return;
 
-    // 两种色：预删除(淡红)、其他(无)
-    const QColor preDeleteColor(255, 230, 230);
+    // 预删除色基于当前主题底色轻度混合红色，避免暗色主题出现刺眼亮块。
+    const QColor preDeleteColor =
+        blendColor(m_appliedMatypesList->palette().color(QPalette::Base), QColor(210, 72, 72),
+                   0.18);
 
     for (int i = 0; i < m_appliedMatypesList->count(); ++i)
     {
@@ -1213,5 +2009,28 @@ void MaterialEntryWidget::updateAppliedListColors()
         {
             it->setBackground(QBrush());
         }
+    }
+}
+
+void MaterialEntryWidget::setAssignmentControlsEnabled(bool enabled)
+{
+    if (m_assignmentWidget)
+    {
+        m_assignmentWidget->setEnabled(enabled);
+    }
+    else
+    {
+        if (m_matypeCombo)
+            m_matypeCombo->setEnabled(enabled);
+        if (m_applyButton)
+            m_applyButton->setEnabled(enabled);
+        if (m_appliedMatypesList)
+            m_appliedMatypesList->setEnabled(enabled);
+    }
+
+    if (m_removeButton)
+    {
+        const bool hasSelection = m_appliedMatypesList && m_appliedMatypesList->currentItem();
+        m_removeButton->setEnabled(enabled && hasSelection);
     }
 }

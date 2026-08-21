@@ -1,4 +1,4 @@
-#include "PickManager.h"
+﻿#include "PickManager.h"
 
 #include <PublicVariables.h>
 #include <ServiceRegistry.h>
@@ -7,6 +7,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstring>
 #include <limits>
 #include <utility>
 
@@ -40,6 +41,10 @@
 #include <vtkUnstructuredGrid.h>
 #include <vtkExtractCells.h>
 #include <vtkIdTypeArray.h>
+#include <vtkPolyData.h>
+#include <vtkPolyDataMapper.h>
+#include <vtkCellArray.h>
+#include <vtkPoints.h>
 
 #include <QHash>
 
@@ -70,6 +75,130 @@ vtkDataArray* findArray(vtkFieldData* fd, const char* a, const char* b = nullptr
     if (b)
         return fd->GetArray(b);
     return nullptr;
+}
+
+
+// Node 框选专用：从当前“显示 surface”中剔除重复的内部材料/分层界面，
+// 再压缩点表，只保留真正参与外表面的节点。
+//
+// 背景：当前 mesh.imported.surface 为了显示 MATYPE/LAYER 分界面，会把内部界面两侧
+// 都写入同一个 vtkPolyData。vtkHardwareSelector 在 POINT 模式下会对这些界面顶点编码，
+// 因而可能把肉眼被外表面遮挡的内部节点也选出来。旧版 vtkDataSetSurfaceFilter 没有这个问题，
+// 是因为它的输出只包含外壳且点表也是紧凑的。
+//
+// 这里按“一个显示小面的原始点集合”做分组：
+//   - 只出现 1 次：当前显示集合的真实外表面 / 筛选后暴露面 -> 保留；
+//   - 出现 2 次及以上：内部材料/分层共面界面 -> 不参与 Node 框选。
+// 最后重新建立紧凑点表，并用 vtkOriginalPointIds 直接映射回完整体网格点 ID。
+static vtkSmartPointer<vtkPolyData> buildNodeBoxPickSurface(vtkDataSet* source)
+{
+    auto out = vtkSmartPointer<vtkPolyData>::New();
+    if (!source || source->GetNumberOfPoints() <= 0 || source->GetNumberOfCells() <= 0)
+        return out;
+
+    vtkDataArray* sourceOriginalPointIds =
+        findArray(source->GetPointData(), "vtkOriginalPointIds", "orig_point_id");
+
+    struct FaceRecord
+    {
+        QVector<vtkIdType> localPointIds;
+        QByteArray key;
+    };
+
+    QVector<FaceRecord> faces;
+    faces.reserve(static_cast<int>(source->GetNumberOfCells()));
+    QHash<QByteArray, int> keyCounts;
+    keyCounts.reserve(static_cast<int>(source->GetNumberOfCells() * 1.3));
+
+    for (vtkIdType cid = 0; cid < source->GetNumberOfCells(); ++cid)
+    {
+        vtkCell* cell = source->GetCell(cid);
+        if (!cell || cell->GetCellDimension() < 2)
+            continue;
+
+        vtkIdList* ids = cell->GetPointIds();
+        if (!ids || ids->GetNumberOfIds() < 3)
+            continue;
+
+        FaceRecord rec;
+        rec.localPointIds.reserve(static_cast<int>(ids->GetNumberOfIds()));
+        QVector<vtkIdType> canonicalIds;
+        canonicalIds.reserve(static_cast<int>(ids->GetNumberOfIds()));
+
+        for (vtkIdType i = 0; i < ids->GetNumberOfIds(); ++i)
+        {
+            const vtkIdType localPid = ids->GetId(i);
+            if (localPid < 0 || localPid >= source->GetNumberOfPoints())
+                continue;
+
+            rec.localPointIds.push_back(localPid);
+            vtkIdType originalPid = localPid;
+            if (sourceOriginalPointIds && localPid < sourceOriginalPointIds->GetNumberOfTuples())
+                originalPid = static_cast<vtkIdType>(sourceOriginalPointIds->GetTuple1(localPid));
+            canonicalIds.push_back(originalPid);
+        }
+
+        if (rec.localPointIds.size() < 3)
+            continue;
+
+        std::sort(canonicalIds.begin(), canonicalIds.end());
+        canonicalIds.erase(std::unique(canonicalIds.begin(), canonicalIds.end()), canonicalIds.end());
+        if (canonicalIds.size() < 3)
+            continue;
+
+        rec.key.resize(static_cast<int>(canonicalIds.size() * sizeof(vtkIdType)));
+        std::memcpy(rec.key.data(), canonicalIds.constData(),
+                    static_cast<size_t>(rec.key.size()));
+        keyCounts[rec.key] = keyCounts.value(rec.key, 0) + 1;
+        faces.push_back(std::move(rec));
+    }
+
+    if (faces.isEmpty())
+        return out;
+
+    auto points = vtkSmartPointer<vtkPoints>::New();
+    auto polys = vtkSmartPointer<vtkCellArray>::New();
+    auto originalPointIds = vtkSmartPointer<vtkIdTypeArray>::New();
+    originalPointIds->SetName("vtkOriginalPointIds");
+    originalPointIds->SetNumberOfComponents(1);
+
+    QHash<vtkIdType, vtkIdType> sourceToPickPid;
+    sourceToPickPid.reserve(static_cast<int>(source->GetNumberOfPoints() / 2 + 1));
+
+    auto mapPoint = [&](vtkIdType sourcePid) -> vtkIdType
+    {
+        auto it = sourceToPickPid.constFind(sourcePid);
+        if (it != sourceToPickPid.constEnd())
+            return it.value();
+
+        double p[3];
+        source->GetPoint(sourcePid, p);
+        const vtkIdType pickPid = points->InsertNextPoint(p);
+
+        vtkIdType originalPid = sourcePid;
+        if (sourceOriginalPointIds && sourcePid < sourceOriginalPointIds->GetNumberOfTuples())
+            originalPid = static_cast<vtkIdType>(sourceOriginalPointIds->GetTuple1(sourcePid));
+        originalPointIds->InsertNextValue(originalPid);
+        sourceToPickPid.insert(sourcePid, pickPid);
+        return pickPid;
+    };
+
+    for (const FaceRecord& rec : std::as_const(faces))
+    {
+        // 重复面就是同一内部界面的两侧；Node 框选只允许真正外表面。
+        if (keyCounts.value(rec.key, 0) != 1)
+            continue;
+
+        polys->InsertNextCell(static_cast<vtkIdType>(rec.localPointIds.size()));
+        for (vtkIdType sourcePid : rec.localPointIds)
+            polys->InsertCellPoint(mapPoint(sourcePid));
+    }
+
+    out->SetPoints(points);
+    out->SetPolys(polys);
+    out->GetPointData()->AddArray(originalPointIds);
+    out->Modified();
+    return out;
 }
 
 static bool domainKeyIsValidForDisplay(const DomainKey& key)
@@ -3526,47 +3655,106 @@ bool PickManager::hardwareBoxSelect(int x0, int y0, int x1, int y1, bool deselec
     };
     hideActor2DForSelect(m_dragRectActor);
 
-    if (auto* rw = ren->GetRenderWindow())
-        rw->Render();
+    // Node 框选不能直接在当前显示 surface 上做 POINT hardware selection。
+    // 当前显示 surface 同时包含 MATYPE/LAYER 内部分界面；POINT pass 会把这些内部界面顶点也编码。
+    // 选择前临时把同一个 solid actor 的 mapper 输入替换成“纯外壳 + 紧凑点表”，
+    // 这样保持相机、actor、深度测试都不变，同时恢复旧版 vtkDataSetSurfaceFilter 的选择语义。
+    vtkSmartPointer<vtkPolyData> nodePickSurface;
+    vtkSmartPointer<vtkPolyData> savedSolidSurface;
+    vtkPolyDataMapper* solidPolyMapper = nullptr;
+    int savedSolidScalarVisibility = 0;
 
-    m_hwSelector->SetRenderer(ren);
-    // 节点约束也先拾取可见表面单元，再从这些单元中提取框内节点。
-    // 直接按点拾取依赖点图元实际参与光栅化，密网格中会随机漏掉未显示的顶点。
-    m_hwSelector->SetFieldAssociation(vtkDataObject::FIELD_ASSOCIATION_CELLS);
-    int selectionXMin = xmin;
-    int selectionYMin = ymin;
-    int selectionXMax = xmax;
-    int selectionYMax = ymax;
-    if (m_pickMode == PickMode::Node)
+    if (m_pickMode == PickMode::Node && m_solidProp)
     {
-        int* windowSize = ren->GetRenderWindow() ? ren->GetRenderWindow()->GetSize() : nullptr;
-        selectionXMin = std::max(0, xmin - 2);
-        selectionYMin = std::max(0, ymin - 2);
-        if (windowSize)
+        auto* solidActor = vtkActor::SafeDownCast(m_solidProp);
+        solidPolyMapper = solidActor ? vtkPolyDataMapper::SafeDownCast(solidActor->GetMapper()) : nullptr;
+        vtkDataSet* displayedSolid = dataSetFromProp(m_solidProp);
+        if (solidPolyMapper && displayedSolid)
         {
-            selectionXMax = std::min(windowSize[0] - 1, xmax + 2);
-            selectionYMax = std::min(windowSize[1] - 1, ymax + 2);
-        }
-        else
-        {
-            selectionXMax = xmax + 2;
-            selectionYMax = ymax + 2;
+            savedSolidSurface = vtkPolyData::SafeDownCast(solidPolyMapper->GetInput());
+            nodePickSurface = buildNodeBoxPickSurface(displayedSolid);
+            if (savedSolidSurface && nodePickSurface && nodePickSurface->GetNumberOfCells() > 0)
+            {
+                savedSolidScalarVisibility = solidPolyMapper->GetScalarVisibility();
+                solidPolyMapper->ScalarVisibilityOff();
+                solidPolyMapper->SetInputData(nodePickSurface);
+            }
+            else
+            {
+                nodePickSurface = nullptr;
+                savedSolidSurface = nullptr;
+            }
         }
     }
-    m_hwSelector->SetArea(selectionXMin, selectionYMin, selectionXMax, selectionYMax);
+
+    // Node 框选不再依赖 POINT pass 是否真的给每个顶点分配到屏幕像素。
+    // 先正常渲染“纯外壳”，保存框选区域的深度缓冲；后面直接把所有外表面节点投影到屏幕，
+    // 用 ZBuffer 判断当前视角是否真正可见。这样即使模型缩得很小、多个节点落在同一像素，
+    // 仍然可以按节点的真实屏幕坐标完整框选。透视/正交都走 renderer 的同一套投影矩阵。
+    int depthXMin = xmin;
+    int depthXMax = xmax;
+    int depthYMin = ymin;
+    int depthYMax = ymax;
+    int depthWidth = 0;
+    int depthHeight = 0;
+    QVector<float> depthBuffer;
+    bool depthBufferValid = false;
+
+    if (auto* rw = ren->GetRenderWindow())
+    {
+        rw->Render();
+        if (m_pickMode == PickMode::Node)
+        {
+            const int* size = rw->GetSize();
+            if (size && size[0] > 0 && size[1] > 0)
+            {
+                // 多留 1 像素，只用于深度梯度容差；框选范围本身仍严格使用用户画的矩形。
+                depthXMin = std::max(0, xmin - 1);
+                depthXMax = std::min(size[0] - 1, xmax + 1);
+                depthYMin = std::max(0, ymin - 1);
+                depthYMax = std::min(size[1] - 1, ymax + 1);
+                depthWidth = depthXMax - depthXMin + 1;
+                depthHeight = depthYMax - depthYMin + 1;
+                if (depthWidth > 0 && depthHeight > 0)
+                {
+                    depthBuffer.resize(depthWidth * depthHeight);
+                    depthBufferValid =
+                        rw->GetZbufferData(depthXMin, depthYMin, depthXMax, depthYMax,
+                                           depthBuffer.data()) != 0;
+                }
+            }
+        }
+    }
+
+    m_hwSelector->SetRenderer(ren);
+    // Node 模式也只用 CELL pass：它不负责返回全部节点，只负责识别框内主要表面朝向。
+    // 节点完整性由下面的屏幕投影 + ZBuffer 保证。
+    m_hwSelector->SetFieldAssociation(vtkDataObject::FIELD_ASSOCIATION_CELLS);
+    m_hwSelector->SetArea(xmin, ymin, xmax, ymax);
 
     vtkSmartPointer<vtkSelection> sel = m_hwSelector->Select();
+
+    // HardwareSelector 已经返回 ID，可以立刻恢复正常显示 mapper；nodePickSurface 由 smart pointer
+    // 保持到下面 ID 映射完成，因此不会出现 selection ID 对错数据集的问题。
+    if (solidPolyMapper && savedSolidSurface)
+    {
+        solidPolyMapper->SetInputData(savedSolidSurface);
+        solidPolyMapper->SetScalarVisibility(savedSolidScalarVisibility);
+    }
 
     for (auto& it : actorVisBackup)
         it.first->SetVisibility(it.second);
     for (auto& it : actor2DVisBackup)
         it.first->SetVisibility(it.second);
 
-    if (!sel || sel->GetNumberOfNodes() <= 0)
+    // Face / Edge 仍完全依赖 HardwareSelector；Node 即便没有返回 cell，
+    // 也可以继续依靠投影 + ZBuffer 判断，所以不能在这里提前退出。
+    if (m_pickMode != PickMode::Node && (!sel || sel->GetNumberOfNodes() <= 0))
         return false;
 
     bool changed = false;
     int dirtyBits = DirtyNone;
+
     auto worldPointInRect = [&](const double p[3]) -> bool
     {
         vtkNew<vtkCoordinate> coord;
@@ -3653,7 +3841,7 @@ bool PickManager::hardwareBoxSelect(int x0, int y0, int x1, int y1, bool deselec
 
     // 先收集硬件确认可见的单元。约束节点和网格面随后共用同一套视角过滤，
     // 可避免框靠近轮廓时把几乎侧向的相邻面一起选入。
-    for (unsigned int i = 0; i < sel->GetNumberOfNodes(); ++i)
+    for (unsigned int i = 0; sel && i < sel->GetNumberOfNodes(); ++i)
     {
         auto* node = sel->GetNode(i);
         if (!node)
@@ -3671,7 +3859,12 @@ bool PickManager::hardwareBoxSelect(int x0, int y0, int x1, int y1, bool deselec
         else
             continue;
 
-        vtkDataSet* pickedDs = dataSetFromProp(prop);
+        // Node 模式下 Solid 的 cell id 来自临时 nodePickSurface；mapper 已恢复，
+        // 所以这里必须继续按临时外壳解释 selection id。
+        vtkDataSet* pickedDs =
+            (m_pickMode == PickMode::Node && kind == GridKind::Solid && nodePickSurface)
+                ? static_cast<vtkDataSet*>(nodePickSurface.GetPointer())
+                : dataSetFromProp(prop);
         for (vtkIdType j = 0; j < selIds->GetNumberOfTuples(); ++j)
             appendVisibleCell(kind, pickedDs, vtkIdType(selIds->GetComponent(j, 0)));
     }
@@ -3696,34 +3889,243 @@ bool PickManager::hardwareBoxSelect(int x0, int y0, int x1, int y1, bool deselec
 
     if (m_pickMode == PickMode::Node)
     {
-        QSet<vtkIdType> solidPointIds;
-        QSet<vtkIdType> linePointIds;
+        // 只有当框中的可见单元明显属于同一个平面/同一朝向时，才启用“主平面锁定”。
+        // 这样框一个平面时不会把轮廓旁边窄窄的一条侧面一起带进来；如果用户本来就跨多个
+        // 斜面/曲面框选，朝向分散，会自动关闭该限制，不再发生大范围斜坡漏选。
+        int orientedCellCount = 0;
+        int referenceAlignedCount = 0;
+        constexpr double kPlanarDot = 0.985; // 约 10°
         for (const VisibleCell& candidate : std::as_const(visibleCells))
         {
-            if (!followsViewedSurface(candidate))
+            if (candidate.kind != GridKind::Solid || !candidate.hasNormal)
                 continue;
-            vtkCell* cell = candidate.dataSet->GetCell(candidate.cellId);
-            vtkIdList* ids = cell ? cell->GetPointIds() : nullptr;
-            if (!ids)
-                continue;
-            vtkDataArray* originalPoints =
-                candidate.kind == GridKind::Solid && candidate.dataSet != m_gridSolid
-                    ? findArray(candidate.dataSet->GetPointData(), "vtkOriginalPointIds", "orig_point_id")
-                    : nullptr;
-            QSet<vtkIdType>& target =
-                candidate.kind == GridKind::Solid ? solidPointIds : linePointIds;
-            for (vtkIdType k = 0; k < ids->GetNumberOfIds(); ++k)
+            ++orientedCellCount;
+            if (hasReferenceNormal &&
+                std::abs(vtkMath::Dot(referenceNormal, candidate.normal)) >= kPlanarDot)
+                ++referenceAlignedCount;
+        }
+        const bool lockToReferenceSurface =
+            hasReferenceNormal && orientedCellCount > 0 &&
+            referenceAlignedCount * 5 >= orientedCellCount * 4; // >= 80%
+
+        auto projectToDisplay = [&](const double p[3], double display[3]) -> bool
+        {
+            ren->SetWorldPoint(p[0], p[1], p[2], 1.0);
+            ren->WorldToDisplay();
+            ren->GetDisplayPoint(display);
+            return std::isfinite(display[0]) && std::isfinite(display[1]) &&
+                   std::isfinite(display[2]);
+        };
+
+        auto depthAt = [&](int sx, int sy, float& z) -> bool
+        {
+            if (!depthBufferValid || sx < depthXMin || sx > depthXMax ||
+                sy < depthYMin || sy > depthYMax)
+                return false;
+            const int bx = sx - depthXMin;
+            const int by = sy - depthYMin;
+            const int index = by * depthWidth + bx;
+            if (index < 0 || index >= depthBuffer.size())
+                return false;
+            z = depthBuffer[index];
+            return std::isfinite(z) && z < 0.999999f;
+        };
+
+        auto displayPointIsFrontVisible = [&](const double display[3]) -> bool
+        {
+            if (!depthBufferValid || display[2] < 0.0 || display[2] > 1.0)
+                return false;
+
+            const int sx = int(std::lround(display[0]));
+            const int sy = int(std::lround(display[1]));
+            float centerDepth = 1.0f;
+            if (!depthAt(sx, sy, centerDepth))
             {
-                const vtkIdType localPid = ids->GetId(k);
-                double point[3];
-                candidate.dataSet->GetPoint(localPid, point);
-                if (!worldPointInRect(point))
+                // 轮廓顶点可能恰好落在像素边缘；中心像素为空时只查紧邻 1 像素。
+                bool found = false;
+                double bestDelta = std::numeric_limits<double>::max();
+                float bestDepth = 1.0f;
+                for (int oy = -1; oy <= 1; ++oy)
+                {
+                    for (int ox = -1; ox <= 1; ++ox)
+                    {
+                        float z = 1.0f;
+                        if (!depthAt(sx + ox, sy + oy, z))
+                            continue;
+                        const double delta = std::abs(double(z) - display[2]);
+                        if (delta < bestDelta)
+                        {
+                            bestDelta = delta;
+                            bestDepth = z;
+                            found = true;
+                        }
+                    }
+                }
+                if (!found)
+                    return false;
+                centerDepth = bestDepth;
+            }
+
+            // 根据局部深度梯度给亚像素容差：平面上接近 0，斜面缩小时自动稍微增大。
+            double localGradient = 0.0;
+            for (int oy = -1; oy <= 1; ++oy)
+            {
+                for (int ox = -1; ox <= 1; ++ox)
+                {
+                    float z = 1.0f;
+                    if (!depthAt(sx + ox, sy + oy, z))
+                        continue;
+                    const double dz = std::abs(double(z) - double(centerDepth));
+                    // 深度突变通常来自轮廓或另一表面，不能用它放大容差。
+                    if (dz < 0.01)
+                        localGradient = std::max(localGradient, dz);
+                }
+            }
+            const double depthTolerance =
+                std::min(0.002, std::max(2.0e-5, localGradient * 0.85 + 2.0e-5));
+
+            // 节点不能位于当前像素最前表面之后；略靠前允许通过以吸收像素边缘误差。
+            return display[2] <= double(centerDepth) + depthTolerance;
+        };
+
+        auto cellMatchesReference = [&](vtkDataSet* ds, vtkIdType cellId) -> bool
+        {
+            if (!lockToReferenceSurface)
+                return true;
+            if (!ds || cellId < 0 || cellId >= ds->GetNumberOfCells())
+                return false;
+
+            vtkCell* cell = ds->GetCell(cellId);
+            vtkIdList* ids = cell ? cell->GetPointIds() : nullptr;
+            if (!cell || cell->GetCellDimension() != 2 || !ids || ids->GetNumberOfIds() < 3)
+                return false;
+
+            double p0[3], p1[3], p2[3], a[3], b[3], normal[3];
+            ds->GetPoint(ids->GetId(0), p0);
+            for (vtkIdType k = 1; k + 1 < ids->GetNumberOfIds(); ++k)
+            {
+                ds->GetPoint(ids->GetId(k), p1);
+                ds->GetPoint(ids->GetId(k + 1), p2);
+                vtkMath::Subtract(p1, p0, a);
+                vtkMath::Subtract(p2, p0, b);
+                vtkMath::Cross(a, b, normal);
+                if (vtkMath::Normalize(normal) > 1.0e-12)
+                    return std::abs(vtkMath::Dot(referenceNormal, normal)) >= kPlanarDot;
+            }
+            return false;
+        };
+
+        // ZBuffer 读取失败时保守回退：仅采用 HardwareSelector 已确认可见 cell 的节点。
+        QSet<vtkIdType> fallbackSolidLocalPoints;
+        QSet<vtkIdType> fallbackLineLocalPoints;
+        if (!depthBufferValid)
+        {
+            for (const VisibleCell& candidate : std::as_const(visibleCells))
+            {
+                vtkCell* cell = candidate.dataSet ? candidate.dataSet->GetCell(candidate.cellId) : nullptr;
+                vtkIdList* ids = cell ? cell->GetPointIds() : nullptr;
+                if (!ids)
                     continue;
-                const vtkIdType pointId = originalPoints
-                    ? vtkIdType(originalPoints->GetTuple1(localPid))
-                    : localPid;
-                if (pointId >= 0)
-                    target.insert(pointId);
+                QSet<vtkIdType>& target =
+                    candidate.kind == GridKind::Solid ? fallbackSolidLocalPoints
+                                                      : fallbackLineLocalPoints;
+                for (vtkIdType k = 0; k < ids->GetNumberOfIds(); ++k)
+                    target.insert(ids->GetId(k));
+            }
+        }
+
+        QSet<vtkIdType> solidPointIds;
+        QSet<vtkIdType> linePointIds;
+
+        if (nodePickSurface && nodePickSurface->GetNumberOfPoints() > 0)
+        {
+            if (lockToReferenceSurface)
+                nodePickSurface->BuildLinks();
+
+            vtkDataArray* originalPoints =
+                findArray(nodePickSurface->GetPointData(), "vtkOriginalPointIds", "orig_point_id");
+            vtkNew<vtkIdList> incidentCells;
+
+            for (vtkIdType localPid = 0; localPid < nodePickSurface->GetNumberOfPoints(); ++localPid)
+            {
+                double p[3], display[3];
+                nodePickSurface->GetPoint(localPid, p);
+                if (!projectToDisplay(p, display))
+                    continue;
+                if (display[0] < double(xmin) || display[0] > double(xmax) ||
+                    display[1] < double(ymin) || display[1] > double(ymax))
+                    continue;
+
+                if (depthBufferValid)
+                {
+                    if (!displayPointIsFrontVisible(display))
+                        continue;
+                }
+                else if (!fallbackSolidLocalPoints.contains(localPid))
+                {
+                    continue;
+                }
+
+                if (lockToReferenceSurface)
+                {
+                    incidentCells->Reset();
+                    nodePickSurface->GetPointCells(localPid, incidentCells);
+                    bool onReferenceSurface = false;
+                    for (vtkIdType ci = 0; ci < incidentCells->GetNumberOfIds(); ++ci)
+                    {
+                        if (cellMatchesReference(nodePickSurface, incidentCells->GetId(ci)))
+                        {
+                            onReferenceSurface = true;
+                            break;
+                        }
+                    }
+                    if (!onReferenceSurface)
+                        continue;
+                }
+
+                vtkIdType originalPid = localPid;
+                if (originalPoints && localPid < originalPoints->GetNumberOfTuples())
+                    originalPid = vtkIdType(originalPoints->GetTuple1(localPid));
+                if (originalPid >= 0)
+                    solidPointIds.insert(originalPid);
+            }
+        }
+
+        // 线单元不做主平面限制，但也用屏幕投影 + ZBuffer，避免缩小时漏点。
+        if (m_lineProp)
+        {
+            auto* lineActor = vtkActor::SafeDownCast(m_lineProp);
+            vtkDataSet* lineDs = dataSetFromProp(m_lineProp);
+            if ((!lineActor || lineActor->GetVisibility()) && lineDs)
+            {
+                vtkDataArray* originalPoints =
+                    findArray(lineDs->GetPointData(), "vtkOriginalPointIds", "orig_point_id");
+                for (vtkIdType localPid = 0; localPid < lineDs->GetNumberOfPoints(); ++localPid)
+                {
+                    double p[3], display[3];
+                    lineDs->GetPoint(localPid, p);
+                    if (!projectToDisplay(p, display))
+                        continue;
+                    if (display[0] < double(xmin) || display[0] > double(xmax) ||
+                        display[1] < double(ymin) || display[1] > double(ymax))
+                        continue;
+
+                    if (depthBufferValid)
+                    {
+                        if (!displayPointIsFrontVisible(display))
+                            continue;
+                    }
+                    else if (!fallbackLineLocalPoints.contains(localPid))
+                    {
+                        continue;
+                    }
+
+                    vtkIdType originalPid = localPid;
+                    if (originalPoints && localPid < originalPoints->GetNumberOfTuples())
+                        originalPid = vtkIdType(originalPoints->GetTuple1(localPid));
+                    if (originalPid >= 0)
+                        linePointIds.insert(originalPid);
+                }
             }
         }
 
@@ -3731,6 +4133,7 @@ bool PickManager::hardwareBoxSelect(int x0, int y0, int x1, int y1, bool deselec
             setNodeSelected_NoRefresh(GridKind::Solid, pointId, !deselect);
         for (vtkIdType pointId : std::as_const(linePointIds))
             setNodeSelected_NoRefresh(GridKind::Line, pointId, !deselect);
+
         changed = !solidPointIds.isEmpty() || !linePointIds.isEmpty();
         if (changed)
             markDirty(DirtyNode);

@@ -16,6 +16,7 @@
 
 #include <QDebug>
 #include <QDir>
+#include <QFileInfo>
 #include <QInputDialog>
 #include <QJsonArray>
 #include <QJsonDocument>
@@ -41,6 +42,7 @@
 #include "PostDisplayControlWidget.h"
 #include "PostResultAutoPrepare.h"
 #include "PostResultSelectionUtils.h"
+#include "PostTecplotUtils.h"
 #include "PostVisualUtils.h"
 VTK_MODULE_INIT(vtkRenderingOpenGL2)
 VTK_MODULE_INIT(vtkRenderingContextOpenGL2)
@@ -325,13 +327,33 @@ void PostProcessing::newProject()
 
 void PostProcessing::initAction()
 {
+    const QString initialProject =
+        PublicVariables::instance().get(PublicConstants::kProjectDirectoryKey).toString();
+    const QString initialMatype =
+        PublicVariables::instance().get(QStringLiteral("post.result.filter.matype.checked")).toString();
+    const QString initialLayer =
+        PublicVariables::instance().get(QStringLiteral("post.result.filter.layer.checked")).toString();
+
     EventManager::instance().registerHandler(
-        meshDisplayFilterChangedEvent(), this,
-        [this](const QVariantMap&)
+        postResultFilterChangedEvent(), this,
+        [this, lastProject = initialProject, lastMatype = initialMatype,
+         lastLayer = initialLayer](const QVariantMap& values) mutable
         {
             if (!postSceneStyle().followMeshFilter)
                 return;
-            notifyPostDisplaySettingsChanged(QStringLiteral("mesh-filter"));
+
+            // 后处理筛选状态来自结果自身 MATYPE/LAYER，不再由 Mesh 数据驱动。
+            const QString project =
+                PublicVariables::instance().get(PublicConstants::kProjectDirectoryKey).toString();
+            const QString matype = values.value(QStringLiteral("matype")).toString();
+            const QString layer = values.value(QStringLiteral("layer")).toString();
+            if (project == lastProject && matype == lastMatype && layer == lastLayer)
+                return;
+
+            lastProject = project;
+            lastMatype = matype;
+            lastLayer = layer;
+            notifyPostDisplaySettingsChanged(QStringLiteral("domain-filter"));
             if (m_displayControlWidget)
                 m_displayControlWidget->syncFromState();
         });
@@ -450,12 +472,62 @@ void PostProcessing::prepareResultRootAsync(const QString& projectDir, const QSt
     m_preparingResultRoots.insert(key);
     const auto prepared = QSharedPointer<bool>::create(false);
     const auto summary = QSharedPointer<PostResultAutoPrepare::PreparedResultSummary>::create();
+    const QString preferredResultFile =
+        PostResultSelectionUtils::sharedResultSelection().resultFile;
     QThread* worker = QThread::create(
-        [projectPath, rootPath, prepared, summary]()
+        [projectPath, rootPath, preferredResultFile, prepared, summary]()
         {
             *prepared = PostResultAutoPrepare::prepareResultRoot(projectPath, rootPath);
-            if (*prepared)
-                *summary = PostResultAutoPrepare::preparedResultSummary(projectPath, rootPath);
+            if (!*prepared)
+                return;
+
+            *summary = PostResultAutoPrepare::preparedResultSummary(projectPath, rootPath);
+
+            // 只在求解后的后处理结果已经完整生成以后预读；不在这里创建任何
+            // 持久二进制副本，避免把异常/半成品结果缓存下来。
+            QString warmFile = preferredResultFile;
+            const QString foldedRoot =
+                QDir::fromNativeSeparators(QDir(rootPath).absolutePath()).toCaseFolded();
+            const QString foldedWarm =
+                warmFile.isEmpty()
+                    ? QString()
+                    : QDir::fromNativeSeparators(QFileInfo(warmFile).absoluteFilePath())
+                          .toCaseFolded();
+            if (warmFile.isEmpty() || !QFileInfo::exists(warmFile) ||
+                (foldedWarm != foldedRoot &&
+                 !foldedWarm.startsWith(foldedRoot + QLatin1Char('/'))))
+            {
+                warmFile.clear();
+                const auto groups = PostResultAutoPrepare::resultGroups(projectPath);
+                for (const auto& group : groups)
+                {
+                    const QString foldedSource =
+                        QDir::fromNativeSeparators(QDir(group.sourcePath).absolutePath())
+                            .toCaseFolded();
+                    if (foldedSource != foldedRoot &&
+                        !foldedSource.startsWith(foldedRoot + QLatin1Char('/')))
+                        continue;
+
+                    const auto files = PostResultAutoPrepare::resultFiles(
+                        projectPath, group.sourcePath, true);
+                    if (!files.isEmpty())
+                    {
+                        warmFile = files.constFirst().filePath;
+                        break;
+                    }
+                }
+            }
+
+            if (!warmFile.isEmpty())
+            {
+                // 内部只保留一份标准 vtkUnstructuredGrid。求解完成后低优先级预读
+                // 这一个结果即可，云图/切面/裁剪都复用同一份内存缓存。
+                QString gridWarmError;
+                PostTecplotUtils::readGrid(warmFile, &gridWarmError);
+                if (!gridWarmError.isEmpty())
+                    qWarning().noquote()
+                        << QStringLiteral("后处理结果预读失败：%1").arg(gridWarmError);
+            }
         });
 
     connect(worker, &QThread::finished, worker, &QObject::deleteLater);
@@ -580,7 +652,8 @@ void PostProcessing::deleteNode(const QString& uuid)
 
     if (BasePage* page = node->getPage())
     {
-        page->beforeUnload();
+        if (!page->hasDeferredLoadJson())
+            page->beforeUnload();
         page->deleteLater();
         node->setPage(nullptr);
     }
@@ -636,7 +709,7 @@ bool PostProcessing::saveProject()
         item["uuid"] = node->getUuid();
         item["title"] = node->text(0);
         item["type"] = page->getPageType();
-        item["state"] = page->saveJson();
+        item["state"] = page->saveJsonForPersistence();
         items.append(item);
     }
     root["items"] = items;
@@ -709,11 +782,16 @@ bool PostProcessing::loadProject()
             continue;
 
         if (BasePage* page = node->getPage())
-            page->loadJson(state);
+        {
+            // 后处理结果页可能在 loadJson() 中扫描结果目录、准备结果文件甚至读取
+            // Tecplot/VTU。工程打开阶段只保存状态，首次真正进入页面时再恢复。
+            page->deferLoadJson(state);
+        }
     }
     postDisplaySettingsAuthoritative() = true;
     if (m_displayControlWidget)
         m_displayControlWidget->syncFromState();
+
     return true;
 }
 
@@ -741,7 +819,8 @@ void PostProcessing::closeProject()
         {
             if (auto* page = node->getPage())
             {
-                page->beforeUnload();
+                if (!page->hasDeferredLoadJson())
+                    page->beforeUnload();
                 page->deleteLater();
 
                 node->setPage(nullptr);

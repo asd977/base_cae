@@ -28,6 +28,8 @@ class PhysicalField : public QObject, public PhysicalFieldService
     // 生成荷载文件
     void generateIIWLFile();
     bool importIIIDFile(const QString& filePath, QString* errorMessage = nullptr) override;
+    bool validateSeismicAcceleration(QString* errorMessage = nullptr) const override;
+    bool openSeismicAccelerationPage(QString* errorMessage = nullptr) override;
     QString pageTitleByUuid(const QString& uuid) const override;
 
   private slots:
@@ -50,6 +52,7 @@ class PhysicalField : public QObject, public PhysicalFieldService
 
     void collectDisplacementNodes(ProjectNode* root, QList<ProjectNode*>& out);
     ProjectNode* findNodeByUuid(ProjectNode* root, const QString& uuid) const;
+    void renameNodeByUuid(const QString& uuid);
     void removeNodeByUuid(const QString& uuid);
     void writeIIWL_Part1_GeoStressPoint(QTextStream& os);
     void writeIIWL_Part2_GeoStressFitFace(QTextStream& os);
@@ -66,6 +69,8 @@ class PhysicalField : public QObject, public PhysicalFieldService
     bool readJsonFile(const QString& filePath, QJsonObject& out) const;
     ProjectNode* createNodeByKind(const QString& kind, const QString& title, const QString& uuid);
     void restoreNodeSelection(ProjectNode* node, const QJsonObject& item);
+
+    bool m_loadingProject = false;
 };
 
 #endif // PHYSICALFIELD_H

@@ -169,10 +169,19 @@
         </property>
         <item row="0" column="0">
          <widget class="QLabel" name="lineWidthTextLabel">
+ <property name="sizePolicy">
+  <sizepolicy hsizetype="Fixed" vsizetype="Preferred">
+   <horstretch>0</horstretch>
+   <verstretch>0</verstretch>
+  </sizepolicy>
+ </property>
           <property name="text">
            <string>线宽</string>
           </property>
-         </widget>
+          <property name="wordWrap">
+  <bool>false</bool>
+ </property>
+</widget>
         </item>
         <item row="0" column="1">
          <widget class="QDoubleSpinBox" name="lineWidthDoubleSpinBox">
@@ -198,10 +207,19 @@
         </item>
         <item row="1" column="0">
          <widget class="QLabel" name="textVisibleTextLabel">
+ <property name="sizePolicy">
+  <sizepolicy hsizetype="Fixed" vsizetype="Preferred">
+   <horstretch>0</horstretch>
+   <verstretch>0</verstretch>
+  </sizepolicy>
+ </property>
           <property name="text">
            <string>文字</string>
           </property>
-         </widget>
+          <property name="wordWrap">
+  <bool>false</bool>
+ </property>
+</widget>
         </item>
         <item row="1" column="1">
          <widget class="QCheckBox" name="showTextCheckBox">
@@ -215,10 +233,19 @@
         </item>
         <item row="2" column="0">
          <widget class="QLabel" name="fontSizeTextLabel">
+ <property name="sizePolicy">
+  <sizepolicy hsizetype="Fixed" vsizetype="Preferred">
+   <horstretch>0</horstretch>
+   <verstretch>0</verstretch>
+  </sizepolicy>
+ </property>
           <property name="text">
            <string>字号</string>
           </property>
-         </widget>
+          <property name="wordWrap">
+  <bool>false</bool>
+ </property>
+</widget>
         </item>
         <item row="2" column="1">
          <widget class="QSpinBox" name="textFontSizeSpinBox">

@@ -13,15 +13,19 @@
 #include <ServiceRegistry.h>
 #include <services/MeshModuleControllerService.h>
 #include <services/ProjectManagerService.h>
+#include <services/VisualWidgetService.h>
 
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
 #include <QHash>
+#include <QInputDialog>
 #include <QMap>
+#include <QMessageBox>
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
+#include <QLineEdit>
 #include <QRegularExpression>
 #include <QSet>
 #include <QTextStream>
@@ -137,6 +141,22 @@ PhysicalField::PhysicalField()
     ServiceRegistry::instance().registerService<PhysicalFieldService>(this);
     initAction();
     intitTreeMenu();
+
+    // 单节点查看模式：只刷新本次发生变化的位移约束节点。
+    // 非当前页面的约束不创建/保留方向符号；进入页面时再由 beforeLoad() 显示。
+    QObject::connect(&PickManager::instance(), &PickManager::selectionChanged, this,
+                     [this](const QString& domain, const QString& uuid, PickMode mode, GridKind)
+                     {
+                         if (m_loadingProject || domain != QStringLiteral("DisplacementConstraintWidget") ||
+                             mode != PickMode::Node)
+                             return;
+
+                         ProjectNode* node = findNodeByUuid(m_node, uuid);
+                         auto* page = node ? dynamic_cast<DisplacementConstraintWidget*>(node->getPage())
+                                           : nullptr;
+                         if (page)
+                             page->refreshConstraintVisualization();
+                     });
 }
 
 void PhysicalField::initAction()
@@ -212,112 +232,104 @@ void PhysicalField::intitTreeMenu()
 
             ContextMenuHub::addSeparator(menu);
 
-            // ===== 根节点：PhysicalFieldRoot -> 添加子项 =====
+            // 根节点只负责创建约束/荷载对象；名称统一使用“新建...”。
             if (kind == "PhysicalFieldRoot")
             {
-                // 约束
-                ContextMenuHub::addAction(menu, this, "位移约束",
-                                          [this, uuid]
-                                          {
-                                              this->addDisplacementConstraint();
-                                          });
+                ContextMenuHub::addAction(menu, this, "新建位移约束",
+                                          [this]() { addDisplacementConstraint(); });
 
                 ContextMenuHub::addSeparator(menu);
-
-                // IIWL.DAT - Part1/2
-                ContextMenuHub::addAction(menu, this, "现场地应力信息",
-                                          [this, uuid]
-                                          {
-                                              this->addGeoStressPointPage(); // GeoStressPointPage
-                                          });
-
-                ContextMenuHub::addAction(
-                    menu, this, "梯形边界荷载",
-                    [this, uuid]
-                    {
-                        this->addGeoStressFitFacePage(); // GeoStressFitFacePage
-                    });
+                ContextMenuHub::addAction(menu, this, "新建现场地应力信息",
+                                          [this]() { addGeoStressPointPage(); });
+                ContextMenuHub::addAction(menu, this, "新建梯形边界荷载",
+                                          [this]() { addGeoStressFitFacePage(); });
 
                 ContextMenuHub::addSeparator(menu);
-
-                // IIWL.DAT - Part3/4/6/7/9-11
-                ContextMenuHub::addAction(menu, this, "体积力荷载",
-                                          [this, uuid]
-                                          {
-                                              this->addBodyForcePage(); // BodyForcePage
-                                          });
-
-                ContextMenuHub::addAction(
-                    menu, this, "集中力荷载",
-                    [this, uuid]
-                    {
-                        this->addConcentratedForcePage(); // ConcentratedForcePage
-                    });
-
-                ContextMenuHub::addAction(menu, this, "线力荷载",
-                                          [this, uuid]
-                                          {
-                                              this->addLinearForcePage(); // ConcentratedForcePage
-                                          });
-
-                ContextMenuHub::addAction(menu, this, "面力荷载",
-                                          [this, uuid]
-                                          {
-                                              this->addSurfaceForcePage(); // SurfaceForcePage
-                                          });
-
-                ContextMenuHub::addAction(menu, this, "变温荷载",
-                                          [this, uuid]
-                                          {
-                                              this->addTemperatureLoadPage(); // TemperatureLoadPage
-                                          });
-
-                ContextMenuHub::addAction(menu, this, "梁单元荷载",
-                                          [this, uuid]
-                                          {
-                                              this->addBeamLoadPage(); // addBeamLoadPage
-                                          });
+                ContextMenuHub::addAction(menu, this, "新建体积力荷载",
+                                          [this]() { addBodyForcePage(); });
+                ContextMenuHub::addAction(menu, this, "新建集中力荷载",
+                                          [this]() { addConcentratedForcePage(); });
+                ContextMenuHub::addAction(menu, this, "新建线力荷载",
+                                          [this]() { addLinearForcePage(); });
+                ContextMenuHub::addAction(menu, this, "新建面力荷载",
+                                          [this]() { addSurfaceForcePage(); });
+                ContextMenuHub::addAction(menu, this, "新建变温荷载",
+                                          [this]() { addTemperatureLoadPage(); });
+                ContextMenuHub::addAction(menu, this, "新建梁单元荷载",
+                                          [this]() { addBeamLoadPage(); });
 
                 ContextMenuHub::addSeparator(menu);
-
+                const bool hasSeismic = CountKind(m_node, "SeismicAndAddedMassPage") > 0;
                 ContextMenuHub::addAction(
-                    menu, this, "地震加速度表",
-                    [this, uuid]
+                    menu, this, hasSeismic ? "打开地震加速度" : "新建地震加速度",
+                    [this]()
                     {
-                        this->addSeismicAndAddedMassPage(); // SeismicAndAddedMassPage
+                        QString error;
+                        if (!openSeismicAccelerationPage(&error) && !error.isEmpty())
+                            QMessageBox::warning(nullptr, QStringLiteral("地震加速度"), error);
                     });
-
                 return;
             }
 
-            // ===== 子节点：通用操作 =====
-            ContextMenuHub::addAction(menu, this, "重建",
-                                      [this, uuid]
-                                      {
-                                          // rebuild(uuid);
-                                      });
-
-            ContextMenuHub::addAction(menu, this, "隐藏/显示",
-                                      [this, uuid]
-                                      {
-                                          // toggle(uuid);
-                                      });
-
-            // 约束与荷载子节点支持删除
-            if (kind != "PhysicalFieldRoot")
-            {
-                ContextMenuHub::addAction(menu, this, "删除",
-                                          [this, uuid]
-                                          {
-                                              removeNodeByUuid(uuid);
-                                          });
-            }
+            // 子节点只保留真正有效的通用操作。旧版“重建/隐藏显示”没有实现，移除。
+            ContextMenuHub::addAction(menu, this, "重命名",
+                                      [this, uuid]() { renameNodeByUuid(uuid); });
+            ContextMenuHub::addAction(menu, this, "删除",
+                                      [this, uuid]() { removeNodeByUuid(uuid); });
         },
         100,
         [](const QVariantMap& ctx) -> bool
         {
             return ctx.value("module").toString() == "PhysicalField";
         });
+}
+
+void PhysicalField::renameNodeByUuid(const QString& uuid)
+{
+    if (uuid.isEmpty() || !m_node)
+        return;
+
+    ProjectNode* node = findNodeByUuid(m_node, uuid);
+    if (!node || node == m_node)
+        return;
+
+    const QString currentName = node->text(0).trimmed();
+    bool ok = false;
+    QString newName = QInputDialog::getText(
+        nullptr, QStringLiteral("重命名约束/荷载"), QStringLiteral("请输入新名称："),
+        QLineEdit::Normal, currentName, &ok);
+    if (!ok)
+        return;
+
+    newName = newName.trimmed();
+    if (newName.isEmpty())
+    {
+        QMessageBox::warning(nullptr, QStringLiteral("名称无效"),
+                             QStringLiteral("名称不能为空。"));
+        return;
+    }
+    if (newName == currentName)
+        return;
+
+    if (auto* parent = dynamic_cast<ProjectNode*>(node->parent()))
+    {
+        for (ProjectNode* sibling : parent->getChildren())
+        {
+            if (sibling != node &&
+                sibling->text(0).trimmed().compare(newName, Qt::CaseInsensitive) == 0)
+            {
+                QMessageBox::warning(nullptr, QStringLiteral("名称重复"),
+                                     QStringLiteral("同一级中已存在“%1”，请使用其他名称。")
+                                         .arg(newName));
+                return;
+            }
+        }
+    }
+
+    node->setText(0, newName);
+    node->setName(newName);
+    if (BasePage* page = node->getPage())
+        page->setDisplayName(newName);
 }
 
 void PhysicalField::removeNodeByUuid(const QString& uuid)
@@ -550,6 +562,7 @@ bool PhysicalField::loadProject()
         return true;
     }
 
+    m_loadingProject = true;
     const QJsonArray items = root.value("items").toArray();
     for (const auto& v : items)
     {
@@ -580,6 +593,9 @@ bool PhysicalField::loadProject()
             qWarning().noquote() << QStringLiteral("约束设置恢复失败：%1").arg(errorMessage);
         }
     }
+
+    // 工程打开后不常驻显示约束方向；点击某个位移约束节点时再显示该节点。
+    m_loadingProject = false;
 
     return true;
 }
@@ -715,6 +731,19 @@ void PhysicalField::addBeamLoadPage()
 
 void PhysicalField::addSeismicAndAddedMassPage()
 {
+    // 地震加速度是全工程共享输入，只允许存在一份。动力工况通过 IFWAVE 引用它。
+    QList<ProjectNode*> existingPages;
+    CollectNodesByKind(m_node, "SeismicAndAddedMassPage", existingPages);
+    if (!existingPages.isEmpty())
+    {
+        if (auto* pm = ServiceRegistry::instance().getService<ProjectManagerService>())
+            pm->setCurrentItem(existingPages.first());
+        QMessageBox::information(
+            nullptr, QStringLiteral("地震加速度已存在"),
+            QStringLiteral("“约束与荷载”中只需要一份地震加速度表。已为你定位到现有节点。"));
+        return;
+    }
+
     auto* page = new SeismicAndAddedMassPage;
     ProjectNode* node =
         new ProjectNode("地震加速度", QUuid::createUuid().toString(), (BasePage*)page);
@@ -724,6 +753,95 @@ void PhysicalField::addSeismicAndAddedMassPage()
     m_node->addChild(node);
     if (auto* pm = ServiceRegistry::instance().getService<ProjectManagerService>())
         pm->setCurrentItem(node);
+}
+
+bool PhysicalField::openSeismicAccelerationPage(QString* errorMessage)
+{
+    if (errorMessage)
+        errorMessage->clear();
+    if (!m_node)
+    {
+        if (errorMessage)
+            *errorMessage = QStringLiteral("“约束与荷载”节点尚未初始化。");
+        return false;
+    }
+
+    QList<ProjectNode*> pages;
+    CollectNodesByKind(m_node, "SeismicAndAddedMassPage", pages);
+    if (pages.size() > 1)
+    {
+        if (errorMessage)
+            *errorMessage = QStringLiteral(
+                "“约束与荷载”中存在 %1 个“地震加速度”节点。请先删除多余节点后再设置。")
+                                .arg(pages.size());
+        return false;
+    }
+
+    if (pages.isEmpty())
+    {
+        addSeismicAndAddedMassPage();
+        pages.clear();
+        CollectNodesByKind(m_node, "SeismicAndAddedMassPage", pages);
+    }
+
+    if (pages.size() != 1)
+    {
+        if (errorMessage)
+            *errorMessage = QStringLiteral("无法创建或定位“地震加速度”设置页面。");
+        return false;
+    }
+
+    auto* pm = ServiceRegistry::instance().getService<ProjectManagerService>();
+    if (!pm)
+    {
+        if (errorMessage)
+            *errorMessage = QStringLiteral("工程树服务不可用，无法打开“地震加速度”设置。");
+        return false;
+    }
+
+    pm->setCurrentItem(pages.first());
+    return true;
+}
+
+bool PhysicalField::validateSeismicAcceleration(QString* errorMessage) const
+{
+    if (errorMessage)
+        errorMessage->clear();
+
+    QList<ProjectNode*> pages;
+    CollectNodesByKind(m_node, "SeismicAndAddedMassPage", pages);
+    if (pages.isEmpty())
+    {
+        if (errorMessage)
+            *errorMessage = QStringLiteral(
+                "当前工况启用了地震波时程分析，但“约束与荷载”中尚未设置“地震加速度”。");
+        return false;
+    }
+    if (pages.size() > 1)
+    {
+        if (errorMessage)
+            *errorMessage = QStringLiteral(
+                "“约束与荷载”中存在 %1 个“地震加速度”节点。地震输入只能保留一份，请删除多余节点。")
+                                .arg(pages.size());
+        return false;
+    }
+
+    auto* page = dynamic_cast<SeismicAndAddedMassPage*>(pages.first()->getPage());
+    if (!page)
+    {
+        if (errorMessage)
+            *errorMessage = QStringLiteral("地震加速度页面未正确加载，请重新打开工程后重试。");
+        return false;
+    }
+
+    QString detail;
+    if (!page->validateWaveInput(&detail))
+    {
+        if (errorMessage)
+            *errorMessage = detail;
+        return false;
+    }
+    return true;
 }
 
 // -------------------- 普通工具函数：应用选中点到 flags（无 lambda）
@@ -2425,13 +2543,36 @@ void PhysicalField::generateWaveFiles()
     if (!QDir().mkpath(inputDir.absolutePath()))
         return;
 
+    // 先移除上一次生成的波形，避免节点缺失/重复/数据无效时误用旧文件。
+    for (const QString& fileName : {QStringLiteral("WAVE-AX.DAT"),
+                                    QStringLiteral("WAVE-AY.DAT"),
+                                    QStringLiteral("WAVE-AZ.DAT")})
+        QFile::remove(inputDir.filePath(fileName));
+
     QList<ProjectNode*> pages;
     CollectNodesByKind(m_node, "SeismicAndAddedMassPage", pages);
     qInfo() << "WAVE pages.size=" << pages.size();
 
-    SeismicAndAddedMassPage* page = nullptr;
-    if (!pages.isEmpty())
-        page = dynamic_cast<SeismicAndAddedMassPage*>(pages.first()->getPage());
+    if (pages.size() != 1)
+    {
+        qWarning() << "generateWaveFiles: expected exactly one seismic page, actual="
+                   << pages.size();
+        return;
+    }
+
+    auto* page = dynamic_cast<SeismicAndAddedMassPage*>(pages.first()->getPage());
+    if (!page)
+    {
+        qWarning() << "generateWaveFiles: seismic page is invalid";
+        return;
+    }
+
+    QString validationError;
+    if (!page->validateWaveInput(&validationError))
+    {
+        qWarning().noquote() << "generateWaveFiles:" << validationError;
+        return;
+    }
 
     auto f6 = [](double v)
     {
@@ -2470,23 +2611,12 @@ void PhysicalField::generateWaveFiles()
         qInfo() << "WAVE generated :" << path << "N=" << N << "AMP=" << amp;
     };
 
-    QVector<QPair<double, double>> sx, sy, sz;
-    double axAmp = 0.0;
-    double ayAmp = 0.0;
-    double azAmp = 0.0;
-    if (page)
-    {
-        sx = page->seriesX();
-        axAmp = page->ampX();
-        sy = page->seriesY();
-        ayAmp = page->ampY();
-        sz = page->seriesZ();
-        azAmp = page->ampZ();
-    }
-    else
-    {
-        qInfo() << "WAVE: no seismic page, output empty files";
-    }
+    QVector<QPair<double, double>> sx = page->seriesX();
+    QVector<QPair<double, double>> sy = page->seriesY();
+    QVector<QPair<double, double>> sz = page->seriesZ();
+    const double axAmp = page->ampX();
+    const double ayAmp = page->ampY();
+    const double azAmp = page->ampZ();
 
     writeOneFile("WAVE-AX.DAT", sx, axAmp, "AX");
     writeOneFile("WAVE-AY.DAT", sy, ayAmp, "AY");

@@ -70,24 +70,51 @@
           <layout class="QGridLayout" name="gridLayout">
            <item row="1" column="0">
             <widget class="QLabel" name="labelElem">
+ <property name="sizePolicy">
+  <sizepolicy hsizetype="Fixed" vsizetype="Preferred">
+   <horstretch>0</horstretch>
+   <verstretch>0</verstretch>
+  </sizepolicy>
+ </property>
              <property name="text">
               <string>单元类型</string>
              </property>
-            </widget>
+             <property name="wordWrap">
+  <bool>false</bool>
+ </property>
+</widget>
            </item>
            <item row="5" column="0">
             <widget class="QLabel" name="labelOrder">
+ <property name="sizePolicy">
+  <sizepolicy hsizetype="Fixed" vsizetype="Preferred">
+   <horstretch>0</horstretch>
+   <verstretch>0</verstretch>
+  </sizepolicy>
+ </property>
              <property name="text">
               <string>单元阶次</string>
              </property>
-            </widget>
+             <property name="wordWrap">
+  <bool>false</bool>
+ </property>
+</widget>
            </item>
            <item row="8" column="0">
             <widget class="QLabel" name="labelAlgo">
+ <property name="sizePolicy">
+  <sizepolicy hsizetype="Fixed" vsizetype="Preferred">
+   <horstretch>0</horstretch>
+   <verstretch>0</verstretch>
+  </sizepolicy>
+ </property>
              <property name="text">
               <string>算法</string>
              </property>
-            </widget>
+             <property name="wordWrap">
+  <bool>false</bool>
+ </property>
+</widget>
            </item>
            <item row="4" column="1">
             <widget class="QDoubleSpinBox" name="dsFactor">
@@ -130,17 +157,35 @@
            </item>
            <item row="2" column="0">
             <widget class="QLabel" name="labelMin">
+ <property name="sizePolicy">
+  <sizepolicy hsizetype="Fixed" vsizetype="Preferred">
+   <horstretch>0</horstretch>
+   <verstretch>0</verstretch>
+  </sizepolicy>
+ </property>
              <property name="text">
               <string>最小尺寸</string>
              </property>
-            </widget>
+             <property name="wordWrap">
+  <bool>false</bool>
+ </property>
+</widget>
            </item>
            <item row="7" column="0">
             <widget class="QLabel" name="labelTol">
+ <property name="sizePolicy">
+  <sizepolicy hsizetype="Fixed" vsizetype="Preferred">
+   <horstretch>0</horstretch>
+   <verstretch>0</verstretch>
+  </sizepolicy>
+ </property>
              <property name="text">
               <string>容差</string>
              </property>
-            </widget>
+             <property name="wordWrap">
+  <bool>false</bool>
+ </property>
+</widget>
            </item>
            <item row="5" column="1">
             <widget class="QSpinBox" name="spOrder">
@@ -170,30 +215,51 @@
            </item>
            <item row="9" column="0">
             <widget class="QLabel" name="labelFix">
+ <property name="sizePolicy">
+  <sizepolicy hsizetype="Fixed" vsizetype="Preferred">
+   <horstretch>0</horstretch>
+   <verstretch>0</verstretch>
+  </sizepolicy>
+ </property>
              <property name="text">
               <string>几何修复</string>
              </property>
-            </widget>
+             <property name="wordWrap">
+  <bool>false</bool>
+ </property>
+</widget>
            </item>
            <item row="0" column="0">
             <widget class="QLabel" name="labelDim">
              <property name="sizePolicy">
-              <sizepolicy hsizetype="Fixed" vsizetype="Preferred">
-               <horstretch>0</horstretch>
-               <verstretch>0</verstretch>
-              </sizepolicy>
-             </property>
+           <sizepolicy hsizetype="Fixed" vsizetype="Preferred">
+            <horstretch>0</horstretch>
+            <verstretch>0</verstretch>
+           </sizepolicy>
+          </property>
              <property name="text">
               <string>维度</string>
              </property>
-            </widget>
+             <property name="wordWrap">
+  <bool>false</bool>
+ </property>
+</widget>
            </item>
            <item row="3" column="0">
             <widget class="QLabel" name="labelMax">
+ <property name="sizePolicy">
+  <sizepolicy hsizetype="Fixed" vsizetype="Preferred">
+   <horstretch>0</horstretch>
+   <verstretch>0</verstretch>
+  </sizepolicy>
+ </property>
              <property name="text">
               <string>最大尺寸</string>
              </property>
-            </widget>
+             <property name="wordWrap">
+  <bool>false</bool>
+ </property>
+</widget>
            </item>
            <item row="6" column="1">
             <widget class="QSpinBox" name="spSmooth">
@@ -268,17 +334,35 @@
            </item>
            <item row="6" column="0">
             <widget class="QLabel" name="labelSmooth">
+ <property name="sizePolicy">
+  <sizepolicy hsizetype="Fixed" vsizetype="Preferred">
+   <horstretch>0</horstretch>
+   <verstretch>0</verstretch>
+  </sizepolicy>
+ </property>
              <property name="text">
               <string>光顺迭代</string>
              </property>
-            </widget>
+             <property name="wordWrap">
+  <bool>false</bool>
+ </property>
+</widget>
            </item>
            <item row="4" column="0">
             <widget class="QLabel" name="labelFactor">
+ <property name="sizePolicy">
+  <sizepolicy hsizetype="Fixed" vsizetype="Preferred">
+   <horstretch>0</horstretch>
+   <verstretch>0</verstretch>
+  </sizepolicy>
+ </property>
              <property name="text">
               <string>尺寸因子</string>
              </property>
-            </widget>
+             <property name="wordWrap">
+  <bool>false</bool>
+ </property>
+</widget>
            </item>
            <property name="leftMargin">
             <number>9</number>

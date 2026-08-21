@@ -1734,7 +1734,7 @@ void UiFrame::buildRibbonTabs()
             auto* actMeshEdit =
                 makeAction(this, ":/resources/menu/minimal/mesh-edit.svg", "&显示控制");
             auto* actBarElements =
-                makeAction(this, ":/resources/menu/minimal/mesh-edge.svg", "&杆单元布置");
+                makeAction(this, ":/resources/menu/minimal/mesh-bar-placement.svg", "&杆单元布置");
             // auto* actMeshGrouping =
             //     makeAction(this, ":/resources/menu/minimal/mesh-group.svg", "&网格分组");
             auto* actQuality =
@@ -1961,19 +1961,31 @@ void UiFrame::buildRibbonTabs()
         auto* actSlope =
             makeAction(this, ":/resources/menu/minimal/analysis-slope.svg", "&边坡分析");
         auto* actBlock =
-            makeAction(this, ":/resources/menu/minimal/analysis-block.svg", "&块体稳定计算");
+            makeAction(this, ":/resources/menu/minimal/analysis-block.svg", "&块体稳定");
+
+        auto* actSpecification =
+            makeAction(this,
+                       ":/resources/menu/minimal/analysis-specification.svg",
+                       "&规范验算");
 
         addActionToPanel(panel, actParam, 3);
         addActionToPanel(panel, actStress, 3);
         addActionToPanel(panel, actCave, 3);
         addActionToPanel(panel, actSlope, 3);
         addActionToPanel(panel, actBlock, 3);
+        addActionToPanel(panel, actSpecification, 3);
 
         bindEvent(this, actParam, PublicConstants::kActionSeepageKey);
         bindEvent(this, actStress, PublicConstants::kActionStressStrainKey);
         bindEvent(this, actCave, PublicConstants::kActionCaveExcavationKey);
         bindEvent(this, actSlope, PublicConstants::kActionSlopeStabilityKey);
         bindEvent(this, actBlock, PublicConstants::kActionCaveBlockStabilityKey);
+
+
+
+        // bindEvent(this,
+        //           actSpecification,
+        //           PublicConstants::kActionSpecificationCheckKey);
     }
 
            // =========================
@@ -1988,11 +2000,13 @@ void UiFrame::buildRibbonTabs()
             auto* panel = cate->addPannel("显示");
 
             auto* actDisplayControl =
-                makeAction(this, ":/resources/menu/minimal/mesh-edit.svg", "&显示控制");
+                makeAction(this, ":/resources/menu/minimal/post-config.svg", "&显示控制");
             auto* actNeph =
                 makeAction(this, ":/resources/menu/minimal/post-nephogram.svg", "&云图");
             auto* actVec =
                 makeAction(this, ":/resources/menu/minimal/post-vector.svg", "&矢量");
+            auto* actAnimation =
+                makeAction(this, ":/resources/menu/minimal/post-animation.svg", "&动画");
             auto* actSlc =
                 makeAction(this, ":/resources/menu/minimal/post-slice.svg", "&切面");
             auto* actDice =
@@ -2000,6 +2014,7 @@ void UiFrame::buildRibbonTabs()
             addActionToPanel(panel, actDisplayControl, 3);
             addActionToPanel(panel, actNeph, 3);
             addActionToPanel(panel, actVec, 3);
+            addActionToPanel(panel, actAnimation, 3);
             addActionToPanel(panel, actSlc, 2);
             addActionToPanel(panel, actDice, 2);
 
@@ -2007,6 +2022,7 @@ void UiFrame::buildRibbonTabs()
                       PublicConstants::kActionPostProcessDisplayControl);
             bindEvent(this, actNeph, PublicConstants::kActionPostProcessNephogram);
             bindEvent(this, actVec, PublicConstants::kActionPostProcessVector);
+            bindEvent(this, actAnimation, PublicConstants::kActionPostProcessAnimation);
             bindEvent(this, actSlc, PublicConstants::kActionPostProcessSection);
             bindEvent(this, actDice, PublicConstants::kActionPostProcessDice);
         }

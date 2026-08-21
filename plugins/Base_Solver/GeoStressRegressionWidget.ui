@@ -63,6 +63,12 @@
       <layout class="QFormLayout" name="formLayout">
        <item row="0" column="0">
         <widget class="QLabel" name="label6">
+ <property name="sizePolicy">
+  <sizepolicy hsizetype="Fixed" vsizetype="Preferred">
+   <horstretch>0</horstretch>
+   <verstretch>0</verstretch>
+  </sizepolicy>
+ </property>
          <property name="text">
           <string>虚拟自重应力场参与系数</string>
          </property>
@@ -86,6 +92,12 @@
        </item>
        <item row="1" column="0">
         <widget class="QLabel" name="label7">
+ <property name="sizePolicy">
+  <sizepolicy hsizetype="Fixed" vsizetype="Preferred">
+   <horstretch>0</horstretch>
+   <verstretch>0</verstretch>
+  </sizepolicy>
+ </property>
          <property name="text">
           <string>地应力计算方式</string>
          </property>
@@ -116,6 +128,12 @@
        </item>
        <item row="2" column="0">
         <widget class="QLabel" name="label8">
+ <property name="sizePolicy">
+  <sizepolicy hsizetype="Fixed" vsizetype="Preferred">
+   <horstretch>0</horstretch>
+   <verstretch>0</verstretch>
+  </sizepolicy>
+ </property>
          <property name="text">
           <string>预留字段</string>
          </property>
@@ -139,6 +157,12 @@
        </item>
        <item row="4" column="0">
         <widget class="QLabel" name="label11">
+ <property name="sizePolicy">
+  <sizepolicy hsizetype="Fixed" vsizetype="Preferred">
+   <horstretch>0</horstretch>
+   <verstretch>0</verstretch>
+  </sizepolicy>
+ </property>
          <property name="text">
           <string>侧压力系数</string>
          </property>

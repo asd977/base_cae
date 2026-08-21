@@ -63,20 +63,38 @@
       </property>
       <item row="0" column="0">
        <widget class="QLabel" name="computeDeviceLabel">
+ <property name="sizePolicy">
+  <sizepolicy hsizetype="Fixed" vsizetype="Preferred">
+   <horstretch>0</horstretch>
+   <verstretch>0</verstretch>
+  </sizepolicy>
+ </property>
         <property name="text">
          <string>计算设备</string>
         </property>
-       </widget>
+        <property name="wordWrap">
+  <bool>false</bool>
+ </property>
+</widget>
       </item>
       <item row="0" column="1">
        <widget class="QComboBox" name="comboComputeDevice" />
       </item>
       <item row="1" column="0">
        <widget class="QLabel" name="gpuModeLabel">
+ <property name="sizePolicy">
+  <sizepolicy hsizetype="Fixed" vsizetype="Preferred">
+   <horstretch>0</horstretch>
+   <verstretch>0</verstretch>
+  </sizepolicy>
+ </property>
         <property name="text">
          <string>方程求解方式</string>
         </property>
-       </widget>
+        <property name="wordWrap">
+  <bool>false</bool>
+ </property>
+</widget>
       </item>
       <item row="1" column="1">
        <widget class="QComboBox" name="comboGpuMode" />

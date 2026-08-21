@@ -24,6 +24,8 @@
 #include <vtkExtractCells.h>
 #include <vtkIdList.h>
 #include <vtkIdTypeArray.h>
+#include <vtkIntArray.h>
+#include <vtkCellType.h>
 #include <vtkLookupTable.h>
 #include <vtkMapper.h>
 #include <vtkPolyData.h>
@@ -39,35 +41,57 @@
 #include <QHash>
 #include <QHeaderView>
 #include <QSignalBlocker>
+#include <QTimer>
 #include <QStringList>
 #include <QTreeWidget>
 #include <QTreeWidgetItem>
 #include <QVariant>
 
 #include <algorithm>
+#include <cmath>
 #include <limits>
+#include <initializer_list>
 
 namespace
 {
 static const QString kImportedMeshSurfacePropId = QStringLiteral("mesh.imported.surface");
 static const QString kImportedMeshLinePropId = QStringLiteral("mesh.imported.line");
 
+static const QString kCategoryTopology = QStringLiteral("TOPOLOGY_TYPE");
+constexpr int kLegacyTopologyAbnormal = 1099;
+constexpr int kTopologyAbnormal = -1;
+// 兼容前一版已经写入工程/全局筛选状态的临时分类编号；界面不再显示这些分类。
+constexpr int kLegacyTopologyDegenerateHex5 = 1005;
+constexpr int kLegacyTopologyDegenerateHex6 = 1006;
+constexpr int kLegacyTopologyDegenerateHex7 = 1007;
 static const QString kCategoryKetype = QStringLiteral("KETYPE");
 static const QString kCategoryMatype = QStringLiteral("MATYPE");
 static const QString kCategoryLayer = QStringLiteral("LAYER");
 
 static const QString kGlobalFilterCustomKey = QStringLiteral("mesh.display.filter.custom");
+static const QString kGlobalFilterTopologyKey = QStringLiteral("mesh.display.filter.topology.checked");
 static const QString kGlobalFilterKetypeKey = QStringLiteral("mesh.display.filter.ketype.checked");
 static const QString kGlobalFilterMatypeKey = QStringLiteral("mesh.display.filter.matype.checked");
 static const QString kGlobalFilterLayerKey = QStringLiteral("mesh.display.filter.layer.checked");
 static const QString kGlobalFilterProjectKey = QStringLiteral("mesh.display.filter.project");
 static const QString kGlobalColorModeKey = QStringLiteral("mesh.display.color.mode");
 
+// 后处理使用独立的结果筛选状态。结果生成文件自身携带 MATYPE/LAYER，
+// 因此进入后处理后这里只展示/修改结果域，不再修改 Mesh 的显示筛选。
+static const QString kPostFilterCustomKey = QStringLiteral("post.result.filter.custom");
+static const QString kPostFilterMatypeKey = QStringLiteral("post.result.filter.matype.checked");
+static const QString kPostFilterLayerKey = QStringLiteral("post.result.filter.layer.checked");
+static const QString kPostFilterMatypeCountsKey = QStringLiteral("post.result.filter.matype.counts");
+static const QString kPostFilterLayerCountsKey = QStringLiteral("post.result.filter.layer.counts");
+static const QString kPostFilterProjectKey = QStringLiteral("post.result.filter.project");
+static const QString kPostFilterChangedEvent = QStringLiteral("post.result.filter.changed");
+static const QString kPostFilterSourceChangedEvent = QStringLiteral("post.result.filter.source.changed");
+
 static GridEditingWidget::ColorMode globalColorMode()
 {
     const int value = PublicVariables::instance().get(kGlobalColorModeKey).toInt();
     if (value < static_cast<int>(GridEditingWidget::ColorMode::None) ||
-        value > static_cast<int>(GridEditingWidget::ColorMode::Layer))
+        value > static_cast<int>(GridEditingWidget::ColorMode::Topology))
     {
         return GridEditingWidget::ColorMode::None;
     }
@@ -77,6 +101,39 @@ static GridEditingWidget::ColorMode globalColorMode()
 constexpr int kRoleCategory = Qt::UserRole + 1;
 constexpr int kRoleValue = Qt::UserRole + 2;
 constexpr int kRoleIsGroup = Qt::UserRole + 3;
+
+static int canonicalTopologyFromLegacyPattern(int pattern)
+{
+    if (pattern < 0)
+        return VTK_EMPTY_CELL;
+
+    int patternSlots[8] = {};
+    for (int i = 0; i < 8; ++i)
+        patternSlots[i] = (pattern >> (i * 3)) & 0x7;
+
+    auto equals = [&](std::initializer_list<int> expected) -> bool
+    {
+        if (static_cast<int>(expected.size()) != 8)
+            return false;
+        int i = 0;
+        for (int value : expected)
+        {
+            if (patternSlots[i++] != value)
+                return false;
+        }
+        return true;
+    };
+
+    if (equals({0, 1, 2, 2, 3, 3, 3, 3}))
+        return VTK_TETRA;
+    if (equals({0, 1, 2, 3, 4, 4, 4, 4}))
+        return VTK_PYRAMID;
+    if (equals({0, 1, 2, 2, 3, 4, 5, 5}))
+        return VTK_WEDGE;
+    if (equals({0, 1, 2, 3, 4, 5, 6, 7}))
+        return VTK_HEXAHEDRON;
+    return VTK_EMPTY_CELL;
+}
 
 static int tuple1i(vtkDataArray* array, vtkIdType tupleId, int defaultValue = 0)
 {
@@ -155,14 +212,65 @@ static bool globalFilterIsCustom()
 static QSet<int> globalCheckedValues(const QString& category)
 {
     QString key;
-    if (category == kCategoryKetype)
+    if (category == kCategoryTopology)
+        key = kGlobalFilterTopologyKey;
+    else if (category == kCategoryKetype)
         key = kGlobalFilterKetypeKey;
     else if (category == kCategoryMatype)
         key = kGlobalFilterMatypeKey;
     else if (category == kCategoryLayer)
         key = kGlobalFilterLayerKey;
 
-    return intSetFromString(PublicVariables::instance().get(key).toString());
+    QSet<int> values = intSetFromString(PublicVariables::instance().get(key).toString());
+    if (category == kCategoryTopology)
+    {
+        const bool hadLegacyDegenerateHex =
+            values.remove(kLegacyTopologyDegenerateHex5) ||
+            values.remove(kLegacyTopologyDegenerateHex6) ||
+            values.remove(kLegacyTopologyDegenerateHex7);
+        // 前一版把合法退化 Hex 拆成 1005/1006/1007；现在统一并回“六面体”。
+        if (hadLegacyDegenerateHex)
+            values.insert(VTK_HEXAHEDRON);
+
+               // 1099 曾被临时用作“异常拓扑”的内部哨兵，容易和真实单元编号混淆。
+               // 新版改为负值，并兼容迁移旧的全局筛选状态。
+        if (values.remove(kLegacyTopologyAbnormal))
+            values.insert(kTopologyAbnormal);
+    }
+    return values;
+}
+
+
+static bool postResultFilterActive()
+{
+    return PublicVariables::instance()
+        .get(QStringLiteral("post.display.view.active"))
+        .toBool();
+}
+
+static QMap<int, int> postResultFilterCounts(const QString& key)
+{
+    QMap<int, int> counts;
+    const QVariantMap values = PublicVariables::instance().get(key).toMap();
+    for (auto it = values.constBegin(); it != values.constEnd(); ++it)
+    {
+        bool ok = false;
+        const int value = it.key().toInt(&ok);
+        if (ok)
+            counts.insert(value, it.value().toInt());
+    }
+    return counts;
+}
+
+static QSet<int> postResultCheckedValues(const QString& category)
+{
+    QString key;
+    if (category == kCategoryMatype)
+        key = kPostFilterMatypeKey;
+    else if (category == kCategoryLayer)
+        key = kPostFilterLayerKey;
+    return key.isEmpty() ? QSet<int>{}
+                         : intSetFromString(PublicVariables::instance().get(key).toString());
 }
 
 static void setGlobalValue(const QString& key, const QVariant& value)
@@ -468,7 +576,8 @@ GridEditingWidget::GridEditingWidget(QWidget* parent)
         const QSignalBlocker blocker(ui->comboBoxColorMode);
         ui->comboBoxColorMode->clear();
         ui->comboBoxColorMode->addItem(QStringLiteral("默认颜色"), static_cast<int>(ColorMode::None));
-        ui->comboBoxColorMode->addItem(QStringLiteral("按单元类型"), static_cast<int>(ColorMode::Ketype));
+        ui->comboBoxColorMode->addItem(QStringLiteral("按网格拓扑"), static_cast<int>(ColorMode::Topology));
+        ui->comboBoxColorMode->addItem(QStringLiteral("按计算类型编号"), static_cast<int>(ColorMode::Ketype));
         ui->comboBoxColorMode->addItem(QStringLiteral("按材料类型"), static_cast<int>(ColorMode::Matype));
         ui->comboBoxColorMode->addItem(QStringLiteral("按填筑分层"), static_cast<int>(ColorMode::Layer));
         const int initialIndex = ui->comboBoxColorMode->findData(
@@ -514,6 +623,13 @@ GridEditingWidget::GridEditingWidget(QWidget* parent)
         {
             updateContextPresentation();
         });
+    EventManager::instance().registerHandler(
+        kPostFilterSourceChangedEvent, this,
+        [this](const QVariantMap&)
+        {
+            if (postResultFilterActive())
+                buildFilterTreeFromGrid();
+        });
     updateContextPresentation();
 }
 
@@ -529,10 +645,12 @@ void GridEditingWidget::clearData()
     m_viewLineGrid = nullptr;
     m_sourceName.clear();
 
+    m_allTopologies.clear();
     m_allKetypes.clear();
     m_allMatypes.clear();
     m_allLayers.clear();
 
+    m_filterTopologies.clear();
     m_filterKetypes.clear();
     m_filterMatypes.clear();
     m_filterLayers.clear();
@@ -552,7 +670,7 @@ void GridEditingWidget::setEditableGrid(vtkUnstructuredGrid* grid, const QString
     clearData();
     m_sourceName = sourceName;
 
-    // 颜色模式属于网格的全局显示状态。重新进入页面时保持导入后或用户选择的模式。
+           // 颜色模式属于网格的全局显示状态。重新进入页面时保持导入后或用户选择的模式。
     m_colorMode = globalColorMode();
 
     if (ui && ui->comboBoxColorMode)
@@ -570,6 +688,92 @@ void GridEditingWidget::setEditableGrid(vtkUnstructuredGrid* grid, const QString
 
     m_fullGrid = vtkSmartPointer<vtkUnstructuredGrid>::New();
     m_fullGrid->ShallowCopy(grid);
+
+           // “KETYPE”是求解器计算单元类型，不等于真实网格拓扑。
+           // MeshGridIO 会把能等价恢复的旧 8 槽位单元转成标准拓扑；
+           // 其余合法闭合的 Hex 塌缩体在筛选语义上并回“六面体”，
+           // 只有真正非法的塌缩记录才使用“异常”编号。
+           // 只有字段不存在或尺寸不对时才根据实际 VTK CellType 补建。
+    if (m_fullGrid->GetCellData())
+    {
+        auto* existing = vtkIntArray::SafeDownCast(
+            m_fullGrid->GetCellData()->GetArray("TOPOLOGY_TYPE"));
+        if (!existing || existing->GetNumberOfTuples() != m_fullGrid->GetNumberOfCells())
+        {
+            auto topology = vtkSmartPointer<vtkIntArray>::New();
+            topology->SetName("TOPOLOGY_TYPE");
+            topology->SetNumberOfComponents(1);
+            topology->SetNumberOfTuples(m_fullGrid->GetNumberOfCells());
+            for (vtkIdType cid = 0; cid < m_fullGrid->GetNumberOfCells(); ++cid)
+                topology->SetValue(cid, m_fullGrid->GetCellType(cid));
+            m_fullGrid->GetCellData()->RemoveArray("TOPOLOGY_TYPE");
+            m_fullGrid->GetCellData()->AddArray(topology);
+        }
+        else
+        {
+            bool needsMigration = false;
+            for (vtkIdType cid = 0; cid < existing->GetNumberOfTuples(); ++cid)
+            {
+                const int value = existing->GetValue(cid);
+                if (value == kLegacyTopologyDegenerateHex5 ||
+                    value == kLegacyTopologyDegenerateHex6 ||
+                    value == kLegacyTopologyDegenerateHex7 ||
+                    value == kLegacyTopologyAbnormal)
+                {
+                    needsMigration = true;
+                    break;
+                }
+            }
+
+            if (needsMigration)
+            {
+                auto topology = vtkSmartPointer<vtkIntArray>::New();
+                topology->DeepCopy(existing);
+                topology->SetName("TOPOLOGY_TYPE");
+                for (vtkIdType cid = 0; cid < topology->GetNumberOfTuples(); ++cid)
+                {
+                    const int value = topology->GetValue(cid);
+                    if (value == kLegacyTopologyDegenerateHex5 ||
+                        value == kLegacyTopologyDegenerateHex6 ||
+                        value == kLegacyTopologyDegenerateHex7)
+                    {
+                        topology->SetValue(cid, VTK_HEXAHEDRON);
+                    }
+                    else if (value == kLegacyTopologyAbnormal)
+                    {
+                        // 兼容上一版已经缓存到工程里的“异常=1099”。
+                        // 优先根据原 IIIN 连接模式重新归类，避免 1099 号这类
+                        // A B C C D E F F 的标准三棱柱继续被旧状态锁死为异常。
+                        int migrated = VTK_EMPTY_CELL;
+                        if (auto* patternArray =
+                            m_fullGrid->GetCellData()->GetArray("IIIN_CONNECTIVITY_PATTERN"))
+                        {
+                            if (cid < patternArray->GetNumberOfTuples())
+                            {
+                                const int pattern = static_cast<int>(
+                                    std::llround(patternArray->GetTuple1(cid)));
+                                migrated = canonicalTopologyFromLegacyPattern(pattern);
+                            }
+                        }
+
+                        if (migrated == VTK_EMPTY_CELL)
+                        {
+                            const int currentType = m_fullGrid->GetCellType(cid);
+                            if (currentType == VTK_TETRA || currentType == VTK_PYRAMID ||
+                                currentType == VTK_WEDGE || currentType == VTK_HEXAHEDRON)
+                            {
+                                migrated = currentType;
+                            }
+                        }
+                        topology->SetValue(
+                            cid, migrated != VTK_EMPTY_CELL ? migrated : kTopologyAbnormal);
+                    }
+                }
+                m_fullGrid->GetCellData()->RemoveArray("TOPOLOGY_TYPE");
+                m_fullGrid->GetCellData()->AddArray(topology);
+            }
+        }
+    }
 
     buildFilterTreeFromGrid();
     refreshMeshActors();
@@ -593,6 +797,8 @@ bool GridEditingWidget::cellMatchesFilter(vtkIdType cellId) const
     if (!cd)
         return true;
 
+    const int topology = tuple1i(cd->GetArray("TOPOLOGY_TYPE"), cellId,
+                                 m_fullGrid->GetCellType(cellId));
     const int ketype = tuple1i(cd->GetArray("KETYPE"), cellId, 0);
     const int matype = tuple1i(cd->GetArray("MATYPE"), cellId, 0);
     const int layer = tuple1i(cd->GetArray("LAYER"), cellId, 0);
@@ -604,7 +810,8 @@ bool GridEditingWidget::cellMatchesFilter(vtkIdType cellId) const
         return checkedValues.contains(value);
     };
 
-    return allowed(m_allKetypes, m_filterKetypes, ketype) &&
+    return allowed(m_allTopologies, m_filterTopologies, topology) &&
+           allowed(m_allKetypes, m_filterKetypes, ketype) &&
            allowed(m_allMatypes, m_filterMatypes, matype) &&
            allowed(m_allLayers, m_filterLayers, layer);
 }
@@ -669,16 +876,32 @@ void GridEditingWidget::buildOrUpdateViewGrid()
     if (!m_visualWidgetService || !m_fullGrid)
         return;
 
+           // “全部隐藏”是高频操作，大网格没必要再扫描几十万个 Cell、抽取并重建表面。
+           // 直接隐藏 Actor；重新勾选后再按当前条件重建即可。
+    const bool definitelyEmpty =
+        (!m_allTopologies.isEmpty() && m_filterTopologies.isEmpty()) ||
+        (!m_allKetypes.isEmpty() && m_filterKetypes.isEmpty()) ||
+        (!m_allMatypes.isEmpty() && m_filterMatypes.isEmpty()) ||
+        (!m_allLayers.isEmpty() && m_filterLayers.isEmpty());
+    if (definitelyEmpty)
+    {
+        m_visualWidgetService->setVisible(kImportedMeshSurfacePropId, false, false);
+        m_visualWidgetService->setVisible(kImportedMeshLinePropId, false, false);
+        m_visualWidgetService->render();
+        return;
+    }
+
     auto surfaceCellIds = vtkSmartPointer<vtkIdList>::New();
     auto lineCellIds = vtkSmartPointer<vtkIdList>::New();
 
     for (vtkIdType cellId = 0; cellId < m_fullGrid->GetNumberOfCells(); ++cellId)
     {
-        vtkCell* cell = m_fullGrid->GetCell(cellId);
-        if (!cell)
+        // 先做纯数组筛选，只有命中的 Cell 才构造 vtkCell，减少大网格筛选时的对象开销。
+        if (!cellMatchesFilter(cellId))
             continue;
 
-        if (!cellMatchesFilter(cellId))
+        vtkCell* cell = m_fullGrid->GetCell(cellId);
+        if (!cell)
             continue;
 
         const int dim = cell->GetCellDimension();
@@ -772,6 +995,49 @@ QSet<int> GridEditingWidget::collectVisibleCellInts(const char* arrayName) const
 
 QString GridEditingWidget::displayTextForFilterValue(const QString& category, int value) const
 {
+    if (category == kCategoryTopology)
+    {
+        switch (value)
+        {
+        case VTK_LINE:
+            return QStringLiteral("线单元");
+        case VTK_TRIANGLE:
+            return QStringLiteral("三角形");
+        case VTK_QUAD:
+            return QStringLiteral("四边形");
+        case VTK_TETRA:
+            return QStringLiteral("四面体");
+        case VTK_HEXAHEDRON:
+            return QStringLiteral("六面体");
+        case VTK_WEDGE:
+            return QStringLiteral("三棱柱");
+        case VTK_PYRAMID:
+            return QStringLiteral("金字塔");
+        case VTK_POLYHEDRON:
+            return QStringLiteral("多面体");
+        case kTopologyAbnormal:
+            return QStringLiteral("异常");
+        default:
+            return QStringLiteral("类型 %1").arg(value);
+        }
+    }
+
+    if (category == kCategoryKetype)
+    {
+        // 当前求解器 KEATT_CON/KEATT_VAR 中：
+        // KETYPE=1 为 2 节点线类计算单元；KETYPE=6 为 8 槽位三维实体计算单元。
+        // 这里只标注已经明确的类型，未知编号仍保留原值，避免误命名。
+        switch (value)
+        {
+        case 1:
+            return QStringLiteral("1（线单元）");
+        case 6:
+            return QStringLiteral("6（三维实体单元）");
+        default:
+            return QStringLiteral("%1（计算类型）").arg(value);
+        }
+    }
+
     if (category == kCategoryMatype)
     {
         const MshPickMap pickMap = MeshGridIO::instance().getMeshMap();
@@ -785,6 +1051,25 @@ QString GridEditingWidget::displayTextForFilterValue(const QString& category, in
     return QString::number(value);
 }
 
+static bool isDegenerateLegacyConnectivityPattern(int pattern)
+{
+    if (pattern < 0)
+        return false;
+
+    bool seen[8] = {false, false, false, false, false, false, false, false};
+    int uniqueCount = 0;
+    for (int slot = 0; slot < 8; ++slot)
+    {
+        const int local = (pattern >> (slot * 3)) & 0x7;
+        if (!seen[local])
+        {
+            seen[local] = true;
+            ++uniqueCount;
+        }
+    }
+    return uniqueCount < 8;
+}
+
 void GridEditingWidget::buildFilterTreeFromGrid()
 {
     if (!ui || !ui->treeWidgetFilterValues)
@@ -794,35 +1079,126 @@ void GridEditingWidget::buildFilterTreeFromGrid()
     m_updatingFilterTree = true;
     ui->treeWidgetFilterValues->clear();
 
-    const QMap<int, int> ketypeCounts = collectCellIntCounts("KETYPE");
-    const QMap<int, int> matypeCounts = collectCellIntCounts("MATYPE");
-    const QMap<int, int> layerCounts = collectCellIntCounts("LAYER");
+    const bool postMode = postResultFilterActive();
 
+    QMap<int, int> topologyCounts;
+    QMap<int, int> ketypeCounts;
+    QMap<int, int> matypeCounts;
+    QMap<int, int> layerCounts;
+
+    if (postMode)
+    {
+        // 后处理筛选项来自当前结果文件自身的 CellData，不再使用 Mesh 计数。
+        matypeCounts = postResultFilterCounts(kPostFilterMatypeCountsKey);
+        layerCounts = postResultFilterCounts(kPostFilterLayerCountsKey);
+    }
+    else
+    {
+        topologyCounts = collectCellIntCounts("TOPOLOGY_TYPE");
+        ketypeCounts = collectCellIntCounts("KETYPE");
+        matypeCounts = collectCellIntCounts("MATYPE");
+        layerCounts = collectCellIntCounts("LAYER");
+    }
+
+    bool showTopologyFilter = false;
+    if (!postMode && m_fullGrid && m_fullGrid->GetCellData())
+    {
+        auto* cd = m_fullGrid->GetCellData();
+        auto* patternArray = cd->GetArray("IIIN_CONNECTIVITY_PATTERN");
+        auto* ketypeArray = cd->GetArray("KETYPE");
+        if (patternArray && ketypeArray)
+        {
+            const vtkIdType n = qMin<vtkIdType>(
+                m_fullGrid->GetNumberOfCells(),
+                qMin<vtkIdType>(patternArray->GetNumberOfTuples(),
+                                ketypeArray->GetNumberOfTuples()));
+            for (vtkIdType cid = 0; cid < n; ++cid)
+            {
+                const int pattern =
+                    static_cast<int>(std::llround(patternArray->GetTuple1(cid)));
+                const int ketype =
+                    static_cast<int>(std::llround(ketypeArray->GetTuple1(cid)));
+                if (ketype == 6 && isDegenerateLegacyConnectivityPattern(pattern))
+                {
+                    showTopologyFilter = true;
+                    break;
+                }
+            }
+        }
+    }
+
+    m_allTopologies = mapKeysToSet(topologyCounts);
     m_allKetypes = mapKeysToSet(ketypeCounts);
     m_allMatypes = mapKeysToSet(matypeCounts);
     m_allLayers = mapKeysToSet(layerCounts);
 
-    if (globalFilterIsCustom())
+    if (postMode)
     {
+        m_filterTopologies.clear();
+        m_filterKetypes.clear();
+
+        const QString storedProject =
+            PublicVariables::instance().get(kPostFilterProjectKey).toString().trimmed();
+        const QString currentProject =
+            PublicVariables::instance()
+                .get(PublicConstants::kProjectDirectoryKey)
+                .toString()
+                .trimmed();
+        const bool validState = !storedProject.isEmpty() &&
+                                storedProject == currentProject;
+
+        if (validState)
+        {
+            m_filterMatypes = postResultCheckedValues(kCategoryMatype);
+            m_filterLayers = postResultCheckedValues(kCategoryLayer);
+        }
+        else
+        {
+            m_filterMatypes = m_allMatypes;
+            m_filterLayers = m_allLayers;
+        }
+    }
+    else if (globalFilterIsCustom())
+    {
+        m_filterTopologies = globalCheckedValues(kCategoryTopology);
+        if (m_filterTopologies.isEmpty() && !m_allTopologies.isEmpty() &&
+            PublicVariables::instance()
+                .get(kGlobalFilterTopologyKey)
+                .toString()
+                .trimmed()
+                .isEmpty())
+        {
+            m_filterTopologies = m_allTopologies;
+        }
         m_filterKetypes = globalCheckedValues(kCategoryKetype);
         m_filterMatypes = globalCheckedValues(kCategoryMatype);
         m_filterLayers = globalCheckedValues(kCategoryLayer);
     }
     else
     {
+        m_filterTopologies = m_allTopologies;
         m_filterKetypes = m_allKetypes;
         m_filterMatypes = m_allMatypes;
         m_filterLayers = m_allLayers;
     }
 
-    auto addGroup = [this](const QString& category, const QString& title, const QMap<int, int>& counts)
+    if (!postMode && !showTopologyFilter)
+        m_filterTopologies = m_allTopologies;
+
+    auto addGroup =
+        [this](const QString& category, const QString& title,
+               const QMap<int, int>& counts)
     {
+        if (counts.isEmpty())
+            return;
+
         auto* group = new QTreeWidgetItem(ui->treeWidgetFilterValues);
         group->setText(0, title);
         group->setText(1, QString::number(counts.size()));
         group->setData(0, kRoleCategory, category);
         group->setData(0, kRoleIsGroup, true);
-        group->setFlags((group->flags() | Qt::ItemIsUserCheckable) & ~Qt::ItemIsAutoTristate);
+        group->setFlags((group->flags() | Qt::ItemIsUserCheckable) &
+                        ~Qt::ItemIsAutoTristate);
 
         for (auto it = counts.constBegin(); it != counts.constEnd(); ++it)
         {
@@ -833,13 +1209,16 @@ void GridEditingWidget::buildFilterTreeFromGrid()
             child->setData(0, kRoleValue, it.key());
             child->setData(0, kRoleIsGroup, false);
             child->setFlags(child->flags() | Qt::ItemIsUserCheckable);
-            child->setToolTip(0, QStringLiteral("%1 = %2，单元数量：%3")
-                                     .arg(category)
-                                     .arg(it.key())
-                                     .arg(it.value()));
+            child->setToolTip(
+                0, QStringLiteral("%1 = %2，结果单元数量：%3")
+                       .arg(category)
+                       .arg(it.key())
+                       .arg(it.value()));
 
             bool checked = true;
-            if (category == kCategoryKetype)
+            if (category == kCategoryTopology)
+                checked = m_filterTopologies.contains(it.key());
+            else if (category == kCategoryKetype)
                 checked = m_filterKetypes.contains(it.key());
             else if (category == kCategoryMatype)
                 checked = m_filterMatypes.contains(it.key());
@@ -851,7 +1230,14 @@ void GridEditingWidget::buildFilterTreeFromGrid()
         updateParentCheckState(group);
     };
 
-    addGroup(kCategoryKetype, QStringLiteral("单元类型"), ketypeCounts);
+    if (!postMode)
+    {
+        if (showTopologyFilter)
+            addGroup(kCategoryTopology, QStringLiteral("网格拓扑"), topologyCounts);
+        addGroup(kCategoryKetype, QStringLiteral("计算类型编号"), ketypeCounts);
+    }
+
+    // 后处理模式只显示结果域：材料 + 分层。网格类型不参与联动。
     addGroup(kCategoryMatype, QStringLiteral("材料类型"), matypeCounts);
     addGroup(kCategoryLayer, QStringLiteral("填筑分层"), layerCounts);
 
@@ -925,12 +1311,14 @@ QSet<int> GridEditingWidget::checkedValuesForCategory(const QString& category) c
     if (!ui || !ui->treeWidgetFilterValues)
         return values;
 
+    bool found = false;
     for (int i = 0; i < ui->treeWidgetFilterValues->topLevelItemCount(); ++i)
     {
         QTreeWidgetItem* group = ui->treeWidgetFilterValues->topLevelItem(i);
         if (!group || group->data(0, kRoleCategory).toString() != category)
             continue;
 
+        found = true;
         for (int c = 0; c < group->childCount(); ++c)
         {
             QTreeWidgetItem* child = group->child(c);
@@ -940,21 +1328,60 @@ QSet<int> GridEditingWidget::checkedValuesForCategory(const QString& category) c
         break;
     }
 
+           // 某一筛选组没有显示，不等于“全部取消”。尤其普通网格没有“网格拓扑”组时，
+           // 必须把拓扑视为全选，否则执行一次“隐藏整体”后再勾选其它组会永远匹配不到 Cell。
+    if (!found)
+    {
+        if (category == kCategoryTopology)
+            return m_allTopologies;
+        if (category == kCategoryKetype)
+            return m_allKetypes;
+        if (category == kCategoryMatype)
+            return m_allMatypes;
+        if (category == kCategoryLayer)
+            return m_allLayers;
+    }
+
     return values;
 }
 
 void GridEditingWidget::applyFilterFromTree()
 {
+    m_filterTopologies = checkedValuesForCategory(kCategoryTopology);
     m_filterKetypes = checkedValuesForCategory(kCategoryKetype);
     m_filterMatypes = checkedValuesForCategory(kCategoryMatype);
     m_filterLayers = checkedValuesForCategory(kCategoryLayer);
 
+    if (postResultFilterActive())
+    {
+        const bool customFilter =
+            !setEquals(m_allMatypes, m_filterMatypes) ||
+            !setEquals(m_allLayers, m_filterLayers);
+
+        // 后处理模式只写结果筛选状态，不修改 Mesh 的筛选，也不重建 Mesh ViewGrid。
+        setGlobalValue(kPostFilterCustomKey, customFilter);
+        setGlobalValue(kPostFilterMatypeKey, intSetToString(m_filterMatypes));
+        setGlobalValue(kPostFilterLayerKey, intSetToString(m_filterLayers));
+        setGlobalValue(kPostFilterProjectKey,
+                       PublicVariables::instance()
+                           .get(PublicConstants::kProjectDirectoryKey));
+
+        QVariantMap filterEvent;
+        filterEvent.insert(QStringLiteral("custom"), customFilter);
+        filterEvent.insert(QStringLiteral("matype"), intSetToString(m_filterMatypes));
+        filterEvent.insert(QStringLiteral("layer"), intSetToString(m_filterLayers));
+        EventManager::instance().sendEvent(kPostFilterChangedEvent, filterEvent);
+        return;
+    }
+
     const bool customFilter =
+        !setEquals(m_allTopologies, m_filterTopologies) ||
         !setEquals(m_allKetypes, m_filterKetypes) ||
         !setEquals(m_allMatypes, m_filterMatypes) ||
         !setEquals(m_allLayers, m_filterLayers);
 
     setGlobalValue(kGlobalFilterCustomKey, customFilter);
+    setGlobalValue(kGlobalFilterTopologyKey, intSetToString(m_filterTopologies));
     setGlobalValue(kGlobalFilterKetypeKey, intSetToString(m_filterKetypes));
     setGlobalValue(kGlobalFilterMatypeKey, intSetToString(m_filterMatypes));
     setGlobalValue(kGlobalFilterLayerKey, intSetToString(m_filterLayers));
@@ -965,6 +1392,7 @@ void GridEditingWidget::applyFilterFromTree()
 
     QVariantMap filterEvent;
     filterEvent.insert(QStringLiteral("custom"), customFilter);
+    filterEvent.insert(QStringLiteral("topology"), intSetToString(m_filterTopologies));
     filterEvent.insert(QStringLiteral("ketype"), intSetToString(m_filterKetypes));
     filterEvent.insert(QStringLiteral("matype"), intSetToString(m_filterMatypes));
     filterEvent.insert(QStringLiteral("layer"), intSetToString(m_filterLayers));
@@ -1003,12 +1431,23 @@ void GridEditingWidget::onFilterTreeItemChanged(QTreeWidgetItem* item, int colum
     }
 
            // 先只同步页面状态，不重建树、不改回用户刚点击的勾选状态。
+    m_filterTopologies = checkedValuesForCategory(kCategoryTopology);
     m_filterKetypes = checkedValuesForCategory(kCategoryKetype);
     m_filterMatypes = checkedValuesForCategory(kCategoryMatype);
     m_filterLayers = checkedValuesForCategory(kCategoryLayer);
 
     if (ui->checkBoxAutoApply && ui->checkBoxAutoApply->isChecked())
-        applyFilterFromTree();
+    {
+        // 大网格连续勾选时合并短时间内的多次重建请求，避免每一下都完整抽面。
+        const int generation = property("meshFilterApplyGeneration").toInt() + 1;
+        setProperty("meshFilterApplyGeneration", generation);
+        QTimer::singleShot(60, this, [this, generation]()
+                           {
+                               if (property("meshFilterApplyGeneration").toInt() != generation)
+                                   return;
+                               applyFilterFromTree();
+                           });
+    }
 }
 
 vtkSmartPointer<vtkLookupTable> GridEditingWidget::buildLookupTable(const QSet<int>& values) const
@@ -1076,6 +1515,9 @@ void GridEditingWidget::applyColorMode()
     const char* arrayName = nullptr;
     switch (m_colorMode)
     {
+    case ColorMode::Topology:
+        arrayName = "TOPOLOGY_TYPE";
+        break;
     case ColorMode::Ketype:
         arrayName = "KETYPE";
         break;
@@ -1155,8 +1597,8 @@ void GridEditingWidget::updateContextPresentation()
         ui->treeWidgetFilterValues->headerItem()->setText(
             0, postViewActive ? QStringLiteral("结果筛选项") : QStringLiteral("筛选项"));
 
-    // 后处理激活时，这个面板只负责筛选结果区域，不负责把网格本体叠加出来。
-    // 主动压住所有常用网格 Actor，避免其它显示路径把网格重新打开。
+           // 后处理激活时，这个面板只负责筛选结果区域，不负责把网格本体叠加出来。
+           // 主动压住所有常用网格 Actor，避免其它显示路径把网格重新打开。
     if (postViewActive && m_visualWidgetService)
     {
         m_visualWidgetService->setVisible(QStringLiteral("mesh.global.surf"), false, false);
@@ -1165,6 +1607,8 @@ void GridEditingWidget::updateContextPresentation()
         m_visualWidgetService->setVisible(kImportedMeshLinePropId, false, false);
         m_visualWidgetService->render();
     }
+
+    buildFilterTreeFromGrid();
 }
 
 void GridEditingWidget::beforeLoad()
@@ -1173,6 +1617,12 @@ void GridEditingWidget::beforeLoad()
         uiFrame->setWidgetVisible(this, true);
 
     updateContextPresentation();
+
+    if (postResultFilterActive())
+    {
+        buildFilterTreeFromGrid();
+        return;
+    }
 
     auto* meshService = ServiceRegistry::instance().getService<MeshModuleControllerService>();
     vtkUnstructuredGrid* grid = meshService ? meshService->getVtkUnstructuredGrid() : nullptr;
@@ -1187,5 +1637,5 @@ void GridEditingWidget::beforeLoad()
 
 void GridEditingWidget::beforeUnload()
 {
-    // The dock panel remains active while users work on other settings pages.
+  // The dock panel remains active while users work on other settings pages.
 }

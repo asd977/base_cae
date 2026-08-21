@@ -1,7 +1,8 @@
-#include "DisplacementConstraintWidget.h"
+﻿#include "DisplacementConstraintWidget.h"
 
 #include <PublicConstants.h>
 #include <PublicVariables.h>
+#include <StyleManager.h>
 #include <CustomComboBox.h>
 #include <ServiceRegistry.h>
 #include <services/MeshModuleControllerService.h>
@@ -31,9 +32,15 @@
 #include <PickManager.h>
 #include <struct/MeshMap.h>
 #include <vtkActor.h>
+#include <vtkAssembly.h>
+#include <vtkAxesActor.h>
+#include <vtkCaptionActor2D.h>
 #include <vtkCallbackCommand.h>
+#include <vtkCellArray.h>
 #include <vtkCell.h>
 #include <vtkCellPicker.h>
+#include <vtkCoordinate.h>
+#include <vtkCubeSource.h>
 #include <vtkDataArray.h>
 #include <vtkIdList.h>
 #include <vtkIntArray.h>
@@ -42,8 +49,10 @@
 #include <vtkPoints.h>
 #include <vtkPolyDataMapper.h>
 #include <vtkProperty.h>
+#include <vtkOrientationMarkerWidget.h>
 #include <vtkRenderWindowInteractor.h>
 #include <vtkRenderer.h>
+#include <vtkTextProperty.h>
 #include <vtkUnstructuredGrid.h>
 #include <vtkVertexGlyphFilter.h>
 
@@ -265,6 +274,7 @@ static void normalizeRange(QDoubleSpinBox* minimumSpin, QDoubleSpinBox* maximumS
     minimumSpin->setValue(minimum);
     maximumSpin->setValue(maximum);
 }
+
 }
 
 DisplacementConstraintWidget::DisplacementConstraintWidget(QWidget* parent)
@@ -294,15 +304,32 @@ DisplacementConstraintWidget::DisplacementConstraintWidget(QWidget* parent)
     connect(ui->coordXCheckBox, &QCheckBox::toggled, this, coordinateStateChanged);
     connect(ui->coordYCheckBox, &QCheckBox::toggled, this, coordinateStateChanged);
     connect(ui->coordZCheckBox, &QCheckBox::toggled, this, coordinateStateChanged);
+
+    const auto constraintDirectionChanged = [this](int)
+    {
+        refreshConstraintVisualization();
+    };
+    connect(ui->UXLineEdit, QOverload<int>::of(&QComboBox::currentIndexChanged), this,
+            constraintDirectionChanged);
+    connect(ui->UYLineEdit, QOverload<int>::of(&QComboBox::currentIndexChanged), this,
+            constraintDirectionChanged);
+    connect(ui->UZLineEdit, QOverload<int>::of(&QComboBox::currentIndexChanged), this,
+            constraintDirectionChanged);
+
     updateCoordinateControlState();
 }
 
 DisplacementConstraintWidget::~DisplacementConstraintWidget()
 {
+    clearConstraintVisualization(false);
+    delete ui;
 }
 
 void DisplacementConstraintWidget::beforeLoad()
 {
+    m_constraintPageActive = true;
+    m_visual = ServiceRegistry::instance().getService<VisualWidgetService>();
+
     PickManager& pickManager = PickManager::instance();
     pickManager.updateStructure();
     pickManager.activate(getPageType(), m_uuid, PickMode::Node);
@@ -392,6 +419,7 @@ void DisplacementConstraintWidget::beforeLoad()
     if (!m_coordinateRangeLoaded)
         onUseMeshBounds();
     updateCoordinateControlState();
+    refreshConstraintVisualization();
 }
 
 
@@ -627,6 +655,10 @@ void DisplacementConstraintWidget::onSetAllBarsSuspended()
 
 void DisplacementConstraintWidget::loadJson(const QJsonObject& obj)
 {
+    const QSignalBlocker uxBlocker(ui->UXLineEdit);
+    const QSignalBlocker uyBlocker(ui->UYLineEdit);
+    const QSignalBlocker uzBlocker(ui->UZLineEdit);
+
     setConstraintValue(ui->UXLineEdit,
                        obj.value("ux").toString(ui->UXLineEdit->currentData().toString()));
     setConstraintValue(ui->UYLineEdit,
@@ -659,7 +691,241 @@ void DisplacementConstraintWidget::beforeUnload()
     QObject::disconnect(&PickManager::instance(), &PickManager::nodePicked, this,
                         &DisplacementConstraintWidget::onNodePicked);
     PickManager::instance().setClickPickEnabled(getPageType(), m_uuid, false);
+
+    // 单节点查看模式：离开当前约束节点后，右下角全局约束方向指示器立即消失。
+    // PickManager::deactivate() 同时会隐藏当前节点的全部选中点高亮。
+    m_constraintPageActive = false;
+    clearConstraintVisualization(false);
     PickManager::instance().deactivate(getPageType(), m_uuid, PickMode::Node);
+
+    if (!m_visual)
+        m_visual = ServiceRegistry::instance().getService<VisualWidgetService>();
+    if (m_visual)
+        m_visual->render();
+}
+
+QString DisplacementConstraintWidget::constraintVisualizationPropId() const
+{
+    return QStringLiteral("physical.constraint.direction.%1").arg(m_uuid);
+}
+
+void DisplacementConstraintWidget::clearConstraintVisualization(bool renderNow)
+{
+    // v10 曾把约束状态作为 vtkTextActor 注册到主渲染器。这里顺手清理旧 prop，
+    // 便于开发时从旧版本热切换，也避免重复残留。
+    auto* visual = m_visual ? m_visual
+                            : ServiceRegistry::instance().getService<VisualWidgetService>();
+    if (visual && !m_uuid.isEmpty())
+        visual->removeProp(constraintVisualizationPropId(), false);
+
+    if (m_constraintMarkerWidget)
+    {
+        m_constraintMarkerWidget->SetEnabled(0);
+        m_constraintMarkerWidget->SetInteractor(nullptr);
+    }
+    m_constraintMarkerWidget = nullptr;
+    m_constraintMarkerAssembly = nullptr;
+
+    if (renderNow && visual)
+        visual->render();
+}
+
+namespace
+{
+static vtkSmartPointer<vtkActor> makeConstraintStopPlate(int axis, bool darkTheme)
+{
+    // 固定方向不是“仍能向前的箭头 + 一个标记”，而应该明确表达“到这里被挡住”。
+    // vtkAxesActor 的轴杆占总长度的 72%，箭头占后 28%。固定方向隐藏箭头，
+    // 再把一块薄挡板放在轴杆末端，使视觉语义变成：原点 ---- [挡板]。
+    constexpr double totalLength = 0.86;
+    constexpr double normalizedShaftLength = 0.72;
+    constexpr double shaftEnd = totalLength * normalizedShaftLength;
+    constexpr double plateThickness = 0.055;
+    constexpr double plateSize = 0.30;
+    constexpr double halfThickness = plateThickness * 0.5;
+    constexpr double halfSize = plateSize * 0.5;
+
+    auto plate = vtkSmartPointer<vtkCubeSource>::New();
+    if (axis == 0)
+    {
+        plate->SetBounds(shaftEnd - halfThickness, shaftEnd + halfThickness,
+                         -halfSize, halfSize,
+                         -halfSize, halfSize);
+    }
+    else if (axis == 1)
+    {
+        plate->SetBounds(-halfSize, halfSize,
+                         shaftEnd - halfThickness, shaftEnd + halfThickness,
+                         -halfSize, halfSize);
+    }
+    else
+    {
+        plate->SetBounds(-halfSize, halfSize,
+                         -halfSize, halfSize,
+                         shaftEnd - halfThickness, shaftEnd + halfThickness);
+    }
+
+    auto mapper = vtkSmartPointer<vtkPolyDataMapper>::New();
+    mapper->SetInputConnection(plate->GetOutputPort());
+
+    auto actor = vtkSmartPointer<vtkActor>::New();
+    actor->SetMapper(mapper);
+    actor->PickableOff();
+
+    // 挡板主体使用中性灰，避免与 X/Y/Z 轴本身争抢颜色；边框仍跟随轴颜色，
+    // 既能看出“这是一个实体挡板”，又能立即识别它属于哪个全局方向。
+    static const double axisColors[3][3] = {
+        {0.90, 0.24, 0.20},
+        {0.20, 0.72, 0.32},
+        {0.20, 0.42, 0.90}};
+    const double face = darkTheme ? 0.62 : 0.72;
+
+    vtkProperty* property = actor->GetProperty();
+    property->SetColor(face, face, face);
+    property->SetOpacity(0.96);
+    property->EdgeVisibilityOn();
+    property->SetEdgeColor(axisColors[axis][0], axisColors[axis][1], axisColors[axis][2]);
+    property->SetLineWidth(2.5);
+    property->LightingOff();
+    return actor;
+}
+
+static void setAxisVisualState(vtkAxesActor* axes, int axis, bool fixed, bool darkTheme)
+{
+    if (!axes)
+        return;
+
+    vtkProperty* shaft = nullptr;
+    vtkProperty* tip = nullptr;
+    vtkCaptionActor2D* caption = nullptr;
+    if (axis == 0)
+    {
+        shaft = axes->GetXAxisShaftProperty();
+        tip = axes->GetXAxisTipProperty();
+        caption = axes->GetXAxisCaptionActor2D();
+    }
+    else if (axis == 1)
+    {
+        shaft = axes->GetYAxisShaftProperty();
+        tip = axes->GetYAxisTipProperty();
+        caption = axes->GetYAxisCaptionActor2D();
+    }
+    else
+    {
+        shaft = axes->GetZAxisShaftProperty();
+        tip = axes->GetZAxisTipProperty();
+        caption = axes->GetZAxisCaptionActor2D();
+    }
+
+    // 自由方向是完整箭头；固定方向必须“被挡住”：保留轴杆、隐藏箭头尖端，
+    // 由轴杆末端的实体挡板终止该方向。这样不需要猜图标含义。
+    if (shaft)
+    {
+        shaft->SetOpacity(1.0);
+        shaft->SetLineWidth(fixed ? 3.2 : 2.2);
+    }
+    if (tip)
+        tip->SetOpacity(fixed ? 0.0 : 1.0);
+
+    if (caption && caption->GetCaptionTextProperty())
+    {
+        vtkTextProperty* text = caption->GetCaptionTextProperty();
+        const double v = darkTheme ? 0.94 : 0.16;
+        text->SetColor(v, v, v);
+        text->SetOpacity(1.0);
+        text->SetBold(fixed ? 1 : 0);
+        text->SetShadow(0);
+    }
+}
+}
+
+void DisplacementConstraintWidget::refreshConstraintVisualization(bool renderNow)
+{
+    if (m_uuid.isEmpty())
+        return;
+
+    if (!m_visual)
+        m_visual = ServiceRegistry::instance().getService<VisualWidgetService>();
+    if (!m_visual)
+        return;
+
+    // 只在当前位移约束节点被打开时显示。约束作用范围仍由 PickManager 完整高亮；
+    // 本指示器只负责表达“全局哪个方向被约束”，不在模型上寻找锚点、不铺采样符号。
+    if (!m_constraintPageActive)
+    {
+        clearConstraintVisualization(renderNow);
+        return;
+    }
+
+    vtkRenderWindowInteractor* interactor = m_visual->interactor();
+    if (!interactor)
+    {
+        clearConstraintVisualization(renderNow);
+        return;
+    }
+
+    // 每次方向状态变化时重建这个很小的 marker。组件数量固定且极少，
+    // 比在模型空间维护大量 glyph 更简单，也不会随网格规模增长。
+    clearConstraintVisualization(false);
+
+    const bool is2D = PublicVariables::instance().get(PublicConstants::kMeshDimension).toInt() == 2;
+    const bool darkTheme = StyleManager::currentThemeName() == QStringLiteral("dark");
+
+    const int flags[3] = {uxFlag(), uyFlag(), uzFlag()};
+    const bool activeAxis[3] = {true, true, !is2D};
+
+    auto axes = vtkSmartPointer<vtkAxesActor>::New();
+    axes->PickableOff();
+    axes->SetShaftTypeToCylinder();
+    axes->SetTipTypeToCone();
+    axes->SetTotalLength(0.86, 0.86, is2D ? 0.0 : 0.86);
+    axes->SetNormalizedShaftLength(0.72, 0.72, 0.72);
+    axes->SetNormalizedTipLength(0.28, 0.28, 0.28);
+    axes->SetCylinderRadius(0.042);
+    axes->SetConeRadius(0.12);
+    axes->SetAxisLabels(1);
+
+    m_constraintMarkerAssembly = vtkSmartPointer<vtkAssembly>::New();
+    m_constraintMarkerAssembly->PickableOff();
+    m_constraintMarkerAssembly->AddPart(axes);
+
+    for (int axis = 0; axis < 3; ++axis)
+    {
+        if (!activeAxis[axis])
+            continue;
+
+        const bool fixed = (flags[axis] == 0);
+        setAxisVisualState(axes, axis, fixed, darkTheme);
+        if (fixed)
+            m_constraintMarkerAssembly->AddPart(makeConstraintStopPlate(axis, darkTheme));
+    }
+
+    // 固定方向的箭头已经在挡板处终止；自由方向仍是完整箭头。
+
+    // 二维模型不显示 Z 文本，避免产生“Z 也参与约束”的误解。
+    if (is2D)
+    {
+        if (auto* zCaption = axes->GetZAxisCaptionActor2D())
+            zCaption->SetVisibility(0);
+    }
+
+    m_constraintMarkerWidget = vtkSmartPointer<vtkOrientationMarkerWidget>::New();
+    m_constraintMarkerWidget->SetOrientationMarker(m_constraintMarkerAssembly);
+    m_constraintMarkerWidget->SetInteractor(interactor);
+
+    // 主视图已有全局坐标轴在左下角；约束方向指示器放右下角并适当放大，避免重叠且保证可读性。
+    // vtkOrientationMarkerWidget 会自动使用主视图相机方向，因此模型旋转时它同步旋转，
+    // 但屏幕位置和尺寸保持稳定。
+    m_constraintMarkerWidget->SetViewport(0.78, 0.02, 0.98, 0.22);
+    const double outline = darkTheme ? 0.78 : 0.28;
+    m_constraintMarkerWidget->SetOutlineColor(outline, outline, outline);
+    // vtkOrientationMarkerWidget 要求先 SetInteractor + SetEnabled，再修改 Interaction。
+    // 否则 VTK 9.2 会持续输出：Set interactor and Enabled before changing interaction.
+    m_constraintMarkerWidget->SetEnabled(1);
+    m_constraintMarkerWidget->InteractiveOff();
+
+    if (renderNow)
+        m_visual->render();
 }
 
 int DisplacementConstraintWidget::uxFlag()

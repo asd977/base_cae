@@ -5,8 +5,10 @@
 #include <services/SolverService.h>
 #include "GeoStressRegressionWidget.h"
 #include <QProcess>
+#include <QJsonObject>
 #include <QPointer>
 #include <QPair>
+#include <QMap>
 #include <QString>
 #include <QStringList>
 #include <QVector>
@@ -18,6 +20,7 @@ class CaveReinforcementFieldPage;
 class CaveBlockPlanePage;
 class CaveExcavationWidget;
 class DamAnalysisWidget;
+class DamDynamicAnalysisPage;
 class FillStorageCyclePage;
 class QWidget;
 
@@ -38,6 +41,7 @@ class Solver : public QObject, public SolverService
     void onStressStrainAction();
     void onCaveExcavationAction();
     void onSlopeStabilityAction();
+    void onSpecificationCheckAction();
     void onCaveBlockStabilityAction();
     void onComputeSeepage(ProjectNode* analysisNode);
     void onComputeStressStrain(ProjectNode* analysisNode);
@@ -84,6 +88,8 @@ class Solver : public QObject, public SolverService
     void syncDamAnalysisMCase(ProjectNode* analysisNode) const;
     void connectDamLayerUpdates(DamAnalysisWidget* page, ProjectNode* analysisNode) const;
     void addFillStorageCycleNode(ProjectNode* analysisNode, bool setCurrent) const;
+    void addDamDynamicAnalysisNode(ProjectNode* analysisNode, bool setCurrent,
+                                   const QJsonObject& initialState = {}) const;
     void addSeepageNaturalBoundaryNode(ProjectNode* analysisNode, bool setCurrent) const;
     void addGeoStressRegressionNode(ProjectNode* analysisNode, bool setCurrent);
     void addCaveSupportComputationNode(ProjectNode* analysisNode, bool setCurrent);
@@ -96,7 +102,8 @@ class Solver : public QObject, public SolverService
     void addGeoStressMeasurePointNode(ProjectNode* geostressNode, bool setCurrent) const;
     void addGeoStressOuterForceNode(ProjectNode* geostressNode, bool setCurrent) const;
     GeoStressRegressionWidget::ExportPayload buildGeoStressPayload(ProjectNode* geostressNode) const;
-    bool beginCommonCompute(ProjectNode* analysisNode, const QString& analysisType);
+    bool beginCommonCompute(ProjectNode* analysisNode, const QString& analysisType,
+                            const QMap<int, int>& damDynamicSourceMappings = {});
     ProjectNode* topLevelAnalysisNode(ProjectNode* node) const;
     QString analysisWorkspace(ProjectNode* node) const;
     bool prepareAnalysisWorkspace(ProjectNode* node, bool caveBlock, QString* workspaceDir,

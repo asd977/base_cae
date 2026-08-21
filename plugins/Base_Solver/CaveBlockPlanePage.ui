@@ -93,10 +93,19 @@
         <layout class="QFormLayout" name="pointFormLayout">
          <item row="0" column="0">
           <widget class="QLabel" name="labelPoint1X">
+ <property name="sizePolicy">
+  <sizepolicy hsizetype="Fixed" vsizetype="Preferred">
+   <horstretch>0</horstretch>
+   <verstretch>0</verstretch>
+  </sizepolicy>
+ </property>
            <property name="text">
             <string>平面点 1 - X</string>
            </property>
-          </widget>
+           <property name="wordWrap">
+  <bool>false</bool>
+ </property>
+</widget>
          </item>
          <item row="0" column="1">
           <widget class="QLineEdit" name="x1Edit">
@@ -113,10 +122,19 @@
          </item>
          <item row="1" column="0">
           <widget class="QLabel" name="labelPoint1Y">
+ <property name="sizePolicy">
+  <sizepolicy hsizetype="Fixed" vsizetype="Preferred">
+   <horstretch>0</horstretch>
+   <verstretch>0</verstretch>
+  </sizepolicy>
+ </property>
            <property name="text">
             <string>平面点 1 - Y</string>
            </property>
-          </widget>
+           <property name="wordWrap">
+  <bool>false</bool>
+ </property>
+</widget>
          </item>
          <item row="1" column="1">
           <widget class="QLineEdit" name="y1Edit">
@@ -133,10 +151,19 @@
          </item>
          <item row="2" column="0">
           <widget class="QLabel" name="labelPoint1Z">
+ <property name="sizePolicy">
+  <sizepolicy hsizetype="Fixed" vsizetype="Preferred">
+   <horstretch>0</horstretch>
+   <verstretch>0</verstretch>
+  </sizepolicy>
+ </property>
            <property name="text">
             <string>平面点 1 - Z</string>
            </property>
-          </widget>
+           <property name="wordWrap">
+  <bool>false</bool>
+ </property>
+</widget>
          </item>
          <item row="2" column="1">
           <widget class="QLineEdit" name="z1Edit">
@@ -153,10 +180,19 @@
          </item>
          <item row="3" column="0">
           <widget class="QLabel" name="labelPoint2X">
+ <property name="sizePolicy">
+  <sizepolicy hsizetype="Fixed" vsizetype="Preferred">
+   <horstretch>0</horstretch>
+   <verstretch>0</verstretch>
+  </sizepolicy>
+ </property>
            <property name="text">
             <string>平面点 2 - X</string>
            </property>
-          </widget>
+           <property name="wordWrap">
+  <bool>false</bool>
+ </property>
+</widget>
          </item>
          <item row="3" column="1">
           <widget class="QLineEdit" name="x2Edit">
@@ -173,10 +209,19 @@
          </item>
          <item row="4" column="0">
           <widget class="QLabel" name="labelPoint2Y">
+ <property name="sizePolicy">
+  <sizepolicy hsizetype="Fixed" vsizetype="Preferred">
+   <horstretch>0</horstretch>
+   <verstretch>0</verstretch>
+  </sizepolicy>
+ </property>
            <property name="text">
             <string>平面点 2 - Y</string>
            </property>
-          </widget>
+           <property name="wordWrap">
+  <bool>false</bool>
+ </property>
+</widget>
          </item>
          <item row="4" column="1">
           <widget class="QLineEdit" name="y2Edit">
@@ -193,10 +238,19 @@
          </item>
          <item row="5" column="0">
           <widget class="QLabel" name="labelPoint2Z">
+ <property name="sizePolicy">
+  <sizepolicy hsizetype="Fixed" vsizetype="Preferred">
+   <horstretch>0</horstretch>
+   <verstretch>0</verstretch>
+  </sizepolicy>
+ </property>
            <property name="text">
             <string>平面点 2 - Z</string>
            </property>
-          </widget>
+           <property name="wordWrap">
+  <bool>false</bool>
+ </property>
+</widget>
          </item>
          <item row="5" column="1">
           <widget class="QLineEdit" name="z2Edit">
@@ -213,10 +267,19 @@
          </item>
          <item row="6" column="0">
           <widget class="QLabel" name="labelPoint3X">
+ <property name="sizePolicy">
+  <sizepolicy hsizetype="Fixed" vsizetype="Preferred">
+   <horstretch>0</horstretch>
+   <verstretch>0</verstretch>
+  </sizepolicy>
+ </property>
            <property name="text">
             <string>平面点 3 - X</string>
            </property>
-          </widget>
+           <property name="wordWrap">
+  <bool>false</bool>
+ </property>
+</widget>
          </item>
          <item row="6" column="1">
           <widget class="QLineEdit" name="x3Edit">
@@ -233,10 +296,19 @@
          </item>
          <item row="7" column="0">
           <widget class="QLabel" name="labelPoint3Y">
+ <property name="sizePolicy">
+  <sizepolicy hsizetype="Fixed" vsizetype="Preferred">
+   <horstretch>0</horstretch>
+   <verstretch>0</verstretch>
+  </sizepolicy>
+ </property>
            <property name="text">
             <string>平面点 3 - Y</string>
            </property>
-          </widget>
+           <property name="wordWrap">
+  <bool>false</bool>
+ </property>
+</widget>
          </item>
          <item row="7" column="1">
           <widget class="QLineEdit" name="y3Edit">
@@ -253,10 +325,19 @@
          </item>
          <item row="8" column="0">
           <widget class="QLabel" name="labelPoint3Z">
+ <property name="sizePolicy">
+  <sizepolicy hsizetype="Fixed" vsizetype="Preferred">
+   <horstretch>0</horstretch>
+   <verstretch>0</verstretch>
+  </sizepolicy>
+ </property>
            <property name="text">
             <string>平面点 3 - Z</string>
            </property>
-          </widget>
+           <property name="wordWrap">
+  <bool>false</bool>
+ </property>
+</widget>
          </item>
          <item row="8" column="1">
           <widget class="QLineEdit" name="z3Edit">
@@ -312,10 +393,19 @@
          </property>
          <item row="0" column="0">
           <widget class="QLabel" name="labelFp">
+ <property name="sizePolicy">
+  <sizepolicy hsizetype="Fixed" vsizetype="Preferred">
+   <horstretch>0</horstretch>
+   <verstretch>0</verstretch>
+  </sizepolicy>
+ </property>
            <property name="text">
             <string>摩擦系数</string>
            </property>
-          </widget>
+           <property name="wordWrap">
+  <bool>false</bool>
+ </property>
+</widget>
          </item>
          <item row="0" column="1">
           <widget class="QLineEdit" name="fpEdit">
@@ -332,10 +422,19 @@
          </item>
          <item row="1" column="0">
           <widget class="QLabel" name="labelC">
+ <property name="sizePolicy">
+  <sizepolicy hsizetype="Fixed" vsizetype="Preferred">
+   <horstretch>0</horstretch>
+   <verstretch>0</verstretch>
+  </sizepolicy>
+ </property>
            <property name="text">
             <string>黏聚力（千帕）</string>
            </property>
-          </widget>
+           <property name="wordWrap">
+  <bool>false</bool>
+ </property>
+</widget>
          </item>
          <item row="1" column="1">
           <widget class="QLineEdit" name="cEdit">
@@ -352,10 +451,19 @@
          </item>
          <item row="2" column="0">
           <widget class="QLabel" name="labelRt">
+ <property name="sizePolicy">
+  <sizepolicy hsizetype="Fixed" vsizetype="Preferred">
+   <horstretch>0</horstretch>
+   <verstretch>0</verstretch>
+  </sizepolicy>
+ </property>
            <property name="text">
             <string>抗拉强度（千帕）</string>
            </property>
-          </widget>
+           <property name="wordWrap">
+  <bool>false</bool>
+ </property>
+</widget>
          </item>
          <item row="2" column="1">
           <widget class="QLineEdit" name="rtEdit">

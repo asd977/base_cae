@@ -231,10 +231,19 @@
        <layout class="QGridLayout" name="gridLayoutAuto">
         <item row="0" column="0">
          <widget class="QLabel" name="labelTargetArray">
+ <property name="sizePolicy">
+  <sizepolicy hsizetype="Fixed" vsizetype="Preferred">
+   <horstretch>0</horstretch>
+   <verstretch>0</verstretch>
+  </sizepolicy>
+ </property>
           <property name="text">
            <string>目标字段</string>
           </property>
-         </widget>
+          <property name="wordWrap">
+  <bool>false</bool>
+ </property>
+</widget>
         </item>
         <item row="0" column="1">
          <widget class="QComboBox" name="cmbTargetArray">
@@ -274,10 +283,19 @@
         </item>
         <item row="1" column="0">
          <widget class="QLabel" name="labelStartValue">
+ <property name="sizePolicy">
+  <sizepolicy hsizetype="Fixed" vsizetype="Preferred">
+   <horstretch>0</horstretch>
+   <verstretch>0</verstretch>
+  </sizepolicy>
+ </property>
           <property name="text">
            <string>起始编号</string>
           </property>
-         </widget>
+          <property name="wordWrap">
+  <bool>false</bool>
+ </property>
+</widget>
         </item>
         <item row="1" column="1">
          <widget class="QSpinBox" name="spStartValue">
@@ -328,10 +346,19 @@
        <layout class="QGridLayout" name="gridLayoutRange">
         <item row="0" column="0">
          <widget class="QLabel" name="labelX">
+ <property name="sizePolicy">
+  <sizepolicy hsizetype="Fixed" vsizetype="Preferred">
+   <horstretch>0</horstretch>
+   <verstretch>0</verstretch>
+  </sizepolicy>
+ </property>
           <property name="text">
            <string>X 范围</string>
           </property>
-         </widget>
+          <property name="wordWrap">
+  <bool>false</bool>
+ </property>
+</widget>
         </item>
         <item row="0" column="1">
          <widget class="QDoubleSpinBox" name="dsXMin">
@@ -367,10 +394,19 @@
         </item>
         <item row="1" column="0">
          <widget class="QLabel" name="labelY">
+ <property name="sizePolicy">
+  <sizepolicy hsizetype="Fixed" vsizetype="Preferred">
+   <horstretch>0</horstretch>
+   <verstretch>0</verstretch>
+  </sizepolicy>
+ </property>
           <property name="text">
            <string>Y 范围</string>
           </property>
-         </widget>
+          <property name="wordWrap">
+  <bool>false</bool>
+ </property>
+</widget>
         </item>
         <item row="1" column="1">
          <widget class="QDoubleSpinBox" name="dsYMin">
@@ -406,10 +442,19 @@
         </item>
         <item row="2" column="0">
          <widget class="QLabel" name="labelZ">
+ <property name="sizePolicy">
+  <sizepolicy hsizetype="Fixed" vsizetype="Preferred">
+   <horstretch>0</horstretch>
+   <verstretch>0</verstretch>
+  </sizepolicy>
+ </property>
           <property name="text">
            <string>Z 范围</string>
           </property>
-         </widget>
+          <property name="wordWrap">
+  <bool>false</bool>
+ </property>
+</widget>
         </item>
         <item row="2" column="1">
          <widget class="QDoubleSpinBox" name="dsZMin">
@@ -445,10 +490,19 @@
         </item>
         <item row="3" column="0">
          <widget class="QLabel" name="labelRangeTarget">
+ <property name="sizePolicy">
+  <sizepolicy hsizetype="Fixed" vsizetype="Preferred">
+   <horstretch>0</horstretch>
+   <verstretch>0</verstretch>
+  </sizepolicy>
+ </property>
           <property name="text">
            <string>目标字段</string>
           </property>
-         </widget>
+          <property name="wordWrap">
+  <bool>false</bool>
+ </property>
+</widget>
         </item>
         <item row="3" column="1">
          <widget class="QComboBox" name="cmbRangeTargetArray">
@@ -481,10 +535,19 @@
         </item>
         <item row="4" column="0">
          <widget class="QLabel" name="labelName">
+ <property name="sizePolicy">
+  <sizepolicy hsizetype="Fixed" vsizetype="Preferred">
+   <horstretch>0</horstretch>
+   <verstretch>0</verstretch>
+  </sizepolicy>
+ </property>
           <property name="text">
            <string>分组名称</string>
           </property>
-         </widget>
+          <property name="wordWrap">
+  <bool>false</bool>
+ </property>
+</widget>
         </item>
         <item row="4" column="1" colspan="2">
          <widget class="QLineEdit" name="edtGroupName">

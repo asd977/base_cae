@@ -50,13 +50,22 @@
       </property>
       <item row="0" column="0">
        <widget class="QLabel" name="geoStressIndexLabel">
+ <property name="sizePolicy">
+  <sizepolicy hsizetype="Fixed" vsizetype="Preferred">
+   <horstretch>0</horstretch>
+   <verstretch>0</verstretch>
+  </sizepolicy>
+ </property>
         <property name="text">
          <string>1</string>
         </property>
         <property name="alignment">
          <set>Qt::AlignCenter</set>
         </property>
-       </widget>
+        <property name="wordWrap">
+  <bool>false</bool>
+ </property>
+</widget>
       </item>
       <item row="0" column="1">
        <widget class="QPushButton" name="geoStressButton">
@@ -83,13 +92,22 @@
       </item>
       <item row="2" column="0">
        <widget class="QLabel" name="supportIndexLabel">
+ <property name="sizePolicy">
+  <sizepolicy hsizetype="Fixed" vsizetype="Preferred">
+   <horstretch>0</horstretch>
+   <verstretch>0</verstretch>
+  </sizepolicy>
+ </property>
         <property name="text">
          <string>2</string>
         </property>
         <property name="alignment">
          <set>Qt::AlignCenter</set>
         </property>
-       </widget>
+        <property name="wordWrap">
+  <bool>false</bool>
+ </property>
+</widget>
       </item>
       <item row="2" column="1">
        <widget class="QPushButton" name="caveSupportButton">

@@ -1,4 +1,4 @@
-﻿#pragma once
+#pragma once
 #include <services/MeshModuleControllerService.h>
 #include <vtkSmartPointer.h>
 
@@ -13,6 +13,7 @@ class VisualWidgetService;
 class vtkActor;
 class vtkMapper;
 class vtkDataSet;
+class vtkPolyData;
 class vtkUnstructuredGrid;
 class GridEditingWidget;
 class BarElementPlacementWidget;
@@ -142,6 +143,12 @@ class MeshModuleController : public QObject, public MeshModuleControllerService
     vtkSmartPointer<vtkUnstructuredGrid> m_splitCacheSource;
     vtkSmartPointer<vtkUnstructuredGrid> m_splitCacheLine;
     vtkSmartPointer<vtkUnstructuredGrid> m_splitCacheNonLine;
+
+    // 工程恢复时的一次性显示缓存。surface VTP 保存完整 mapped surface
+    //（外表面 + MATYPE/LAYER 分界面），只用于首次 displayCurrentGrid()；
+    // 网格后续被编辑或筛选后仍走实时重建逻辑。
+    vtkSmartPointer<vtkPolyData> m_loadedSurfaceDisplayCache;
+    vtkSmartPointer<vtkUnstructuredGrid> m_loadedLineDisplayCache;
     QVector<EdgeControlRule> m_edgeRules;
     QVector<FaceControlRule> m_faceRules;
     QVector<VolumeControlRule> m_volumeRules;

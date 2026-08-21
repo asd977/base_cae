@@ -1,4 +1,4 @@
-#pragma once
+﻿#pragma once
 
 #include <BasePage.h>
 
@@ -42,6 +42,8 @@ class DamAnalysisWidget : public BasePage
     bool dynamicAnalysisEnabled() const;
     bool dynamicOnlyEnabled() const;
     void setModalAnalysisRequired(bool required);
+    int modalExtractionOrder() const;
+    void setModalExtractionOrder(int order);
     void setUpliftReductionRequired(bool required);
     QPair<int, int> constructionLayerRange() const;
 

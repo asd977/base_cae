@@ -92,10 +92,19 @@
         </item>
         <item row="0" column="0">
          <widget class="QLabel" name="labelVolumeIds">
+ <property name="sizePolicy">
+  <sizepolicy hsizetype="Fixed" vsizetype="Preferred">
+   <horstretch>0</horstretch>
+   <verstretch>0</verstretch>
+  </sizepolicy>
+ </property>
           <property name="text">
            <string>体编号</string>
           </property>
-         </widget>
+          <property name="wordWrap">
+  <bool>false</bool>
+ </property>
+</widget>
         </item>
         <item row="2" column="1">
          <widget class="QLineEdit" name="editVolumeIds">
@@ -112,10 +121,19 @@
         </item>
         <item row="3" column="0">
          <widget class="QLabel" name="labelMinSize">
+ <property name="sizePolicy">
+  <sizepolicy hsizetype="Fixed" vsizetype="Preferred">
+   <horstretch>0</horstretch>
+   <verstretch>0</verstretch>
+  </sizepolicy>
+ </property>
           <property name="text">
            <string>尺寸因子</string>
           </property>
-         </widget>
+          <property name="wordWrap">
+  <bool>false</bool>
+ </property>
+</widget>
         </item>
         <item row="0" column="1">
          <layout class="QHBoxLayout" name="horizontalLayout">
@@ -158,10 +176,19 @@
         </item>
         <item row="2" column="0">
          <widget class="QLabel" name="label">
+ <property name="sizePolicy">
+  <sizepolicy hsizetype="Fixed" vsizetype="Preferred">
+   <horstretch>0</horstretch>
+   <verstretch>0</verstretch>
+  </sizepolicy>
+ </property>
           <property name="text">
            <string>编号组</string>
           </property>
-         </widget>
+          <property name="wordWrap">
+  <bool>false</bool>
+ </property>
+</widget>
         </item>
         <property name="leftMargin">
          <number>9</number>

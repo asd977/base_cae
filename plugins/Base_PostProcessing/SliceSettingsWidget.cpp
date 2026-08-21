@@ -1,4 +1,4 @@
-#include "SliceSettingsWidget.h"
+﻿#include "SliceSettingsWidget.h"
 #include "PostComboBoxPerformance.h"
 
 #include <PublicConstants.h>
@@ -11,10 +11,12 @@
 #include <vtkCutter.h>
 #include <vtkDataArray.h>
 #include <vtkDataObject.h>
+#include <vtkDataSetMapper.h>
 #include <vtkLookupTable.h>
 #include <vtkMultiBlockDataSet.h>
 #include <vtkPlane.h>
 #include <vtkPointData.h>
+#include <vtkPolyData.h>
 #include <vtkPolyDataMapper.h>
 #include <vtkProperty.h>
 #include <vtkRenderWindow.h>
@@ -84,6 +86,35 @@ static QVector<double> genUniformTs(int N, bool includeEnds)
         }
     }
     return ts;
+}
+
+static bool resolveSliceContourRange(vtkPolyData* sliceOutput,
+                                     const QString& scalarName,
+                                     const double displayRange[2],
+                                     double contourRange[2])
+{
+    if (!sliceOutput || scalarName.isEmpty() || !displayRange || !contourRange ||
+        sliceOutput->GetNumberOfPoints() <= 0 || sliceOutput->GetNumberOfCells() <= 0)
+        return false;
+
+    vtkPointData* pointData = sliceOutput->GetPointData();
+    const QByteArray encodedName = scalarName.toUtf8();
+    vtkDataArray* scalarArray = pointData ? pointData->GetArray(encodedName.constData()) : nullptr;
+    if (!scalarArray || scalarArray->GetNumberOfComponents() != 1 ||
+        scalarArray->GetNumberOfTuples() < sliceOutput->GetNumberOfPoints())
+        return false;
+
+    double sliceRange[2]{0.0, 0.0};
+    scalarArray->GetRange(sliceRange);
+    if (!std::isfinite(sliceRange[0]) || !std::isfinite(sliceRange[1]) ||
+        !std::isfinite(displayRange[0]) || !std::isfinite(displayRange[1]))
+        return false;
+
+    const double displayMin = std::min(displayRange[0], displayRange[1]);
+    const double displayMax = std::max(displayRange[0], displayRange[1]);
+    contourRange[0] = std::max(sliceRange[0], displayMin);
+    contourRange[1] = std::min(sliceRange[1], displayMax);
+    return contourRange[1] > contourRange[0];
 }
 
 SliceSettingsWidget::SliceSettingsWidget(VisualWidgetService* postProcessingWidget, QWidget* parent)
@@ -607,15 +638,11 @@ void SliceSettingsWidget::on_scalarComboBox_currentIndexChanged(int)
     }
     applyStandardPostLookupTable(lut, range[0], range[1]);
 
-    // 整体云图
-    vtkSmartPointer<vtkDataSetSurfaceFilter> surfaceFilter =
-        vtkSmartPointer<vtkDataSetSurfaceFilter>::New();
-    surfaceFilter->SetInputData(displayGrid);
-    surfaceFilter->Update();
-
-    vtkSmartPointer<vtkPolyData> polyData = surfaceFilter->GetOutput();
-    auto mapper = vtkSmartPointer<vtkPolyDataMapper>::New();
-    mapper->SetInputData(polyData);
+    // 整体结果直接显示当前材料/分层筛选后的体网格。
+    // 切面页的“整体云图”不展开内部域界面，避免筛选后出现碎片薄面；
+    // 真正的切面仍由 vtkCutter 直接切完整筛选体网格。
+    auto mapper = vtkSmartPointer<vtkDataSetMapper>::New();
+    mapper->SetInputData(displayGrid);
     mapper->SetLookupTable(lut);
     if (field.association == vtkDataObject::FIELD_ASSOCIATION_CELLS)
         mapper->SetScalarModeToUseCellFieldData();
@@ -627,7 +654,7 @@ void SliceSettingsWidget::on_scalarComboBox_currentIndexChanged(int)
     if (!m_actor)
         m_actor = vtkSmartPointer<vtkActor>::New();
     m_actor->SetMapper(mapper);
-    m_actor->GetProperty()->SetRepresentationToSurface();
+    applyPostActorRepresentation(m_actor);
     applyStandardPostScalarBar(m_visualService, ResultDisplayNames::scalarBarName(field.name));
     m_visualService->showScalarBar(postScalarBarShouldBeVisible(), false);
 
@@ -886,12 +913,15 @@ void SliceSettingsWidget::buildSingleSliceResult()
 
     m_sliceActor = vtkSmartPointer<vtkActor>::New();
     m_sliceActor->SetMapper(mapper);
-    m_sliceActor->GetProperty()->SetRepresentationToSurface();
+    applyPostActorRepresentation(m_sliceActor);
 
     addActorByService(m_visualService, postActorId(getUuid(), QStringLiteral("slice")),
                       m_sliceActor, QStringLiteral("切面"), false);
-    m_sliceContourActor = createPostContourActor(cutter->GetOutputPort(), sliceArrayName,
-                                                  range[0], range[1]);
+    double contourRange[2]{0.0, 0.0};
+    if (postContourStyle().enabled &&
+        resolveSliceContourRange(cutter->GetOutput(), sliceArrayName, range, contourRange))
+        m_sliceContourActor = createPostContourActor(cutter->GetOutputPort(), sliceArrayName,
+                                                      contourRange[0], contourRange[1]);
     if (m_sliceContourActor)
         addActorByService(m_visualService, postActorId(getUuid(), QStringLiteral("slice-contour")),
                           m_sliceContourActor, QStringLiteral("切面等值线"), false);
@@ -999,8 +1029,12 @@ void SliceSettingsWidget::buildMultiSliceResult()
                           postActorId(getUuid(), QStringLiteral("slice-%1").arg(sliceIndex)),
                           actor, QStringLiteral("切面 %1").arg(sliceIndex + 1), false);
 
-        auto contourActor = createPostContourActor(cutter->GetOutputPort(), sliceArrayName,
-                                                   range[0], range[1]);
+        vtkSmartPointer<vtkActor> contourActor;
+        double contourRange[2]{0.0, 0.0};
+        if (postContourStyle().enabled &&
+            resolveSliceContourRange(cutter->GetOutput(), sliceArrayName, range, contourRange))
+            contourActor = createPostContourActor(cutter->GetOutputPort(), sliceArrayName,
+                                                   contourRange[0], contourRange[1]);
         if (contourActor)
             addActorByService(m_visualService,
                               postActorId(getUuid(), QStringLiteral("slice-contour-%1").arg(sliceIndex)),
@@ -1010,8 +1044,8 @@ void SliceSettingsWidget::buildMultiSliceResult()
         m_multiCutters << cutter;
         m_multiMappers << mapper;
         m_multiActors << actor;
-        if (contourActor)
-            m_multiContourActors << contourActor;
+        // 保持与 m_multiActors 的索引严格对齐；空切面/常量切面没有真实等值线。
+        m_multiContourActors << contourActor;
     }
 
     applyStandardPostScalarBar(m_visualService, ResultDisplayNames::scalarBarName(field.name));

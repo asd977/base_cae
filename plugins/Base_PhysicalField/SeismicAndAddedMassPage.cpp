@@ -11,7 +11,11 @@
 #include <QHeaderView>
 #include <QJsonArray>
 #include <QMessageBox>
+#include <QStringList>
 #include <QTextStream>
+
+#include <cmath>
+#include <limits>
 
 #include "PickManager.h"
 #include "ui_SeismicAndAddedMassPage.h"
@@ -213,6 +217,91 @@ QVector<QPair<double, double>> SeismicAndAddedMassPage::seriesZ() const
     }
     qInfo() << "[SeismicSeries] Z parsed N=" << out.size();
     return out;
+}
+
+bool SeismicAndAddedMassPage::validateWaveInput(QString* errorMessage) const
+{
+    if (errorMessage)
+        errorMessage->clear();
+
+    const int rowCount = ui->tableSeismic->rowCount();
+    int validRows = 0;
+    bool hasAccelerationValue = false;
+    double previousTime = -std::numeric_limits<double>::infinity();
+
+    for (int row = 0; row < rowCount; ++row)
+    {
+        QStringList cells;
+        cells.reserve(4);
+        bool rowIsEmpty = true;
+        for (int col = 0; col < 4; ++col)
+        {
+            const auto* item = ui->tableSeismic->item(row, col);
+            const QString text = item ? item->text().trimmed() : QString();
+            cells.push_back(text);
+            rowIsEmpty = rowIsEmpty && text.isEmpty();
+        }
+
+        // 允许表格末尾保留空白编辑行；完全空的行不作为地震波数据。
+        if (rowIsEmpty)
+            continue;
+
+        bool timeOk = false;
+        const double time = cells.at(0).toDouble(&timeOk);
+        if (!timeOk || !std::isfinite(time))
+        {
+            if (errorMessage)
+                *errorMessage = QStringLiteral("地震加速度表第 %1 行的时间 T 无效。")
+                                    .arg(row + 1);
+            return false;
+        }
+        if (time < previousTime)
+        {
+            if (errorMessage)
+                *errorMessage = QStringLiteral("地震加速度表第 %1 行的时间小于上一条数据，请按时间顺序填写。")
+                                    .arg(row + 1);
+            return false;
+        }
+
+        for (int col = 1; col < 4; ++col)
+        {
+            if (cells.at(col).isEmpty())
+                continue; // 与现有导出逻辑一致：空的 AX/AY/AZ 按 0 处理。
+
+            bool accelerationOk = false;
+            const double acceleration = cells.at(col).toDouble(&accelerationOk);
+            if (!accelerationOk || !std::isfinite(acceleration))
+            {
+                const QString axis = col == 1 ? QStringLiteral("AX")
+                                     : col == 2 ? QStringLiteral("AY")
+                                                : QStringLiteral("AZ");
+                if (errorMessage)
+                    *errorMessage = QStringLiteral("地震加速度表第 %1 行的 %2 无效。")
+                                        .arg(row + 1)
+                                        .arg(axis);
+                return false;
+            }
+            hasAccelerationValue = true;
+        }
+
+        previousTime = time;
+        ++validRows;
+    }
+
+    if (validRows <= 0)
+    {
+        if (errorMessage)
+            *errorMessage = QStringLiteral("地震加速度表中没有有效的时程数据。请至少填写一行时间与加速度数据。");
+        return false;
+    }
+    if (!hasAccelerationValue)
+    {
+        if (errorMessage)
+            *errorMessage = QStringLiteral("地震加速度表只有时间数据，请至少填写一个 AX、AY 或 AZ 加速度值。");
+        return false;
+    }
+
+    return true;
 }
 
 // ===== Buttons =====

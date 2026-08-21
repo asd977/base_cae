@@ -13,6 +13,8 @@
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
+#include <QMutex>
+#include <QMutexLocker>
 #include <QRegularExpression>
 #include <QSet>
 #include <QTextStream>
@@ -25,7 +27,7 @@ namespace
 constexpr char kLegacyPostResultRoot[] = "post";
 constexpr char kManifestName[] = "manifest.json";
 constexpr char kLegacyAnalysisManifestFileName[] = "analysis.json";
-constexpr int kManifestVersion = 11;
+constexpr int kManifestVersion = 22;
 
 struct GeneratedFileInfo
 {
@@ -43,6 +45,77 @@ struct AnalysisIdentity
     QString analysisType;
     QString workspacePath;
 };
+
+struct RecentlyFreshManifest
+{
+    qint64 size = -1;
+    qint64 modifiedMs = -1;
+    qint64 validUntilMs = 0;
+};
+
+QMutex& preparationMutex()
+{
+    // 结果生成会删除/重写 prepared 目录中的 Tecplot 与 manifest。
+    // UI 查询与求解完成后的后台准备必须串行，绝不能同时改同一套缓存。
+    static QMutex mutex;
+    return mutex;
+}
+
+QMutex& recentFreshMutex()
+{
+    static QMutex mutex;
+    return mutex;
+}
+
+QHash<QString, RecentlyFreshManifest>& recentFreshManifests()
+{
+    static QHash<QString, RecentlyFreshManifest> cache;
+    return cache;
+}
+
+QString manifestCacheKey(const QDir& preparedDir)
+{
+    return QDir::fromNativeSeparators(
+               preparedDir.filePath(QString::fromLatin1(kManifestName)))
+        .toCaseFolded();
+}
+
+bool isRecentlyValidatedFresh(const QDir& preparedDir)
+{
+    const QFileInfo info(preparedDir.filePath(QString::fromLatin1(kManifestName)));
+    if (!info.exists() || !info.isFile())
+        return false;
+
+    const QString key = manifestCacheKey(preparedDir);
+    const qint64 now = QDateTime::currentMSecsSinceEpoch();
+    QMutexLocker locker(&recentFreshMutex());
+    const auto it = recentFreshManifests().constFind(key);
+    return it != recentFreshManifests().constEnd() &&
+           it->validUntilMs >= now &&
+           it->size == info.size() &&
+           it->modifiedMs == info.lastModified().toMSecsSinceEpoch();
+}
+
+void markRecentlyValidatedFresh(const QDir& preparedDir)
+{
+    const QFileInfo info(preparedDir.filePath(QString::fromLatin1(kManifestName)));
+    if (!info.exists() || !info.isFile())
+        return;
+
+    RecentlyFreshManifest entry;
+    entry.size = info.size();
+    entry.modifiedMs = info.lastModified().toMSecsSinceEpoch();
+    entry.validUntilMs = QDateTime::currentMSecsSinceEpoch() + 300;
+
+    QMutexLocker locker(&recentFreshMutex());
+    recentFreshManifests().insert(manifestCacheKey(preparedDir), entry);
+}
+
+void clearRecentlyValidatedFresh(const QDir& preparedDir)
+{
+    QMutexLocker locker(&recentFreshMutex());
+    recentFreshManifests().remove(manifestCacheKey(preparedDir));
+}
 
 QString normalizeRelativePath(QString path)
 {
@@ -344,9 +417,12 @@ QList<QFileInfo> generationInputFiles(const QDir& projectDir, const QDir& source
         for (const QFileInfo& info : inputFiles)
         {
             const QString name = info.fileName();
-            if (name.compare(QStringLiteral("MAFILESET.DAT"), Qt::CaseInsensitive) == 0 ||
+            if (name.compare(QStringLiteral("IIIN.DAT"), Qt::CaseInsensitive) == 0 ||
+                name.compare(QStringLiteral("MAFILESET.DAT"), Qt::CaseInsensitive) == 0 ||
                 name.compare(QStringLiteral("MA_MASK.DAT"), Qt::CaseInsensitive) == 0 ||
                 name.compare(QStringLiteral("MA_MASK_CMM.DAT"), Qt::CaseInsensitive) == 0 ||
+                name.compare(QStringLiteral("HWDROP_UP.DAT"), Qt::CaseInsensitive) == 0 ||
+                name.compare(QStringLiteral("HWDROP_DW.DAT"), Qt::CaseInsensitive) == 0 ||
                 (name.startsWith(QStringLiteral("ZONE"), Qt::CaseInsensitive) &&
                  name.endsWith(QStringLiteral(".DAT"), Qt::CaseInsensitive)))
                 files.push_back(info);
@@ -438,6 +514,93 @@ struct TimeSequenceInfo
     QString unit = QStringLiteral("s");
 };
 
+struct WaterLevelCurve
+{
+    QVector<QPair<double, double>> samples;
+};
+
+QString displayNumber(double value)
+{
+    const double rounded = std::round(value);
+    return std::abs(value - rounded) < 1.0e-9
+               ? QString::number(static_cast<qint64>(rounded))
+               : QString::number(value, 'g', 12);
+}
+
+WaterLevelCurve readWaterLevelCurve(const QDir& projectDir, const QDir& sourceDir,
+                                    const QString& fileName)
+{
+    const QDir inputProject = generationProjectDir(projectDir, sourceDir);
+    const QStringList inputDirectories = {
+        inputProject.filePath(QString::fromUtf8(PublicConstants::kAnalysisInputDirectoryName)),
+        inputProject.filePath(QString::fromUtf8(PublicConstants::kProjectInputDirectoryName)),
+        inputProject.filePath(QString::fromLatin1(PublicConstants::kLegacyInputDirectoryName))};
+
+    QFileInfo curveInfo;
+    for (const QString& inputDirectory : inputDirectories)
+    {
+        if (findFileInfo(QDir(inputDirectory), fileName, &curveInfo))
+            break;
+    }
+    if (!curveInfo.isFile())
+        return {};
+
+    QFile file(curveInfo.absoluteFilePath());
+    if (!file.open(QIODevice::ReadOnly | QIODevice::Text))
+        return {};
+
+    WaterLevelCurve curve;
+    QTextStream in(&file);
+    static const QRegularExpression whitespace(QStringLiteral("\\s+"));
+    while (!in.atEnd())
+    {
+        const QStringList values =
+            in.readLine().trimmed().split(whitespace, Qt::SkipEmptyParts);
+        if (values.size() < 2)
+            continue;
+        bool timeOk = false;
+        bool levelOk = false;
+        const double time = values.at(0).toDouble(&timeOk);
+        const double level = values.at(1).toDouble(&levelOk);
+        if (timeOk && levelOk && std::isfinite(time) && std::isfinite(level))
+            curve.samples.push_back(qMakePair(time, level));
+    }
+    std::sort(curve.samples.begin(), curve.samples.end(),
+              [](const auto& left, const auto& right) { return left.first < right.first; });
+    return curve;
+}
+
+bool waterLevelAt(const WaterLevelCurve& curve, double time, double* level)
+{
+    if (!level || curve.samples.isEmpty() || !std::isfinite(time))
+        return false;
+    constexpr double tolerance = 1.0e-9;
+    if (time < curve.samples.first().first - tolerance ||
+        time > curve.samples.last().first + tolerance)
+        return false;
+
+    if (time <= curve.samples.first().first + tolerance)
+    {
+        *level = curve.samples.first().second;
+        return true;
+    }
+    for (int i = 1; i < curve.samples.size(); ++i)
+    {
+        const auto& right = curve.samples.at(i);
+        if (time > right.first + tolerance)
+            continue;
+        const auto& left = curve.samples.at(i - 1);
+        const double duration = right.first - left.first;
+        if (duration <= tolerance)
+            *level = right.second;
+        else
+            *level = left.second + (right.second - left.second) *
+                                      ((time - left.first) / duration);
+        return std::isfinite(*level);
+    }
+    return false;
+}
+
 TimeSequenceInfo readTimeSequenceInfo(const QDir& sourceDir)
 {
     QFileInfo keyInfo;
@@ -499,20 +662,26 @@ TimeSequenceInfo readTimeSequenceInfo(const QDir& sourceDir)
     return {};
 }
 
-QString sequenceFrameLabel(int step, const TimeSequenceInfo& timeInfo)
+QString sequenceFrameLabel(int step, const TimeSequenceInfo& timeInfo,
+                           const WaterLevelCurve& upstream,
+                           const WaterLevelCurve& downstream)
 {
     if (step < 0)
         return QStringLiteral("当前状态");
     if (!timeInfo.valid)
-        return QStringLiteral("步 %1").arg(step);
+        return QStringLiteral("计算时刻索引 %1").arg(step);
 
     const double value = timeInfo.start + timeInfo.increment * step;
-    const double rounded = std::round(value);
-    const QString number =
-        std::abs(value - rounded) < 1.0e-9
-            ? QString::number(static_cast<qint64>(rounded))
-            : QString::number(value, 'g', 12);
-    return QStringLiteral("%1 %2").arg(number, timeInfo.unit);
+    QString label = QStringLiteral("计算时刻 %1 %2").arg(displayNumber(value), timeInfo.unit);
+    QStringList waterLevels;
+    double level = 0.0;
+    if (waterLevelAt(upstream, value, &level))
+        waterLevels.push_back(QStringLiteral("上游水位 %1 m").arg(displayNumber(level)));
+    if (waterLevelAt(downstream, value, &level))
+        waterLevels.push_back(QStringLiteral("下游水位 %1 m").arg(displayNumber(level)));
+    if (!waterLevels.isEmpty())
+        label += QStringLiteral("（%1）").arg(waterLevels.join(QStringLiteral("，")));
+    return label;
 }
 
 GeneratedFileInfo generatedFileInfo(const QString& fileName, bool strengthReduction)
@@ -636,6 +805,10 @@ bool writeManifest(const QDir& projectDir, const QDir& sourceDir, const QDir& pr
 {
     const bool strengthReduction = usesStrengthReduction(sourceDir);
     const TimeSequenceInfo timeInfo = readTimeSequenceInfo(sourceDir);
+    const WaterLevelCurve upstream =
+        readWaterLevelCurve(projectDir, sourceDir, QStringLiteral("HWDROP_UP.DAT"));
+    const WaterLevelCurve downstream =
+        readWaterLevelCurve(projectDir, sourceDir, QStringLiteral("HWDROP_DW.DAT"));
     QJsonObject root;
     root.insert(QStringLiteral("version"), kManifestVersion);
     root.insert(QStringLiteral("sourceDir"),
@@ -648,8 +821,11 @@ bool writeManifest(const QDir& projectDir, const QDir& sourceDir, const QDir& pr
     for (const QString& generatedPath : generated.generatedFiles)
     {
         const QFileInfo info(generatedPath);
-        if (info.dir().absolutePath().compare(preparedDir.absolutePath(), Qt::CaseInsensitive) != 0 ||
-            info.suffix().compare(QStringLiteral("tec"), Qt::CaseInsensitive) != 0)
+        if (info.dir().absolutePath().compare(preparedDir.absolutePath(), Qt::CaseInsensitive) != 0)
+            continue;
+
+        const QString suffix = info.suffix().toLower();
+        if (suffix != QStringLiteral("tec") && suffix != QStringLiteral("vtu"))
             continue;
 
         const GeneratedFileInfo metadata = generatedFileInfo(info.fileName(), strengthReduction);
@@ -657,7 +833,10 @@ bool writeManifest(const QDir& projectDir, const QDir& sourceDir, const QDir& pr
         object.insert(QStringLiteral("displayName"), metadata.displayName);
         object.insert(QStringLiteral("fileName"), info.fileName());
         object.insert(QStringLiteral("kind"), metadata.kind);
-        object.insert(QStringLiteral("format"), QStringLiteral("tecplot"));
+        object.insert(QStringLiteral("format"),
+                      suffix == QStringLiteral("vtu")
+                          ? QStringLiteral("vtu")
+                          : QStringLiteral("tecplot"));
         if (!metadata.frameKey.isEmpty())
         {
             const double frameValue = timeInfo.valid
@@ -665,11 +844,17 @@ bool writeManifest(const QDir& projectDir, const QDir& sourceDir, const QDir& pr
                 : static_cast<double>(metadata.frameOrder);
             object.insert(QStringLiteral("frameKey"), metadata.frameKey);
             object.insert(QStringLiteral("frameLabel"),
-                          sequenceFrameLabel(metadata.frameOrder, timeInfo));
+                          sequenceFrameLabel(metadata.frameOrder, timeInfo,
+                                             upstream, downstream));
             object.insert(QStringLiteral("frameValue"), frameValue);
             object.insert(QStringLiteral("frameUnit"),
                           timeInfo.valid ? timeInfo.unit : QString());
             object.insert(QStringLiteral("frameOrder"), metadata.frameOrder);
+            double waterLevel = 0.0;
+            if (waterLevelAt(upstream, frameValue, &waterLevel))
+                object.insert(QStringLiteral("upstreamWaterLevel"), waterLevel);
+            if (waterLevelAt(downstream, frameValue, &waterLevel))
+                object.insert(QStringLiteral("downstreamWaterLevel"), waterLevel);
         }
         object.insert(QStringLiteral("size"), static_cast<qint64>(info.size()));
         object.insert(QStringLiteral("modified"),
@@ -702,6 +887,11 @@ QVector<PostResultAutoPrepare::ResultFile> readManifestFiles(const QDir& prepare
     if (!document.isObject())
         return {};
 
+    // 结果拓扑格式升级时不能继续直接复用旧 VTU。这里只读取很小的
+    // manifest 版本号，不做 inputSnapshot/目录扫描，因此不会拖慢正常加载。
+    if (document.object().value(QStringLiteral("version")).toInt() != kManifestVersion)
+        return {};
+
     QVector<PostResultAutoPrepare::ResultFile> result;
     const QJsonArray files = document.object().value(QStringLiteral("files")).toArray();
     for (const QJsonValue& value : files)
@@ -731,11 +921,17 @@ QVector<PostResultAutoPrepare::ResultFile> readManifestFiles(const QDir& prepare
     return result;
 }
 
-QVector<PostResultAutoPrepare::ResultFile> fallbackSourceFiles(const QDir& sourceDir,
+QVector<PostResultAutoPrepare::ResultFile> fallbackSourceFiles(const QDir& projectDir,
+                                                               const QDir& sourceDir,
                                                                bool includeVtu)
 {
     QVector<PostResultAutoPrepare::ResultFile> result;
     const bool strengthReduction = usesStrengthReduction(sourceDir);
+    const TimeSequenceInfo timeInfo = readTimeSequenceInfo(sourceDir);
+    const WaterLevelCurve upstream =
+        readWaterLevelCurve(projectDir, sourceDir, QStringLiteral("HWDROP_UP.DAT"));
+    const WaterLevelCurve downstream =
+        readWaterLevelCurve(projectDir, sourceDir, QStringLiteral("HWDROP_DW.DAT"));
     const QStringList names = {QStringLiteral("TEC_HP.DAT"), QStringLiteral("TEC_VELO.DAT"),
                                QStringLiteral("TEC_DISP.DAT"), QStringLiteral("TEC_PRS.DAT"),
                                QStringLiteral("TEC_RAI_PLS.DAT"),
@@ -767,7 +963,15 @@ QVector<PostResultAutoPrepare::ResultFile> fallbackSourceFiles(const QDir& sourc
             entry.frameKey = metadata.frameKey;
             entry.frameOrder = metadata.frameOrder;
             if (entry.frameOrder >= 0)
-                entry.frameLabel = QStringLiteral("步 %1").arg(entry.frameOrder);
+            {
+                entry.frameLabel = sequenceFrameLabel(entry.frameOrder, timeInfo,
+                                                      upstream, downstream);
+                if (timeInfo.valid)
+                {
+                    entry.frameValue = timeInfo.start + timeInfo.increment * entry.frameOrder;
+                    entry.frameUnit = timeInfo.unit;
+                }
+            }
             result.push_back(entry);
         }
     }
@@ -1327,6 +1531,8 @@ QString preparedDirectory(const QString& projectDir, const QString& sourceDir)
 
 bool prepareDirectory(const QString& projectDir, const QString& sourceDir)
 {
+    QMutexLocker preparationLocker(&preparationMutex());
+
     const QDir project(QDir::fromNativeSeparators(projectDir.trimmed()));
     const QDir source(QDir::fromNativeSeparators(sourceDir.trimmed()));
     if (!project.exists() || !source.exists() || !hasMeshFile(source.absolutePath()) ||
@@ -1336,10 +1542,23 @@ bool prepareDirectory(const QString& projectDir, const QString& sourceDir)
     QDir prepared(preparedDirectory(project.absolutePath(), source.absolutePath()));
     if (prepared.path().isEmpty() || (!prepared.exists() && !prepared.mkpath(QStringLiteral("."))))
         return false;
-    if (!manifestMissingOrStale(project, source, prepared))
+
+    // 同一次页面初始化会连续查询“结果时刻”和“结果文件”，旧代码会完整做两遍
+    // manifestMissingOrStale()/inputSnapshot()。这里只复用刚刚完整验证过的 300 ms，
+    // 不跳过首次正确性检查，也不长期记住“新鲜”状态。
+    if (isRecentlyValidatedFresh(prepared))
         return true;
 
-    const QStringList staleFiles = prepared.entryList({QStringLiteral("*.tec")}, QDir::Files);
+    if (!manifestMissingOrStale(project, source, prepared))
+    {
+        markRecentlyValidatedFresh(prepared);
+        return true;
+    }
+
+    clearRecentlyValidatedFresh(prepared);
+    const QStringList staleFiles =
+        prepared.entryList({QStringLiteral("*.tec"), QStringLiteral("*.vtu"),
+                            QStringLiteral("*.vtp")}, QDir::Files);
     for (const QString& staleFile : staleFiles)
         prepared.remove(staleFile);
     prepared.remove(QString::fromLatin1(kManifestName));
@@ -1361,6 +1580,7 @@ bool prepareDirectory(const QString& projectDir, const QString& sourceDir)
     }
     if (!writeManifest(project, source, prepared, generated))
         return false;
+    markRecentlyValidatedFresh(prepared);
     for (const QString& warning : generated.warnings)
         qWarning() << "Post result preparation warning:" << warning;
     return true;
@@ -1489,22 +1709,61 @@ QVector<ResultFile> resultFiles(const QString& projectDir, const QString& source
     if (!project.exists() || !source.exists())
         return {};
 
-    prepareDirectory(project.absolutePath(), source.absolutePath());
+    auto filterBareVtu = [includeVtu](QVector<ResultFile> files)
+    {
+        if (!includeVtu)
+        {
+            // 自动准备目录内部的标准 VTU（kind=displacement/stress/...）仍然保留；
+            // 只过滤用户额外导入、kind 本身就是 vtu 的裸文件。
+            files.erase(std::remove_if(files.begin(), files.end(), [](const ResultFile& file)
+            {
+                return file.format.compare(QStringLiteral("vtu"), Qt::CaseInsensitive) == 0 &&
+                       file.kind.compare(QStringLiteral("vtu"), Qt::CaseInsensitive) == 0;
+            }), files.end());
+        }
+        return files;
+    };
+
+    // 结果选择/页面加载属于纯读取路径。只要已有 manifest 对应的结果文件仍存在，
+    // 立即返回，不在 GUI 线程同步做 inputSnapshot + stale 检查 + 结果重建。
+    // 求解完成后由 prepareResultRootAsync() 负责刷新；没有任何已准备结果时，
+    // 才保留一次同步 prepare 作为旧工程兼容兜底。
     const QString preparedPath = preparedDirectory(project.absolutePath(), source.absolutePath());
     if (!preparedPath.isEmpty())
     {
-        QVector<ResultFile> files = readManifestFiles(QDir(preparedPath));
-        if (!includeVtu)
+        const QDir preparedDir(preparedPath);
+        QVector<ResultFile> files = filterBareVtu(readManifestFiles(preparedDir));
+        if (!files.isEmpty())
+            return files;
+
+        // 已经存在 manifest 但版本不兼容/文件不完整时，说明这是一次缓存格式升级。
+        // 只在这种情况下同步重建一次，避免继续读取旧拓扑 VTU；重建完成以后仍然
+        // 走上面的纯读取快路径，不会影响后续正常加载速度。
+        if (QFileInfo::exists(preparedDir.filePath(QString::fromLatin1(kManifestName))))
         {
-            files.erase(std::remove_if(files.begin(), files.end(), [](const ResultFile& file)
-            {
-                return file.format.compare(QStringLiteral("vtu"), Qt::CaseInsensitive) == 0;
-            }), files.end());
+            prepareDirectory(project.absolutePath(), source.absolutePath());
+            files = filterBareVtu(readManifestFiles(preparedDir));
+            if (!files.isEmpty())
+                return files;
         }
+    }
+
+    // 如果求解器目录本身已经有可直接读取的结果，也优先显示，避免为了填下拉框
+    // 先同步生成缓存。
+    QVector<ResultFile> directFiles =
+        filterBareVtu(fallbackSourceFiles(project, source, includeVtu));
+    if (!directFiles.isEmpty())
+        return directFiles;
+
+    // 只有“既没有准备缓存，也没有直接结果”时才尝试同步生成。
+    prepareDirectory(project.absolutePath(), source.absolutePath());
+    if (!preparedPath.isEmpty())
+    {
+        QVector<ResultFile> files = filterBareVtu(readManifestFiles(QDir(preparedPath)));
         if (!files.isEmpty())
             return files;
     }
-    return fallbackSourceFiles(source, includeVtu);
+    return {};
 }
 
 QVector<ResultFrame> resultFrames(const QString& projectDir, const QString& sourceDir,
@@ -1529,7 +1788,7 @@ QVector<ResultFrame> resultFrames(const QString& projectDir, const QString& sour
         ResultFrame frame;
         frame.key = file.frameKey;
         frame.displayName = file.frameLabel.isEmpty()
-                                ? QStringLiteral("步 %1").arg(file.frameOrder)
+                                ? QStringLiteral("计算时刻索引 %1").arg(file.frameOrder)
                                 : file.frameLabel;
         frame.value = file.frameValue;
         frame.unit = file.frameUnit;

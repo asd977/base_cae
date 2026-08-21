@@ -37,10 +37,19 @@
      <layout class="QGridLayout" name="resultDataLayout">
       <item row="0" column="0">
        <widget class="QLabel" name="analysisLabel">
+ <property name="sizePolicy">
+  <sizepolicy hsizetype="Fixed" vsizetype="Preferred">
+   <horstretch>0</horstretch>
+   <verstretch>0</verstretch>
+  </sizepolicy>
+ </property>
         <property name="text">
          <string>计算工况</string>
         </property>
-       </widget>
+        <property name="wordWrap">
+  <bool>false</bool>
+ </property>
+</widget>
       </item>
       <item row="0" column="1">
        <widget class="QComboBox" name="analysisComboBox" />
@@ -53,40 +62,76 @@
       </property>
       <item row="1" column="0">
        <widget class="QLabel" name="resultStageLabel">
+ <property name="sizePolicy">
+  <sizepolicy hsizetype="Fixed" vsizetype="Preferred">
+   <horstretch>0</horstretch>
+   <verstretch>0</verstretch>
+  </sizepolicy>
+ </property>
         <property name="text">
          <string>结果阶段</string>
         </property>
-       </widget>
+        <property name="wordWrap">
+  <bool>false</bool>
+ </property>
+</widget>
       </item>
       <item row="1" column="1">
        <widget class="QComboBox" name="resultDirComboBox" />
       </item>
       <item row="2" column="0">
        <widget class="QLabel" name="resultTimeLabel">
+ <property name="sizePolicy">
+  <sizepolicy hsizetype="Fixed" vsizetype="Preferred">
+   <horstretch>0</horstretch>
+   <verstretch>0</verstretch>
+  </sizepolicy>
+ </property>
         <property name="text">
          <string>结果时刻</string>
         </property>
-       </widget>
+        <property name="wordWrap">
+  <bool>false</bool>
+ </property>
+</widget>
       </item>
       <item row="2" column="1">
        <widget class="QComboBox" name="resultTimeComboBox" />
       </item>
       <item row="3" column="0">
        <widget class="QLabel" name="resultTypeLabel">
+ <property name="sizePolicy">
+  <sizepolicy hsizetype="Fixed" vsizetype="Preferred">
+   <horstretch>0</horstretch>
+   <verstretch>0</verstretch>
+  </sizepolicy>
+ </property>
         <property name="text">
          <string>结果文件</string>
         </property>
-       </widget>
+        <property name="wordWrap">
+  <bool>false</bool>
+ </property>
+</widget>
       </item>
       <item row="3" column="1">
        <widget class="QComboBox" name="stepComboBox" />
       </item>
       <item row="4" column="0">
        <widget class="QLabel" name="scalarLabel">
+ <property name="sizePolicy">
+  <sizepolicy hsizetype="Fixed" vsizetype="Preferred">
+   <horstretch>0</horstretch>
+   <verstretch>0</verstretch>
+  </sizepolicy>
+ </property>
         <property name="text">
          <string>物理量</string>
         </property>
-       </widget>
+        <property name="wordWrap">
+  <bool>false</bool>
+ </property>
+</widget>
       </item>
       <item row="4" column="1">
        <widget class="QComboBox" name="scalarComboBox" />
@@ -152,10 +197,19 @@
         </property>
         <item row="0" column="0">
          <widget class="QLabel" name="planeLabel">
+ <property name="sizePolicy">
+  <sizepolicy hsizetype="Fixed" vsizetype="Preferred">
+   <horstretch>0</horstretch>
+   <verstretch>0</verstretch>
+  </sizepolicy>
+ </property>
           <property name="text">
            <string>切面方向</string>
           </property>
-         </widget>
+          <property name="wordWrap">
+  <bool>false</bool>
+ </property>
+</widget>
         </item>
         <item row="0" column="1">
          <widget class="QComboBox" name="planeComboBox">
@@ -178,10 +232,19 @@
         </item>
         <item row="1" column="0">
          <widget class="QLabel" name="modeLabel">
+ <property name="sizePolicy">
+  <sizepolicy hsizetype="Fixed" vsizetype="Preferred">
+   <horstretch>0</horstretch>
+   <verstretch>0</verstretch>
+  </sizepolicy>
+ </property>
           <property name="text">
            <string>切面方式</string>
           </property>
-         </widget>
+          <property name="wordWrap">
+  <bool>false</bool>
+ </property>
+</widget>
         </item>
         <item row="1" column="1">
          <layout class="QHBoxLayout" name="modeLayout">
@@ -312,10 +375,19 @@
           </property>
           <item row="0" column="0">
            <widget class="QLabel" name="sliceCountLabel">
+ <property name="sizePolicy">
+  <sizepolicy hsizetype="Fixed" vsizetype="Preferred">
+   <horstretch>0</horstretch>
+   <verstretch>0</verstretch>
+  </sizepolicy>
+ </property>
             <property name="text">
              <string>切面数量</string>
             </property>
-           </widget>
+            <property name="wordWrap">
+  <bool>false</bool>
+ </property>
+</widget>
           </item>
           <item row="0" column="1">
            <widget class="QSpinBox" name="sliceNumSpin">

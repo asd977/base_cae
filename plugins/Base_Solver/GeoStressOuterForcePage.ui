@@ -190,6 +190,12 @@
        <layout class="QFormLayout" name="forceFormLayout">
         <item row="0" column="0">
          <widget class="QLabel" name="fxLabel">
+ <property name="sizePolicy">
+  <sizepolicy hsizetype="Fixed" vsizetype="Preferred">
+   <horstretch>0</horstretch>
+   <verstretch>0</verstretch>
+  </sizepolicy>
+ </property>
           <property name="text">
            <string>X 方向力</string>
           </property>
@@ -213,6 +219,12 @@
         </item>
         <item row="1" column="0">
          <widget class="QLabel" name="fyLabel">
+ <property name="sizePolicy">
+  <sizepolicy hsizetype="Fixed" vsizetype="Preferred">
+   <horstretch>0</horstretch>
+   <verstretch>0</verstretch>
+  </sizepolicy>
+ </property>
           <property name="text">
            <string>Y 方向力</string>
           </property>
@@ -236,6 +248,12 @@
         </item>
         <item row="2" column="0">
          <widget class="QLabel" name="fzLabel">
+ <property name="sizePolicy">
+  <sizepolicy hsizetype="Fixed" vsizetype="Preferred">
+   <horstretch>0</horstretch>
+   <verstretch>0</verstretch>
+  </sizepolicy>
+ </property>
           <property name="text">
            <string>Z 方向力</string>
           </property>
@@ -259,11 +277,17 @@
         </item>
         <item row="3" column="0" colspan="2">
          <widget class="QLabel" name="forceHintLabel">
+ <property name="sizePolicy">
+  <sizepolicy hsizetype="Fixed" vsizetype="Preferred">
+   <horstretch>0</horstretch>
+   <verstretch>0</verstretch>
+  </sizepolicy>
+ </property>
           <property name="text">
            <string>三个方向力均为 0 时，仅生成地表面，不施加外力。</string>
           </property>
           <property name="wordWrap">
-           <bool>true</bool>
+           <bool>false</bool>
           </property>
          </widget>
         </item>

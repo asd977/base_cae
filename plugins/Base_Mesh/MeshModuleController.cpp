@@ -50,6 +50,10 @@
 #include <vtkProperty.h>
 #include <vtkUnstructuredGrid.h>
 #include <vtkUnstructuredGridReader.h>
+#include <vtkXMLPolyDataReader.h>
+#include <vtkXMLPolyDataWriter.h>
+#include <vtkXMLUnstructuredGridReader.h>
+#include <vtkXMLUnstructuredGridWriter.h>
 #include <vtkStringArray.h>
 #include <vtkVariant.h>
 
@@ -80,6 +84,7 @@
 #include <limits>
 #include <map>
 #include <memory>
+#include <string>
 #include <vector>
 
 
@@ -162,6 +167,15 @@ static bool meshDomainKeyIsValid(const DomainKey& key)
 }
 
 static const char* kMeshMapFileName = PublicConstants::kMeshMapFileName;
+static constexpr char kMeshBinaryCacheFileName[] = u8"工程数据/mesh_snapshot.cache.vtu";
+static constexpr char kMeshSurfaceCacheFileName[] = u8"工程数据/mesh_surface_mapped_v2.cache.vtp";
+static constexpr char kMeshLegacyOuterSurfaceCacheFileName[] = u8"工程数据/mesh_surface.cache.vtp";
+static constexpr int kMeshDisplayCacheVersion = 2;
+static constexpr char kMeshLineCacheFileName[] = u8"工程数据/mesh_line.cache.vtu";
+// 与 MeshGridIO 的 IIIN 退化拓扑恢复规则同步。旧二进制缓存没有此版本标记，
+// 或版本较低时，必须从 IIIN 权威快照重新解析，避免旧 TOPOLOGY_TYPE 锁死。
+static constexpr char kIiinTopologySchemaVersionArrayName[] = "IIIN_TOPOLOGY_SCHEMA_VERSION";
+static constexpr int kIiinTopologySchemaVersion = 2;
 
 // 大网格保存优化：
 // 1) IIIN/DAT 网格快照只有在网格对象真正变更后才重写；
@@ -197,6 +211,279 @@ static void markGridSnapshotSaved(const QString& snapshotPath, vtkUnstructuredGr
         return;
 
     s_savedSnapshotMTimeByPath.insert(normalizedProjectPathKey(snapshotPath), gridModifiedTime(grid));
+}
+
+static bool meshCacheIsFresh(const QString& cachePath, const QString& sourcePath)
+{
+    const QFileInfo cacheInfo(cachePath);
+    const QFileInfo sourceInfo(sourcePath);
+    if (!cacheInfo.exists() || !cacheInfo.isFile() || cacheInfo.size() <= 0)
+        return false;
+    if (!sourceInfo.exists() || !sourceInfo.isFile())
+        return false;
+    return cacheInfo.lastModified() >= sourceInfo.lastModified();
+}
+
+static bool meshPathIsAscii(const QString& path)
+{
+    for (const QChar ch : path)
+        if (ch.unicode() > 0x7f)
+            return false;
+    return true;
+}
+
+static QString meshShortPathName(const QString& path)
+{
+#ifdef Q_OS_WIN
+    if (meshPathIsAscii(path))
+        return path;
+    const DWORD length = GetShortPathNameW(reinterpret_cast<LPCWSTR>(path.utf16()), nullptr, 0);
+    if (length == 0)
+        return QString();
+    std::wstring buffer(static_cast<size_t>(length), L'\0');
+    const DWORD written = GetShortPathNameW(reinterpret_cast<LPCWSTR>(path.utf16()),
+                                            buffer.data(), length);
+    if (written == 0 || written >= length)
+        return QString();
+    buffer.resize(written);
+    return QString::fromWCharArray(buffer.data(), static_cast<qsizetype>(buffer.size()));
+#else
+    return path;
+#endif
+}
+
+static QString meshVtkReadablePath(const QString& path)
+{
+    if (meshPathIsAscii(path))
+        return path;
+    const QString shortPath = meshShortPathName(path);
+    return shortPath.isEmpty() ? path : shortPath;
+}
+
+static QString meshVtkWritablePath(const QString& path)
+{
+    if (meshPathIsAscii(path))
+        return path;
+
+    const QFileInfo info(path);
+    const QString shortDir = meshShortPathName(info.absolutePath());
+    if (!shortDir.isEmpty())
+        return QDir(shortDir).filePath(info.fileName());
+    return path;
+}
+
+static bool meshGridHasCurrentIiinTopologySchema(vtkUnstructuredGrid* grid)
+{
+    if (!grid || !grid->GetFieldData() || !grid->GetCellData())
+        return false;
+
+    auto* version = vtkIntArray::SafeDownCast(
+        grid->GetFieldData()->GetArray(kIiinTopologySchemaVersionArrayName));
+    if (!version || version->GetNumberOfTuples() < 1 ||
+        version->GetValue(0) != kIiinTopologySchemaVersion)
+    {
+        return false;
+    }
+
+    vtkDataArray* topology = grid->GetCellData()->GetArray("TOPOLOGY_TYPE");
+    vtkDataArray* pattern = grid->GetCellData()->GetArray("IIIN_CONNECTIVITY_PATTERN");
+    const vtkIdType cellCount = grid->GetNumberOfCells();
+    return topology && pattern &&
+           topology->GetNumberOfTuples() == cellCount &&
+           pattern->GetNumberOfTuples() == cellCount;
+}
+
+static bool ensureMeshCacheParentDirectory(const QString& path)
+{
+    const QString parentPath = QFileInfo(path).absolutePath();
+    if (parentPath.isEmpty())
+        return false;
+
+    QDir parent(parentPath);
+    if (parent.exists())
+        return true;
+
+    return QDir().mkpath(parentPath) && QDir(parentPath).exists();
+}
+
+// Some VTK builds on Windows still open XML files through a narrow-char path.
+// When the project contains Chinese directory names and no usable 8.3 short path
+// exists, let VTK work on an ASCII staging file and let Qt move/copy it to the
+// real Unicode path afterwards.
+static QString meshAsciiStagingPath(const QString& targetPath)
+{
+    QDir dir(QFileInfo(targetPath).absolutePath());
+    while (true)
+    {
+        const QString candidate = dir.absolutePath();
+        if (meshPathIsAscii(candidate) && QFileInfo(candidate).isDir())
+        {
+            const QString fileName =
+                QStringLiteral(".geocae_vtk_%1_%2_%3")
+                    .arg(QCoreApplication::applicationPid())
+                    .arg(QString::number(qHash(QFileInfo(targetPath).absoluteFilePath()), 16))
+                    .arg(QFileInfo(targetPath).fileName());
+            return dir.filePath(fileName);
+        }
+
+        if (!dir.cdUp())
+            break;
+    }
+    return QString();
+}
+
+static QString prepareMeshVtkReadablePath(const QString& path, bool& staged)
+{
+    staged = false;
+    const QString vtkPath = meshVtkReadablePath(path);
+    if (meshPathIsAscii(vtkPath))
+        return vtkPath;
+
+    const QString stagingPath = meshAsciiStagingPath(path);
+    if (stagingPath.isEmpty())
+        return vtkPath;
+
+    QFile::remove(stagingPath);
+    if (!QFile::copy(path, stagingPath))
+        return vtkPath;
+
+    staged = true;
+    return stagingPath;
+}
+
+static QString prepareMeshVtkWritablePath(const QString& path, bool& staged)
+{
+    staged = false;
+    if (!ensureMeshCacheParentDirectory(path))
+        return QString();
+
+    const QString vtkPath = meshVtkWritablePath(path);
+    if (meshPathIsAscii(vtkPath))
+        return vtkPath;
+
+    const QString stagingPath = meshAsciiStagingPath(path);
+    if (stagingPath.isEmpty())
+        return vtkPath;
+
+    QFile::remove(stagingPath);
+    staged = true;
+    return stagingPath;
+}
+
+static bool commitMeshVtkStagingFile(const QString& stagingPath, const QString& targetPath)
+{
+    QFile::remove(targetPath);
+
+    // Same-volume rename is normally enough. Keep copy as a safe fallback.
+    if (QFile::rename(stagingPath, targetPath))
+        return true;
+
+    if (QFile::copy(stagingPath, targetPath))
+    {
+        QFile::remove(stagingPath);
+        return true;
+    }
+
+    QFile::remove(stagingPath);
+    return false;
+}
+
+static vtkSmartPointer<vtkUnstructuredGrid> readMeshGridCache(const QString& path)
+{
+    if (!QFileInfo::exists(path))
+        return nullptr;
+
+    bool staged = false;
+    const QString readablePath = prepareMeshVtkReadablePath(path, staged);
+    auto reader = vtkSmartPointer<vtkXMLUnstructuredGridReader>::New();
+    const QByteArray encoded = QFile::encodeName(readablePath);
+    reader->SetFileName(encoded.constData());
+    reader->Update();
+    if (staged)
+        QFile::remove(readablePath);
+
+    vtkUnstructuredGrid* output = reader->GetOutput();
+    if (!output || output->GetNumberOfCells() <= 0 || output->GetNumberOfPoints() <= 0)
+        return nullptr;
+    auto grid = vtkSmartPointer<vtkUnstructuredGrid>::New();
+    grid->ShallowCopy(output);
+    return grid;
+}
+
+static vtkSmartPointer<vtkPolyData> readMeshSurfaceCache(const QString& path)
+{
+    if (!QFileInfo::exists(path))
+        return nullptr;
+
+    bool staged = false;
+    const QString readablePath = prepareMeshVtkReadablePath(path, staged);
+    auto reader = vtkSmartPointer<vtkXMLPolyDataReader>::New();
+    const QByteArray encoded = QFile::encodeName(readablePath);
+    reader->SetFileName(encoded.constData());
+    reader->Update();
+    if (staged)
+        QFile::remove(readablePath);
+
+    vtkPolyData* output = reader->GetOutput();
+    if (!output || output->GetNumberOfCells() <= 0 || output->GetNumberOfPoints() <= 0)
+        return nullptr;
+    auto surface = vtkSmartPointer<vtkPolyData>::New();
+    surface->ShallowCopy(output);
+    return surface;
+}
+
+static bool writeMeshGridCache(const QString& path, vtkUnstructuredGrid* grid)
+{
+    if (!grid || grid->GetNumberOfCells() <= 0)
+        return false;
+
+    bool staged = false;
+    const QString writablePath = prepareMeshVtkWritablePath(path, staged);
+    if (writablePath.isEmpty())
+        return false;
+
+    auto writer = vtkSmartPointer<vtkXMLUnstructuredGridWriter>::New();
+    const QByteArray encoded = QFile::encodeName(writablePath);
+    writer->SetFileName(encoded.constData());
+    writer->SetInputData(grid);
+    writer->SetDataModeToBinary();
+    const bool ok = writer->Write() == 1;
+
+    if (!staged)
+        return ok;
+    if (!ok)
+    {
+        QFile::remove(writablePath);
+        return false;
+    }
+    return commitMeshVtkStagingFile(writablePath, path);
+}
+
+static bool writeMeshSurfaceCache(const QString& path, vtkPolyData* surface)
+{
+    if (!surface || surface->GetNumberOfCells() <= 0)
+        return false;
+
+    bool staged = false;
+    const QString writablePath = prepareMeshVtkWritablePath(path, staged);
+    if (writablePath.isEmpty())
+        return false;
+
+    auto writer = vtkSmartPointer<vtkXMLPolyDataWriter>::New();
+    const QByteArray encoded = QFile::encodeName(writablePath);
+    writer->SetFileName(encoded.constData());
+    writer->SetInputData(surface);
+    writer->SetDataModeToBinary();
+    const bool ok = writer->Write() == 1;
+
+    if (!staged)
+        return ok;
+    if (!ok)
+    {
+        QFile::remove(writablePath);
+        return false;
+    }
+    return commitMeshVtkStagingFile(writablePath, path);
 }
 
 static double defaultNumericArrayValue(const QString& name, vtkIdType tuple)
@@ -1934,6 +2221,8 @@ static vtkSmartPointer<vtkPolyData> meshDisplayBuildMappedSurface(vtkUnstructure
     if (!grid || grid->GetNumberOfCells() <= 0 || !grid->GetPoints())
         return out;
 
+           // 无论默认显示还是自定义筛选，都保留原有完整 mapped-surface 语义：
+           // 外表面 + MATYPE/LAYER 内部分界面都生成。性能通过缓存解决，不能通过删显示面解决。
            // 关键：直接复用显示源网格的点表。这样 PickManager 看到的 surface pid 与原网格 pid 一致，
            // 不再通过 vtkDataSetSurfaceFilter + 最近点回猜，避免点选/框选“乱窜”。
     out->SetPoints(grid->GetPoints());
@@ -2216,7 +2505,9 @@ static void meshDisplayApplyGlobalState(vtkUnstructuredGrid* fullGrid,
                                         vtkActor* surfaceActor,
                                         vtkMapper* surfaceMapper,
                                         vtkActor* lineActor,
-                                        vtkMapper* lineMapper)
+                                        vtkMapper* lineMapper,
+                                        vtkPolyData* cachedSurface = nullptr,
+                                        vtkUnstructuredGrid* cachedLineGrid = nullptr)
 {
     if (!fullGrid || (!surfaceMapper && !lineMapper))
         return;
@@ -2230,11 +2521,32 @@ static void meshDisplayApplyGlobalState(vtkUnstructuredGrid* fullGrid,
     const QSet<int> layers = meshDisplayIntSetFromString(
         PublicVariables::instance().get(kMeshDisplayFilterLayerKey).toString());
 
-    vtkSmartPointer<vtkPolyData> viewSurface =
-        meshDisplayBuildMappedSurface(fullGrid, customFilter, ketypes, matypes, layers);
+    vtkSmartPointer<vtkPolyData> viewSurface;
+    vtkSmartPointer<vtkUnstructuredGrid> viewLineGrid;
 
-    vtkSmartPointer<vtkUnstructuredGrid> viewLineGrid =
-        meshDisplayBuildLineGrid(fullGrid, customFilter, ketypes, matypes, layers);
+    // 工程恢复且未启用自定义筛选时，优先直接使用上次保存的完整 mapped-surface 缓存，
+    // 跳过最昂贵的“遍历全部三维单元 + 构造共享面哈希”过程；显示语义不做任何降级。
+    if (!customFilter && cachedSurface && cachedSurface->GetNumberOfCells() > 0)
+    {
+        viewSurface = vtkSmartPointer<vtkPolyData>::New();
+        viewSurface->ShallowCopy(cachedSurface);
+    }
+    else
+    {
+        viewSurface = meshDisplayBuildMappedSurface(
+            fullGrid, customFilter, ketypes, matypes, layers);
+    }
+
+    if (!customFilter && cachedLineGrid && cachedLineGrid->GetNumberOfCells() > 0)
+    {
+        viewLineGrid = vtkSmartPointer<vtkUnstructuredGrid>::New();
+        viewLineGrid->ShallowCopy(cachedLineGrid);
+    }
+    else
+    {
+        viewLineGrid = meshDisplayBuildLineGrid(
+            fullGrid, customFilter, ketypes, matypes, layers);
+    }
 
     if (surfaceMapper)
         meshDisplaySetMapperInput(surfaceMapper, viewSurface);
@@ -2354,6 +2666,18 @@ bool MeshModuleController::saveProject()
 
     const QString meshMapPath =
         QDir(projectDir).filePath(kMeshMapFileName);
+    const QString binaryCachePath =
+        QDir(projectDir).filePath(QString::fromUtf8(kMeshBinaryCacheFileName));
+    const QString surfaceCachePath =
+        QDir(projectDir).filePath(QString::fromUtf8(kMeshSurfaceCacheFileName));
+    const QString lineCachePath =
+        QDir(projectDir).filePath(QString::fromUtf8(kMeshLineCacheFileName));
+    const QString legacyOuterSurfaceCachePath =
+        QDir(projectDir).filePath(QString::fromUtf8(kMeshLegacyOuterSurfaceCacheFileName));
+
+    // 清理早期性能补丁产生的“仅外表面”缓存，避免它继续留在工程压缩包里造成误解。
+    if (QFileInfo::exists(legacyOuterSurfaceCachePath))
+        QFile::remove(legacyOuterSurfaceCachePath);
 
     const bool hasGrid =
         (m_importedGrid && m_importedGrid->GetNumberOfCells() > 0);
@@ -2363,7 +2687,12 @@ bool MeshModuleController::saveProject()
     root["has_grid"] = hasGrid;
     root["snapshot_file"] = PublicConstants::kMeshSnapshotFileName;
     root["mesh_map_file"] = kMeshMapFileName;
-    // 工程恢复固定使用 IIIN/DAT 快照 + mesh_map.json。
+    root["binary_cache_file"] = QString::fromUtf8(kMeshBinaryCacheFileName);
+    root["surface_cache_file"] = QString::fromUtf8(kMeshSurfaceCacheFileName);
+    root["line_cache_file"] = QString::fromUtf8(kMeshLineCacheFileName);
+    root["display_cache_version"] = kMeshDisplayCacheVersion;
+    // IIIN/DAT 仍是求解与兼容性的权威快照；VTU/VTP 只是可删除、可重建的加载缓存。
+    // surface cache 保存的是完整 mapped surface，包含外表面以及 MATYPE/LAYER 分界面。
     // Restore projects from the IIIN/DAT snapshot plus mesh_map.json.
     root["mesh_restore_mode"] = QStringLiteral("dat");
     root["vertical_axis"] = m_verticalAxis;
@@ -2384,6 +2713,34 @@ bool MeshModuleController::saveProject()
         if (!saveMeshMapJson(meshMapPath, MeshGridIO::instance().getMeshMapRef(), m_importedGrid, &err))
         {
             return false;
+        }
+
+        // 二进制完整网格缓存：下次打开工程优先读取，避免再次解析几十 MB 的文本 IIIN。
+        if (!meshCacheIsFresh(binaryCachePath, snapshotPath))
+            writeMeshGridCache(binaryCachePath, m_importedGrid);
+
+        // 当前没有自定义筛选时，Mapper 中就是完整 mapped surface + 杆单元网格。
+        // 直接把已经构造好的完整显示数据落盘，不在保存时重复遍历全部单元。
+        const bool customFilter =
+            PublicVariables::instance().get(kMeshDisplayFilterCustomKey).toBool();
+        if (!customFilter)
+        {
+            if (!meshCacheIsFresh(surfaceCachePath, snapshotPath))
+            {
+                if (auto* mapper = vtkPolyDataMapper::SafeDownCast(m_previewSurfaceMapper))
+                {
+                    if (auto* surface = mapper->GetInput())
+                        writeMeshSurfaceCache(surfaceCachePath, surface);
+                }
+            }
+            if (!meshCacheIsFresh(lineCachePath, snapshotPath))
+            {
+                if (auto* mapper = vtkDataSetMapper::SafeDownCast(m_previewLineMapper))
+                {
+                    if (auto* lineGrid = vtkUnstructuredGrid::SafeDownCast(mapper->GetInput()))
+                        writeMeshGridCache(lineCachePath, lineGrid);
+                }
+            }
         }
     }
 
@@ -2592,9 +2949,19 @@ bool MeshModuleController::loadProject()
 
         const QString meshMapName =
             root.value("mesh_map_file").toString(kMeshMapFileName);
+        const QString binaryCacheName =
+            root.value("binary_cache_file").toString(QString::fromUtf8(kMeshBinaryCacheFileName));
+        const QString surfaceCacheName =
+            root.value("surface_cache_file").toString(QString::fromUtf8(kMeshSurfaceCacheFileName));
+        const QString lineCacheName =
+            root.value("line_cache_file").toString(QString::fromUtf8(kMeshLineCacheFileName));
+        const int displayCacheVersion = root.value("display_cache_version").toInt(0);
 
         QString snapshotPath = QDir(projectDir).filePath(snapshotName);
         QString meshMapPath = QDir(projectDir).filePath(meshMapName);
+        const QString binaryCachePath = QDir(projectDir).filePath(binaryCacheName);
+        const QString surfaceCachePath = QDir(projectDir).filePath(surfaceCacheName);
+        const QString lineCachePath = QDir(projectDir).filePath(lineCacheName);
         if (!QFileInfo::exists(snapshotPath))
         {
             snapshotPath = QDir(projectDir).filePath(
@@ -2607,9 +2974,37 @@ bool MeshModuleController::loadProject()
         }
 
         QString err;
-
-        auto grid = MeshGridIO::instance().loadIiinFile(snapshotPath, &err);
-
+        // 优先读取二进制 VTU，但它只是缓存，不能覆盖 IIIN 的权威拓扑。
+        // 旧版本曾把部分可正常恢复的退化单元缓存为“异常/Polyhedron”；
+        // 即使 MeshGridIO 的识别规则已经修好，只要继续命中旧 VTU，1099 号这类
+        // A B C C D E F F 三棱柱仍会沿用错误分类。因此拓扑版本不匹配时
+        // 强制从 IIIN 重建一次，并立即刷新二进制缓存。
+        vtkSmartPointer<vtkUnstructuredGrid> grid;
+        bool rebuiltTopologyCache = false;
+        if (meshCacheIsFresh(binaryCachePath, snapshotPath))
+        {
+            auto cachedGrid = readMeshGridCache(binaryCachePath);
+            if (meshGridHasCurrentIiinTopologySchema(cachedGrid))
+            {
+                grid = cachedGrid;
+            }
+            else if (cachedGrid && cachedGrid->GetNumberOfCells() > 0)
+            {
+                qInfo() << "[Mesh] topology cache schema is stale; rebuild from IIIN:"
+                        << binaryCachePath;
+                rebuiltTopologyCache = true;
+            }
+        }
+        if (!grid || grid->GetNumberOfCells() <= 0)
+        {
+            grid = MeshGridIO::instance().loadIiinFile(snapshotPath, &err);
+            if (grid && grid->GetNumberOfCells() > 0)
+            {
+                rebuiltTopologyCache = true;
+                // 迁移只做一次：本次打开工程就覆盖旧 VTU，下一次恢复重新走快速缓存。
+                writeMeshGridCache(binaryCachePath, grid);
+            }
+        }
         if (!grid || grid->GetNumberOfCells() <= 0)
         {
             QMessageBox::warning(nullptr,
@@ -2705,6 +3100,30 @@ bool MeshModuleController::loadProject()
 
         markGridSnapshotSaved(snapshotPath, m_importedGrid);
 
+        // 显示缓存只在与当前 DAT 快照一致时使用。完整 surface 缓存命中后，
+        // 首次显示可直接跳过 meshDisplayBuildMappedSurface() 的百万级共享面哈希构造，
+        // 但显示内容与原逻辑保持一致（外表面 + MATYPE/LAYER 分界面）。
+        m_loadedSurfaceDisplayCache = nullptr;
+        m_loadedLineDisplayCache = nullptr;
+
+        // 完整网格拓扑发生迁移时，旧 surface/line 显示缓存也是由旧拓扑生成的，
+        // 不能继续命中，否则完整网格已经把 1099 识别成三棱柱，画面却仍可能来自
+        // 上一版的异常 Polyhedron。直接删掉，让本次显示按新拓扑重建。
+        if (rebuiltTopologyCache)
+        {
+            QFile::remove(surfaceCachePath);
+            QFile::remove(lineCachePath);
+        }
+
+        // v1 性能补丁曾生成过“仅外表面”的 surface cache，不能继续复用。
+        // 只有明确标记为当前完整 mapped-surface 版本的缓存才允许命中。
+        if (!rebuiltTopologyCache && displayCacheVersion == kMeshDisplayCacheVersion &&
+            meshCacheIsFresh(surfaceCachePath, snapshotPath))
+        {
+            m_loadedSurfaceDisplayCache = readMeshSurfaceCache(surfaceCachePath);
+        }
+        if (!rebuiltTopologyCache && meshCacheIsFresh(lineCachePath, snapshotPath))
+            m_loadedLineDisplayCache = readMeshGridCache(lineCachePath);
         // 工程网格恢复完成后自动适应一次视图。
         displayCurrentGrid(true);
 
@@ -2950,6 +3369,8 @@ void MeshModuleController::closeProject()
     m_splitCacheSource = nullptr;
     m_splitCacheLine = nullptr;
     m_splitCacheNonLine = nullptr;
+    m_loadedSurfaceDisplayCache = nullptr;
+    m_loadedLineDisplayCache = nullptr;
     m_edgeRules.clear();
     m_faceRules.clear();
     m_volumeRules.clear();
@@ -4616,7 +5037,13 @@ void MeshModuleController::displayCurrentGrid(bool fitView)
                                 m_previewSurfaceActor,
                                 m_previewSurfaceMapper,
                                 m_previewLineActor,
-                                m_previewLineMapper);
+                                m_previewLineMapper,
+                                m_loadedSurfaceDisplayCache.GetPointer(),
+                                m_loadedLineDisplayCache.GetPointer());
+
+    // 缓存只服务于工程恢复的第一次显示。后续网格编辑/筛选必须基于实时网格重建。
+    m_loadedSurfaceDisplayCache = nullptr;
+    m_loadedLineDisplayCache = nullptr;
 
     if (auto* dsMapper = vtkDataSetMapper::SafeDownCast(m_previewLineMapper))
         m_previewLineGrid = vtkUnstructuredGrid::SafeDownCast(dsMapper->GetInput());

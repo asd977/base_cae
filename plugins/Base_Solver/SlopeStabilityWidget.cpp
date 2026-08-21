@@ -14,6 +14,7 @@
 #include <QList>
 #include <QStringConverter>
 #include <QMessageBox>
+#include <QPushButton>
 #include <QTableWidget>
 #include <QTableWidgetItem>
 #include <QTextStream>
@@ -23,6 +24,7 @@
 #include "ui_SlopeStabilityWidget.h"
 
 #include "SolverUiLayoutHelper.h"
+#include "SlopeStandardMethodDialog.h"
 namespace
 {
 QStringList splitGravityComponents(const QString& value)
@@ -81,6 +83,18 @@ SlopeStabilityWidget::SlopeStabilityWidget(QWidget* parent)
     setupStableModeSections();
     SolverUiLayoutHelper::polishPage(this);
     SolverUiLayoutHelper::setupComputeControls(this);
+
+    if (auto* standardButton =
+            findChild<QPushButton*>(QStringLiteral("btnStandardCompute")))
+    {
+        // setupComputeControls 为所有分析页提供统一占位按钮。边坡页在这里接管该按钮，
+        // 数值法仍沿用原 PCCAE 流程，规范法使用独立的 SlopeEngine 文件协议。
+        QObject::disconnect(standardButton, nullptr, this, nullptr);
+        standardButton->setToolTip(
+            QStringLiteral("打开瑞典圆弧法、毕肖普法和 Sarma 法规范验算。"));
+        connect(standardButton, &QPushButton::clicked,
+                this, &SlopeStabilityWidget::onStandardComputeClicked);
+    }
 
     m_lineEditors[1] = nullptr;
     m_lineEditors[3] = ui->line3Combo;
@@ -639,6 +653,9 @@ QJsonObject SlopeStabilityWidget::saveJson()
     obj["acc_x"] = QString::fromLatin1(kAccXFileName);
     obj["acc_y"] = QString::fromLatin1(kAccYFileName);
     obj["acc_z"] = QString::fromLatin1(kAccZFileName);
+    obj["standard_method_dat"] =
+        m_standardDialog ? m_standardDialog->datText() : m_standardDatText;
+    obj["standard_method_last_job"] = m_standardLastJobDirectory;
     return obj;
 }
 
@@ -681,6 +698,8 @@ void SlopeStabilityWidget::loadJson(const QJsonObject& obj)
     const int ifWaveIndex = ui->ifWaveCombo->findData(ifWave);
     ui->ifModeCombo->setCurrentIndex(ifModeIndex >= 0 ? ifModeIndex : 0);
     ui->ifWaveCombo->setCurrentIndex(ifWaveIndex >= 0 ? ifWaveIndex : 0);
+    m_standardDatText = obj.value("standard_method_dat").toString();
+    m_standardLastJobDirectory = obj.value("standard_method_last_job").toString();
     updateAnalysisModeVisibility();
 }
 
@@ -699,6 +718,41 @@ void SlopeStabilityWidget::onComputeClicked()
         return;
     }
     emit computeRequested();
+}
+
+void SlopeStabilityWidget::onStandardComputeClicked()
+{
+    if (m_standardDialog)
+    {
+        m_standardDialog->show();
+        m_standardDialog->raise();
+        m_standardDialog->activateWindow();
+        return;
+    }
+
+    m_standardDialog = new SlopeStandardMethodDialog(
+        getUuid(), m_standardDatText, m_standardLastJobDirectory, this);
+    m_standardDialog->setAttribute(Qt::WA_DeleteOnClose);
+    connect(m_standardDialog, &SlopeStandardMethodDialog::datTextChanged,
+            this, [this](const QString& text) { m_standardDatText = text; });
+    connect(m_standardDialog, &SlopeStandardMethodDialog::lastJobDirectoryChanged,
+            this, [this](const QString& directory) {
+                m_standardLastJobDirectory = directory;
+            });
+    connect(m_standardDialog, &SlopeStandardMethodDialog::runningChanged,
+            this, [this](bool running) {
+                ui->btnCompute->setEnabled(!running);
+                if (auto* standardButton =
+                        findChild<QPushButton*>(QStringLiteral("btnStandardCompute")))
+                    standardButton->setText(running ? QStringLiteral("规范法计算中")
+                                                    : QStringLiteral("规范法计算"));
+            });
+    m_standardDialog->show();
+}
+
+void SlopeStabilityWidget::openStandardMethodDialog()
+{
+    onStandardComputeClicked();
 }
 
 void SlopeStabilityWidget::setComputing(bool computing)
