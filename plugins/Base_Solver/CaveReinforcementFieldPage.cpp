@@ -14,7 +14,6 @@
 #include <QFormLayout>
 #include <QGroupBox>
 #include <QJsonObject>
-#include <QLabel>
 #include <QRegularExpression>
 #include <QSaveFile>
 #include <QTextStream>
@@ -361,14 +360,6 @@ CaveReinforcementFieldPage::CaveReinforcementFieldPage(QWidget* parent)
     auto* root = new QVBoxLayout(this);
     root->setContentsMargins(18, 18, 18, 18);
     root->setSpacing(12);
-
-    auto* hint = new QLabel(
-        QStringLiteral("此功能用于将锚杆或锚索对围岩刚度、黏聚力、摩擦角及附加围压的影响"
-                       "自动用于计算。它与真实一维杆单元相互独立；"
-                       "如不需要额外围岩参数修正，请保持关闭。启用后会自动使用"
-                       "对应的一次或逐级加固工况。"), this);
-    hint->setWordWrap(true);
-    root->addWidget(hint);
 
     auto* modeForm = new QFormLayout();
     m_mode = new QComboBox(this);

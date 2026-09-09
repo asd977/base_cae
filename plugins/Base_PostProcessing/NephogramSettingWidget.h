@@ -47,12 +47,12 @@ class NephogramSettingWidget : public BasePage
 
   private:
     void ensureActorAttached();
-    bool ensureTransparentDomainSurface();
     void syncScalarBarFromCurrent();
     bool syncScalarBarFromResolved(vtkUnstructuredGrid* displayGrid, vtkDataArray* array,
                                    bool usePointData, double dataMin, double dataMax);
     void updateNephogram(const QString& selectedScalarName, bool renderNow = true);
     void loadFileName(const QString& dataPath);
+    void populateResultFileCombo(const QString& preferredFile = QString());
     void initResultDirectoryOptions();
     QString selectedResultDirectoryPath() const;
     void readTecplot(const QString& fileName);
@@ -91,11 +91,6 @@ class NephogramSettingWidget : public BasePage
     vtkSmartPointer<vtkPolyData> m_displaySurface;
     bool m_displaySurfaceUsePointData{true};
     QString m_displaySurfaceFilterSignature;
-
-    // 半透明模式使用的“外表面 + MATYPE/LAYER 域界面”只构造一次。
-    // 它与等值线 Surface 分离，避免拖动透明度时反复遍历全部体单元。
-    vtkSmartPointer<vtkPolyData> m_transparentDomainSurface;
-    bool m_usingTransparentDomainSurface{false};
 
     QString m_dataPath;
     QString m_loadedFileName;

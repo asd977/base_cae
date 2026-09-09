@@ -725,7 +725,7 @@ void SlopeStandardMethodDialog::buildUi()
 
     auto* rootLayout = new QVBoxLayout(this);
     auto* intro = new QLabel(
-        QStringLiteral("按计算方法、材料、水位和边坡断面填写参数，软件会自动生成求解器输入。"
+        QStringLiteral("填写计算方法、材料、水位和边坡断面后即可进行验算。"
                        "通常只需检查计算设置和材料参数；节点、边界线可由既有 DAT 导入后修改。"),
         this);
     intro->setWordWrap(true);
@@ -1631,8 +1631,8 @@ void SlopeStandardMethodDialog::extractSectionFromCurrentMesh()
     }
     verticalCombo->setCurrentIndex(reportedVerticalAxis);
     verticalCombo->setToolTip(
-        QStringLiteral("高程增加的方向。IIIN 中 1/2/3 分别对应 X/Y/Z。"
-                       "如果预览把模型宽度分成了水平土层，请检查这里。"));
+        QStringLiteral("高程增加的方向。如果预览把模型宽度识别为水平土层，"
+                       "请检查此设置。"));
     auto* planeCombo = new QComboBox(&options);
     auto* positionSpin = new QDoubleSpinBox(&options);
     positionSpin->setDecimals(8);

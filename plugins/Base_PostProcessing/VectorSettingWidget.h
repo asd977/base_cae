@@ -57,7 +57,6 @@ class VectorSettingWidget : public BasePage
     double computeAutoBaseScale(vtkUnstructuredGrid* grid);
     int computeAutoMaskRatio(vtkUnstructuredGrid* grid) const;
     QString vectorLegendTitle() const;
-    vtkSmartPointer<vtkUnstructuredGrid> readVtu(const QString& fileName);
 
   private:
     Ui::VectorSettingWidget* ui{nullptr};

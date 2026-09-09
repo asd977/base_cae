@@ -27,9 +27,8 @@ class PostResultGenerator
 
     static Result generate(const Options& options);
 
-    // 域边界缓存按需生成：默认云图只需要最外壳 Surface，
-    // 只有用户真正进行材料/分层筛选时才创建 domains.vtp。
-    // 这样大网格首次进入后处理时不会提前扫描全部体单元构造内部域界面。
+    // 旧接口仅为源码兼容保留。MATYPE 域已经写入 VTM Block，调用此函数
+    // 不会再扫描结果单元或生成 domains.vtp。
     static bool ensureDomainSurfaceCache(const QString& resultFilePath,
                                          QString* error = nullptr);
 };

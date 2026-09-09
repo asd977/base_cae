@@ -17,6 +17,7 @@
 #include <QLabel>
 #include <QMessageBox>
 #include <QPushButton>
+#include <QToolButton>
 #include <QSet>
 #include <QSignalBlocker>
 
@@ -35,6 +36,7 @@
 #include <vtkAssembly.h>
 #include <vtkAxesActor.h>
 #include <vtkCaptionActor2D.h>
+#include <vtkCamera.h>
 #include <vtkCallbackCommand.h>
 #include <vtkCellArray.h>
 #include <vtkCell.h>
@@ -54,6 +56,7 @@
 #include <vtkRenderer.h>
 #include <vtkTextProperty.h>
 #include <vtkUnstructuredGrid.h>
+#include <vtkUnsignedCharArray.h>
 #include <vtkVertexGlyphFilter.h>
 
 
@@ -211,6 +214,433 @@ static QSet<vtkIdType> boundaryPointIds(vtkUnstructuredGrid* grid)
     return pointIds;
 }
 
+
+// “点选整片”仅用于交互扩展：
+// 2D 沿连续近似共线的外边界边扩展；3D 沿共享边的连续共面外表面扩展。
+// 结果仍交给 PickManager::setSelectedPointIds()；位移约束允许共享节点，最终按自由度组合。
+using SmartFacetKey = std::vector<vtkIdType>;
+struct SmartFacetKeyHash
+{
+    std::size_t operator()(const SmartFacetKey& key) const noexcept
+    {
+        std::size_t seed = key.size();
+        for (vtkIdType id : key)
+        {
+            const std::size_t value = std::hash<vtkIdType>{}(id);
+            seed ^= value + std::size_t(0x9e3779b9) + (seed << 6) + (seed >> 2);
+        }
+        return seed;
+    }
+};
+
+struct SmartBoundaryFacet
+{
+    QVector<vtkIdType> points;
+};
+
+static QVector<SmartBoundaryFacet> smartBoundaryFacets(vtkUnstructuredGrid* grid)
+{
+    QVector<SmartBoundaryFacet> result;
+    if (!grid || grid->GetNumberOfCells() <= 0)
+        return result;
+
+    const int maxDimension = maximumCellDimension(grid);
+    if (maxDimension <= 1)
+        return result;
+
+    struct FacetRecord
+    {
+        int count = 0;
+        QVector<vtkIdType> orderedPoints;
+    };
+
+    std::unordered_map<SmartFacetKey, FacetRecord, SmartFacetKeyHash> records;
+    const bool useFaces = (maxDimension >= 3);
+
+    for (vtkIdType cellId = 0; cellId < grid->GetNumberOfCells(); ++cellId)
+    {
+        vtkCell* cell = grid->GetCell(cellId);
+        if (!cell || cell->GetCellDimension() != maxDimension)
+            continue;
+
+        const int facetCount = useFaces ? cell->GetNumberOfFaces() : cell->GetNumberOfEdges();
+        for (int facetIndex = 0; facetIndex < facetCount; ++facetIndex)
+        {
+            vtkCell* facet = useFaces ? cell->GetFace(facetIndex) : cell->GetEdge(facetIndex);
+            if (!facet || facet->GetNumberOfPoints() <= 0)
+                continue;
+
+            SmartFacetKey key;
+            QVector<vtkIdType> ordered;
+            key.reserve(static_cast<std::size_t>(facet->GetNumberOfPoints()));
+            ordered.reserve(static_cast<int>(facet->GetNumberOfPoints()));
+            for (vtkIdType i = 0; i < facet->GetNumberOfPoints(); ++i)
+            {
+                const vtkIdType pointId = facet->GetPointId(i);
+                key.push_back(pointId);
+                ordered.push_back(pointId);
+            }
+            std::sort(key.begin(), key.end());
+
+            FacetRecord& record = records[key];
+            ++record.count;
+            if (record.orderedPoints.isEmpty())
+                record.orderedPoints = ordered;
+        }
+    }
+
+    for (const auto& entry : records)
+    {
+        if (entry.second.count == 1)
+            result.push_back({entry.second.orderedPoints});
+    }
+    return result;
+}
+
+static bool normalizeSmartVector(double vector[3])
+{
+    const double length = vtkMath::Norm(vector);
+    if (length <= 1.0e-15)
+        return false;
+    vector[0] /= length;
+    vector[1] /= length;
+    vector[2] /= length;
+    return true;
+}
+
+static bool smartFacetNormalAndCentroid(vtkUnstructuredGrid* grid,
+                                        const SmartBoundaryFacet& facet,
+                                        double normal[3], double centroid[3])
+{
+    normal[0] = normal[1] = normal[2] = 0.0;
+    centroid[0] = centroid[1] = centroid[2] = 0.0;
+    if (!grid || facet.points.size() < 3)
+        return false;
+
+    const int count = facet.points.size();
+    for (int i = 0; i < count; ++i)
+    {
+        double a[3] = {0.0, 0.0, 0.0};
+        double b[3] = {0.0, 0.0, 0.0};
+        grid->GetPoint(facet.points[i], a);
+        grid->GetPoint(facet.points[(i + 1) % count], b);
+
+        centroid[0] += a[0];
+        centroid[1] += a[1];
+        centroid[2] += a[2];
+
+        // Newell 法，兼容三角形和四边形等平面外表面。
+        normal[0] += (a[1] - b[1]) * (a[2] + b[2]);
+        normal[1] += (a[2] - b[2]) * (a[0] + b[0]);
+        normal[2] += (a[0] - b[0]) * (a[1] + b[1]);
+    }
+
+    const double invCount = 1.0 / static_cast<double>(count);
+    centroid[0] *= invCount;
+    centroid[1] *= invCount;
+    centroid[2] *= invCount;
+    return normalizeSmartVector(normal);
+}
+
+struct SmartEdgeKey
+{
+    vtkIdType a = -1;
+    vtkIdType b = -1;
+    bool operator==(const SmartEdgeKey& other) const noexcept
+    {
+        return a == other.a && b == other.b;
+    }
+};
+
+struct SmartEdgeKeyHash
+{
+    std::size_t operator()(const SmartEdgeKey& edge) const noexcept
+    {
+        std::size_t seed = std::hash<vtkIdType>{}(edge.a);
+        seed ^= std::hash<vtkIdType>{}(edge.b) + std::size_t(0x9e3779b9) + (seed << 6) + (seed >> 2);
+        return seed;
+    }
+};
+
+static SmartEdgeKey makeSmartEdgeKey(vtkIdType a, vtkIdType b)
+{
+    if (a > b)
+        std::swap(a, b);
+    return {a, b};
+}
+
+static QVector<vtkIdType> smartConnectedLinePatch(vtkUnstructuredGrid* grid,
+                                                   vtkIdType seedPointId)
+{
+    if (!grid || seedPointId < 0 || seedPointId >= grid->GetNumberOfPoints())
+        return {};
+
+    struct Segment
+    {
+        vtkIdType a = -1;
+        vtkIdType b = -1;
+        double direction[3] = {0.0, 0.0, 0.0};
+    };
+
+    QVector<Segment> segments;
+    QHash<vtkIdType, QVector<int>> pointSegments;
+    for (vtkIdType cellId = 0; cellId < grid->GetNumberOfCells(); ++cellId)
+    {
+        vtkCell* cell = grid->GetCell(cellId);
+        if (!cell || cell->GetCellDimension() != 1 || cell->GetNumberOfPoints() < 2)
+            continue;
+
+        Segment segment;
+        segment.a = cell->GetPointId(0);
+        segment.b = cell->GetPointId(cell->GetNumberOfPoints() - 1);
+        double a[3] = {0.0, 0.0, 0.0};
+        double b[3] = {0.0, 0.0, 0.0};
+        grid->GetPoint(segment.a, a);
+        grid->GetPoint(segment.b, b);
+        segment.direction[0] = b[0] - a[0];
+        segment.direction[1] = b[1] - a[1];
+        segment.direction[2] = b[2] - a[2];
+        if (!normalizeSmartVector(segment.direction))
+            continue;
+
+        const int index = segments.size();
+        segments.push_back(segment);
+        pointSegments[segment.a].push_back(index);
+        pointSegments[segment.b].push_back(index);
+    }
+
+    const QVector<int> seedSegments = pointSegments.value(seedPointId);
+    if (seedSegments.isEmpty())
+        return {seedPointId};
+
+    const Segment& seed = segments[seedSegments.front()];
+    const double reference[3] = {seed.direction[0], seed.direction[1], seed.direction[2]};
+    const double cosTolerance = std::cos(5.0 * vtkMath::Pi() / 180.0);
+
+    QSet<int> visited;
+    QVector<int> queue{seedSegments.front()};
+    QSet<vtkIdType> points;
+    while (!queue.isEmpty())
+    {
+        const int index = queue.takeLast();
+        if (visited.contains(index))
+            continue;
+
+        const Segment& segment = segments[index];
+        if (std::abs(vtkMath::Dot(reference, segment.direction)) < cosTolerance)
+            continue;
+
+        visited.insert(index);
+        points.insert(segment.a);
+        points.insert(segment.b);
+        for (vtkIdType pointId : {segment.a, segment.b})
+        {
+            const QVector<int> neighbours = pointSegments.value(pointId);
+            for (int next : neighbours)
+            {
+                if (!visited.contains(next))
+                    queue.push_back(next);
+            }
+        }
+    }
+
+    QVector<vtkIdType> result = points.values().toVector();
+    std::sort(result.begin(), result.end());
+    return result;
+}
+
+static QVector<vtkIdType> smartConnectedBoundaryPatch(vtkUnstructuredGrid* grid,
+                                                       vtkIdType seedPointId,
+                                                       vtkRenderer* renderer)
+{
+    if (!grid || seedPointId < 0 || seedPointId >= grid->GetNumberOfPoints())
+        return {};
+
+    const int maxDimension = maximumCellDimension(grid);
+    if (maxDimension <= 1)
+        return smartConnectedLinePatch(grid, seedPointId);
+
+    const QVector<SmartBoundaryFacet> facets = smartBoundaryFacets(grid);
+    if (facets.isEmpty())
+        return {seedPointId};
+
+    QVector<int> incidentFacets;
+    for (int i = 0; i < facets.size(); ++i)
+    {
+        if (facets[i].points.contains(seedPointId))
+            incidentFacets.push_back(i);
+    }
+    if (incidentFacets.isEmpty())
+        return {seedPointId};
+
+    const double cosTolerance = std::cos(5.0 * vtkMath::Pi() / 180.0);
+
+    if (maxDimension == 2)
+    {
+        const int seedFacet = incidentFacets.front();
+        if (facets[seedFacet].points.size() < 2)
+            return {seedPointId};
+
+        double a[3] = {0.0, 0.0, 0.0};
+        double b[3] = {0.0, 0.0, 0.0};
+        double reference[3] = {0.0, 0.0, 0.0};
+        grid->GetPoint(facets[seedFacet].points.front(), a);
+        grid->GetPoint(facets[seedFacet].points.back(), b);
+        reference[0] = b[0] - a[0];
+        reference[1] = b[1] - a[1];
+        reference[2] = b[2] - a[2];
+        if (!normalizeSmartVector(reference))
+            return {seedPointId};
+
+        QHash<vtkIdType, QVector<int>> pointFacets;
+        for (int i = 0; i < facets.size(); ++i)
+        {
+            for (vtkIdType pointId : facets[i].points)
+                pointFacets[pointId].push_back(i);
+        }
+
+        QSet<int> visited;
+        QVector<int> queue{seedFacet};
+        QSet<vtkIdType> points;
+        while (!queue.isEmpty())
+        {
+            const int index = queue.takeLast();
+            if (visited.contains(index))
+                continue;
+
+            const SmartBoundaryFacet& edge = facets[index];
+            if (edge.points.size() < 2)
+                continue;
+
+            double p0[3] = {0.0, 0.0, 0.0};
+            double p1[3] = {0.0, 0.0, 0.0};
+            double direction[3] = {0.0, 0.0, 0.0};
+            grid->GetPoint(edge.points.front(), p0);
+            grid->GetPoint(edge.points.back(), p1);
+            direction[0] = p1[0] - p0[0];
+            direction[1] = p1[1] - p0[1];
+            direction[2] = p1[2] - p0[2];
+            if (!normalizeSmartVector(direction) ||
+                std::abs(vtkMath::Dot(reference, direction)) < cosTolerance)
+                continue;
+
+            visited.insert(index);
+            for (vtkIdType pointId : edge.points)
+            {
+                points.insert(pointId);
+                const QVector<int> neighbours = pointFacets.value(pointId);
+                for (int next : neighbours)
+                {
+                    if (!visited.contains(next))
+                        queue.push_back(next);
+                }
+            }
+        }
+
+        QVector<vtkIdType> result = points.values().toVector();
+        std::sort(result.begin(), result.end());
+        return result;
+    }
+
+    // 一个角点可能同时属于多个外表面。优先取当前视角最正对用户的那个面作为种子面。
+    int seedFacet = incidentFacets.front();
+    double bestFacing = -1.0;
+    double cameraPosition[3] = {0.0, 0.0, 0.0};
+    const bool hasCamera = renderer && renderer->GetActiveCamera();
+    if (hasCamera)
+        renderer->GetActiveCamera()->GetPosition(cameraPosition);
+
+    for (int index : incidentFacets)
+    {
+        double normal[3] = {0.0, 0.0, 0.0};
+        double centroid[3] = {0.0, 0.0, 0.0};
+        if (!smartFacetNormalAndCentroid(grid, facets[index], normal, centroid))
+            continue;
+
+        double facing = 1.0;
+        if (hasCamera)
+        {
+            double view[3] = {cameraPosition[0] - centroid[0],
+                              cameraPosition[1] - centroid[1],
+                              cameraPosition[2] - centroid[2]};
+            if (normalizeSmartVector(view))
+                facing = std::abs(vtkMath::Dot(normal, view));
+        }
+
+        if (facing > bestFacing)
+        {
+            bestFacing = facing;
+            seedFacet = index;
+        }
+    }
+
+    double referenceNormal[3] = {0.0, 0.0, 0.0};
+    double referenceCentroid[3] = {0.0, 0.0, 0.0};
+    if (!smartFacetNormalAndCentroid(grid, facets[seedFacet], referenceNormal, referenceCentroid))
+        return {seedPointId};
+
+    std::unordered_map<SmartEdgeKey, QVector<int>, SmartEdgeKeyHash> edgeOwners;
+    for (int i = 0; i < facets.size(); ++i)
+    {
+        const QVector<vtkIdType>& points = facets[i].points;
+        for (int j = 0; j < points.size(); ++j)
+        {
+            const vtkIdType aId = points[j];
+            const vtkIdType bId = points[(j + 1) % points.size()];
+            edgeOwners[makeSmartEdgeKey(aId, bId)].push_back(i);
+        }
+    }
+
+    double bounds[6] = {0.0, 0.0, 0.0, 0.0, 0.0, 0.0};
+    grid->GetBounds(bounds);
+    const double span = std::max({bounds[1] - bounds[0], bounds[3] - bounds[2], bounds[5] - bounds[4]});
+    const double planeTolerance = std::max(1.0e-9, span * 1.0e-7);
+
+    QSet<int> visited;
+    QVector<int> queue{seedFacet};
+    QSet<vtkIdType> points;
+    while (!queue.isEmpty())
+    {
+        const int index = queue.takeLast();
+        if (visited.contains(index))
+            continue;
+
+        double normal[3] = {0.0, 0.0, 0.0};
+        double centroid[3] = {0.0, 0.0, 0.0};
+        if (!smartFacetNormalAndCentroid(grid, facets[index], normal, centroid))
+            continue;
+        if (std::abs(vtkMath::Dot(referenceNormal, normal)) < cosTolerance)
+            continue;
+
+        const double delta[3] = {centroid[0] - referenceCentroid[0],
+                                 centroid[1] - referenceCentroid[1],
+                                 centroid[2] - referenceCentroid[2]};
+        if (std::abs(vtkMath::Dot(referenceNormal, delta)) > planeTolerance)
+            continue;
+
+        visited.insert(index);
+        const QVector<vtkIdType>& facetPoints = facets[index].points;
+        for (vtkIdType pointId : facetPoints)
+            points.insert(pointId);
+
+        for (int j = 0; j < facetPoints.size(); ++j)
+        {
+            const SmartEdgeKey edge = makeSmartEdgeKey(facetPoints[j],
+                                                       facetPoints[(j + 1) % facetPoints.size()]);
+            const QVector<int>& neighbours = edgeOwners[edge];
+            for (int next : neighbours)
+            {
+                if (!visited.contains(next))
+                    queue.push_back(next);
+            }
+        }
+    }
+
+    QVector<vtkIdType> result = points.values().toVector();
+    std::sort(result.begin(), result.end());
+    return result;
+}
+
 static QVector<vtkIdType> boundaryPointsInCoordinateRange(vtkUnstructuredGrid* grid,
                                                            const CoordinateRangeFilter& filter)
 {
@@ -281,6 +711,11 @@ DisplacementConstraintWidget::DisplacementConstraintWidget(QWidget* parent)
     : BasePage("DisplacementConstraintWidget"), ui(new Ui::DisplacementConstraintWidget)
 {
     ui->setupUi(this);
+
+    // 位移约束允许多个约束共享同一 node_id。每个约束仍保存自己的选区，
+    // 最终自由度在显示和 IIID 写出时按方向合并；其他 PickManager domain 仍保持原互斥规则。
+    PickManager::instance().setNodeSelectionAllowsOverlap(getPageType(), true);
+
     initConstraintCombo(ui->UXLineEdit);
     initConstraintCombo(ui->UYLineEdit);
     initConstraintCombo(ui->UZLineEdit);
@@ -307,7 +742,9 @@ DisplacementConstraintWidget::DisplacementConstraintWidget(QWidget* parent)
 
     const auto constraintDirectionChanged = [this](int)
     {
-        refreshConstraintVisualization();
+        registerConstraintFlags();
+        refreshConstraintVisualization(false);
+        refreshOverlapFeedback(true);
     };
     connect(ui->UXLineEdit, QOverload<int>::of(&QComboBox::currentIndexChanged), this,
             constraintDirectionChanged);
@@ -316,11 +753,32 @@ DisplacementConstraintWidget::DisplacementConstraintWidget(QWidget* parent)
     connect(ui->UZLineEdit, QOverload<int>::of(&QComboBox::currentIndexChanged), this,
             constraintDirectionChanged);
 
+    // 默认交互就是“直接点击边界整片选择”。smartPatchCheckBox 仅作为内部状态保留，
+    // 主界面不再要求用户先开启点选、再开启整片选择。
+    connect(ui->smartPatchCheckBox, &QCheckBox::toggled, this,
+            [this](bool on)
+            {
+                PickManager& pickManager = PickManager::instance();
+                if (on)
+                {
+                    const QSignalBlocker blocker(ui->pickEnableCheckBox);
+                    ui->pickEnableCheckBox->setChecked(false);
+                    pickManager.updateStructure();
+                    pickManager.activate(getPageType(), m_uuid, PickMode::Node);
+                }
+                pickManager.setClickPickEnabled(
+                    getPageType(), m_uuid, on || ui->pickEnableCheckBox->isChecked());
+            });
+
+    // 分组、精确节点和坐标范围都是常规选区入口，直接显示。
+    ui->advancedPanel->setVisible(true);
+
     updateCoordinateControlState();
 }
 
 DisplacementConstraintWidget::~DisplacementConstraintWidget()
 {
+    clearOverlapVisualization(false);
     clearConstraintVisualization(false);
     delete ui;
 }
@@ -333,8 +791,21 @@ void DisplacementConstraintWidget::beforeLoad()
     PickManager& pickManager = PickManager::instance();
     pickManager.updateStructure();
     pickManager.activate(getPageType(), m_uuid, PickMode::Node);
+    // 页面可能被反复进入，先移除 PickManager 到本页面的旧连接，再建立当前连接。
+    QObject::disconnect(&PickManager::instance(), nullptr, this, nullptr);
     QObject::connect(&PickManager::instance(), &PickManager::nodePicked, this,
                      &DisplacementConstraintWidget::onNodePicked, Qt::UniqueConnection);
+
+    // 当前约束的方向元数据用于计算共享节点的“最终约束”。
+    registerConstraintFlags();
+
+    // 无论点选、框选、分组还是坐标范围，只要节点集合变化就同步刷新共享节点提示。
+    QObject::connect(&PickManager::instance(), &PickManager::selectionChanged, this,
+                     [this](const QString& domain, const QString&, PickMode mode, GridKind)
+                     {
+                         if (domain == getPageType() && mode == PickMode::Node)
+                             refreshOverlapFeedback();
+                     });
 
     // ===== 1) 从某处拿到映射（示例：meshSvc 提供 pick map）=====
     auto* meshSvc = ServiceRegistry::instance().getService<MeshModuleControllerService>();
@@ -396,30 +867,35 @@ void DisplacementConstraintWidget::beforeLoad()
 
     QObject::disconnect(ui->pickEnableCheckBox, nullptr, this, nullptr);
     connect(ui->pickEnableCheckBox, &QCheckBox::toggled, this,
-            [this](bool on)
+            [this](bool preciseNodeMode)
             {
                 PickManager& pickManager = PickManager::instance();
-                if (on)
+                pickManager.updateStructure();
+                pickManager.activate(getPageType(), m_uuid, PickMode::Node);
+
+                // 可临时切换为单节点点选；关闭后自动回到默认整片选择。
                 {
-                    // Netgen 网格重新导入/刷新后，显示 actor 和数据集可能已经更换。
-                    // 开启点选时重新绑定当前网格，并确保节点拾取观察器处于激活状态。
-                    pickManager.updateStructure();
-                    pickManager.activate(getPageType(), m_uuid, PickMode::Node);
+                    const QSignalBlocker blocker(ui->smartPatchCheckBox);
+                    ui->smartPatchCheckBox->setChecked(!preciseNodeMode);
                 }
-                pickManager.setClickPickEnabled(getPageType(), m_uuid, on);
+                pickManager.setClickPickEnabled(getPageType(), m_uuid, true);
             });
 
-    // 进入页面不自动开启点选，避免单击模型时误选节点。
+    // 进入页面即处于约束范围编辑状态：单击边界直接整片添加/取消。
+    // 省掉“开启点选”和“点选整片”两个前置操作。
     {
-        const QSignalBlocker blocker(ui->pickEnableCheckBox);
+        const QSignalBlocker pointBlocker(ui->pickEnableCheckBox);
+        const QSignalBlocker patchBlocker(ui->smartPatchCheckBox);
         ui->pickEnableCheckBox->setChecked(false);
+        ui->smartPatchCheckBox->setChecked(true);
     }
-    pickManager.setClickPickEnabled(getPageType(), m_uuid, false);
+    pickManager.setClickPickEnabled(getPageType(), m_uuid, true);
 
     if (!m_coordinateRangeLoaded)
         onUseMeshBounds();
     updateCoordinateControlState();
-    refreshConstraintVisualization();
+    refreshConstraintVisualization(false);
+    refreshOverlapFeedback(true);
 }
 
 
@@ -547,7 +1023,9 @@ void DisplacementConstraintWidget::onSelectByCoordinateRange()
 
     PickManager& pickManager = PickManager::instance();
     pickManager.updateStructure();
-    pickManager.setClickPickEnabled(getPageType(), m_uuid, ui->pickEnableCheckBox->isChecked());
+    pickManager.setClickPickEnabled(getPageType(), m_uuid,
+                                    ui->pickEnableCheckBox->isChecked() ||
+                                        ui->smartPatchCheckBox->isChecked());
     const QVector<vtkIdType> solidPointIds =
         boundaryPointsInCoordinateRange(pickManager.solidGrid(), filter);
     const QVector<vtkIdType> linePointIds =
@@ -585,6 +1063,7 @@ void DisplacementConstraintWidget::onSelectByCoordinateRange()
 
 QJsonObject DisplacementConstraintWidget::saveJson()
 {
+    registerConstraintFlags();
     QJsonObject obj;
     obj["ux"] = ui->UXLineEdit->currentData().toString();
     obj["uy"] = ui->UYLineEdit->currentData().toString();
@@ -684,13 +1163,15 @@ void DisplacementConstraintWidget::loadJson(const QJsonObject& obj)
         ui->coordAppendCheckBox->setChecked(coordinateRange.value("append").toBool(false));
     }
     updateCoordinateControlState();
+    registerConstraintFlags();
 }
 
 void DisplacementConstraintWidget::beforeUnload()
 {
-    QObject::disconnect(&PickManager::instance(), &PickManager::nodePicked, this,
-                        &DisplacementConstraintWidget::onNodePicked);
+    QObject::disconnect(&PickManager::instance(), nullptr, this, nullptr);
     PickManager::instance().setClickPickEnabled(getPageType(), m_uuid, false);
+
+    clearOverlapVisualization(false);
 
     // 单节点查看模式：离开当前约束节点后，右下角全局约束方向指示器立即消失。
     // PickManager::deactivate() 同时会隐藏当前节点的全部选中点高亮。
@@ -707,6 +1188,201 @@ void DisplacementConstraintWidget::beforeUnload()
 QString DisplacementConstraintWidget::constraintVisualizationPropId() const
 {
     return QStringLiteral("physical.constraint.direction.%1").arg(m_uuid);
+}
+
+
+QString DisplacementConstraintWidget::overlapVisualizationPropId() const
+{
+    return QStringLiteral("physical.constraint.overlap.%1").arg(m_uuid);
+}
+
+void DisplacementConstraintWidget::registerConstraintFlags()
+{
+    if (m_uuid.isEmpty())
+        return;
+    PickManager::instance().setNodeConstraintFlags(getPageType(), m_uuid,
+                                                   uxFlag(), uyFlag(), uzFlag());
+}
+
+QString DisplacementConstraintWidget::formatConstraintFlags(const QVector<int>& flags,
+                                                             bool conflict) const
+{
+    if (conflict)
+        return QStringLiteral("存在冲突");
+
+    const bool is2D = PublicVariables::instance().get(PublicConstants::kMeshDimension).toInt() == 2;
+    const QString axisNames[3] = {QStringLiteral("X"), QStringLiteral("Y"), QStringLiteral("Z")};
+
+    QStringList fixedAxes;
+    QStringList suspendedAxes;
+    const int axisCount = is2D ? 2 : 3;
+    for (int axis = 0; axis < axisCount; ++axis)
+    {
+        const int value = flags.value(axis, 1);
+        if (value == 0)
+            fixedAxes.push_back(axisNames[axis]);
+        else if (value == -10000)
+            suspendedAxes.push_back(axisNames[axis]);
+    }
+
+    QStringList parts;
+    if (!fixedAxes.isEmpty())
+        parts.push_back(QStringLiteral("%1 固定").arg(fixedAxes.join(QStringLiteral("、"))));
+    if (!suspendedAxes.isEmpty())
+        parts.push_back(QStringLiteral("%1 悬空杆件").arg(suspendedAxes.join(QStringLiteral("、"))));
+    if (parts.isEmpty())
+        return QStringLiteral("自由");
+    return parts.join(QStringLiteral("；"));
+}
+
+void DisplacementConstraintWidget::clearOverlapVisualization(bool renderNow)
+{
+    auto* visual = m_visual ? m_visual
+                            : ServiceRegistry::instance().getService<VisualWidgetService>();
+    if (visual && !m_uuid.isEmpty())
+        visual->removeProp(overlapVisualizationPropId(), false);
+
+    m_overlapActor = nullptr;
+    m_overlapMapper = nullptr;
+    m_overlapGlyph = nullptr;
+    m_overlapPolyData = nullptr;
+    m_overlapPoints = nullptr;
+
+    if (renderNow && visual)
+        visual->render();
+}
+
+void DisplacementConstraintWidget::refreshOverlapFeedback(bool renderNow)
+{
+    if (!ui)
+        return;
+
+    registerConstraintFlags();
+
+    PickManager& pickManager = PickManager::instance();
+    const QVector<int> selectedIds = pickManager.selectedNodeIds(getPageType(), m_uuid);
+    const QVector<int> sharedIds = pickManager.sharedNodeIds(getPageType(), m_uuid);
+
+    const QSet<int> conflictingIds =
+        pickManager.conflictingSharedNodeIds(getPageType(), m_uuid);
+    const int conflictCount = conflictingIds.size();
+
+    if (conflictCount > 0)
+    {
+        ui->overlapSummaryLabel->setText(
+            QStringLiteral("已选择 %1 个节点；%2 个节点存在约束冲突，请检查。")
+                .arg(selectedIds.size())
+                .arg(conflictCount));
+        ui->overlapSummaryLabel->setStyleSheet(QStringLiteral("color:#c0392b;font-weight:600;"));
+    }
+    else if (!sharedIds.isEmpty())
+    {
+        ui->overlapSummaryLabel->setText(
+            QStringLiteral("已选择 %1 个节点，其中 %2 个已有其他方向约束，最终约束已自动组合。")
+                .arg(selectedIds.size())
+                .arg(sharedIds.size()));
+        ui->overlapSummaryLabel->setStyleSheet(QString());
+    }
+    else
+    {
+        ui->overlapSummaryLabel->setText(
+            QStringLiteral("已选择 %1 个节点").arg(selectedIds.size()));
+        ui->overlapSummaryLabel->setStyleSheet(QString());
+    }
+
+    if (!m_constraintPageActive)
+    {
+        clearOverlapVisualization(renderNow);
+        return;
+    }
+
+    if (!m_visual)
+        m_visual = ServiceRegistry::instance().getService<VisualWidgetService>();
+    if (!m_visual)
+        return;
+
+    if (sharedIds.isEmpty())
+    {
+        clearOverlapVisualization(renderNow);
+        return;
+    }
+
+    if (!m_overlapPoints)
+    {
+        m_overlapPoints = vtkSmartPointer<vtkPoints>::New();
+        m_overlapPolyData = vtkSmartPointer<vtkPolyData>::New();
+        m_overlapPolyData->SetPoints(m_overlapPoints);
+
+        m_overlapGlyph = vtkSmartPointer<vtkVertexGlyphFilter>::New();
+        m_overlapGlyph->SetInputData(m_overlapPolyData);
+
+        m_overlapMapper = vtkSmartPointer<vtkPolyDataMapper>::New();
+        m_overlapMapper->SetInputConnection(m_overlapGlyph->GetOutputPort());
+        m_overlapMapper->SetColorModeToDirectScalars();
+        m_overlapMapper->ScalarVisibilityOn();
+
+        m_overlapActor = vtkSmartPointer<vtkActor>::New();
+        m_overlapActor->SetMapper(m_overlapMapper);
+        m_overlapActor->PickableOff();
+        m_overlapActor->GetProperty()->SetPointSize(7.0);
+        m_overlapActor->GetProperty()->SetRenderPointsAsSpheres(true);
+        m_overlapActor->GetProperty()->LightingOff();
+
+        m_visual->removeProp(overlapVisualizationPropId(), false);
+        m_visual->addProp(overlapVisualizationPropId(), m_overlapActor,
+                          QStringLiteral("{constraint} 共享节点"),
+                          QStringLiteral("当前位移约束与其他位移约束共享的节点"), true, true);
+    }
+
+    m_overlapPoints->Reset();
+    auto colors = vtkSmartPointer<vtkUnsignedCharArray>::New();
+    colors->SetName("constraint_overlap_color");
+    colors->SetNumberOfComponents(3);
+
+    auto appendPoints = [&](vtkUnstructuredGrid* grid, const QVector<vtkIdType>& pointIds)
+    {
+        if (!grid || !grid->GetPointData())
+            return;
+
+        vtkIntArray* nodeIds = vtkIntArray::SafeDownCast(grid->GetPointData()->GetArray("node_id"));
+        if (!nodeIds)
+            nodeIds = vtkIntArray::SafeDownCast(grid->GetPointData()->GetArray("NodeId"));
+
+        for (vtkIdType pointId : pointIds)
+        {
+            if (pointId < 0 || pointId >= grid->GetNumberOfPoints())
+                continue;
+            double p[3] = {0.0, 0.0, 0.0};
+            grid->GetPoint(pointId, p);
+            m_overlapPoints->InsertNextPoint(p);
+
+            bool conflict = false;
+            if (nodeIds && pointId < nodeIds->GetNumberOfTuples())
+                conflict = conflictingIds.contains(nodeIds->GetValue(int(pointId)));
+
+            const unsigned char orange[3] = {255, 140, 0};
+            const unsigned char red[3] = {220, 45, 35};
+            colors->InsertNextTypedTuple(conflict ? red : orange);
+        }
+    };
+
+    appendPoints(pickManager.solidGrid(),
+                 pickManager.sharedSelectedPointIds(getPageType(), m_uuid, GridKind::Solid));
+    appendPoints(pickManager.lineGrid(),
+                 pickManager.sharedSelectedPointIds(getPageType(), m_uuid, GridKind::Line));
+
+    // 共享但兼容：橙色；真正不兼容：红色。每个点独立着色，不会因为一个冲突
+    // 把整条共享边都误显示成错误。
+    m_overlapPolyData->GetPointData()->SetScalars(colors);
+    m_overlapActor->SetVisibility(m_overlapPoints->GetNumberOfPoints() > 0);
+
+    colors->Modified();
+    m_overlapPoints->Modified();
+    m_overlapPolyData->Modified();
+    m_overlapGlyph->Update();
+
+    if (renderNow)
+        m_visual->render();
 }
 
 void DisplacementConstraintWidget::clearConstraintVisualization(bool renderNow)
@@ -944,28 +1620,86 @@ int DisplacementConstraintWidget::uzFlag()
 }
 
 void DisplacementConstraintWidget::onNodePicked(const QString& domain, const QString& activeUuid,
-                                                GridKind, vtkIdType, int nodeId, double x, double y,
-                                                double z, const QString& prevUuid)
+                                                GridKind kind, vtkIdType pointId, int nodeId,
+                                                double x, double y, double z,
+                                                const QString& /*prevUuid*/)
 {
     if (domain != getPageType())
         return;
     if (activeUuid != m_uuid)
         return;
 
-    // 更新 UI：node_id + 坐标
+    if (ui->smartPatchCheckBox->isChecked())
+    {
+        PickManager& pickManager = PickManager::instance();
+        vtkUnstructuredGrid* grid =
+            (kind == GridKind::Solid) ? pickManager.solidGrid() : pickManager.lineGrid();
+        vtkRenderer* renderer = m_visual ? m_visual->renderer() : nullptr;
+        const QVector<vtkIdType> patchIds = smartConnectedBoundaryPatch(grid, pointId, renderer);
+        if (!patchIds.isEmpty())
+        {
+            // PickManager 已先完成种子节点的切换。以种子点切换后的状态决定整片是“选中”还是“取消”，
+            // 这样再次点击已选整片不会出现“种子取消后又被整片重新加回”的反直觉行为。
+            const QVector<vtkIdType> afterSeed =
+                pickManager.getSelectedPointIds(getPageType(), m_uuid, kind);
+            const bool selectWholePatch = std::find(afterSeed.begin(), afterSeed.end(), pointId) !=
+                                          afterSeed.end();
+
+            if (selectWholePatch)
+            {
+                pickManager.setSelectedPointIds(getPageType(), m_uuid, kind, patchIds, false);
+            }
+            else
+            {
+                QSet<vtkIdType> remaining;
+                remaining.reserve(afterSeed.size());
+                for (vtkIdType pid : afterSeed)
+                    remaining.insert(pid);
+                for (vtkIdType pid : patchIds)
+                    remaining.remove(pid);
+
+                QVector<vtkIdType> remainingIds;
+                remainingIds.reserve(remaining.size());
+                for (vtkIdType pid : remaining)
+                    remainingIds.push_back(pid);
+                std::sort(remainingIds.begin(), remainingIds.end());
+                pickManager.setSelectedPointIds(getPageType(), m_uuid, kind, remainingIds, true);
+            }
+
+            qInfo().noquote()
+                << QStringLiteral("__RAW__点选整片：已%1 %2 个连续边界节点。")
+                       .arg(selectWholePatch ? QStringLiteral("选择") : QStringLiteral("取消"))
+                       .arg(patchIds.size());
+        }
+    }
+
+    // 基础节点信息仍按原界面显示。
     ui->IDLabel->setText(QString::number(nodeId));
     ui->XLabel->setText(QString::number(x, 'g', 12));
     ui->YLabel->setText(QString::number(y, 'g', 12));
     ui->ZLabel->setText(QString::number(z, 'g', 12));
 
-    if (!prevUuid.isEmpty())
+    PickManager& pickManager = PickManager::instance();
+    bool conflict = false;
+    const QVector<int> effective =
+        pickManager.effectiveNodeConstraintFlags(getPageType(), nodeId, &conflict);
+    ui->PrevUuidLabel->setText(formatConstraintFlags(effective, conflict));
+
+    const QStringList sourceUuids = pickManager.selectedNodeUuids(getPageType(), nodeId);
+    QStringList sourceTexts;
+    auto* pf = ServiceRegistry::instance().getService<PhysicalFieldService>();
+    for (const QString& sourceUuid : sourceUuids)
     {
-        auto* pf = ServiceRegistry::instance().getService<PhysicalFieldService>();
-        const QString prevName = pf ? pf->pageTitleByUuid(prevUuid) : QString();
-        ui->PrevUuidLabel->setText(prevName.isEmpty() ? prevUuid : prevName);
+        QString sourceName = pf ? pf->pageTitleByUuid(sourceUuid) : QString();
+        if (sourceName.trimmed().isEmpty())
+            sourceName = sourceUuid;
+
+        bool sourceConflict = false;
+        const QVector<int> sourceFlags = pickManager.nodeConstraintFlags(getPageType(), sourceUuid);
+        sourceTexts.push_back(QStringLiteral("%1（%2）")
+                                  .arg(sourceName, formatConstraintFlags(sourceFlags, sourceConflict)));
     }
-    else
-    {
-        ui->PrevUuidLabel->clear();
-    }
+    ui->OverlapSourceLabel->setText(sourceTexts.join(QStringLiteral("；")));
+
+    refreshOverlapFeedback();
 }

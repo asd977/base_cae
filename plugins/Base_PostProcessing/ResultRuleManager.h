@@ -16,7 +16,7 @@ struct ResultFileRule
     QString fileName;     // 结果文件名，例如 TEC_HP.DAT
     QString displayName;  // UI 显示名称
     QString description;  // 说明
-    QString format;       // tecplot / vtu
+    QString format;       // tecplot / vtu / vtm
 };
 
 class ResultRuleManager

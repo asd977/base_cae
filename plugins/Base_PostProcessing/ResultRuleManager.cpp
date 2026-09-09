@@ -127,9 +127,11 @@ bool ResultRuleManager::load()
 
         if (rule.format.isEmpty())
         {
-            rule.format = rule.fileName.endsWith(QStringLiteral(".vtu"), Qt::CaseInsensitive)
-                              ? QStringLiteral("vtu")
-                              : QStringLiteral("tecplot");
+            rule.format = rule.fileName.endsWith(QStringLiteral(".vtm"), Qt::CaseInsensitive)
+                              ? QStringLiteral("vtm")
+                              : (rule.fileName.endsWith(QStringLiteral(".vtu"), Qt::CaseInsensitive)
+                                     ? QStringLiteral("vtu")
+                                     : QStringLiteral("tecplot"));
         }
 
         files.push_back(rule);
@@ -217,6 +219,7 @@ QVector<ResultFileRule> ResultRuleManager::defaultFileRules() const
         {QStringLiteral("TEC_PRS.DAT"), QStringLiteral("主应力"), QStringLiteral("主应力分量"), QStringLiteral("tecplot")},
         {QStringLiteral("TEC_CMM.DAT"), QStringLiteral("应力水平"), QStringLiteral("应力水平结果"), QStringLiteral("tecplot")},
         {QStringLiteral("TEC_SL.DAT"), QStringLiteral("应力水平"), QStringLiteral("应力水平结果"), QStringLiteral("tecplot")},
-        {QStringLiteral("*.vtu"), QStringLiteral("VTU结果"), QStringLiteral("VTK 非结构网格结果"), QStringLiteral("vtu")}
+        {QStringLiteral("*.vtu"), QStringLiteral("VTU结果"), QStringLiteral("VTK 非结构网格结果"), QStringLiteral("vtu")},
+        {QStringLiteral("*.vtm"), QStringLiteral("VTM结果"), QStringLiteral("按 MATYPE 分块的 VTK MultiBlock 结果"), QStringLiteral("vtm")}
     };
 }

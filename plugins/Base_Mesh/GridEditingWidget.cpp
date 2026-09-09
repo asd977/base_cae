@@ -577,7 +577,7 @@ GridEditingWidget::GridEditingWidget(QWidget* parent)
         ui->comboBoxColorMode->clear();
         ui->comboBoxColorMode->addItem(QStringLiteral("默认颜色"), static_cast<int>(ColorMode::None));
         ui->comboBoxColorMode->addItem(QStringLiteral("按网格拓扑"), static_cast<int>(ColorMode::Topology));
-        ui->comboBoxColorMode->addItem(QStringLiteral("按计算类型编号"), static_cast<int>(ColorMode::Ketype));
+        ui->comboBoxColorMode->addItem(QStringLiteral("按求解器单元类型"), static_cast<int>(ColorMode::Ketype));
         ui->comboBoxColorMode->addItem(QStringLiteral("按材料类型"), static_cast<int>(ColorMode::Matype));
         ui->comboBoxColorMode->addItem(QStringLiteral("按填筑分层"), static_cast<int>(ColorMode::Layer));
         const int initialIndex = ui->comboBoxColorMode->findData(
@@ -1024,17 +1024,34 @@ QString GridEditingWidget::displayTextForFilterValue(const QString& category, in
 
     if (category == kCategoryKetype)
     {
-        // 当前求解器 KEATT_CON/KEATT_VAR 中：
-        // KETYPE=1 为 2 节点线类计算单元；KETYPE=6 为 8 槽位三维实体计算单元。
-        // 这里只标注已经明确的类型，未知编号仍保留原值，避免误命名。
         switch (value)
         {
         case 1:
-            return QStringLiteral("1（线单元）");
+            return QStringLiteral("1（2节点线）");
+        case 2:
+            return QStringLiteral("2（3节点二次线）");
+        case 3:
+            return QStringLiteral("3（4节点四边形）");
+        case 4:
+            return QStringLiteral("4（6节点二次四边形）");
+        case 5:
+            return QStringLiteral("5（8节点二次四边形）");
         case 6:
-            return QStringLiteral("6（三维实体单元）");
+            return QStringLiteral("6（8节点六面体）");
+        case 31:
+            return QStringLiteral("31（3节点三角形）");
+        case 32:
+            return QStringLiteral("32（6节点二次三角形）");
+        case 35:
+            return QStringLiteral("35（4节点四面体）");
+        case 37:
+            return QStringLiteral("37（20节点二次六面体）");
+        case 38:
+            return QStringLiteral("38（6节点三棱柱）");
+        case 39:
+            return QStringLiteral("39（5节点金字塔）");
         default:
-            return QStringLiteral("%1（计算类型）").arg(value);
+            return QStringLiteral("%1（求解器单元类型）").arg(value);
         }
     }
 
@@ -1234,7 +1251,7 @@ void GridEditingWidget::buildFilterTreeFromGrid()
     {
         if (showTopologyFilter)
             addGroup(kCategoryTopology, QStringLiteral("网格拓扑"), topologyCounts);
-        addGroup(kCategoryKetype, QStringLiteral("计算类型编号"), ketypeCounts);
+        addGroup(kCategoryKetype, QStringLiteral("求解器单元类型"), ketypeCounts);
     }
 
     // 后处理模式只显示结果域：材料 + 分层。网格类型不参与联动。

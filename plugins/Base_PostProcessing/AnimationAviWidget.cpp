@@ -192,6 +192,8 @@ QJsonObject AnimationAviWidget::saveJson()
     object.insert(QStringLiteral("loop"), ui->loopCheckBox->isChecked());
     object.insert(QStringLiteral("fixedRange"),
                   ui->fixRangeCheckBox->isChecked());
+    object.insert(QStringLiteral("showExcavatedRegion"),
+                  ui->showExcavatedCheckBox->isChecked());
     object.insert(QStringLiteral("interpolate"),
                   ui->interpCheckBox->isChecked());
     object.insert(QStringLiteral("interpolationFrames"),
@@ -208,6 +210,14 @@ void AnimationAviWidget::loadJson(const QJsonObject& object)
     m_pendingSequenceKey =
         object.value(QStringLiteral("sequenceKey")).toString();
     m_pendingScalar = object.value(QStringLiteral("scalar")).toString();
+    m_pendingShowExcavated = object.contains(QStringLiteral("showExcavatedRegion"))
+                                 ? object.value(QStringLiteral("showExcavatedRegion")).toBool(false)
+                                 : m_pendingSequenceKey.contains(
+                                       QStringLiteral("含已开挖体"), Qt::CaseInsensitive);
+    {
+        const QSignalBlocker blocker(ui->showExcavatedCheckBox);
+        ui->showExcavatedCheckBox->setChecked(m_pendingShowExcavated);
+    }
 
     ui->fpsSpin->setValue(
         object.value(QStringLiteral("fps")).toDouble(5.0));
@@ -244,10 +254,14 @@ void AnimationAviWidget::refreshModel()
     QString preferredRange = !m_pendingRangeKey.isEmpty()
                                  ? m_pendingRangeKey
                                  : ui->rangeComboBox->currentData().toString();
+    const bool preferredShowExcavated = !m_pendingJson.isEmpty()
+                                             ? m_pendingShowExcavated
+                                             : ui->showExcavatedCheckBox->isChecked();
 
     const int preferredIndex = m_model.sequenceIndex(preferredSequence);
     if (const auto* sequence = m_model.sequence(preferredIndex))
     {
+        preferredSequence = sequence->key;
         preferredAnalysis = sequence->analysisKey;
         preferredRange = sequence->rangeKey;
     }
@@ -255,6 +269,10 @@ void AnimationAviWidget::refreshModel()
     populateAnalysisCombo(preferredAnalysis);
     populateRangeCombo(preferredRange);
     populateResultCombo(preferredSequence);
+    {
+        const QSignalBlocker blocker(ui->showExcavatedCheckBox);
+        ui->showExcavatedCheckBox->setChecked(preferredShowExcavated);
+    }
     activateSelectedSequence();
 
     if (!m_pendingScalar.isEmpty())
@@ -277,6 +295,7 @@ void AnimationAviWidget::refreshModel()
     m_pendingRangeKey.clear();
     m_pendingSequenceKey.clear();
     m_pendingScalar.clear();
+    m_pendingShowExcavated = false;
     m_pendingJson = QJsonObject();
     updateControls();
 }
@@ -361,6 +380,13 @@ void AnimationAviWidget::activateSelectedSequence()
         return;
     }
 
+    const bool hasExcavatedVariant = currentSequenceHasExcavatedVariant();
+    {
+        const QSignalBlocker blocker(ui->showExcavatedCheckBox);
+        if (!hasExcavatedVariant)
+            ui->showExcavatedCheckBox->setChecked(false);
+    }
+
     {
         const QSignalBlocker blocker(ui->frameSlider);
         ui->frameSlider->setRange(0, sequence->frames.size() - 1);
@@ -386,6 +412,29 @@ const PostAnimationSequenceModel::Sequence*
 AnimationAviWidget::currentSequence() const
 {
     return m_model.sequence(m_sequenceIndex);
+}
+
+QString AnimationAviWidget::frameFilePath(
+    const PostAnimationSequenceModel::Frame& frame) const
+{
+    if (ui->showExcavatedCheckBox->isChecked() &&
+        !frame.excavatedFilePath.trimmed().isEmpty())
+        return frame.excavatedFilePath;
+    if (!frame.filePath.trimmed().isEmpty())
+        return frame.filePath;
+    return frame.excavatedFilePath;
+}
+
+bool AnimationAviWidget::currentSequenceHasExcavatedVariant() const
+{
+    const auto* sequence = currentSequence();
+    if (!sequence)
+        return false;
+    return std::any_of(sequence->frames.cbegin(), sequence->frames.cend(),
+                       [](const PostAnimationSequenceModel::Frame& frame)
+    {
+        return !frame.excavatedFilePath.trimmed().isEmpty();
+    });
 }
 
 vtkSmartPointer<vtkUnstructuredGrid>
@@ -442,7 +491,7 @@ void AnimationAviWidget::preloadNeighbourFrame()
         return;
 
     const QString sequenceKey = sequence->key;
-    const QString filePath = sequence->frames.at(next).filePath;
+    const QString filePath = frameFilePath(sequence->frames.at(next));
     if (m_gridCache.contains(cacheKeyForPath(filePath)))
         return;
 
@@ -462,8 +511,8 @@ bool AnimationAviWidget::loadFrame(int index, bool updateScalarList)
         return false;
 
     QScopedValueRollback<bool> loadingGuard(m_loadingState, true);
-    vtkSmartPointer<vtkUnstructuredGrid> grid =
-        readGrid(sequence->frames.at(index).filePath);
+    const QString filePath = frameFilePath(sequence->frames.at(index));
+    vtkSmartPointer<vtkUnstructuredGrid> grid = readGrid(filePath);
     if (!grid)
         return false;
 
@@ -561,7 +610,11 @@ bool AnimationAviWidget::computeGlobalRange(const QString& scalarName,
     if (!sequence || scalarName.isEmpty())
         return false;
 
-    const QString cacheKey = sequenceScalarKey(sequence->key, scalarName);
+    const QString modeKey = sequence->key +
+        (ui->showExcavatedCheckBox->isChecked()
+             ? QStringLiteral("|with-excavated")
+             : QStringLiteral("|current-stage"));
+    const QString cacheKey = sequenceScalarKey(modeKey, scalarName);
     const auto cached = m_rangeCache.constFind(cacheKey);
     if (cached != m_rangeCache.constEnd())
     {
@@ -579,7 +632,7 @@ bool AnimationAviWidget::computeGlobalRange(const QString& scalarName,
     double maximum = 1.0;
     for (const auto& frame : sequence->frames)
     {
-        vtkSmartPointer<vtkUnstructuredGrid> grid = readGrid(frame.filePath);
+        vtkSmartPointer<vtkUnstructuredGrid> grid = readGrid(frameFilePath(frame));
         vtkSmartPointer<vtkUnstructuredGrid> displayGrid = postFilteredResultGrid(grid);
         vtkDataArray* array = scalarArray(displayGrid, scalarName);
         if (!array)
@@ -802,6 +855,14 @@ void AnimationAviWidget::updateControls()
     ui->loopCheckBox->setEnabled(ready);
     ui->fixRangeCheckBox->setEnabled(ready);
 
+    const bool hasExcavatedVariant = currentSequenceHasExcavatedVariant();
+    ui->showExcavatedCheckBox->setVisible(hasExcavatedVariant);
+    ui->showExcavatedCheckBox->setEnabled(ready && hasExcavatedVariant);
+    ui->showExcavatedCheckBox->setToolTip(
+        hasExcavatedVariant
+            ? QStringLiteral("显示当前阶段已经开挖掉的区域")
+            : QString());
+
     const bool interpolationAvailable =
         ready && sequence->supportsInterpolation &&
         sequence->axis == PostAnimationSequenceModel::Axis::Time;
@@ -981,7 +1042,7 @@ bool AnimationAviWidget::showInterpolatedFrame(int nextIndex, double factor)
         return false;
 
     vtkSmartPointer<vtkUnstructuredGrid> nextGrid =
-        readGrid(sequence->frames.at(nextIndex).filePath);
+        readGrid(frameFilePath(sequence->frames.at(nextIndex)));
     vtkSmartPointer<vtkUnstructuredGrid> interpolatedGrid =
         interpolate(m_grid, nextGrid, factor);
     if (!interpolatedGrid)
@@ -992,6 +1053,35 @@ bool AnimationAviWidget::showInterpolatedFrame(int nextIndex, double factor)
     updateFrameLabel();
     renderNow();
     return true;
+}
+
+void AnimationAviWidget::on_showExcavatedCheckBox_toggled(bool checked)
+{
+    if (m_loadingState)
+        return;
+
+    const auto* sequence = currentSequence();
+    if (!sequence || !currentSequenceHasExcavatedVariant())
+    {
+        const QSignalBlocker blocker(ui->showExcavatedCheckBox);
+        ui->showExcavatedCheckBox->setChecked(false);
+        return;
+    }
+
+    stopTimer();
+    m_subStep = 0;
+    m_rangeCache.clear();
+
+    const int frame = qBound(0, m_currentFrame, sequence->frames.size() - 1);
+    if (!loadFrame(frame, false))
+    {
+        setStatusText(QStringLiteral("显示范围切换失败"), true);
+        return;
+    }
+
+    setStatusText(checked ? QStringLiteral("已显示已开挖区域")
+                          : QStringLiteral("已切换为当前开挖状态"));
+    updateControls();
 }
 
 void AnimationAviWidget::onTick()

@@ -86,6 +86,12 @@
        <widget class="QComboBox" name="scalarComboBox"/>
       </item>
       <item row="4" column="0" colspan="2">
+       <widget class="QCheckBox" name="showExcavatedCheckBox">
+        <property name="text"><string>显示已开挖区域</string></property>
+        <property name="checked"><bool>false</bool></property>
+       </widget>
+      </item>
+      <item row="5" column="0" colspan="2">
        <widget class="QLabel" name="sequenceSummaryLabel">
         <property name="text"><string>暂无可播放的序列结果</string></property>
         <property name="wordWrap"><bool>true</bool></property>

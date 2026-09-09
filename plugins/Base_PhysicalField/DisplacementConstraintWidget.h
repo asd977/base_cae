@@ -10,6 +10,11 @@
 #include "PickManager.h"
 
 class vtkUnstructuredGrid;
+class vtkActor;
+class vtkPoints;
+class vtkVertexGlyphFilter;
+class vtkPolyDataMapper;
+class vtkPolyData;
 class vtkCellPicker;
 class vtkCallbackCommand;
 class vtkIntArray;
@@ -65,6 +70,11 @@ class DisplacementConstraintWidget : public BasePage
     void updateCoordinateControlState();
     void clearConstraintVisualization(bool renderNow = true);
     QString constraintVisualizationPropId() const;
+    void refreshOverlapFeedback(bool renderNow = true);
+    void clearOverlapVisualization(bool renderNow = true);
+    QString overlapVisualizationPropId() const;
+    QString formatConstraintFlags(const QVector<int>& flags, bool conflict = false) const;
+    void registerConstraintFlags();
 
   private:
     Ui::DisplacementConstraintWidget* ui = nullptr;
@@ -73,4 +83,10 @@ class DisplacementConstraintWidget : public BasePage
     VisualWidgetService* m_visual = nullptr;
     vtkSmartPointer<vtkAssembly> m_constraintMarkerAssembly;
     vtkSmartPointer<vtkOrientationMarkerWidget> m_constraintMarkerWidget;
+
+    vtkSmartPointer<vtkPoints> m_overlapPoints;
+    vtkSmartPointer<vtkPolyData> m_overlapPolyData;
+    vtkSmartPointer<vtkVertexGlyphFilter> m_overlapGlyph;
+    vtkSmartPointer<vtkPolyDataMapper> m_overlapMapper;
+    vtkSmartPointer<vtkActor> m_overlapActor;
 };

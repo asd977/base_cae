@@ -18,9 +18,8 @@ vtkSmartPointer<vtkUnstructuredGrid> normalizeSolverTopology(
 vtkSmartPointer<vtkUnstructuredGrid> readGrid(const QString& fileName,
                                               QString* errorMessage = nullptr);
 
-// 以下 VTP API 仅保留旧工程兼容/清理用途。
-// 当前主显示链以单一 VTU 为权威结果，域显示面在内存中由网格已有 mapped-surface
-// 映射得到，不再把 surface/domains 作为主加载依赖。
+// 以下 VTP API 仅保留旧工程兼容/清理用途。当前权威结果是按 MATYPE 分块的
+// VTM，不再把 surface/domains 作为主加载依赖，也不从结果单元重建工程域。
 QString surfaceCachePath(const QString& resultFileName);
 QString domainSurfaceCachePath(const QString& resultFileName);
 vtkSmartPointer<vtkPolyData> readSurface(const QString& resultFileName,

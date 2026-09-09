@@ -301,7 +301,7 @@
                       <bool>false</bool>
                     </property>
                     <property name="toolTip">
-                      <string>当前前端未提供 MACHAN.DAT 材料阻尼映射，仅导出系统统一阻尼。</string>
+                      <string>当前仅支持系统统一阻尼。</string>
                     </property>
                     <item>
                       <property name="text">

@@ -390,7 +390,7 @@ void FillStorageCyclePage::initValueEditors()
     ui->editModalOrder->setValidator(
         new QIntValidator(1, std::numeric_limits<int>::max(), ui->editModalOrder));
     ui->editModalOrder->setToolTip(
-        QStringLiteral("兼容旧工程的隐藏字段；实际模态阶数请在“动力分析”子节点设置。"));
+        QStringLiteral("模态阶数请在“动力分析”子节点设置。"));
     ui->editWOMI1->setToolTip(QStringLiteral("未做模态分析时填写。"));
 
     connect(ui->groupWet, &QGroupBox::toggled, this,

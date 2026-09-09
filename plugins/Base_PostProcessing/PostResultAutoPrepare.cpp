@@ -27,7 +27,18 @@ namespace
 constexpr char kLegacyPostResultRoot[] = "post";
 constexpr char kManifestName[] = "manifest.json";
 constexpr char kLegacyAnalysisManifestFileName[] = "analysis.json";
-constexpr int kManifestVersion = 22;
+// v24: 自动准备结果改为原生 VTM；每个 MATYPE 是一个权威 Block，LAYER
+// 保持 CellData。旧的单 VTU/拆节点缓存必须重建。
+constexpr int kManifestVersion = 24;
+
+bool resultPackageExists(const QFileInfo& info)
+{
+    if (!info.exists() || !info.isFile() || info.size() <= 0)
+        return false;
+    if (info.suffix().compare(QStringLiteral("vtm"), Qt::CaseInsensitive) != 0)
+        return true;
+    return QFileInfo(info.dir().filePath(info.completeBaseName())).isDir();
+}
 
 struct GeneratedFileInfo
 {
@@ -473,7 +484,7 @@ QString baseDisplayName(const QString& kind)
         return QStringLiteral("应力水平");
     if (normalized == QStringLiteral("failure_zone"))
         return QStringLiteral("破坏区");
-    if (normalized == QStringLiteral("vtu"))
+    if (normalized == QStringLiteral("vtu") || normalized == QStringLiteral("vtm"))
         return QStringLiteral("网格结果");
     return QStringLiteral("其他结果");
 }
@@ -794,7 +805,8 @@ bool manifestMissingOrStale(const QDir& projectDir, const QDir& sourceDir,
     for (const QJsonValue& value : files)
     {
         const QString fileName = value.toObject().value(QStringLiteral("fileName")).toString();
-        if (fileName.isEmpty() || !QFileInfo::exists(preparedDir.filePath(fileName)))
+        if (fileName.isEmpty() ||
+            !resultPackageExists(QFileInfo(preparedDir.filePath(fileName))))
             return true;
     }
     return false;
@@ -825,7 +837,8 @@ bool writeManifest(const QDir& projectDir, const QDir& sourceDir, const QDir& pr
             continue;
 
         const QString suffix = info.suffix().toLower();
-        if (suffix != QStringLiteral("tec") && suffix != QStringLiteral("vtu"))
+        if (suffix != QStringLiteral("tec") && suffix != QStringLiteral("vtu") &&
+            suffix != QStringLiteral("vtm"))
             continue;
 
         const GeneratedFileInfo metadata = generatedFileInfo(info.fileName(), strengthReduction);
@@ -834,9 +847,11 @@ bool writeManifest(const QDir& projectDir, const QDir& sourceDir, const QDir& pr
         object.insert(QStringLiteral("fileName"), info.fileName());
         object.insert(QStringLiteral("kind"), metadata.kind);
         object.insert(QStringLiteral("format"),
-                      suffix == QStringLiteral("vtu")
-                          ? QStringLiteral("vtu")
-                          : QStringLiteral("tecplot"));
+                      suffix == QStringLiteral("vtm")
+                          ? QStringLiteral("vtm")
+                          : (suffix == QStringLiteral("vtu")
+                                 ? QStringLiteral("vtu")
+                                 : QStringLiteral("tecplot")));
         if (!metadata.frameKey.isEmpty())
         {
             const double frameValue = timeInfo.valid
@@ -887,7 +902,7 @@ QVector<PostResultAutoPrepare::ResultFile> readManifestFiles(const QDir& prepare
     if (!document.isObject())
         return {};
 
-    // 结果拓扑格式升级时不能继续直接复用旧 VTU。这里只读取很小的
+    // 结果拓扑格式升级时不能继续直接复用旧网格缓存。这里只读取很小的
     // manifest 版本号，不做 inputSnapshot/目录扫描，因此不会拖慢正常加载。
     if (document.object().value(QStringLiteral("version")).toInt() != kManifestVersion)
         return {};
@@ -899,7 +914,7 @@ QVector<PostResultAutoPrepare::ResultFile> readManifestFiles(const QDir& prepare
         const QJsonObject object = value.toObject();
         const QString fileName = object.value(QStringLiteral("fileName")).toString();
         const QFileInfo info(preparedDir.filePath(fileName));
-        if (fileName.isEmpty() || !info.exists() || !info.isFile())
+        if (fileName.isEmpty() || !resultPackageExists(info))
             continue;
 
         PostResultAutoPrepare::ResultFile entry;
@@ -978,16 +993,18 @@ QVector<PostResultAutoPrepare::ResultFile> fallbackSourceFiles(const QDir& proje
 
     if (includeVtu)
     {
-        const QStringList files = sourceDir.entryList({QStringLiteral("*.vtu")}, QDir::Files,
-                                                      QDir::Name);
+        const QStringList files =
+            sourceDir.entryList({QStringLiteral("*.vtu"), QStringLiteral("*.vtm")},
+                                QDir::Files, QDir::Name);
         for (int i = 0; i < files.size(); ++i)
         {
             PostResultAutoPrepare::ResultFile entry;
             entry.displayName = files.size() == 1 ? QStringLiteral("网格结果")
                                                    : QStringLiteral("网格结果 %1").arg(i + 1);
             entry.filePath = QFileInfo(sourceDir.filePath(files.at(i))).absoluteFilePath();
-            entry.kind = QStringLiteral("vtu");
-            entry.format = QStringLiteral("vtu");
+            const QString format = QFileInfo(files.at(i)).suffix().toLower();
+            entry.kind = format;
+            entry.format = format;
             result.push_back(entry);
         }
     }
@@ -1265,27 +1282,58 @@ QString caveStageDisplayName(const QString& relativePath, const QString& leafNam
 
     if (leaf == QStringLiteral("GEOSTR") || relative.endsWith(QStringLiteral("/GEOSTR")))
         return QStringLiteral("地应力回归结果");
-    if (leaf == QStringLiteral("EALL"))
+
+    // 洞室求解器实际输出目录形如：
+    //   CASE01EXCA/E01、CASE01JACA/J01、CASE01EALL、CASE01JALL。
+    // CASE 后的编号是计算 CASE 编号，不是开挖级次；真正的开挖级次来自 E01/J01。
+    static const QRegularExpression eallExpression(QStringLiteral("^CASE\\d+EALL$"));
+    if (leaf == QStringLiteral("EALL") || eallExpression.match(leaf).hasMatch())
         return QStringLiteral("开挖完成状态");
-    if (leaf == QStringLiteral("JALL"))
+
+    static const QRegularExpression jallExpression(QStringLiteral("^CASE\\d+JALL$"));
+    if (leaf == QStringLiteral("JALL") || jallExpression.match(leaf).hasMatch())
         return QStringLiteral("开挖与支护完成状态");
-    if (leaf == QStringLiteral("LINE") || relative.endsWith(QStringLiteral("/LINE")))
+
+    static const QRegularExpression lineExpression(QStringLiteral("^CASE\\d+LINE$"));
+    if (leaf == QStringLiteral("LINE") || lineExpression.match(leaf).hasMatch() ||
+        relative.endsWith(QStringLiteral("/LINE")))
         return QStringLiteral("衬砌计算");
 
     static const QRegularExpression excavationExpression(QStringLiteral("^E(\\d+)$"));
     QRegularExpressionMatch match = excavationExpression.match(leaf);
-    if (match.hasMatch() && relative.contains(QStringLiteral("/EXCA/")))
-        return QStringLiteral("第 %1 级开挖").arg(match.captured(1).toInt());
+    if (match.hasMatch())
+    {
+        static const QRegularExpression excavationPathExpression(
+            QStringLiteral("(?:^|/)CASE\\d+EXCA/E\\d+$"));
+        if (excavationPathExpression.match(relative).hasMatch() ||
+            relative.contains(QStringLiteral("/EXCA/")))
+            return QStringLiteral("第 %1 级开挖").arg(match.captured(1).toInt());
+    }
 
     static const QRegularExpression supportExpression(QStringLiteral("^J(\\d+)$"));
     match = supportExpression.match(leaf);
-    if (match.hasMatch() && relative.contains(QStringLiteral("/JACA/")))
-        return QStringLiteral("第 %1 级开挖与支护").arg(match.captured(1).toInt());
+    if (match.hasMatch())
+    {
+        static const QRegularExpression supportPathExpression(
+            QStringLiteral("(?:^|/)CASE\\d+JACA/J\\d+$"));
+        if (supportPathExpression.match(relative).hasMatch() ||
+            relative.contains(QStringLiteral("/JACA/")))
+            return QStringLiteral("第 %1 级开挖与支护").arg(match.captured(1).toInt());
+    }
 
-    if (leaf == QStringLiteral("EXCA"))
+    static const QRegularExpression excaRootExpression(QStringLiteral("^CASE\\d+EXCA$"));
+    if (leaf == QStringLiteral("EXCA") || excaRootExpression.match(leaf).hasMatch())
         return QStringLiteral("分级开挖");
-    if (leaf == QStringLiteral("JACA"))
+
+    static const QRegularExpression jacaRootExpression(QStringLiteral("^CASE\\d+JACA$"));
+    if (leaf == QStringLiteral("JACA") || jacaRootExpression.match(leaf).hasMatch())
         return QStringLiteral("分级开挖与支护");
+
+    // CASE01 是洞室开挖计算的结果根目录，不把 01 解释为第 1 级开挖/工况 1。
+    static const QRegularExpression caveCaseExpression(QStringLiteral("^CASE\\d+$"));
+    if (caveCaseExpression.match(leaf).hasMatch())
+        return QStringLiteral("开挖结果");
+
     return QString();
 }
 
@@ -1392,6 +1440,9 @@ QString resultGroupDisplayName(const QString& projectDir, const QString& sourceD
         relative.contains(QStringLiteral("GEOSTR")) ||
         relative.contains(QStringLiteral("/EXCA")) ||
         relative.contains(QStringLiteral("/JACA")) ||
+        relative.contains(QStringLiteral("EXCA/")) ||
+        relative.contains(QStringLiteral("JACA/")) ||
+        QRegularExpression(QStringLiteral("^CASE\\d+(?:EALL|JALL|EXCA|JACA|LINE)$")).match(leaf).hasMatch() ||
         leaf == QStringLiteral("EALL") || leaf == QStringLiteral("JALL") ||
         leaf == QStringLiteral("LINE"))
     {
@@ -1558,9 +1609,19 @@ bool prepareDirectory(const QString& projectDir, const QString& sourceDir)
     clearRecentlyValidatedFresh(prepared);
     const QStringList staleFiles =
         prepared.entryList({QStringLiteral("*.tec"), QStringLiteral("*.vtu"),
-                            QStringLiteral("*.vtp")}, QDir::Files);
+                            QStringLiteral("*.vtm"), QStringLiteral("*.vtp")}, QDir::Files);
     for (const QString& staleFile : staleFiles)
+    {
+        const QFileInfo staleInfo(prepared.filePath(staleFile));
+        if (staleInfo.suffix().compare(QStringLiteral("vtm"), Qt::CaseInsensitive) == 0)
+        {
+            const QString leafDirectory =
+                prepared.filePath(staleInfo.completeBaseName());
+            if (QDir(leafDirectory).exists())
+                QDir(leafDirectory).removeRecursively();
+        }
         prepared.remove(staleFile);
+    }
     prepared.remove(QString::fromLatin1(kManifestName));
 
     PostResultGenerator::Options options;
@@ -1709,16 +1770,21 @@ QVector<ResultFile> resultFiles(const QString& projectDir, const QString& source
     if (!project.exists() || !source.exists())
         return {};
 
-    auto filterBareVtu = [includeVtu](QVector<ResultFile> files)
+    auto filterBareGrid = [includeVtu](QVector<ResultFile> files)
     {
         if (!includeVtu)
         {
-            // 自动准备目录内部的标准 VTU（kind=displacement/stress/...）仍然保留；
-            // 只过滤用户额外导入、kind 本身就是 vtu 的裸文件。
+            // 自动准备目录内部的标准 VTM/VTU（kind=displacement/stress/...）仍保留；
+            // 只过滤用户额外导入、kind 本身就是格式名的裸网格文件。
             files.erase(std::remove_if(files.begin(), files.end(), [](const ResultFile& file)
             {
-                return file.format.compare(QStringLiteral("vtu"), Qt::CaseInsensitive) == 0 &&
-                       file.kind.compare(QStringLiteral("vtu"), Qt::CaseInsensitive) == 0;
+                const bool bareVtu =
+                    file.format.compare(QStringLiteral("vtu"), Qt::CaseInsensitive) == 0 &&
+                    file.kind.compare(QStringLiteral("vtu"), Qt::CaseInsensitive) == 0;
+                const bool bareVtm =
+                    file.format.compare(QStringLiteral("vtm"), Qt::CaseInsensitive) == 0 &&
+                    file.kind.compare(QStringLiteral("vtm"), Qt::CaseInsensitive) == 0;
+                return bareVtu || bareVtm;
             }), files.end());
         }
         return files;
@@ -1732,17 +1798,17 @@ QVector<ResultFile> resultFiles(const QString& projectDir, const QString& source
     if (!preparedPath.isEmpty())
     {
         const QDir preparedDir(preparedPath);
-        QVector<ResultFile> files = filterBareVtu(readManifestFiles(preparedDir));
+        QVector<ResultFile> files = filterBareGrid(readManifestFiles(preparedDir));
         if (!files.isEmpty())
             return files;
 
         // 已经存在 manifest 但版本不兼容/文件不完整时，说明这是一次缓存格式升级。
-        // 只在这种情况下同步重建一次，避免继续读取旧拓扑 VTU；重建完成以后仍然
+        // 只在这种情况下同步重建一次，避免继续读取旧拓扑缓存；重建完成以后仍然
         // 走上面的纯读取快路径，不会影响后续正常加载速度。
         if (QFileInfo::exists(preparedDir.filePath(QString::fromLatin1(kManifestName))))
         {
             prepareDirectory(project.absolutePath(), source.absolutePath());
-            files = filterBareVtu(readManifestFiles(preparedDir));
+            files = filterBareGrid(readManifestFiles(preparedDir));
             if (!files.isEmpty())
                 return files;
         }
@@ -1751,7 +1817,7 @@ QVector<ResultFile> resultFiles(const QString& projectDir, const QString& source
     // 如果求解器目录本身已经有可直接读取的结果，也优先显示，避免为了填下拉框
     // 先同步生成缓存。
     QVector<ResultFile> directFiles =
-        filterBareVtu(fallbackSourceFiles(project, source, includeVtu));
+        filterBareGrid(fallbackSourceFiles(project, source, includeVtu));
     if (!directFiles.isEmpty())
         return directFiles;
 
@@ -1759,7 +1825,7 @@ QVector<ResultFile> resultFiles(const QString& projectDir, const QString& source
     prepareDirectory(project.absolutePath(), source.absolutePath());
     if (!preparedPath.isEmpty())
     {
-        QVector<ResultFile> files = filterBareVtu(readManifestFiles(QDir(preparedPath)));
+        QVector<ResultFile> files = filterBareGrid(readManifestFiles(QDir(preparedPath)));
         if (!files.isEmpty())
             return files;
     }

@@ -18,6 +18,7 @@
 #include <vtkSmartPointer.h>
 #include <vtkTecplotReader.h>
 #include <vtkUnstructuredGrid.h>
+#include <vtkXMLMultiBlockDataReader.h>
 #include <vtkXMLUnstructuredGridReader.h>
 #include <vtkXMLPolyDataReader.h>
 
@@ -25,6 +26,7 @@
 #include <QCoreApplication>
 #include <QDateTime>
 #include <QDir>
+#include <QDirIterator>
 #include <QDebug>
 #include <QFile>
 #include <QFileInfo>
@@ -32,6 +34,7 @@
 #include <QMutex>
 #include <QMutexLocker>
 #include <QSet>
+#include <QTemporaryDir>
 #include <QTemporaryFile>
 #include <QWaitCondition>
 #include <QVector>
@@ -823,6 +826,18 @@ int normalizedTopologyMarkerVersion(vtkUnstructuredGrid* grid)
     return qMax(0, static_cast<int>(std::llround(marker->GetTuple1(0))));
 }
 
+void setNormalizedTopologyMarkerVersion(vtkUnstructuredGrid* grid, int version)
+{
+    if (!grid || !grid->GetFieldData())
+        return;
+    grid->GetFieldData()->RemoveArray(kNormalizedTopologyMarker);
+    auto marker = vtkSmartPointer<vtkIntArray>::New();
+    marker->SetName(kNormalizedTopologyMarker);
+    marker->SetNumberOfComponents(1);
+    marker->InsertNextValue(version);
+    grid->GetFieldData()->AddArray(marker);
+}
+
 vtkSmartPointer<vtkUnstructuredGrid> normalizeLegacyDegenerateBricks(
     vtkUnstructuredGrid* source)
 {
@@ -1150,6 +1165,77 @@ bool copyToTemporaryFile(const QString& sourcePath, QTemporaryFile& target,
     target.close();
     return true;
 }
+
+bool copyVtmPackageToTemporary(const QString& sourcePath, QTemporaryDir& target,
+                               QString& targetRootPath, QString* errorMessage)
+{
+    const QFileInfo sourceInfo(sourcePath);
+    const QString packageBase = sourceInfo.completeBaseName();
+    const QString sourceLeafPath = sourceInfo.dir().filePath(packageBase);
+    if (!target.isValid() || !QDir(sourceLeafPath).exists())
+    {
+        if (errorMessage)
+            *errorMessage = QStringLiteral("VTM 数据目录不存在：%1").arg(sourceLeafPath);
+        return false;
+    }
+
+    // 自动生成的结果名均为 ASCII；这里只把中文工程目录搬到兼容临时目录。
+    // 若用户手工导入了中文 VTM 文件名，优先依赖上面的 Windows 短路径，避免
+    // 改写 VTM 内部的相对引用。
+    if (!isAsciiPath(sourceInfo.fileName()) || !isAsciiPath(packageBase))
+    {
+        if (errorMessage)
+            *errorMessage = QStringLiteral("VTM 文件名需要使用 ASCII 字符：%1")
+                                .arg(sourceInfo.fileName());
+        return false;
+    }
+
+    const QString targetLeafPath = target.filePath(packageBase);
+    if (!QDir().mkpath(targetLeafPath))
+    {
+        if (errorMessage)
+            *errorMessage = QStringLiteral("无法创建 VTM 临时数据目录。");
+        return false;
+    }
+
+    const QDir sourceLeaf(sourceLeafPath);
+    QDir targetLeaf(targetLeafPath);
+    QDirIterator iterator(sourceLeafPath, QDir::AllEntries | QDir::NoDotAndDotDot,
+                          QDirIterator::Subdirectories);
+    while (iterator.hasNext())
+    {
+        const QString sourceEntry = iterator.next();
+        const QFileInfo entryInfo(sourceEntry);
+        const QString relative = sourceLeaf.relativeFilePath(sourceEntry);
+        const QString targetEntry = targetLeaf.filePath(relative);
+        if (entryInfo.isDir())
+        {
+            if (!targetLeaf.mkpath(relative))
+            {
+                if (errorMessage)
+                    *errorMessage = QStringLiteral("无法创建 VTM 临时子目录。");
+                return false;
+            }
+            continue;
+        }
+        if (!QDir().mkpath(QFileInfo(targetEntry).absolutePath()) ||
+            !QFile::copy(sourceEntry, targetEntry))
+        {
+            if (errorMessage)
+                *errorMessage = QStringLiteral("无法复制 VTM 数据文件：%1").arg(sourceEntry);
+            return false;
+        }
+    }
+
+    targetRootPath = target.filePath(sourceInfo.fileName());
+    if (!QFile::copy(sourcePath, targetRootPath))
+    {
+        if (errorMessage)
+            *errorMessage = QStringLiteral("无法复制 VTM 元文件：%1").arg(sourcePath);
+        return false;
+    }
+    return true;
+}
 }
 
 namespace PostTecplotUtils
@@ -1304,9 +1390,12 @@ vtkSmartPointer<vtkUnstructuredGrid> readGrid(const QString& fileName,
 
     const bool vtuInput =
         sourceInfo.suffix().compare(QStringLiteral("vtu"), Qt::CaseInsensitive) == 0;
+    const bool vtmInput =
+        sourceInfo.suffix().compare(QStringLiteral("vtm"), Qt::CaseInsensitive) == 0;
 
     QString vtkPath = sourcePath;
     std::unique_ptr<QTemporaryFile> temporaryFile;
+    std::unique_ptr<QTemporaryDir> temporaryPackage;
     if (!isAsciiPath(vtkPath))
     {
         const QString sourceShortPath = shortPathName(sourcePath);
@@ -1314,15 +1403,27 @@ vtkSmartPointer<vtkUnstructuredGrid> readGrid(const QString& fileName,
             vtkPath = sourceShortPath;
         else
         {
-            const QString suffix = vtuInput ? QStringLiteral(".vtu")
-                                            : QStringLiteral(".tec");
-            temporaryFile = std::make_unique<QTemporaryFile>(
-                QDir(temporaryDirectory()).filePath(
-                    QStringLiteral("cae_post_XXXXXX") + suffix));
-            temporaryFile->setAutoRemove(true);
-            if (!copyToTemporaryFile(sourcePath, *temporaryFile, errorMessage))
-                return nullptr;
-            vtkPath = temporaryFile->fileName();
+            if (vtmInput)
+            {
+                temporaryPackage = std::make_unique<QTemporaryDir>(
+                    QDir(temporaryDirectory()).filePath(
+                        QStringLiteral("cae_post_vtm_read_XXXXXX")));
+                if (!copyVtmPackageToTemporary(sourcePath, *temporaryPackage,
+                                               vtkPath, errorMessage))
+                    return nullptr;
+            }
+            else
+            {
+                const QString suffix = vtuInput ? QStringLiteral(".vtu")
+                                                : QStringLiteral(".tec");
+                temporaryFile = std::make_unique<QTemporaryFile>(
+                    QDir(temporaryDirectory()).filePath(
+                        QStringLiteral("cae_post_XXXXXX") + suffix));
+                temporaryFile->setAutoRemove(true);
+                if (!copyToTemporaryFile(sourcePath, *temporaryFile, errorMessage))
+                    return nullptr;
+                vtkPath = temporaryFile->fileName();
+            }
         }
         if (!isAsciiPath(vtkPath))
         {
@@ -1360,12 +1461,25 @@ vtkSmartPointer<vtkUnstructuredGrid> readGrid(const QString& fileName,
     }
     else
     {
-        auto reader = vtkSmartPointer<vtkTecplotReader>::New();
-        reader->SetFileName(encodedPath.constData());
-        reader->Update();
+        auto output = vtkSmartPointer<vtkMultiBlockDataSet>::New();
+        if (vtmInput)
+        {
+            auto reader = vtkSmartPointer<vtkXMLMultiBlockDataReader>::New();
+            reader->SetFileName(encodedPath.constData());
+            reader->Update();
+            if (reader->GetOutput())
+                output->ShallowCopy(reader->GetOutput());
+        }
+        else
+        {
+            auto reader = vtkSmartPointer<vtkTecplotReader>::New();
+            reader->SetFileName(encodedPath.constData());
+            reader->Update();
+            if (reader->GetOutput())
+                output->ShallowCopy(reader->GetOutput());
+        }
 
-        vtkMultiBlockDataSet* output = reader->GetOutput();
-        if (!output || output->GetNumberOfBlocks() == 0)
+        if (output->GetNumberOfBlocks() == 0)
         {
             if (errorMessage)
                 *errorMessage =
@@ -1374,12 +1488,16 @@ vtkSmartPointer<vtkUnstructuredGrid> readGrid(const QString& fileName,
         }
 
         auto appender = vtkSmartPointer<vtkAppendFilter>::New();
+        // MATYPE Block 的点必须保持互不合并；这只是把权威 MultiBlock 适配给
+        // 现有页面的 vtkUnstructuredGrid 输入，不做材料识别、提面或域重建。
+        appender->MergePointsOff();
         auto iterator =
             vtkSmartPointer<vtkDataObjectTreeIterator>::Take(output->NewTreeIterator());
         iterator->VisitOnlyLeavesOn();
         iterator->SkipEmptyNodesOn();
         int dataSetCount = 0;
         vtkDataSet* firstDataSet = nullptr;
+        bool allBlocksNormalized = vtmInput;
         for (iterator->InitTraversal(); !iterator->IsDoneWithTraversal();
              iterator->GoToNextItem())
         {
@@ -1388,6 +1506,12 @@ vtkSmartPointer<vtkUnstructuredGrid> readGrid(const QString& fileName,
             {
                 if (!firstDataSet)
                     firstDataSet = dataSet;
+                if (vtmInput)
+                {
+                    auto* leafGrid = vtkUnstructuredGrid::SafeDownCast(dataSet);
+                    if (!leafGrid || normalizedTopologyMarkerVersion(leafGrid) < 4)
+                        allBlocksNormalized = false;
+                }
                 appender->AddInputData(dataSet);
                 ++dataSetCount;
             }
@@ -1418,6 +1542,11 @@ vtkSmartPointer<vtkUnstructuredGrid> readGrid(const QString& fileName,
             appender->Update();
             grid->ShallowCopy(appender->GetOutput());
         }
+
+        // vtkAppendFilter 不保证保留 Composite 叶子的 FieldData；所有原生 Block
+        // 都带 marker>=4 时，在适配后的网格上恢复该标记，避免再次逐单元规范化。
+        if (allBlocksNormalized)
+            setNormalizedTopologyMarkerVersion(grid, 4);
     }
 
     if (!grid || grid->GetNumberOfPoints() == 0 || grid->GetNumberOfCells() == 0)
@@ -1466,7 +1595,8 @@ vtkSmartPointer<vtkUnstructuredGrid> readGrid(const QString& fileName,
 QString surfaceCachePath(const QString& resultFileName)
 {
     const QFileInfo info(QDir::fromNativeSeparators(resultFileName.trimmed()));
-    if (info.suffix().compare(QStringLiteral("vtu"), Qt::CaseInsensitive) != 0)
+    const QString suffix = info.suffix().toLower();
+    if (suffix != QStringLiteral("vtu") && suffix != QStringLiteral("vtm"))
         return {};
     return info.dir().filePath(info.completeBaseName() + QStringLiteral(".surface.vtp"));
 }
@@ -1474,7 +1604,8 @@ QString surfaceCachePath(const QString& resultFileName)
 QString domainSurfaceCachePath(const QString& resultFileName)
 {
     const QFileInfo info(QDir::fromNativeSeparators(resultFileName.trimmed()));
-    if (info.suffix().compare(QStringLiteral("vtu"), Qt::CaseInsensitive) != 0)
+    const QString suffix = info.suffix().toLower();
+    if (suffix != QStringLiteral("vtu") && suffix != QStringLiteral("vtm"))
         return {};
     return info.dir().filePath(info.completeBaseName() + QStringLiteral(".domains.vtp"));
 }

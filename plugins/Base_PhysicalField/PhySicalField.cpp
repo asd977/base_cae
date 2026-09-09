@@ -344,6 +344,15 @@ void PhysicalField::removeNodeByUuid(const QString& uuid)
     if (!node->getChildren().isEmpty())
         return;
 
+    // 位移约束允许共享节点后，删除约束时必须同步清掉其 PickManager 选区和方向元数据，
+    // 否则其他约束页面仍会把已删除 uuid 统计成“共享来源”。
+    if (dynamic_cast<DisplacementConstraintWidget*>(node->getPage()))
+    {
+        const QString domain = QStringLiteral("DisplacementConstraintWidget");
+        PickManager::instance().clearSelection(domain, uuid, PickMode::Node);
+        PickManager::instance().clearNodeConstraintFlags(domain, uuid);
+    }
+
     auto* parent = dynamic_cast<ProjectNode*>(node->parent());
     if (parent)
         parent->removeChild(node);
@@ -844,12 +853,15 @@ bool PhysicalField::validateSeismicAcceleration(QString* errorMessage) const
     return true;
 }
 
-// -------------------- 普通工具函数：应用选中点到 flags（无 lambda）
-// --------------------
-static void ApplyPickedNodeIdsToFlags(const QVector<vtkIdType>& pickedNodeIds, int ux, int uy,
+// -------------------- 普通工具函数：将位移约束按自由度合并到 flags --------------------
+// 规则：1=自由，只表示当前约束不贡献该方向；0=固定，可与其他方向固定正常叠加；
+// -10000=悬空杆件特殊状态，若与同一自由度上的其他非自由值同时出现，则记录为真正冲突。
+static void MergePickedNodeIdsToFlags(const QVector<vtkIdType>& pickedNodeIds, int ux, int uy,
                                       int uz, const QHash<int, int>& rowOfNodeId,
-                                      QVector<std::array<int, 3>>& flags)
+                                      QVector<std::array<int, 3>>& flags,
+                                      QSet<int>& conflictingNodeIds)
 {
+    const int incoming[3] = {ux, uy, uz};
     for (int i = 0; i < pickedNodeIds.size(); ++i)
     {
         const int nodeId = int(pickedNodeIds[i]);
@@ -859,9 +871,25 @@ static void ApplyPickedNodeIdsToFlags(const QVector<vtkIdType>& pickedNodeIds, i
             continue;
 
         const int r = it.value();
-        flags[r][0] = ux;
-        flags[r][1] = uy;
-        flags[r][2] = uz;
+        for (int axis = 0; axis < 3; ++axis)
+        {
+            const int value = incoming[axis];
+            if (value == 1)
+                continue; // 自由不会释放其他约束已经固定的自由度。
+
+            int& current = flags[r][axis];
+            if (current == 1)
+            {
+                current = value;
+                continue;
+            }
+            if (current == value)
+                continue;
+
+            // 两个不同的非自由值不能静默覆盖。当前主要用于拦截
+            // “悬空杆件节点(-10000)”与普通固定(0)落在同一自由度。
+            conflictingNodeIds.insert(nodeId);
+        }
     }
 }
 
@@ -1038,8 +1066,10 @@ void PhysicalField::generateIIIDFile()
     qInfo() << "bcNodes size:" << bcNodes.size();
 
     const QString domain = "DisplacementConstraintWidget"; // 必须与 activate 一致
+    QSet<int> conflictingNodeIds;
 
-    // 5) 应用每个约束节点的选中点
+    // 5) 应用每个约束节点的选中点。允许不同位移约束共享 node_id，
+    // 普通固定方向按自由度组合，不再依赖“后写覆盖前写”的顺序。
     for (int k = 0; k < bcNodes.size(); ++k)
     {
         ProjectNode* n = bcNodes[k];
@@ -1065,7 +1095,7 @@ void PhysicalField::generateIIIDFile()
                 PickManager::instance().getIdList(domain, uuid, PickMode::Node, GridKind::Solid);
 
             qInfo() << uuid << " pickedSolid(node_id) " << pickedSolid;
-            ApplyPickedNodeIdsToFlags(pickedSolid, ux, uy, uz, rowOfNodeId, flags);
+            MergePickedNodeIdsToFlags(pickedSolid, ux, uy, uz, rowOfNodeId, flags, conflictingNodeIds);
         }
 
         // line picks（现在返回 node_id）
@@ -1074,8 +1104,32 @@ void PhysicalField::generateIIIDFile()
                 PickManager::instance().getIdList(domain, uuid, PickMode::Node, GridKind::Line);
 
             qInfo() << uuid << " pickedLine(node_id) " << pickedLine;
-            ApplyPickedNodeIdsToFlags(pickedLine, ux, uy, uz, rowOfNodeId, flags);
+            MergePickedNodeIdsToFlags(pickedLine, ux, uy, uz, rowOfNodeId, flags, conflictingNodeIds);
         }
+    }
+
+    if (!conflictingNodeIds.isEmpty())
+    {
+        QList<int> conflicts = conflictingNodeIds.values();
+        std::sort(conflicts.begin(), conflicts.end());
+        QStringList examples;
+        const int showCount = std::min(10, int(conflicts.size()));
+        for (int i = 0; i < showCount; ++i)
+            examples.push_back(QString::number(conflicts.at(i)));
+
+        QString detail = QStringLiteral(
+            "检测到 %1 个节点在同一自由度上存在不兼容的位移约束。\n"
+            "普通 X/Y/Z 固定可以自动叠加；“悬空杆件节点”与普通固定不能静默合并。")
+                             .arg(conflictingNodeIds.size());
+        if (!examples.isEmpty())
+            detail += QStringLiteral("\n节点示例：%1%2")
+                          .arg(examples.join(QStringLiteral("、")),
+                               conflicts.size() > showCount ? QStringLiteral(" …") : QString());
+        detail += QStringLiteral("\n请回到位移约束页面检查红色/共享节点后再计算。");
+
+        QMessageBox::warning(nullptr, QStringLiteral("位移约束冲突"), detail);
+        qWarning().noquote() << "generateIIIDFile:" << detail;
+        return;
     }
 
     // 5.5) 孤立点（未被任何 cell 使用）强制输出全 0 约束
@@ -1450,6 +1504,7 @@ bool PhysicalField::importIIIDFile(const QString& filePath, QString* errorMessag
                                                     GridKind::Line,
                                                     QVector<vtkIdType>(),
                                                     true);
+        PickManager::instance().clearNodeConstraintFlags(domain, uuid);
 
         if (auto* parent = static_cast<ProjectNode*>(node->parent()))
             parent->removeChild(node);

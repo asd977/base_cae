@@ -4,6 +4,7 @@
 #include <core_global.h>
 
 #include <QHash>
+#include <QStringList>
 #include <QObject>
 #include <QSet>
 #include <QString>
@@ -63,6 +64,26 @@ class CORE_EXPORT PickManager : public QObject
                                  GridKind kind) const;
     QVector<vtkIdType> getSelectedPointIds(const QString& domain, const QString& uuid,
                                            GridKind kind) const;
+
+    // 节点选择策略：默认同一 domain 内节点互斥；位移约束可显式允许多个约束共享节点。
+    void setNodeSelectionAllowsOverlap(const QString& domain, bool allow);
+
+    // 位移约束等需要展示“共享节点/最终自由度”时使用。这里按 node_id 跨 Solid/Line 汇总，
+    // 不改变各 uuid 自己保存的选区。
+    QVector<int> selectedNodeIds(const QString& domain, const QString& uuid) const;
+    QVector<int> sharedNodeIds(const QString& domain, const QString& uuid) const;
+    QSet<int> conflictingSharedNodeIds(const QString& domain, const QString& uuid) const;
+    QVector<vtkIdType> sharedSelectedPointIds(const QString& domain, const QString& uuid,
+                                              GridKind kind) const;
+    QStringList selectedNodeUuids(const QString& domain, int nodeId) const;
+    QSet<int> conflictingNodeIds(const QString& domain) const;
+
+    // 可选的节点约束元数据。PickManager 只负责汇总显示，不负责求解器写出。
+    void setNodeConstraintFlags(const QString& domain, const QString& uuid, int ux, int uy, int uz);
+    void clearNodeConstraintFlags(const QString& domain, const QString& uuid);
+    QVector<int> nodeConstraintFlags(const QString& domain, const QString& uuid) const;
+    QVector<int> effectiveNodeConstraintFlags(const QString& domain, int nodeId,
+                                              bool* hasConflict = nullptr) const;
     QSet<DomainKey> appliedDomains(const QString& domain, const QString& uuid);
     DomainKey selectedDomain(const QString& domain, const QString& uuid) const;
     DomainKey previewDomain(const QString& domain, const QString& uuid) const;
@@ -151,6 +172,8 @@ class CORE_EXPORT PickManager : public QObject
     ~PickManager() override = default;
 
     void clearNodeSelection_NoRefresh(const QString& domain, const QString& uuid, GridKind kind);
+    bool nodeSelectionAllowsOverlap(const QString& domain) const;
+    int nodeIdForPoint(GridKind kind, vtkIdType pointId) const;
 
     // picking
     void setupPicking();
@@ -326,6 +349,9 @@ class CORE_EXPORT PickManager : public QObject
     vtkSmartPointer<vtkPolyDataMapper> m_previewSelMapper;
     vtkSmartPointer<vtkActor> m_previewSelActor;
 
+    QSet<QString> m_overlapNodeSelectionDomains;
+    QHash<QString, QHash<QString, QVector<int>>> m_nodeConstraintFlagsByDomainUuid;
+
     QHash<QString, QHash<vtkIdType, QString>> m_ownerPointSolidByDomain;
     QHash<QString, QHash<QString, QSet<vtkIdType>>> m_pointsSolidByDomainUuid;
     QHash<QString, QHash<vtkIdType, QString>> m_ownerPointLineByDomain;
@@ -395,6 +421,10 @@ class CORE_EXPORT PickManager : public QObject
   signals:
     void nodePicked(const QString& domain, const QString& activeUuid, GridKind kind, vtkIdType pid,
                     int nodeId, double x, double y, double z, const QString& prevUuid);
+    // 单击面时直接返回最终映射后的 faceKey。区域布置只需要一个“种子面”，
+    // 不再依赖 selectionChanged 后再从选择集合反查，避免页面状态/高亮重建造成漏响应。
+    void facePicked(const QString& domain, const QString& activeUuid, GridKind kind,
+                    vtkIdType faceKey);
 };
 
 #endif // PICKMANAGER_H

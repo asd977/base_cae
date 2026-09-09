@@ -4,38 +4,38 @@
 #include <PublicConstants.h>
 
 #include <QDir>
-#include <QElapsedTimer>
 #include <QDebug>
 #include <QFile>
 #include <QFileInfo>
 #include <QHash>
-#include <QMutex>
-#include <QMutexLocker>
+#include <QDirIterator>
+#include <QMap>
 #include <QRegularExpression>
 #include <QSet>
+#include <QTemporaryDir>
 #include <QTemporaryFile>
 #include <QTextStream>
 
 #include <vtkCellData.h>
 #include <vtkCellType.h>
+#include <vtkCompositeDataSet.h>
 #include <vtkDataArray.h>
 #include <vtkDoubleArray.h>
 #include <vtkFieldData.h>
-#include <vtkGeometryFilter.h>
-#include <vtkCell.h>
 #include <vtkDataSetAttributes.h>
+#include <vtkInformation.h>
 #include <vtkIntArray.h>
+#include <vtkMultiBlockDataSet.h>
 #include <vtkPointData.h>
-#include <vtkPolyData.h>
 #include <vtkPoints.h>
 #include <vtkSmartPointer.h>
 #include <vtkUnstructuredGrid.h>
+#include <vtkXMLMultiBlockDataWriter.h>
 #include <vtkXMLUnstructuredGridWriter.h>
-#include <vtkXMLPolyDataWriter.h>
 
 #include <algorithm>
-#include <array>
 #include <cmath>
+#include <limits>
 
 namespace
 {
@@ -84,34 +84,6 @@ struct RuptureFlags
     bool shear = false;
     bool tensile = false;
 };
-
-struct DomainFaceKey
-{
-    int matype{0};
-    int layer{0};
-    int pointCount{0};
-    std::array<vtkIdType, 8> pointIds{};
-
-    bool operator==(const DomainFaceKey& other) const noexcept
-    {
-        return matype == other.matype && layer == other.layer &&
-               pointCount == other.pointCount && pointIds == other.pointIds;
-    }
-};
-
-size_t qHash(const DomainFaceKey& key, size_t seed = 0) noexcept
-{
-    auto combine = [&](qulonglong value)
-    {
-        seed ^= ::qHash(value, seed + size_t(0x9e3779b97f4a7c15ULL));
-    };
-    combine(static_cast<qulonglong>(static_cast<quint32>(key.matype)));
-    combine(static_cast<qulonglong>(static_cast<quint32>(key.layer)));
-    combine(static_cast<qulonglong>(key.pointCount));
-    for (int i = 0; i < key.pointCount; ++i)
-        combine(static_cast<qulonglong>(key.pointIds[static_cast<size_t>(i)]));
-    return seed;
-}
 
 bool filesHaveSameContents(const QString& leftPath, const QString& rightPath)
 {
@@ -532,14 +504,19 @@ int vtkTopologyType(int type)
     }
 }
 
+constexpr int kAllMaterials = std::numeric_limits<int>::min();
+
 QVector<const Element*> displayElements(const QVector<Element>& expanded,
-                                        const QSet<int>& maskedMaterials)
+                                        const QSet<int>& maskedMaterials,
+                                        int requiredMaterial = kAllMaterials)
 {
     QVector<const Element*> selected;
     selected.reserve(expanded.size());
     for (const Element& element : expanded)
     {
         if (maskedMaterials.contains(element.material) || isJointType(element.type))
+            continue;
+        if (requiredMaterial != kAllMaterials && element.material != requiredMaterial)
             continue;
         if (vtkTopologyType(element.type) == VTK_EMPTY_CELL)
             continue;
@@ -552,13 +529,15 @@ vtkSmartPointer<vtkUnstructuredGrid> buildVtuGrid(
     const Mesh& mesh, const QVector<Element>& expanded,
     const QSet<int>& maskedMaterials, const QStringList& variables,
     const QVector<QVector<double>>* pointValues,
-    const QHash<int, QVector<double>>* cellValues, QString* error)
+    const QHash<int, QVector<double>>* cellValues, QString* error,
+    int requiredMaterial = kAllMaterials)
 {
-    const QVector<const Element*> selected = displayElements(expanded, maskedMaterials);
+    const QVector<const Element*> selected =
+        displayElements(expanded, maskedMaterials, requiredMaterial);
     if (selected.isEmpty())
     {
         if (error)
-            *error = QStringLiteral("没有可写入后处理 VTU 的有效面/体单元。");
+            *error = QStringLiteral("没有可写入后处理网格的有效面/体单元。");
         return nullptr;
     }
 
@@ -596,6 +575,8 @@ vtkSmartPointer<vtkUnstructuredGrid> buildVtuGrid(
         }
     }
 
+    // 每个 MATYPE Block 内只按 solver node_id 建立一次节点。不同材料的接口由
+    // VTM Block 天然分离；LAYER 只是单元属性，不再人为复制节点或拆分工程域。
     QHash<int, vtkIdType> localNodeIds;
     localNodeIds.reserve(usedNodeIds.size());
     for (const Node& node : mesh.nodes)
@@ -691,7 +672,7 @@ vtkSmartPointer<vtkUnstructuredGrid> buildVtuGrid(
     if (grid->GetNumberOfCells() <= 0 || grid->GetNumberOfPoints() <= 0)
     {
         if (error)
-            *error = QStringLiteral("构造出的后处理 VTU 网格为空。");
+            *error = QStringLiteral("构造出的后处理网格为空。");
         return nullptr;
     }
 
@@ -719,290 +700,6 @@ void markNormalizedTopology(vtkUnstructuredGrid* grid)
     grid->GetFieldData()->AddArray(marker);
 }
 
-bool writeOuterSurfaceVtpCache(const QString& resultFilePath, vtkUnstructuredGrid* grid)
-{
-    if (!grid || grid->GetNumberOfCells() <= 0)
-        return false;
-    const QString surfacePath = PostTecplotUtils::surfaceCachePath(resultFilePath);
-    if (surfacePath.isEmpty())
-        return false;
-
-    auto geometry = vtkSmartPointer<vtkGeometryFilter>::New();
-    geometry->SetInputData(grid);
-    geometry->Update();
-    vtkPolyData* surface = geometry->GetOutput();
-    if (!surface || surface->GetNumberOfPoints() <= 0 || surface->GetNumberOfCells() <= 0)
-        return false;
-
-    QTemporaryFile temporary(
-        QDir(QDir::tempPath()).filePath(QStringLiteral("cae_post_outer_surface_XXXXXX.vtp")));
-    temporary.setAutoRemove(true);
-    if (!temporary.open())
-        return false;
-    const QString temporaryPath = temporary.fileName();
-    temporary.close();
-
-    auto writer = vtkSmartPointer<vtkXMLPolyDataWriter>::New();
-    writer->SetInputData(surface);
-    const QByteArray encodedPath = temporaryPath.toLocal8Bit();
-    writer->SetFileName(encodedPath.constData());
-    writer->SetDataModeToAppended();
-    writer->EncodeAppendedDataOff();
-    writer->SetCompressorTypeToNone();
-    if (writer->Write() != 1)
-        return false;
-
-    QFile::remove(surfacePath);
-    return QFile::copy(temporaryPath, surfacePath);
-}
-
-bool writeDomainSurfaceVtpCache(const QString& resultFilePath, vtkUnstructuredGrid* grid)
-{
-    QElapsedTimer domainTimer;
-    domainTimer.start();
-    if (!grid || grid->GetNumberOfCells() <= 0 || grid->GetNumberOfPoints() <= 0)
-        return false;
-
-    const QString surfacePath = PostTecplotUtils::domainSurfaceCachePath(resultFilePath);
-    if (surfacePath.isEmpty())
-        return false;
-
-    vtkDataArray* matypeArray =
-        grid->GetCellData() ? grid->GetCellData()->GetArray("MATYPE") : nullptr;
-    vtkDataArray* layerArray =
-        grid->GetCellData() ? grid->GetCellData()->GetArray("LAYER") : nullptr;
-    vtkDataArray* ketypeArray =
-        grid->GetCellData() ? grid->GetCellData()->GetArray("KETYPE") : nullptr;
-    vtkDataArray* topologyArray =
-        grid->GetCellData() ? grid->GetCellData()->GetArray("TOPOLOGY_TYPE") : nullptr;
-    if (!matypeArray || !layerArray || !ketypeArray || !topologyArray)
-        return false;
-
-    struct FaceRecord
-    {
-        vtkIdType sourceCellId{-1};
-        QVector<vtkIdType> sourcePointIds;
-        int count{0};
-        int domainId{0};
-    };
-
-    // 工程“域”严格按 MATYPE + LAYER 定义。同一材料同一层内部的公共面消掉，
-    // 不同材料或不同分层之间的界面保留。KETYPE/网格拓扑属于网格检查维度，
-    // 不人为切碎工程域；当用户真的按 KETYPE/拓扑筛选时再回退完整体网格。
-    QHash<QString, int> engineeringDomainIds;
-    QHash<DomainFaceKey, FaceRecord> faces;
-    engineeringDomainIds.reserve(128);
-    faces.reserve(static_cast<int>(grid->GetNumberOfCells() * 2));
-
-    auto domainIdFor = [&](int matype, int layer) -> int
-    {
-        const QString key = QStringLiteral("%1|%2").arg(matype).arg(layer);
-        const auto it = engineeringDomainIds.constFind(key);
-        if (it != engineeringDomainIds.constEnd())
-            return it.value();
-        const int id = engineeringDomainIds.size() + 1;
-        engineeringDomainIds.insert(key, id);
-        return id;
-    };
-
-    auto addFace = [&](vtkIdType sourceCellId, const QVector<vtkIdType>& pointIds,
-                       int matype, int layer)
-    {
-        if (pointIds.isEmpty())
-            return;
-
-        if (pointIds.size() > 8)
-            return;
-        QVector<vtkIdType> canonical = pointIds;
-        std::sort(canonical.begin(), canonical.end());
-        DomainFaceKey key;
-        key.matype = matype;
-        key.layer = layer;
-        key.pointCount = canonical.size();
-        key.pointIds.fill(vtkIdType(-1));
-        for (int i = 0; i < canonical.size(); ++i)
-            key.pointIds[static_cast<size_t>(i)] = canonical.at(i);
-
-        auto it = faces.find(key);
-        if (it == faces.end())
-        {
-            FaceRecord record;
-            record.sourceCellId = sourceCellId;
-            record.sourcePointIds = pointIds;
-            record.count = 1;
-            record.domainId = domainIdFor(matype, layer);
-            faces.insert(key, record);
-        }
-        else
-        {
-            ++it->count;
-        }
-    };
-
-    for (vtkIdType cellId = 0; cellId < grid->GetNumberOfCells(); ++cellId)
-    {
-        vtkCell* cell = grid->GetCell(cellId);
-        if (!cell)
-            continue;
-
-        const int matype = static_cast<int>(std::llround(matypeArray->GetTuple1(cellId)));
-        const int layer = static_cast<int>(std::llround(layerArray->GetTuple1(cellId)));
-        const int ketype = static_cast<int>(std::llround(ketypeArray->GetTuple1(cellId)));
-        const int topology = static_cast<int>(std::llround(topologyArray->GetTuple1(cellId)));
-
-        if (cell->GetCellDimension() >= 3 && cell->GetNumberOfFaces() > 0)
-        {
-            for (int faceIndex = 0; faceIndex < cell->GetNumberOfFaces(); ++faceIndex)
-            {
-                vtkCell* face = cell->GetFace(faceIndex);
-                if (!face || !face->GetPointIds())
-                    continue;
-                QVector<vtkIdType> ids;
-                ids.reserve(static_cast<int>(face->GetPointIds()->GetNumberOfIds()));
-                for (vtkIdType i = 0; i < face->GetPointIds()->GetNumberOfIds(); ++i)
-                    ids.push_back(face->GetPointIds()->GetId(i));
-                addFace(cellId, ids, matype, layer);
-            }
-        }
-        else if (cell->GetPointIds())
-        {
-            // 二维/一维分析本身就是显示实体，不做体单元“外壳”概念。
-            QVector<vtkIdType> ids;
-            ids.reserve(static_cast<int>(cell->GetPointIds()->GetNumberOfIds()));
-            for (vtkIdType i = 0; i < cell->GetPointIds()->GetNumberOfIds(); ++i)
-                ids.push_back(cell->GetPointIds()->GetId(i));
-            addFace(cellId, ids, matype, layer);
-        }
-    }
-
-    auto surface = vtkSmartPointer<vtkPolyData>::New();
-    auto points = vtkSmartPointer<vtkPoints>::New();
-    points->SetDataTypeToDouble();
-    surface->SetPoints(points);
-    surface->Allocate(static_cast<vtkIdType>(faces.size()));
-
-    if (grid->GetPointData())
-        surface->GetPointData()->CopyAllocate(grid->GetPointData(), grid->GetNumberOfPoints());
-    if (grid->GetCellData())
-        surface->GetCellData()->CopyAllocate(grid->GetCellData(), static_cast<vtkIdType>(faces.size()));
-
-    auto domainIdArray = vtkSmartPointer<vtkIntArray>::New();
-    domainIdArray->SetName("DOMAIN_ID");
-    domainIdArray->SetNumberOfComponents(1);
-
-    QHash<vtkIdType, vtkIdType> pointMap;
-    pointMap.reserve(static_cast<int>(grid->GetNumberOfPoints()));
-
-    auto localPointId = [&](vtkIdType sourcePointId) -> vtkIdType
-    {
-        const auto it = pointMap.constFind(sourcePointId);
-        if (it != pointMap.constEnd())
-            return it.value();
-
-        double xyz[3]{0.0, 0.0, 0.0};
-        grid->GetPoint(sourcePointId, xyz);
-        const vtkIdType id = points->InsertNextPoint(xyz);
-        pointMap.insert(sourcePointId, id);
-        if (grid->GetPointData())
-            surface->GetPointData()->CopyData(grid->GetPointData(), sourcePointId, id);
-        return id;
-    };
-
-    for (auto it = faces.constBegin(); it != faces.constEnd(); ++it)
-    {
-        const FaceRecord& face = it.value();
-        // 同一显示分区内出现两次就是内部公共面；只保留分区边界。
-        if (face.count != 1 || face.sourceCellId < 0 || face.sourcePointIds.isEmpty())
-            continue;
-
-        QVector<vtkIdType> ids;
-        ids.reserve(face.sourcePointIds.size());
-        for (vtkIdType sourcePointId : face.sourcePointIds)
-            ids.push_back(localPointId(sourcePointId));
-
-        int cellType = VTK_POLYGON;
-        if (ids.size() == 1)
-            cellType = VTK_VERTEX;
-        else if (ids.size() == 2)
-            cellType = VTK_LINE;
-        else if (ids.size() == 3)
-            cellType = VTK_TRIANGLE;
-        else if (ids.size() == 4)
-            cellType = VTK_QUAD;
-
-        const vtkIdType outputCellId =
-            surface->InsertNextCell(cellType, static_cast<vtkIdType>(ids.size()), ids.constData());
-        if (grid->GetCellData())
-            surface->GetCellData()->CopyData(grid->GetCellData(), face.sourceCellId, outputCellId);
-        domainIdArray->InsertValue(outputCellId, face.domainId);
-    }
-
-    if (surface->GetNumberOfPoints() <= 0 || surface->GetNumberOfCells() <= 0)
-        return false;
-
-    surface->GetCellData()->AddArray(domainIdArray);
-
-    // 保存完整体网格中各筛选维度的全集。这样云图只读 Surface 时也能判断：
-    // 当前筛选是否仅涉及材料/分层（可走快路径），还是修改了 KETYPE/拓扑
-    // （必须懒加载 FullGrid 才能保证被隐藏单元暴露出的界面正确）。
-    auto addAllValues = [&](const char* sourceName, const char* fieldName)
-    {
-        vtkDataArray* source =
-            grid->GetCellData() ? grid->GetCellData()->GetArray(sourceName) : nullptr;
-        if (!source)
-            return;
-        QSet<int> unique;
-        for (vtkIdType i = 0; i < source->GetNumberOfTuples(); ++i)
-            unique.insert(static_cast<int>(std::llround(source->GetTuple1(i))));
-        QList<int> ordered = unique.values();
-        std::sort(ordered.begin(), ordered.end());
-        auto values = vtkSmartPointer<vtkIntArray>::New();
-        values->SetName(fieldName);
-        values->SetNumberOfComponents(1);
-        for (int value : ordered)
-            values->InsertNextValue(value);
-        surface->GetFieldData()->AddArray(values);
-    };
-    addAllValues("TOPOLOGY_TYPE", "CAE_POST_ALL_TOPOLOGY_TYPE");
-    addAllValues("KETYPE", "CAE_POST_ALL_KETYPE");
-    addAllValues("MATYPE", "CAE_POST_ALL_MATYPE");
-    addAllValues("LAYER", "CAE_POST_ALL_LAYER");
-    auto domainMarker = vtkSmartPointer<vtkIntArray>::New();
-    domainMarker->SetName("CAE_POST_DOMAIN_SURFACE");
-    domainMarker->InsertNextValue(1);
-    surface->GetFieldData()->AddArray(domainMarker);
-
-    surface->Squeeze();
-
-    QTemporaryFile temporary(
-        QDir(QDir::tempPath()).filePath(QStringLiteral("cae_post_domain_surface_XXXXXX.vtp")));
-    temporary.setAutoRemove(true);
-    if (!temporary.open())
-        return false;
-    const QString temporaryPath = temporary.fileName();
-    temporary.close();
-
-    auto writer = vtkSmartPointer<vtkXMLPolyDataWriter>::New();
-    writer->SetInputData(surface);
-    const QByteArray encodedPath = temporaryPath.toLocal8Bit();
-    writer->SetFileName(encodedPath.constData());
-    writer->SetDataModeToAppended();
-    writer->EncodeAppendedDataOff();
-    writer->SetCompressorTypeToNone();
-    if (writer->Write() != 1)
-        return false;
-
-    QFile::remove(surfacePath);
-    const bool copied = QFile::copy(temporaryPath, surfacePath);
-    const qint64 elapsed = domainTimer.elapsed();
-    if (elapsed >= 100)
-        qInfo() << "[PostPerf] domain surface cache build" << elapsed << "ms"
-                << "volumeCells=" << grid->GetNumberOfCells()
-                << "surfaceFaces=" << surface->GetNumberOfCells()
-                << "domains=" << engineeringDomainIds.size();
-    return copied;
-}
-
 bool writeVtuGrid(const QString& filePath, vtkUnstructuredGrid* grid, QString* error)
 {
     if (!grid || grid->GetNumberOfPoints() <= 0 || grid->GetNumberOfCells() <= 0)
@@ -1026,8 +723,8 @@ bool writeVtuGrid(const QString& filePath, vtkUnstructuredGrid* grid, QString* e
     const QString temporaryPath = temporary.fileName();
     temporary.close();
 
-    // 新缓存写出前已完成退化拓扑恢复。marker=4 表示所有重复节点 Hex
-    // 都已按原槽位连接拆成标准 Tet，或在零体积时被丢弃；读取阶段可走快路径。
+    // 新缓存写出前已完成退化拓扑恢复。marker>=4 表示所有重复节点 Hex
+    // 都已按原槽位连接拆成标准 Tet，或在零体积时被丢弃。
     markNormalizedTopology(grid);
 
     auto writer = vtkSmartPointer<vtkXMLUnstructuredGridWriter>::New();
@@ -1056,12 +753,230 @@ bool writeVtuGrid(const QString& filePath, vtkUnstructuredGrid* grid, QString* e
         return false;
     }
 
-    // 结果文件只保存一份标准化 VTU。
-    // 普通云图的“外表面 + 材料/分层域界面”在显示时直接复用网格模块已有
-    // mapped-surface 做内存映射，不再生成 surface.vtp / domains.vtp 两套旁路缓存。
+    // 不再生成 surface.vtp / domains.vtp 两套旁路缓存。
     QFile::remove(PostTecplotUtils::surfaceCachePath(filePath));
     QFile::remove(PostTecplotUtils::domainSurfaceCachePath(filePath));
     return true;
+}
+
+bool copyDirectoryContents(const QString& sourcePath, const QString& targetPath,
+                           QString* error)
+{
+    const QDir source(sourcePath);
+    if (!source.exists())
+    {
+        if (error)
+            *error = QStringLiteral("VTM 临时数据目录不存在：%1").arg(sourcePath);
+        return false;
+    }
+
+    QDir target(targetPath);
+    if (!target.exists() && !target.mkpath(QStringLiteral(".")))
+    {
+        if (error)
+            *error = QStringLiteral("无法创建 VTM 数据目录：%1").arg(targetPath);
+        return false;
+    }
+
+    QDirIterator iterator(sourcePath, QDir::AllEntries | QDir::NoDotAndDotDot,
+                          QDirIterator::Subdirectories);
+    while (iterator.hasNext())
+    {
+        const QString sourceEntry = iterator.next();
+        const QFileInfo sourceInfo(sourceEntry);
+        const QString relative = source.relativeFilePath(sourceEntry);
+        const QString targetEntry = target.filePath(relative);
+        if (sourceInfo.isDir())
+        {
+            if (!target.mkpath(relative))
+            {
+                if (error)
+                    *error = QStringLiteral("无法创建 VTM 子目录：%1").arg(targetEntry);
+                return false;
+            }
+            continue;
+        }
+
+        if (!QDir().mkpath(QFileInfo(targetEntry).absolutePath()))
+        {
+            if (error)
+                *error = QStringLiteral("无法创建 VTM 文件目录：%1").arg(targetEntry);
+            return false;
+        }
+        QFile::remove(targetEntry);
+        if (!QFile::copy(sourceEntry, targetEntry))
+        {
+            if (error)
+                *error = QStringLiteral("无法复制 VTM 数据文件：%1").arg(targetEntry);
+            return false;
+        }
+    }
+    return true;
+}
+
+vtkSmartPointer<vtkMultiBlockDataSet> buildMaterialBlocks(
+    const Mesh& mesh, const QVector<Element>& expanded,
+    const QSet<int>& maskedMaterials, const QStringList& variables,
+    const QVector<QVector<double>>* pointValues,
+    const QHash<int, QVector<double>>* cellValues, QString* error)
+{
+    // 单次扫描完成 MATYPE 分组，避免每个材料都重新遍历整张网格。
+    QMap<int, QVector<Element>> elementsByMaterial;
+    for (const Element* element : displayElements(expanded, maskedMaterials))
+        elementsByMaterial[element->material].push_back(*element);
+
+    if (elementsByMaterial.isEmpty())
+    {
+        if (error)
+            *error = QStringLiteral("没有可写入 VTM 的 MATYPE 域。");
+        return nullptr;
+    }
+
+    auto blocks = vtkSmartPointer<vtkMultiBlockDataSet>::New();
+    blocks->SetNumberOfBlocks(static_cast<unsigned int>(elementsByMaterial.size()));
+    unsigned int blockIndex = 0;
+    const QSet<int> noMasks;
+    for (auto it = elementsByMaterial.cbegin(); it != elementsByMaterial.cend(); ++it)
+    {
+        const int material = it.key();
+        QString blockError;
+        auto grid = buildVtuGrid(mesh, it.value(), noMasks, variables,
+                                 pointValues, cellValues, &blockError, material);
+        if (!grid)
+        {
+            if (error)
+                *error = blockError;
+            return nullptr;
+        }
+
+        grid = PostTecplotUtils::normalizeSolverTopology(grid);
+        if (!grid || grid->GetNumberOfPoints() <= 0 || grid->GetNumberOfCells() <= 0)
+        {
+            if (error)
+                *error = QStringLiteral("MATYPE=%1 的拓扑规范化结果为空。").arg(material);
+            return nullptr;
+        }
+        markNormalizedTopology(grid);
+
+        blocks->SetBlock(blockIndex, grid);
+        const QByteArray blockName =
+            QStringLiteral("MATYPE=%1").arg(material).toUtf8();
+        blocks->GetMetaData(blockIndex)->Set(vtkCompositeDataSet::NAME(),
+                                             blockName.constData());
+        ++blockIndex;
+    }
+    return blocks;
+}
+
+bool writeVtmDataSet(const QString& filePath, vtkMultiBlockDataSet* blocks,
+                     QString* error)
+{
+    if (!blocks || blocks->GetNumberOfBlocks() <= 0)
+    {
+        if (error)
+            *error = QStringLiteral("后处理 VTM 没有 MATYPE Block：%1").arg(filePath);
+        return false;
+    }
+
+    const QFileInfo targetInfo(filePath);
+    const QString packageBase = targetInfo.completeBaseName();
+    for (const QChar ch : packageBase)
+    {
+        if (ch.unicode() > 0x7f)
+        {
+            if (error)
+                *error = QStringLiteral("VTM 文件名必须使用 ASCII 字符：%1")
+                             .arg(targetInfo.fileName());
+            return false;
+        }
+    }
+
+    // VTM 是一个元文件加同名叶子目录。先让 VTK 在 ASCII 临时目录完整写出，
+    // 再由 Qt 把叶子目录和元文件复制到中文工程路径；元文件最后落地，避免页面
+    // 看到只写了一半的 MultiBlock 包。
+    QTemporaryDir temporary(
+        QDir(QDir::tempPath()).filePath(QStringLiteral("cae_post_vtm_XXXXXX")));
+    if (!temporary.isValid())
+    {
+        if (error)
+            *error = QStringLiteral("无法创建 VTM 临时目录：%1").arg(filePath);
+        return false;
+    }
+
+    const QString temporaryRoot = temporary.filePath(targetInfo.fileName());
+    auto writer = vtkSmartPointer<vtkXMLMultiBlockDataWriter>::New();
+    writer->SetInputData(blocks);
+    const QByteArray encodedPath = temporaryRoot.toLocal8Bit();
+    writer->SetFileName(encodedPath.constData());
+    writer->SetDataModeToAppended();
+    writer->EncodeAppendedDataOff();
+    writer->SetCompressorTypeToNone();
+    if (writer->Write() != 1)
+    {
+        if (error)
+            *error = QStringLiteral("写入后处理 VTM 失败：%1").arg(filePath);
+        return false;
+    }
+
+    const QString temporaryLeafDir = temporary.filePath(packageBase);
+    QDirIterator leafCheck(temporaryLeafDir, QStringList{QStringLiteral("*.vtu")}, QDir::Files,
+                           QDirIterator::Subdirectories);
+    if (!QFileInfo(temporaryRoot).isFile() || QFileInfo(temporaryRoot).size() <= 0 ||
+        !QDir(temporaryLeafDir).exists() || !leafCheck.hasNext())
+    {
+        if (error)
+            *error = QStringLiteral("VTK 未生成完整的 VTM 数据包：%1").arg(filePath);
+        return false;
+    }
+
+    const QString targetLeafDir = targetInfo.dir().filePath(packageBase);
+    QFile::remove(filePath);
+    if (QDir(targetLeafDir).exists() && !QDir(targetLeafDir).removeRecursively())
+    {
+        if (error)
+            *error = QStringLiteral("无法替换旧 VTM 数据目录：%1").arg(targetLeafDir);
+        return false;
+    }
+    if (!copyDirectoryContents(temporaryLeafDir, targetLeafDir, error))
+    {
+        QDir(targetLeafDir).removeRecursively();
+        return false;
+    }
+    if (!QFile::copy(temporaryRoot, filePath))
+    {
+        QDir(targetLeafDir).removeRecursively();
+        if (error)
+            *error = QStringLiteral("无法复制 VTM 元文件到工程目录：%1").arg(filePath);
+        return false;
+    }
+
+    QFile::remove(PostTecplotUtils::surfaceCachePath(filePath));
+    QFile::remove(PostTecplotUtils::domainSurfaceCachePath(filePath));
+    return true;
+}
+
+bool writePointFieldVtm(const QString& filePath, const Mesh& mesh,
+                        const QVector<Element>& expanded,
+                        const QSet<int>& maskedMaterials,
+                        const QStringList& variables,
+                        const QVector<QVector<double>>& values,
+                        QString* error)
+{
+    auto blocks = buildMaterialBlocks(mesh, expanded, maskedMaterials, variables,
+                                      &values, nullptr, error);
+    return blocks && writeVtmDataSet(filePath, blocks, error);
+}
+
+bool writeCellFieldVtm(const QString& filePath, const Mesh& mesh,
+                       const QVector<Element>& expanded,
+                       const QSet<int>& maskedMaterials,
+                       const QStringList& variables,
+                       const QHash<int, QVector<double>>& values,
+                       QString* error)
+{
+    auto blocks = buildMaterialBlocks(mesh, expanded, maskedMaterials, variables,
+                                      nullptr, &values, error);
+    return blocks && writeVtmDataSet(filePath, blocks, error);
 }
 
 bool writePointFieldVtu(const QString& filePath, const Mesh& mesh,
@@ -1948,14 +1863,16 @@ bool generateField(const QDir& outputDir, const Mesh& mesh, const QVector<Elemen
     {
         QString error;
         const QString outputPath = outputDir.filePath(outputName);
-        const bool vtuOutput =
-            QFileInfo(outputName).suffix().compare(QStringLiteral("vtu"),
-                                                   Qt::CaseInsensitive) == 0;
-        const bool ok = vtuOutput
-                            ? writePointFieldVtu(outputPath, mesh, expanded, masks,
-                                                 variables, values, &error)
-                            : writeTecplot(outputPath, mesh, expanded, groups, masks,
-                                           title, variables, values, &error);
+        const QString format = QFileInfo(outputName).suffix().toLower();
+        const bool ok =
+            format == QStringLiteral("vtm")
+                ? writePointFieldVtm(outputPath, mesh, expanded, masks,
+                                     variables, values, &error)
+                : (format == QStringLiteral("vtu")
+                       ? writePointFieldVtu(outputPath, mesh, expanded, masks,
+                                            variables, values, &error)
+                       : writeTecplot(outputPath, mesh, expanded, groups, masks,
+                                      title, variables, values, &error));
         if (ok)
         {
             addGenerated(result, outputPath);
@@ -1976,18 +1893,20 @@ bool generateField(const QDir& outputDir, const Mesh& mesh, const QVector<Elemen
             (extension.isEmpty() ? QString() : QStringLiteral(".") + extension);
         const QString withExcavatedPath = outputDir.filePath(withExcavatedName);
         QString withExcavatedError;
-        const bool vtuOutput =
-            QFileInfo(withExcavatedName).suffix().compare(QStringLiteral("vtu"),
-                                                          Qt::CaseInsensitive) == 0;
-        const bool ok = vtuOutput
-                            ? writePointFieldVtu(withExcavatedPath, mesh,
-                                                 *expandedWithExcavated, masks,
-                                                 variables, values,
-                                                 &withExcavatedError)
-                            : writeTecplot(withExcavatedPath, mesh,
-                                           *expandedWithExcavated, groups, masks,
-                                           title + QStringLiteral(" - WITH EXCAVATED ELEMENTS"),
-                                           variables, values, &withExcavatedError);
+        const QString format = QFileInfo(withExcavatedName).suffix().toLower();
+        const bool ok =
+            format == QStringLiteral("vtm")
+                ? writePointFieldVtm(withExcavatedPath, mesh, *expandedWithExcavated,
+                                     masks, variables, values, &withExcavatedError)
+                : (format == QStringLiteral("vtu")
+                       ? writePointFieldVtu(withExcavatedPath, mesh,
+                                            *expandedWithExcavated, masks,
+                                            variables, values, &withExcavatedError)
+                       : writeTecplot(
+                             withExcavatedPath, mesh, *expandedWithExcavated,
+                             groups, masks,
+                             title + QStringLiteral(" - WITH EXCAVATED ELEMENTS"),
+                             variables, values, &withExcavatedError));
         if (ok)
         {
             addGenerated(result, withExcavatedPath);
@@ -2017,15 +1936,17 @@ bool generateCellField(const QDir& outputDir, const Mesh& mesh,
     {
         QString error;
         const QString outputPath = outputDir.filePath(outputName);
-        const bool vtuOutput =
-            QFileInfo(outputName).suffix().compare(QStringLiteral("vtu"),
-                                                   Qt::CaseInsensitive) == 0;
-        const bool ok = vtuOutput
-                            ? writeCellFieldVtu(outputPath, mesh, expanded, masks,
-                                                variables, values, &error)
-                            : writeCellCenteredTecplot(outputPath, mesh, expanded,
-                                                       groups, masks, title, variables,
-                                                       values, &error);
+        const QString format = QFileInfo(outputName).suffix().toLower();
+        const bool ok =
+            format == QStringLiteral("vtm")
+                ? writeCellFieldVtm(outputPath, mesh, expanded, masks,
+                                    variables, values, &error)
+                : (format == QStringLiteral("vtu")
+                       ? writeCellFieldVtu(outputPath, mesh, expanded, masks,
+                                           variables, values, &error)
+                       : writeCellCenteredTecplot(outputPath, mesh, expanded,
+                                                  groups, masks, title, variables,
+                                                  values, &error));
         if (ok)
         {
             addGenerated(result, outputPath);
@@ -2046,19 +1967,20 @@ bool generateCellField(const QDir& outputDir, const Mesh& mesh,
             (extension.isEmpty() ? QString() : QStringLiteral(".") + extension);
         const QString withExcavatedPath = outputDir.filePath(withExcavatedName);
         QString withExcavatedError;
-        const bool vtuOutput =
-            QFileInfo(withExcavatedName).suffix().compare(QStringLiteral("vtu"),
-                                                          Qt::CaseInsensitive) == 0;
-        const bool ok = vtuOutput
-                            ? writeCellFieldVtu(withExcavatedPath, mesh,
-                                                *expandedWithExcavated, masks,
-                                                variables, values,
-                                                &withExcavatedError)
-                            : writeCellCenteredTecplot(
-                                  withExcavatedPath, mesh, *expandedWithExcavated,
-                                  groups, masks,
-                                  title + QStringLiteral(" - WITH EXCAVATED ELEMENTS"),
-                                  variables, values, &withExcavatedError);
+        const QString format = QFileInfo(withExcavatedName).suffix().toLower();
+        const bool ok =
+            format == QStringLiteral("vtm")
+                ? writeCellFieldVtm(withExcavatedPath, mesh, *expandedWithExcavated,
+                                    masks, variables, values, &withExcavatedError)
+                : (format == QStringLiteral("vtu")
+                       ? writeCellFieldVtu(withExcavatedPath, mesh,
+                                           *expandedWithExcavated, masks,
+                                           variables, values, &withExcavatedError)
+                       : writeCellCenteredTecplot(
+                             withExcavatedPath, mesh, *expandedWithExcavated,
+                             groups, masks,
+                             title + QStringLiteral(" - WITH EXCAVATED ELEMENTS"),
+                             variables, values, &withExcavatedError));
         if (ok)
         {
             addGenerated(result, withExcavatedPath);
@@ -2078,11 +2000,10 @@ QString outputName(bool external, const QString& legacyName, const QString& inte
     if (!external && suffix.isEmpty())
         return legacyName;
 
-    // 自动准备目录是应用内部缓存，不再走“ASCII Tecplot -> vtkTecplotReader ->
-    // MultiBlock Append”的绕路。直接写单一二进制 VTU，避免多 Zone 标量缺失/NaN，
-    // 也显著减少首次进入后处理时的解析成本。
+    // 自动准备结果按 MATYPE 直接写成原生 VTM Block。LAYER/KETYPE/拓扑仍作为
+    // CellData 保留，切面、切块和 ParaView 都只消费已有 Block，不再重建工程域。
     return internalBase + outputSuffix(suffix) +
-           (external ? QStringLiteral(".vtu") : QStringLiteral(".tec"));
+           (external ? QStringLiteral(".vtm") : QStringLiteral(".tec"));
 }
 } // namespace
 
@@ -2098,57 +2019,11 @@ bool PostResultGenerator::ensureDomainSurfaceCache(const QString& resultFilePath
         return false;
     }
 
-    const QString domainPath = PostTecplotUtils::domainSurfaceCachePath(resultFilePath);
-    if (domainPath.isEmpty())
-    {
-        if (error)
-            *error = QStringLiteral("当前结果格式不支持域表面缓存：%1").arg(resultFilePath);
-        return false;
-    }
-
-    const QFileInfo domainInfo(domainPath);
-    if (domainInfo.exists() && domainInfo.isFile() &&
-        domainInfo.lastModified() >= resultInfo.lastModified() &&
-        domainInfo.size() > 0)
-    {
-        if (error)
-            error->clear();
-        return true;
-    }
-
-    static QMutex domainBuildMutex;
-    QMutexLocker locker(&domainBuildMutex);
-
-    // 进入互斥区后再检查一次，避免两个页面/事件同时为同一结果重复构造。
-    const QFileInfo domainInfoAfterLock(domainPath);
-    if (domainInfoAfterLock.exists() && domainInfoAfterLock.isFile() &&
-        domainInfoAfterLock.lastModified() >= resultInfo.lastModified() &&
-        domainInfoAfterLock.size() > 0)
-    {
-        if (error)
-            error->clear();
-        return true;
-    }
-
-    QString gridError;
-    vtkSmartPointer<vtkUnstructuredGrid> grid =
-        PostTecplotUtils::readGrid(resultFilePath, &gridError);
-    if (!grid)
-    {
-        if (error)
-            *error = gridError.isEmpty()
-                         ? QStringLiteral("无法读取完整结果网格：%1").arg(resultFilePath)
-                         : gridError;
-        return false;
-    }
-
-    if (!writeDomainSurfaceVtpCache(resultFilePath, grid))
-    {
-        if (error)
-            *error = QStringLiteral("生成材料/分层域边界缓存失败：%1").arg(domainPath);
-        return false;
-    }
-
+    // 保留旧 API 只为二进制/源码兼容；VTM 已把 MATYPE 写成权威 Block，
+    // 不允许页面再从结果单元重建 domains.vtp。若旧版本留下旁路缓存则清除。
+    const QString legacyPath = PostTecplotUtils::domainSurfaceCachePath(resultFilePath);
+    if (!legacyPath.isEmpty())
+        QFile::remove(legacyPath);
     if (error)
         error->clear();
     return true;
@@ -2206,13 +2081,21 @@ PostResultGenerator::Result PostResultGenerator::generate(const Options& options
     const QVector<ZoneGroup> groups = loadZoneGroups(
         resultDir, options.projectDir,
         optionalExpandedWithExcavated ? expandedWithExcavated : expanded);
-    if ((expanded.isEmpty() && !optionalExpandedWithExcavated) || groups.isEmpty())
+    const bool external = !options.outputDir.trimmed().isEmpty();
+    if (expanded.isEmpty() && !optionalExpandedWithExcavated)
     {
-        result.error = QStringLiteral("计算网格没有可显示的材料分区：%1").arg(resultDir.absolutePath());
+        result.error = QStringLiteral("计算网格没有可显示的有效单元：%1").arg(resultDir.absolutePath());
+        return result;
+    }
+    // 原生 VTM 域直接来自 IIIN 单元的 MATYPE，不依赖 MAFILESET/ZONE 分组。
+    // 只有显式生成旧 Tecplot 时才需要 ZoneGroup。
+    if (!external && groups.isEmpty())
+    {
+        result.error = QStringLiteral("旧 Tecplot 输出缺少材料分区定义：%1")
+                           .arg(resultDir.absolutePath());
         return result;
     }
 
-    const bool external = !options.outputDir.trimmed().isEmpty();
     QDir outputDir(external ? QDir::fromNativeSeparators(options.outputDir.trimmed())
                             : resultDir.absolutePath());
     if (!outputDir.exists() && !outputDir.mkpath(QStringLiteral(".")))

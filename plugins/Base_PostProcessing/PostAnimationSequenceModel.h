@@ -16,7 +16,9 @@ class PostAnimationSequenceModel
     {
         QString label;
         QString filePath;
+        QString excavatedFilePath;
         QString frameKey;
+        QString identityKey;
         double value = 0.0;
         QString unit;
         int order = -1;

@@ -722,6 +722,14 @@ PickManager::PickManager(QObject* parent) : QObject(parent)
 void PickManager::clearNodeSelection_NoRefresh(const QString& domain, const QString& uuid,
                                                GridKind kind)
 {
+    if (nodeSelectionAllowsOverlap(domain))
+    {
+        auto& uuid2set = (kind == GridKind::Solid) ? m_pointsSolidByDomainUuid[domain]
+                                                   : m_pointsLineByDomainUuid[domain];
+        uuid2set[uuid].clear();
+        return;
+    }
+
     // owners: pid -> ownerUuid
     // uuid2set: uuid -> set<pid>
     // prevOwners: pid -> previousOwnerUuid （用于“抢占后可回退”）
@@ -1150,6 +1158,7 @@ void PickManager::resetProjectState()
 
     m_boxSelectEnabledByDomainUuid.clear();
     m_clickPickEnabledByDomainUuid.clear();
+    m_nodeConstraintFlagsByDomainUuid.clear();
     m_ownerPointSolidByDomain.clear();
     m_pointsSolidByDomainUuid.clear();
     m_ownerPointLineByDomain.clear();
@@ -1711,7 +1720,9 @@ bool PickManager::pickAt(int x, int y)
             {
                 if (!computePickedFace(ug, cellId, pickPos, faceLocalId, facePids))
                     return false;
-                toggleSelectFace(kind, packFaceKey(cellId, faceLocalId));
+                const vtkIdType faceKey = packFaceKey(cellId, faceLocalId);
+                toggleSelectFace(kind, faceKey);
+                emit facePicked(m_currentDomain, m_currentUUid, kind, faceKey);
                 return true;
             }
         }
@@ -1723,7 +1734,9 @@ bool PickManager::pickAt(int x, int y)
         // computePickedFaceFromBoundary 已经返回与 MeshTagSet.faceKeys 一致的 localId。
         // 2D 面单元统一使用 localId=15，不能再改成 0，否则点选/框选生成的 faceKey
         // 会和下拉框中的 MeshTagSet.faceKeys 不一致，表现为高亮乱跳。
-        toggleSelectFace(kind, packFaceKey(origCellId, origFaceLocalId));
+        const vtkIdType faceKey = packFaceKey(origCellId, origFaceLocalId);
+        toggleSelectFace(kind, faceKey);
+        emit facePicked(m_currentDomain, m_currentUUid, kind, faceKey);
         return true;
     }
 
@@ -1807,43 +1820,72 @@ void PickManager::toggleSelectNode(GridKind kind, vtkIdType pid)
     const QString dom = m_currentDomain;
     const QString uid = m_currentUUid;
 
-    auto& owners =
-        (kind == GridKind::Solid) ? m_ownerPointSolidByDomain[dom] : m_ownerPointLineByDomain[dom];
     auto& uuid2set =
         (kind == GridKind::Solid) ? m_pointsSolidByDomainUuid[dom] : m_pointsLineByDomainUuid[dom];
-    auto& prevOwners = (kind == GridKind::Solid) ? m_prevOwnerPointSolidByDomain[dom]
-                                                 : m_prevOwnerPointLineByDomain[dom];
-
     QSet<vtkIdType>& mySet = uuid2set[uid];
     QString prevUuid;
 
-    if (mySet.contains(pid))
+    if (nodeSelectionAllowsOverlap(dom))
     {
-        mySet.remove(pid);
-        if (owners.value(pid) == uid)
-            owners.remove(pid);
-
-        const QString oldUid = prevOwners.take(pid);
-        if (!oldUid.isEmpty())
+        // 位移约束等允许共享节点的 domain：每个约束保留自己的选区，
+        // 不再把节点从旧约束中“抢走”。prevUuid 仅作为兼容信号，返回一个已有共享来源。
+        if (mySet.contains(pid))
         {
-            owners[pid] = oldUid;
-            uuid2set[oldUid].insert(pid);
+            mySet.remove(pid);
+        }
+        else
+        {
+            const int nid = nodeIdForPoint(kind, pid);
+            if (nid >= 0)
+            {
+                const QStringList sources = selectedNodeUuids(dom, nid);
+                for (const QString& sourceUuid : sources)
+                {
+                    if (sourceUuid != uid)
+                    {
+                        prevUuid = sourceUuid;
+                        break;
+                    }
+                }
+            }
+            mySet.insert(pid);
         }
     }
     else
     {
-        const QString oldUid = owners.value(pid);
-        if (!oldUid.isEmpty() && oldUid != uid)
+        auto& owners =
+            (kind == GridKind::Solid) ? m_ownerPointSolidByDomain[dom] : m_ownerPointLineByDomain[dom];
+        auto& prevOwners = (kind == GridKind::Solid) ? m_prevOwnerPointSolidByDomain[dom]
+                                                     : m_prevOwnerPointLineByDomain[dom];
+
+        if (mySet.contains(pid))
         {
-            prevUuid = oldUid;
-            prevOwners[pid] = oldUid;
-            uuid2set[oldUid].remove(pid);
+            mySet.remove(pid);
+            if (owners.value(pid) == uid)
+                owners.remove(pid);
+
+            const QString oldUid = prevOwners.take(pid);
+            if (!oldUid.isEmpty())
+            {
+                owners[pid] = oldUid;
+                uuid2set[oldUid].insert(pid);
+            }
         }
-        owners[pid] = uid;
-        mySet.insert(pid);
+        else
+        {
+            const QString oldUid = owners.value(pid);
+            if (!oldUid.isEmpty() && oldUid != uid)
+            {
+                prevUuid = oldUid;
+                prevOwners[pid] = oldUid;
+                uuid2set[oldUid].remove(pid);
+            }
+            owners[pid] = uid;
+            mySet.insert(pid);
+        }
     }
 
-           // 发信号（单点选）
+    // 发信号（单点选）
     vtkUnstructuredGrid* grid = (kind == GridKind::Solid) ? m_gridSolid : m_gridLine;
     vtkIntArray* nodeIdArr = (kind == GridKind::Solid) ? m_nodeIdArrSolid : m_nodeIdArrLine;
     if (!nodeIdArr && grid)
@@ -2919,9 +2961,14 @@ void PickManager::rebuildDomainHighlightActors()
     const bool isMaterialSelection =
         std::any_of(applied.cbegin(), applied.cend(), isMaterialDomain) ||
         isMaterialDomain(selected) || isMaterialDomain(preview) || isMaterialDomain(preDelete);
-    const bool useTransparentContext =
+    // CaveExcavationBody 的实际 pick domain 为 "CaveExcavationBody/<uuid>"。
+    // 不能使用完全相等判断，否则开挖体分组选择时不会进入材料选择同款的
+    // 半透明上下文显示，内部开挖体会被外层模型遮挡。
+    const bool isCaveExcavationBodySelection =
         m_currentDomain.compare(QStringLiteral("CaveExcavationBody"), Qt::CaseInsensitive) == 0 ||
-        isMaterialSelection;
+        m_currentDomain.startsWith(QStringLiteral("CaveExcavationBody/"), Qt::CaseInsensitive);
+    const bool useTransparentContext =
+        isCaveExcavationBodySelection || isMaterialSelection;
 
     QSet<vtkIdType> appliedSolidCells;
     QSet<vtkIdType> appliedLineCells;
@@ -3144,6 +3191,14 @@ void PickManager::clearSelection(const QString& domain, const QString& uuid, Pic
     {
         if (mode == PickMode::Node)
         {
+            if (nodeSelectionAllowsOverlap(domain))
+            {
+                auto& uuid2set = (kind == GridKind::Solid) ? m_pointsSolidByDomainUuid[domain]
+                                                           : m_pointsLineByDomainUuid[domain];
+                uuid2set[uuid].clear();
+                return;
+            }
+
             auto& owners = (kind == GridKind::Solid) ? m_ownerPointSolidByDomain[domain]
                                                      : m_ownerPointLineByDomain[domain];
             auto& uuid2set = (kind == GridKind::Solid) ? m_pointsSolidByDomainUuid[domain]
@@ -3246,26 +3301,35 @@ void PickManager::setSelectedPointIds(const QString& domain, const QString& uuid
     if (replace)
         clearNodeSelection_NoRefresh(domain, uuid, kind);
 
-    auto& owners =
-        (kind == GridKind::Solid) ? m_ownerPointSolidByDomain[domain] : m_ownerPointLineByDomain[domain];
     auto& uuid2set = (kind == GridKind::Solid) ? m_pointsSolidByDomainUuid[domain]
                                                : m_pointsLineByDomainUuid[domain];
-    auto& prevOwners = (kind == GridKind::Solid) ? m_prevOwnerPointSolidByDomain[domain]
-                                                 : m_prevOwnerPointLineByDomain[domain];
-
     QSet<vtkIdType>& mySet = uuid2set[uuid];
-    for (vtkIdType pid : pointIds)
+
+    if (nodeSelectionAllowsOverlap(domain))
     {
-        if (mySet.contains(pid))
-            continue;
-        const QString oldUid = owners.value(pid);
-        if (!oldUid.isEmpty() && oldUid != uuid)
+        for (vtkIdType pid : pointIds)
+            mySet.insert(pid);
+    }
+    else
+    {
+        auto& owners = (kind == GridKind::Solid) ? m_ownerPointSolidByDomain[domain]
+                                                 : m_ownerPointLineByDomain[domain];
+        auto& prevOwners = (kind == GridKind::Solid) ? m_prevOwnerPointSolidByDomain[domain]
+                                                     : m_prevOwnerPointLineByDomain[domain];
+
+        for (vtkIdType pid : pointIds)
         {
-            prevOwners[pid] = oldUid;
-            uuid2set[oldUid].remove(pid);
+            if (mySet.contains(pid))
+                continue;
+            const QString oldUid = owners.value(pid);
+            if (!oldUid.isEmpty() && oldUid != uuid)
+            {
+                prevOwners[pid] = oldUid;
+                uuid2set[oldUid].remove(pid);
+            }
+            owners[pid] = uuid;
+            mySet.insert(pid);
         }
-        owners[pid] = uuid;
-        mySet.insert(pid);
     }
 
     emit selectionChanged(domain, uuid, PickMode::Node, kind);
@@ -4457,14 +4521,23 @@ void PickManager::setNodeSelected_NoRefresh(GridKind kind, vtkIdType pid, bool s
     const QString dom = m_currentDomain;
     const QString uid = m_currentUUid;
 
-    auto& owners =
-        (kind == GridKind::Solid) ? m_ownerPointSolidByDomain[dom] : m_ownerPointLineByDomain[dom];
     auto& uuid2set =
         (kind == GridKind::Solid) ? m_pointsSolidByDomainUuid[dom] : m_pointsLineByDomainUuid[dom];
+    QSet<vtkIdType>& mySet = uuid2set[uid];
+
+    if (nodeSelectionAllowsOverlap(dom))
+    {
+        if (selected)
+            mySet.insert(pid);
+        else
+            mySet.remove(pid);
+        return;
+    }
+
+    auto& owners =
+        (kind == GridKind::Solid) ? m_ownerPointSolidByDomain[dom] : m_ownerPointLineByDomain[dom];
     auto& prevOwners = (kind == GridKind::Solid) ? m_prevOwnerPointSolidByDomain[dom]
                                                  : m_prevOwnerPointLineByDomain[dom];
-
-    QSet<vtkIdType>& mySet = uuid2set[uid];
 
     if (selected)
     {
@@ -4614,6 +4687,9 @@ void PickManager::rebuildLineNodeOverlayAll()
 // ===================== commit exclusive =====================
 void PickManager::commitNodeExclusive(const QString& domain, const QString& uuid)
 {
+    if (nodeSelectionAllowsOverlap(domain))
+        return;
+
     {
         auto itPrev = m_prevOwnerPointSolidByDomain.find(domain);
         if (itPrev != m_prevOwnerPointSolidByDomain.end())
@@ -4691,6 +4767,308 @@ QVector<vtkIdType> PickManager::getSelectedPointIds(const QString& domain, const
         out.push_back(pid);
     std::sort(out.begin(), out.end());
     return out;
+}
+
+
+void PickManager::setNodeSelectionAllowsOverlap(const QString& domain, bool allow)
+{
+    if (domain.isEmpty())
+        return;
+    if (allow)
+        m_overlapNodeSelectionDomains.insert(domain);
+    else
+        m_overlapNodeSelectionDomains.remove(domain);
+}
+
+bool PickManager::nodeSelectionAllowsOverlap(const QString& domain) const
+{
+    // 位移约束在工程恢复/IIID 导入时可能先恢复节点、后进入页面，
+    // 因此不能只依赖 beforeLoad() 临时打开共享模式。
+    return domain == QStringLiteral("DisplacementConstraintWidget") ||
+           m_overlapNodeSelectionDomains.contains(domain);
+}
+
+int PickManager::nodeIdForPoint(GridKind kind, vtkIdType pointId) const
+{
+    vtkUnstructuredGrid* grid = (kind == GridKind::Solid) ? m_gridSolid : m_gridLine;
+    if (!grid || pointId < 0 || pointId >= grid->GetNumberOfPoints())
+        return -1;
+
+    vtkIntArray* nodeIdArr = (kind == GridKind::Solid) ? m_nodeIdArrSolid : m_nodeIdArrLine;
+    if (!nodeIdArr && grid->GetPointData())
+    {
+        nodeIdArr = vtkIntArray::SafeDownCast(grid->GetPointData()->GetArray("node_id"));
+        if (!nodeIdArr)
+            nodeIdArr = vtkIntArray::SafeDownCast(grid->GetPointData()->GetArray("NodeId"));
+    }
+    if (!nodeIdArr || pointId >= nodeIdArr->GetNumberOfTuples())
+        return -1;
+    return nodeIdArr->GetValue(int(pointId));
+}
+
+QVector<int> PickManager::selectedNodeIds(const QString& domain, const QString& uuid) const
+{
+    QSet<int> unique;
+    auto appendKind = [&](GridKind kind, const QSet<vtkIdType>& set)
+    {
+        for (vtkIdType pid : set)
+        {
+            const int nodeId = nodeIdForPoint(kind, pid);
+            if (nodeId >= 0)
+                unique.insert(nodeId);
+        }
+    };
+
+    appendKind(GridKind::Solid, m_pointsSolidByDomainUuid.value(domain).value(uuid));
+    appendKind(GridKind::Line, m_pointsLineByDomainUuid.value(domain).value(uuid));
+
+    QVector<int> out;
+    out.reserve(unique.size());
+    for (int nodeId : unique)
+        out.push_back(nodeId);
+    std::sort(out.begin(), out.end());
+    return out;
+}
+
+QStringList PickManager::selectedNodeUuids(const QString& domain, int nodeId) const
+{
+    QSet<QString> sources;
+    auto scanKind = [&](GridKind kind, const QHash<QString, QSet<vtkIdType>>& uuid2set)
+    {
+        for (auto it = uuid2set.constBegin(); it != uuid2set.constEnd(); ++it)
+        {
+            for (vtkIdType pid : it.value())
+            {
+                if (nodeIdForPoint(kind, pid) == nodeId)
+                {
+                    sources.insert(it.key());
+                    break;
+                }
+            }
+        }
+    };
+
+    scanKind(GridKind::Solid, m_pointsSolidByDomainUuid.value(domain));
+    scanKind(GridKind::Line, m_pointsLineByDomainUuid.value(domain));
+
+    QStringList out = sources.values();
+    std::sort(out.begin(), out.end());
+    return out;
+}
+
+QSet<int> PickManager::conflictingNodeIds(const QString& domain) const
+{
+    QHash<int, QSet<QString>> sourcesByNodeId;
+    auto collectKind = [&](GridKind kind, const QHash<QString, QSet<vtkIdType>>& uuid2set)
+    {
+        for (auto it = uuid2set.constBegin(); it != uuid2set.constEnd(); ++it)
+        {
+            const QString& sourceUuid = it.key();
+            for (vtkIdType pid : it.value())
+            {
+                const int nodeId = nodeIdForPoint(kind, pid);
+                if (nodeId >= 0)
+                    sourcesByNodeId[nodeId].insert(sourceUuid);
+            }
+        }
+    };
+    collectKind(GridKind::Solid, m_pointsSolidByDomainUuid.value(domain));
+    collectKind(GridKind::Line, m_pointsLineByDomainUuid.value(domain));
+
+    QSet<int> conflicts;
+    for (auto itNode = sourcesByNodeId.constBegin(); itNode != sourcesByNodeId.constEnd(); ++itNode)
+    {
+        QVector<int> result{1, 1, 1};
+        bool conflict = false;
+        for (const QString& sourceUuid : itNode.value())
+        {
+            const QVector<int> incoming = nodeConstraintFlags(domain, sourceUuid);
+            for (int axis = 0; axis < 3; ++axis)
+            {
+                const int value = incoming.value(axis, 1);
+                if (value == 1)
+                    continue;
+                if (result[axis] == 1)
+                {
+                    result[axis] = value;
+                    continue;
+                }
+                if (result[axis] != value)
+                    conflict = true;
+            }
+        }
+        if (conflict)
+            conflicts.insert(itNode.key());
+    }
+    return conflicts;
+}
+
+QVector<int> PickManager::sharedNodeIds(const QString& domain, const QString& uuid) const
+{
+    QHash<int, QSet<QString>> sourcesByNodeId;
+    auto collectKind = [&](GridKind kind, const QHash<QString, QSet<vtkIdType>>& uuid2set)
+    {
+        for (auto it = uuid2set.constBegin(); it != uuid2set.constEnd(); ++it)
+        {
+            const QString& sourceUuid = it.key();
+            for (vtkIdType pid : it.value())
+            {
+                const int nodeId = nodeIdForPoint(kind, pid);
+                if (nodeId >= 0)
+                    sourcesByNodeId[nodeId].insert(sourceUuid);
+            }
+        }
+    };
+    collectKind(GridKind::Solid, m_pointsSolidByDomainUuid.value(domain));
+    collectKind(GridKind::Line, m_pointsLineByDomainUuid.value(domain));
+
+    const QVector<int> mine = selectedNodeIds(domain, uuid);
+    QVector<int> out;
+    out.reserve(mine.size());
+    for (int nodeId : mine)
+    {
+        if (sourcesByNodeId.value(nodeId).size() > 1)
+            out.push_back(nodeId);
+    }
+    return out;
+}
+
+QSet<int> PickManager::conflictingSharedNodeIds(const QString& domain, const QString& uuid) const
+{
+    const QVector<int> shared = sharedNodeIds(domain, uuid);
+    QSet<int> target;
+    target.reserve(shared.size());
+    for (int nodeId : shared)
+        target.insert(nodeId);
+    if (target.isEmpty())
+        return {};
+
+    // 一次遍历全部约束选区，建立“共享 node_id -> 来源 uuid”，避免逐节点反复扫描。
+    QHash<int, QSet<QString>> sourcesByNodeId;
+    auto collectKind = [&](GridKind kind, const QHash<QString, QSet<vtkIdType>>& uuid2set)
+    {
+        for (auto it = uuid2set.constBegin(); it != uuid2set.constEnd(); ++it)
+        {
+            const QString& sourceUuid = it.key();
+            for (vtkIdType pid : it.value())
+            {
+                const int nodeId = nodeIdForPoint(kind, pid);
+                if (target.contains(nodeId))
+                    sourcesByNodeId[nodeId].insert(sourceUuid);
+            }
+        }
+    };
+    collectKind(GridKind::Solid, m_pointsSolidByDomainUuid.value(domain));
+    collectKind(GridKind::Line, m_pointsLineByDomainUuid.value(domain));
+
+    QSet<int> conflicts;
+    for (int nodeId : shared)
+    {
+        QVector<int> effective{1, 1, 1};
+        bool conflict = false;
+        const QSet<QString> sources = sourcesByNodeId.value(nodeId);
+        for (const QString& sourceUuid : sources)
+        {
+            const QVector<int> incoming = nodeConstraintFlags(domain, sourceUuid);
+            for (int axis = 0; axis < 3; ++axis)
+            {
+                const int value = incoming.value(axis, 1);
+                if (value == 1)
+                    continue;
+                if (effective[axis] == 1)
+                {
+                    effective[axis] = value;
+                    continue;
+                }
+                if (effective[axis] != value)
+                    conflict = true;
+            }
+        }
+        if (conflict)
+            conflicts.insert(nodeId);
+    }
+    return conflicts;
+}
+
+QVector<vtkIdType> PickManager::sharedSelectedPointIds(const QString& domain, const QString& uuid,
+                                                       GridKind kind) const
+{
+    const QVector<int> sharedIds = sharedNodeIds(domain, uuid);
+    QSet<int> sharedSet;
+    sharedSet.reserve(sharedIds.size());
+    for (int nodeId : sharedIds)
+        sharedSet.insert(nodeId);
+
+    const QSet<vtkIdType> set = (kind == GridKind::Solid)
+        ? m_pointsSolidByDomainUuid.value(domain).value(uuid)
+        : m_pointsLineByDomainUuid.value(domain).value(uuid);
+
+    QVector<vtkIdType> out;
+    out.reserve(set.size());
+    for (vtkIdType pid : set)
+    {
+        const int nodeId = nodeIdForPoint(kind, pid);
+        if (sharedSet.contains(nodeId))
+            out.push_back(pid);
+    }
+    std::sort(out.begin(), out.end());
+    return out;
+}
+
+void PickManager::setNodeConstraintFlags(const QString& domain, const QString& uuid,
+                                         int ux, int uy, int uz)
+{
+    if (domain.isEmpty() || uuid.isEmpty())
+        return;
+    m_nodeConstraintFlagsByDomainUuid[domain][uuid] = QVector<int>{ux, uy, uz};
+}
+
+void PickManager::clearNodeConstraintFlags(const QString& domain, const QString& uuid)
+{
+    auto itDomain = m_nodeConstraintFlagsByDomainUuid.find(domain);
+    if (itDomain == m_nodeConstraintFlagsByDomainUuid.end())
+        return;
+    itDomain.value().remove(uuid);
+    if (itDomain.value().isEmpty())
+        m_nodeConstraintFlagsByDomainUuid.erase(itDomain);
+}
+
+QVector<int> PickManager::nodeConstraintFlags(const QString& domain, const QString& uuid) const
+{
+    return m_nodeConstraintFlagsByDomainUuid.value(domain).value(uuid, QVector<int>{1, 1, 1});
+}
+
+QVector<int> PickManager::effectiveNodeConstraintFlags(const QString& domain, int nodeId,
+                                                       bool* hasConflict) const
+{
+    if (hasConflict)
+        *hasConflict = false;
+
+    QVector<int> result{1, 1, 1};
+    const QStringList sources = selectedNodeUuids(domain, nodeId);
+    for (const QString& uuid : sources)
+    {
+        const QVector<int> incoming = nodeConstraintFlags(domain, uuid);
+        for (int axis = 0; axis < 3; ++axis)
+        {
+            const int value = incoming.value(axis, 1);
+            if (value == 1)
+                continue; // “自由”只表示本约束不贡献该方向，不会释放别的约束。
+            if (result[axis] == 1)
+            {
+                result[axis] = value;
+                continue;
+            }
+            if (result[axis] == value)
+                continue;
+
+            // 当前实现中的普通固定值是 0；-10000 是“悬空杆件节点”特殊状态。
+            // 两个不同的非自由值不能静默合并。
+            if (hasConflict)
+                *hasConflict = true;
+        }
+    }
+    return result;
 }
 
 // ===================== getIdList =====================

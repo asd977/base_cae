@@ -1,630 +1,177 @@
-<?xml version='1.0' encoding='utf-8'?>
+<?xml version="1.0" encoding="UTF-8"?>
 <ui version="4.0">
  <class>DisplacementConstraintWidget</class>
  <widget class="QWidget" name="DisplacementConstraintWidget">
   <property name="geometry">
-   <rect>
-    <x>0</x>
-    <y>0</y>
-    <width>442</width>
-    <height>762</height>
-   </rect>
+   <rect><x>0</x><y>0</y><width>420</width><height>700</height></rect>
   </property>
-  <property name="minimumSize">
-   <size>
-    <width>0</width>
-    <height>0</height>
-   </size>
-  </property>
-  <property name="windowTitle">
-   <string>位移约束</string>
-  </property>
+  <property name="windowTitle"><string>位移约束</string></property>
   <layout class="QVBoxLayout" name="verticalLayout">
-   <property name="leftMargin">
-    <number>0</number>
-   </property>
-   <property name="topMargin">
-    <number>0</number>
-   </property>
-   <property name="rightMargin">
-    <number>0</number>
-   </property>
-   <property name="bottomMargin">
-    <number>0</number>
-   </property>
-   <item>
-    <widget class="QLabel" name="pageHeaderLabel">
-     <property name="visible">
-      <bool>false</bool>
-     </property>
-     <property name="sizePolicy">
-      <sizepolicy hsizetype="Preferred" vsizetype="Fixed">
-       <horstretch>0</horstretch>
-       <verstretch>0</verstretch>
-      </sizepolicy>
-     </property>
-     <property name="text">
-      <string>位移约束</string>
-     </property>
-    </widget>
-   </item>
+   <property name="leftMargin"><number>0</number></property>
+   <property name="topMargin"><number>0</number></property>
+   <property name="rightMargin"><number>0</number></property>
+   <property name="bottomMargin"><number>0</number></property>
    <item>
     <layout class="QVBoxLayout" name="contentLayout">
-     <property name="leftMargin">
-      <number>9</number>
-     </property>
-     <property name="topMargin">
-      <number>9</number>
-     </property>
-     <property name="rightMargin">
-      <number>9</number>
-     </property>
-     <property name="bottomMargin">
-      <number>9</number>
-     </property>
-     <property name="spacing">
-      <number>6</number>
-     </property>
+     <property name="leftMargin"><number>9</number></property>
+     <property name="topMargin"><number>9</number></property>
+     <property name="rightMargin"><number>9</number></property>
+     <property name="bottomMargin"><number>9</number></property>
+     <property name="spacing"><number>8</number></property>
+
      <item>
-      <widget class="QWidget" name="widget_2" native="true">
-       <property name="sizePolicy">
-        <sizepolicy hsizetype="Preferred" vsizetype="Preferred">
-         <horstretch>0</horstretch>
-         <verstretch>0</verstretch>
-        </sizepolicy>
-       </property>
-       <property name="minimumSize">
-        <size>
-         <width>0</width>
-         <height>0</height>
-        </size>
-       </property>
-       <layout class="QVBoxLayout" name="verticalLayout_3">
-        <item>
-         <widget class="CustomComboBox" name="comboBoxDim">
-          <property name="minimumSize">
-           <size>
-            <width>10</width>
-            <height>0</height>
-           </size>
-          </property>
+      <widget class="QGroupBox" name="groupBox">
+       <property name="title"><string>约束方向</string></property>
+       <layout class="QGridLayout" name="gridLayout">
+        <property name="horizontalSpacing"><number>8</number></property>
+        <property name="verticalSpacing"><number>6</number></property>
+        <item row="0" column="0"><widget class="QLabel" name="labelUx"><property name="text"><string>X 方向</string></property></widget></item>
+        <item row="0" column="1"><widget class="QComboBox" name="UXLineEdit"/></item>
+        <item row="1" column="0"><widget class="QLabel" name="labelUy"><property name="text"><string>Y 方向</string></property></widget></item>
+        <item row="1" column="1"><widget class="QComboBox" name="UYLineEdit"/></item>
+        <item row="2" column="0"><widget class="QLabel" name="labelUz"><property name="text"><string>Z 方向</string></property></widget></item>
+        <item row="2" column="1"><widget class="QComboBox" name="UZLineEdit"/></item>
+        <item row="3" column="0" colspan="2">
+         <widget class="QPushButton" name="btnSetAllBarsSuspended">
+          <property name="toolTip"><string>选择全部杆单元节点，并将各方向设置为悬空杆件节点</string></property>
+          <property name="text"><string>自动设置全部杆件为悬空</string></property>
          </widget>
         </item>
+       </layout>
+      </widget>
+     </item>
+
+     <item>
+      <widget class="QGroupBox" name="selectionGroupBox">
+       <property name="title"><string>作用范围</string></property>
+       <layout class="QVBoxLayout" name="selectionLayout">
+        <property name="spacing"><number>5</number></property>
         <item>
-         <layout class="QHBoxLayout" name="horizontalLayoutGroupSelect">
-          <item>
-           <widget class="CustomComboBox" name="comboBoxGroup">
-            <property name="minimumSize">
-             <size>
-              <width>10</width>
-              <height>0</height>
-             </size>
-            </property>
-           </widget>
-          </item>
-          <item>
-           <widget class="QPushButton" name="btnBatchAdd">
-            <property name="sizePolicy">
-             <sizepolicy hsizetype="Fixed" vsizetype="Fixed">
-              <horstretch>0</horstretch>
-              <verstretch>0</verstretch>
-             </sizepolicy>
-            </property>
-            <property name="text">
-             <string>添加</string>
-            </property>
-           </widget>
-          </item>
-          <property name="leftMargin">
-           <number>0</number>
-          </property>
-          <property name="topMargin">
-           <number>0</number>
-          </property>
-          <property name="rightMargin">
-           <number>0</number>
-          </property>
-          <property name="bottomMargin">
-           <number>0</number>
-          </property>
-         </layout>
-        </item>
-        <item>
-         <widget class="QCheckBox" name="pickEnableCheckBox">
-          <property name="toolTip">
-           <string>开启后可直接单击网格节点进行选择；关闭后便于操作视图</string>
-          </property>
-          <property name="text">
-           <string>开启点选</string>
-          </property>
-          <property name="checked">
-           <bool>false</bool>
-          </property>
+         <widget class="QLabel" name="overlapSummaryLabel">
+          <property name="text"><string>已选择 0 个节点</string></property>
+          <property name="wordWrap"><bool>true</bool></property>
          </widget>
         </item>
         <item>
          <widget class="QLabel" name="boxSelectHintLabel">
-          <property name="text">
-           <string>提示：按住上档键拖拽框选，按住控制键拖拽取消选择</string>
-          </property>
-          <property name="wordWrap">
-           <bool>false</bool>
-          </property>
+          <property name="text"><string>直接点击模型边界可整片添加或取消；Shift 拖拽框选，Ctrl 拖拽取消。</string></property>
+          <property name="wordWrap"><bool>true</bool></property>
          </widget>
         </item>
-        <item>
-         <widget class="QGroupBox" name="coordinateRangeGroupBox">
-          <property name="toolTip">
-           <string>仅从网格外边界中筛选节点；勾选方向参与坐标过滤，未勾选方向不限制</string>
-          </property>
-          <property name="title">
-           <string>坐标范围选择</string>
-          </property>
-          <layout class="QVBoxLayout" name="coordinateRangeLayout">
-           <property name="spacing">
-            <number>6</number>
-           </property>
-           <item>
-            <layout class="QGridLayout" name="coordinateRangeGridLayout">
-             <item row="0" column="1">
-              <widget class="QLabel" name="coordinateMinLabel">
-               <property name="text">
-                <string>最小值</string>
-               </property>
-              </widget>
-             </item>
-             <item row="0" column="2">
-              <widget class="QLabel" name="coordinateMaxLabel">
-               <property name="text">
-                <string>最大值</string>
-               </property>
-              </widget>
-             </item>
-             <item row="1" column="0">
-              <widget class="QCheckBox" name="coordXCheckBox">
-               <property name="text">
-                <string>X</string>
-               </property>
-              </widget>
-             </item>
-             <item row="1" column="1">
-              <widget class="QDoubleSpinBox" name="xMinSpinBox">
-               <property name="decimals"><number>9</number></property>
-               <property name="minimum"><double>-1000000000000.000000000000000</double></property>
-               <property name="maximum"><double>1000000000000.000000000000000</double></property>
-               <property name="keyboardTracking"><bool>false</bool></property>
-              </widget>
-             </item>
-             <item row="1" column="2">
-              <widget class="QDoubleSpinBox" name="xMaxSpinBox">
-               <property name="decimals"><number>9</number></property>
-               <property name="minimum"><double>-1000000000000.000000000000000</double></property>
-               <property name="maximum"><double>1000000000000.000000000000000</double></property>
-               <property name="keyboardTracking"><bool>false</bool></property>
-              </widget>
-             </item>
-             <item row="2" column="0">
-              <widget class="QCheckBox" name="coordYCheckBox">
-               <property name="text">
-                <string>Y</string>
-               </property>
-              </widget>
-             </item>
-             <item row="2" column="1">
-              <widget class="QDoubleSpinBox" name="yMinSpinBox">
-               <property name="decimals"><number>9</number></property>
-               <property name="minimum"><double>-1000000000000.000000000000000</double></property>
-               <property name="maximum"><double>1000000000000.000000000000000</double></property>
-               <property name="keyboardTracking"><bool>false</bool></property>
-              </widget>
-             </item>
-             <item row="2" column="2">
-              <widget class="QDoubleSpinBox" name="yMaxSpinBox">
-               <property name="decimals"><number>9</number></property>
-               <property name="minimum"><double>-1000000000000.000000000000000</double></property>
-               <property name="maximum"><double>1000000000000.000000000000000</double></property>
-               <property name="keyboardTracking"><bool>false</bool></property>
-              </widget>
-             </item>
-             <item row="3" column="0">
-              <widget class="QCheckBox" name="coordZCheckBox">
-               <property name="text">
-                <string>Z</string>
-               </property>
-              </widget>
-             </item>
-             <item row="3" column="1">
-              <widget class="QDoubleSpinBox" name="zMinSpinBox">
-               <property name="decimals"><number>9</number></property>
-               <property name="minimum"><double>-1000000000000.000000000000000</double></property>
-               <property name="maximum"><double>1000000000000.000000000000000</double></property>
-               <property name="keyboardTracking"><bool>false</bool></property>
-              </widget>
-             </item>
-             <item row="3" column="2">
-              <widget class="QDoubleSpinBox" name="zMaxSpinBox">
-               <property name="decimals"><number>9</number></property>
-               <property name="minimum"><double>-1000000000000.000000000000000</double></property>
-               <property name="maximum"><double>1000000000000.000000000000000</double></property>
-               <property name="keyboardTracking"><bool>false</bool></property>
-              </widget>
-             </item>
-             <item row="4" column="0">
-              <widget class="QLabel" name="coordinateToleranceLabel">
- <property name="sizePolicy">
-  <sizepolicy hsizetype="Fixed" vsizetype="Preferred">
-   <horstretch>0</horstretch>
-   <verstretch>0</verstretch>
-  </sizepolicy>
- </property>
-               <property name="text">
-                <string>容差</string>
-               </property>
-               <property name="wordWrap">
-  <bool>false</bool>
- </property>
-</widget>
-             </item>
-             <item row="4" column="1" colspan="2">
-              <widget class="QDoubleSpinBox" name="coordToleranceSpinBox">
-               <property name="toolTip">
-                <string>筛选时自动向最小值和最大值两侧扩展该容差，可处理浮点坐标误差</string>
-               </property>
-               <property name="decimals"><number>10</number></property>
-               <property name="minimum"><double>0.000000000000000</double></property>
-               <property name="maximum"><double>1000000000.000000000000000</double></property>
-               <property name="value"><double>0.000001000000000</double></property>
-               <property name="keyboardTracking"><bool>false</bool></property>
-              </widget>
-             </item>
-            </layout>
-           </item>
-           <item>
-            <widget class="QCheckBox" name="coordAppendCheckBox">
-             <property name="toolTip">
-              <string>未勾选时，坐标选择会替换当前节点选择</string>
-             </property>
-             <property name="text">
-              <string>追加到当前选择</string>
-             </property>
-            </widget>
-           </item>
-           <item>
-            <layout class="QHBoxLayout" name="coordinateButtonLayout">
-             <item>
-              <widget class="QPushButton" name="btnUseMeshBounds">
-               <property name="toolTip">
-                <string>将 X、Y、Z 最小值和最大值填充为当前网格范围</string>
-               </property>
-               <property name="text">
-                <string>读取模型范围</string>
-               </property>
-              </widget>
-             </item>
-             <item>
-              <widget class="QPushButton" name="btnSelectByCoordinate">
-               <property name="toolTip">
-                <string>选择满足坐标范围的外边界节点；杆、梁线网格按线节点筛选</string>
-               </property>
-               <property name="text">
-                <string>选择节点</string>
-               </property>
-              </widget>
-             </item>
-            </layout>
-           </item>
-           <item>
-            <widget class="QLabel" name="coordinateResultLabel">
-             <property name="text">
-              <string>勾选坐标方向并设置范围，只选择模型边界节点。</string>
-             </property>
-             <property name="wordWrap">
-              <bool>true</bool>
-             </property>
-            </widget>
-           </item>
-          </layout>
-         </widget>
-        </item>
-        <item>
-         <widget class="QGroupBox" name="groupBox">
-          <property name="title">
-           <string>约束</string>
-          </property>
-          <layout class="QGridLayout" name="gridLayout">
-           <item row="0" column="0">
-            <widget class="QLabel" name="label_3">
- <property name="sizePolicy">
-  <sizepolicy hsizetype="Fixed" vsizetype="Preferred">
-   <horstretch>0</horstretch>
-   <verstretch>0</verstretch>
-  </sizepolicy>
- </property>
-             <property name="text">
-              <string>X 方向</string>
-             </property>
-             <property name="wordWrap">
-  <bool>false</bool>
- </property>
-</widget>
-           </item>
-           <item row="0" column="1">
-            <widget class="QComboBox" name="UXLineEdit">
-             <property name="minimumSize">
-              <size>
-               <width>10</width>
-               <height>0</height>
-              </size>
-             </property>
-            </widget>
-           </item>
-           <item row="1" column="0">
-            <widget class="QLabel" name="label_4">
- <property name="sizePolicy">
-  <sizepolicy hsizetype="Fixed" vsizetype="Preferred">
-   <horstretch>0</horstretch>
-   <verstretch>0</verstretch>
-  </sizepolicy>
- </property>
-             <property name="text">
-              <string>Y 方向</string>
-             </property>
-             <property name="wordWrap">
-  <bool>false</bool>
- </property>
-</widget>
-           </item>
-           <item row="1" column="1">
-            <widget class="QComboBox" name="UYLineEdit">
-             <property name="minimumSize">
-              <size>
-               <width>10</width>
-               <height>0</height>
-              </size>
-             </property>
-            </widget>
-           </item>
-           <item row="2" column="0">
-            <widget class="QLabel" name="label_5">
- <property name="sizePolicy">
-  <sizepolicy hsizetype="Fixed" vsizetype="Preferred">
-   <horstretch>0</horstretch>
-   <verstretch>0</verstretch>
-  </sizepolicy>
- </property>
-             <property name="text">
-              <string>Z 方向</string>
-             </property>
-             <property name="wordWrap">
-  <bool>false</bool>
- </property>
-</widget>
-           </item>
-           <item row="2" column="1">
-            <widget class="QComboBox" name="UZLineEdit">
-             <property name="minimumSize">
-              <size>
-               <width>10</width>
-               <height>0</height>
-              </size>
-             </property>
-            </widget>
-           </item>
-           <item row="3" column="0" colspan="2">
-            <widget class="QPushButton" name="btnSetAllBarsSuspended">
-             <property name="toolTip">
-              <string>选择全部杆单元节点，并将各方向设置为悬空杆件节点</string>
-             </property>
-             <property name="text">
-              <string>自动设置全部杆件为悬空</string>
-             </property>
-            </widget>
-           </item>
-           <property name="leftMargin">
-            <number>9</number>
-           </property>
-           <property name="topMargin">
-            <number>9</number>
-           </property>
-           <property name="rightMargin">
-            <number>9</number>
-           </property>
-           <property name="bottomMargin">
-            <number>9</number>
-           </property>
-          </layout>
-         </widget>
-        </item>
-        <item>
-         <widget class="QGroupBox" name="groupBox_4">
-          <property name="sizePolicy">
-           <sizepolicy hsizetype="Preferred" vsizetype="Preferred">
-            <horstretch>0</horstretch>
-            <verstretch>0</verstretch>
-           </sizepolicy>
-          </property>
-          <property name="minimumSize">
-           <size>
-            <width>0</width>
-            <height>0</height>
-           </size>
-          </property>
-          <layout class="QGridLayout" name="gridLayout_4">
-           <item row="1" column="0">
-            <widget class="QLabel" name="label_6">
-             <property name="sizePolicy">
-           <sizepolicy hsizetype="Fixed" vsizetype="Preferred">
-            <horstretch>0</horstretch>
-            <verstretch>0</verstretch>
-           </sizepolicy>
-          </property>
-             <property name="text">
-              <string>X</string>
-             </property>
-             <property name="wordWrap">
-  <bool>false</bool>
- </property>
-</widget>
-           </item>
-           <item row="3" column="0">
-            <widget class="QLabel" name="label_8">
-             <property name="sizePolicy">
-           <sizepolicy hsizetype="Fixed" vsizetype="Preferred">
-            <horstretch>0</horstretch>
-            <verstretch>0</verstretch>
-           </sizepolicy>
-          </property>
-             <property name="text">
-              <string>Z</string>
-             </property>
-             <property name="wordWrap">
-  <bool>false</bool>
- </property>
-</widget>
-           </item>
-           <item row="2" column="1">
-            <widget class="QLabel" name="YLabel">
-             <property name="text">
-              <string>Y 方向</string>
-             </property>
-            </widget>
-           </item>
-           <item row="4" column="0">
-            <widget class="QLabel" name="label_10">
-             <property name="sizePolicy">
-           <sizepolicy hsizetype="Fixed" vsizetype="Preferred">
-            <horstretch>0</horstretch>
-            <verstretch>0</verstretch>
-           </sizepolicy>
-          </property>
-             <property name="text">
-              <string>移除</string>
-             </property>
-             <property name="wordWrap">
-  <bool>false</bool>
- </property>
-</widget>
-           </item>
-           <item row="4" column="1">
-            <widget class="QLabel" name="PrevUuidLabel">
-             <property name="text">
-              <string>原约束标识</string>
-             </property>
-            </widget>
-           </item>
-           <item row="1" column="1">
-            <widget class="QLabel" name="XLabel">
-             <property name="text">
-              <string>X 方向</string>
-             </property>
-            </widget>
-           </item>
-           <item row="2" column="0">
-            <widget class="QLabel" name="label_7">
-             <property name="sizePolicy">
-           <sizepolicy hsizetype="Fixed" vsizetype="Preferred">
-            <horstretch>0</horstretch>
-            <verstretch>0</verstretch>
-           </sizepolicy>
-          </property>
-             <property name="text">
-              <string>Y</string>
-             </property>
-             <property name="wordWrap">
-  <bool>false</bool>
- </property>
-</widget>
-           </item>
-           <item row="0" column="1">
-            <widget class="QLabel" name="IDLabel">
-             <property name="text">
-              <string />
-             </property>
-            </widget>
-           </item>
-           <item row="0" column="0">
-            <widget class="QLabel" name="label_2">
-             <property name="sizePolicy">
-           <sizepolicy hsizetype="Fixed" vsizetype="Preferred">
-            <horstretch>0</horstretch>
-            <verstretch>0</verstretch>
-           </sizepolicy>
-          </property>
-             <property name="minimumSize">
-              <size>
-               <width>0</width>
-               <height>0</height>
-              </size>
-             </property>
-             <property name="text">
-              <string>节点编号</string>
-             </property>
-             <property name="wordWrap">
-  <bool>false</bool>
- </property>
-</widget>
-           </item>
-           <item row="3" column="1">
-            <widget class="QLabel" name="ZLabel">
-             <property name="text">
-              <string>Z 方向</string>
-             </property>
-            </widget>
-           </item>
-           <property name="leftMargin">
-            <number>9</number>
-           </property>
-           <property name="topMargin">
-            <number>9</number>
-           </property>
-           <property name="rightMargin">
-            <number>9</number>
-           </property>
-           <property name="bottomMargin">
-            <number>9</number>
-           </property>
-          </layout>
-         </widget>
-        </item>
-        <property name="leftMargin">
-         <number>0</number>
-        </property>
-        <property name="topMargin">
-         <number>0</number>
-        </property>
-        <property name="rightMargin">
-         <number>0</number>
-        </property>
-        <property name="bottomMargin">
-         <number>0</number>
-        </property>
        </layout>
       </widget>
      </item>
+
      <item>
-      <spacer name="verticalSpacer">
-       <property name="orientation">
-        <enum>Qt::Vertical</enum>
-       </property>
-       <property name="sizeHint" stdset="0">
-        <size>
-         <width>20</width>
-         <height>40</height>
-        </size>
-       </property>
-      </spacer>
+      <widget class="QWidget" name="advancedPanel" native="true">
+       <property name="visible"><bool>true</bool></property>
+       <layout class="QVBoxLayout" name="advancedLayout">
+        <property name="leftMargin"><number>0</number></property>
+        <property name="topMargin"><number>0</number></property>
+        <property name="rightMargin"><number>0</number></property>
+        <property name="bottomMargin"><number>0</number></property>
+        <property name="spacing"><number>7</number></property>
+
+        <item>
+         <widget class="QGroupBox" name="groupSelectionBox">
+          <property name="title"><string>已有分组</string></property>
+          <layout class="QVBoxLayout" name="groupSelectionLayout">
+           <item><widget class="CustomComboBox" name="comboBoxDim"/></item>
+           <item>
+            <layout class="QHBoxLayout" name="horizontalLayoutGroupSelect">
+             <item><widget class="CustomComboBox" name="comboBoxGroup"/></item>
+             <item>
+              <widget class="QPushButton" name="btnBatchAdd">
+               <property name="text"><string>添加分组</string></property>
+              </widget>
+             </item>
+            </layout>
+           </item>
+          </layout>
+         </widget>
+        </item>
+
+        <item>
+         <widget class="QCheckBox" name="pickEnableCheckBox">
+          <property name="toolTip"><string>开启后，单击只选择一个节点；关闭后恢复默认的整片边界选择</string></property>
+          <property name="text"><string>精确到单节点点选</string></property>
+          <property name="checked"><bool>false</bool></property>
+         </widget>
+        </item>
+        <item>
+         <widget class="QCheckBox" name="smartPatchCheckBox">
+          <property name="visible"><bool>false</bool></property>
+          <property name="text"><string>点选整片</string></property>
+          <property name="checked"><bool>true</bool></property>
+         </widget>
+        </item>
+
+        <item>
+         <widget class="QGroupBox" name="coordinateRangeGroupBox">
+          <property name="toolTip"><string>仅从网格外边界中筛选节点；勾选方向参与坐标过滤，未勾选方向不限制</string></property>
+          <property name="title"><string>坐标范围选择</string></property>
+          <layout class="QVBoxLayout" name="coordinateRangeLayout">
+           <property name="spacing"><number>6</number></property>
+           <item>
+            <layout class="QGridLayout" name="coordinateRangeGridLayout">
+             <item row="0" column="1"><widget class="QLabel" name="coordinateMinLabel"><property name="text"><string>最小值</string></property></widget></item>
+             <item row="0" column="2"><widget class="QLabel" name="coordinateMaxLabel"><property name="text"><string>最大值</string></property></widget></item>
+             <item row="1" column="0"><widget class="QCheckBox" name="coordXCheckBox"><property name="text"><string>X</string></property></widget></item>
+             <item row="1" column="1"><widget class="QDoubleSpinBox" name="xMinSpinBox"><property name="decimals"><number>9</number></property><property name="minimum"><double>-1000000000000.000000000000000</double></property><property name="maximum"><double>1000000000000.000000000000000</double></property><property name="keyboardTracking"><bool>false</bool></property></widget></item>
+             <item row="1" column="2"><widget class="QDoubleSpinBox" name="xMaxSpinBox"><property name="decimals"><number>9</number></property><property name="minimum"><double>-1000000000000.000000000000000</double></property><property name="maximum"><double>1000000000000.000000000000000</double></property><property name="keyboardTracking"><bool>false</bool></property></widget></item>
+             <item row="2" column="0"><widget class="QCheckBox" name="coordYCheckBox"><property name="text"><string>Y</string></property></widget></item>
+             <item row="2" column="1"><widget class="QDoubleSpinBox" name="yMinSpinBox"><property name="decimals"><number>9</number></property><property name="minimum"><double>-1000000000000.000000000000000</double></property><property name="maximum"><double>1000000000000.000000000000000</double></property><property name="keyboardTracking"><bool>false</bool></property></widget></item>
+             <item row="2" column="2"><widget class="QDoubleSpinBox" name="yMaxSpinBox"><property name="decimals"><number>9</number></property><property name="minimum"><double>-1000000000000.000000000000000</double></property><property name="maximum"><double>1000000000000.000000000000000</double></property><property name="keyboardTracking"><bool>false</bool></property></widget></item>
+             <item row="3" column="0"><widget class="QCheckBox" name="coordZCheckBox"><property name="text"><string>Z</string></property></widget></item>
+             <item row="3" column="1"><widget class="QDoubleSpinBox" name="zMinSpinBox"><property name="decimals"><number>9</number></property><property name="minimum"><double>-1000000000000.000000000000000</double></property><property name="maximum"><double>1000000000000.000000000000000</double></property><property name="keyboardTracking"><bool>false</bool></property></widget></item>
+             <item row="3" column="2"><widget class="QDoubleSpinBox" name="zMaxSpinBox"><property name="decimals"><number>9</number></property><property name="minimum"><double>-1000000000000.000000000000000</double></property><property name="maximum"><double>1000000000000.000000000000000</double></property><property name="keyboardTracking"><bool>false</bool></property></widget></item>
+             <item row="4" column="0"><widget class="QLabel" name="coordinateToleranceLabel"><property name="text"><string>容差</string></property></widget></item>
+             <item row="4" column="1" colspan="2"><widget class="QDoubleSpinBox" name="coordToleranceSpinBox"><property name="toolTip"><string>筛选时自动向最小值和最大值两侧扩展该容差</string></property><property name="decimals"><number>10</number></property><property name="minimum"><double>0.000000000000000</double></property><property name="maximum"><double>1000000000.000000000000000</double></property><property name="value"><double>0.000001000000000</double></property><property name="keyboardTracking"><bool>false</bool></property></widget></item>
+            </layout>
+           </item>
+           <item><widget class="QCheckBox" name="coordAppendCheckBox"><property name="text"><string>追加到当前选择</string></property></widget></item>
+           <item>
+            <layout class="QHBoxLayout" name="coordinateButtonLayout">
+             <item><widget class="QPushButton" name="btnUseMeshBounds"><property name="text"><string>读取网格范围</string></property></widget></item>
+             <item><widget class="QPushButton" name="btnSelectByCoordinate"><property name="text"><string>选择</string></property></widget></item>
+            </layout>
+           </item>
+           <item><widget class="QLabel" name="coordinateResultLabel"><property name="text"><string/></property><property name="wordWrap"><bool>true</bool></property></widget></item>
+          </layout>
+         </widget>
+        </item>
+
+        <item>
+         <widget class="QGroupBox" name="groupBox_4">
+          <property name="title"><string>当前点击节点</string></property>
+          <layout class="QGridLayout" name="gridLayout_4">
+           <item row="0" column="0"><widget class="QLabel" name="labelId"><property name="text"><string>节点编号</string></property></widget></item>
+           <item row="0" column="1"><widget class="QLabel" name="IDLabel"><property name="text"><string/></property></widget></item>
+           <item row="1" column="0"><widget class="QLabel" name="labelX"><property name="text"><string>X</string></property></widget></item>
+           <item row="1" column="1"><widget class="QLabel" name="XLabel"><property name="text"><string/></property></widget></item>
+           <item row="2" column="0"><widget class="QLabel" name="labelY"><property name="text"><string>Y</string></property></widget></item>
+           <item row="2" column="1"><widget class="QLabel" name="YLabel"><property name="text"><string/></property></widget></item>
+           <item row="3" column="0"><widget class="QLabel" name="labelZ"><property name="text"><string>Z</string></property></widget></item>
+           <item row="3" column="1"><widget class="QLabel" name="ZLabel"><property name="text"><string/></property></widget></item>
+           <item row="4" column="0"><widget class="QLabel" name="labelFinal"><property name="text"><string>最终约束</string></property></widget></item>
+           <item row="4" column="1"><widget class="QLabel" name="PrevUuidLabel"><property name="text"><string/></property><property name="wordWrap"><bool>true</bool></property></widget></item>
+           <item row="5" column="0"><widget class="QLabel" name="overlapSourceTitleLabel"><property name="text"><string>约束来源</string></property></widget></item>
+           <item row="5" column="1"><widget class="QLabel" name="OverlapSourceLabel"><property name="text"><string/></property><property name="wordWrap"><bool>true</bool></property></widget></item>
+          </layout>
+         </widget>
+        </item>
+       </layout>
+      </widget>
      </item>
+
+     <item><spacer name="verticalSpacer"><property name="orientation"><enum>Qt::Vertical</enum></property><property name="sizeHint" stdset="0"><size><width>20</width><height>40</height></size></property></spacer></item>
     </layout>
    </item>
   </layout>
  </widget>
  <customwidgets>
-  <customwidget>
-   <class>CustomComboBox</class>
-   <extends>QComboBox</extends>
-   <header>CustomComboBox.h</header>
-  </customwidget>
+  <customwidget><class>CustomComboBox</class><extends>QComboBox</extends><header>CustomComboBox.h</header></customwidget>
  </customwidgets>
- <resources />
- <connections />
+ <resources/>
+ <connections/>
 </ui>

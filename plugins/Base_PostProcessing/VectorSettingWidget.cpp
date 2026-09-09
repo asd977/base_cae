@@ -36,7 +36,6 @@
 #include "ui_VectorSettingWidget.h"
 
 #include <stdio.h>
-#include <vtkXMLUnstructuredGridReader.h>
 
 #include <algorithm>
 #include <cmath>
@@ -502,14 +501,10 @@ bool VectorSettingWidget::ensureDataLoaded()
 
     vtkSmartPointer<vtkUnstructuredGrid> grid;
 
-    if (ext == "txt" || ext == "dat" || ext == "tec")
+    if (ext == "txt" || ext == "dat" || ext == "tec" ||
+        ext == "vtu" || ext == "vtm")
     {
         grid = PostTecplotUtils::readGrid(m_fileName);
-    }
-    else if (ext == "vtu")
-    {
-        // ---- 新增的 vtu ----
-        grid = readVtu(m_fileName);
     }
     else
     {
@@ -923,22 +918,4 @@ void VectorSettingWidget::on_thicknessSpinBox_valueChanged(double value)
             m_glyph->Update();
         requestRender();
     }
-}
-
-vtkSmartPointer<vtkUnstructuredGrid> VectorSettingWidget::readVtu(const QString& fileName)
-{
-    auto reader = vtkSmartPointer<vtkXMLUnstructuredGridReader>::New();
-    reader->SetFileName(fileName.toUtf8().constData());
-    reader->Update();
-
-    vtkUnstructuredGrid* ug = reader->GetOutput();
-    if (!ug || ug->GetNumberOfPoints() == 0)
-    {
-        qWarning() << "[Vector] Failed to read VTU file:" << fileName;
-        return nullptr;
-    }
-
-    auto result = vtkSmartPointer<vtkUnstructuredGrid>::New();
-    result->ShallowCopy(ug);
-    return result;
 }

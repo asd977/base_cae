@@ -1995,37 +1995,131 @@ vtkSmartPointer<vtkUnstructuredGrid> MeshGridIO::importNastran(const QString& fi
     grid->SetPoints(points);
     grid->Allocate(elements.size());
 
+    int meshDimension = 0;
+    for (const NasElement& element : std::as_const(elements))
+        meshDimension = qMax(meshDimension, element.dimension);
+
     QVector<int> insertedElementIndices;
     insertedElementIndices.reserve(elements.size());
     int missingNodeElementCount = 0;
-    int meshDimension = 0;
-    for (int elementIndex = 0; elementIndex < elements.size(); ++elementIndex)
+
+    auto mapElementPointIds = [&](const NasElement& element,
+                                  QVector<vtkIdType>& pointIds) -> bool
     {
-        const NasElement& element = elements.at(elementIndex);
-        QVector<vtkIdType> pointIds;
+        pointIds.clear();
         pointIds.reserve(element.nodeIds.size());
-        bool missingNode = false;
         for (int nodeId : element.nodeIds)
         {
             const auto it = pointIdByNodeId.constFind(nodeId);
             if (it == pointIdByNodeId.constEnd())
-            {
-                missingNode = true;
-                break;
-            }
+                return false;
             pointIds.push_back(it.value());
         }
-        if (missingNode)
+        return true;
+    };
+
+    auto insertElement = [&](int elementIndex) -> bool
+    {
+        const NasElement& element = elements.at(elementIndex);
+        QVector<vtkIdType> pointIds;
+        if (!mapElementPointIds(element, pointIds))
         {
             ++missingNodeElementCount;
-            continue;
+            return false;
         }
-
         grid->InsertNextCell(element.vtkType,
                              static_cast<vtkIdType>(pointIds.size()),
                              pointIds.constData());
         insertedElementIndices.push_back(elementIndex);
-        meshDimension = qMax(meshDimension, element.dimension);
+        return true;
+    };
+
+    // 先插入最高维的计算域。部分 Nastran 导出器（例如 COMSOL）还会把实体的
+    // 外表面和内部界面写成 CQUAD/CTRIA。它们是边界分组，不是额外的壳计算单元。
+    for (int elementIndex = 0; elementIndex < elements.size(); ++elementIndex)
+    {
+        if (elements.at(elementIndex).dimension == meshDimension)
+            insertElement(elementIndex);
+    }
+
+    auto pointSetKey = [](QVector<vtkIdType> pointIds) -> QString
+    {
+        std::sort(pointIds.begin(), pointIds.end());
+        QString key;
+        key.reserve(pointIds.size() * 12);
+        for (vtkIdType pointId : std::as_const(pointIds))
+        {
+            key += QString::number(pointId);
+            key += QLatin1Char(',');
+        }
+        return key;
+    };
+
+    QHash<QString, qint64> domainBoundaryByPoints;
+    for (vtkIdType cellId = 0; cellId < grid->GetNumberOfCells(); ++cellId)
+    {
+        vtkCell* cell = grid->GetCell(cellId);
+        const int boundaryCount = !cell ? 0 : meshDimension == 3 ? cell->GetNumberOfFaces()
+                                                                  : cell->GetNumberOfEdges();
+        for (int boundaryId = 0; boundaryId < boundaryCount; ++boundaryId)
+        {
+            vtkCell* boundary = meshDimension == 3 ? cell->GetFace(boundaryId)
+                                                    : cell->GetEdge(boundaryId);
+            if (!boundary || boundary->GetNumberOfPoints() < meshDimension)
+                continue;
+            QVector<vtkIdType> boundaryPointIds;
+            boundaryPointIds.reserve(boundary->GetNumberOfPoints());
+            for (vtkIdType i = 0; i < boundary->GetNumberOfPoints(); ++i)
+                boundaryPointIds.push_back(boundary->GetPointId(i));
+            const qint64 boundaryKey =
+                (qint64(cellId) << 4) | (qint64(boundaryId) & 0xF);
+            domainBoundaryByPoints.insert(pointSetKey(boundaryPointIds), boundaryKey);
+
+            // 同时建立高阶面的角点索引，以识别 Tet10/Hex20 上的低阶边界卡片。
+            int cornerCount = boundaryPointIds.size();
+            if (boundary->GetCellType() == VTK_QUADRATIC_EDGE)
+                cornerCount = 2;
+            else if (boundary->GetCellType() == VTK_QUADRATIC_TRIANGLE)
+                cornerCount = 3;
+            else if (boundary->GetCellType() == VTK_QUADRATIC_QUAD ||
+                     boundary->GetCellType() == VTK_BIQUADRATIC_QUAD)
+                cornerCount = 4;
+            if (cornerCount < boundaryPointIds.size())
+            {
+                boundaryPointIds.resize(cornerCount);
+                domainBoundaryByPoints.insert(pointSetKey(boundaryPointIds), boundaryKey);
+            }
+        }
+    }
+
+    struct BoundaryElement
+    {
+        int elementIndex = -1;
+        qint64 entityKey = -1;
+        QVector<vtkIdType> pointIds;
+    };
+    QVector<BoundaryElement> boundaryElements;
+
+    // 混合维度文件中的低维卡片按格式层级保存为边界实体，不加入最高维
+    // 计算单元数组。拓扑匹配仅补充其关联的域面/域边编号。
+    for (int elementIndex = 0; elementIndex < elements.size(); ++elementIndex)
+    {
+        const NasElement& element = elements.at(elementIndex);
+        if (element.dimension == meshDimension)
+            continue;
+
+        QVector<vtkIdType> pointIds;
+        if (!mapElementPointIds(element, pointIds))
+        {
+            ++missingNodeElementCount;
+            continue;
+        }
+        const QString key = pointSetKey(pointIds);
+        const qint64 entityKey =
+            element.dimension == meshDimension - 1 && domainBoundaryByPoints.contains(key)
+                ? domainBoundaryByPoints.value(key)
+                : -1;
+        boundaryElements.push_back({elementIndex, entityKey, pointIds});
     }
 
     if (grid->GetNumberOfCells() == 0)
@@ -2046,16 +2140,25 @@ vtkSmartPointer<vtkUnstructuredGrid> MeshGridIO::importNastran(const QString& fi
     auto* elemIdArray = vtkIntArray::SafeDownCast(grid->GetCellData()->GetArray("elem_id"));
     auto* partArray = vtkIntArray::SafeDownCast(grid->GetCellData()->GetArray("src_part"));
 
-    QHash<int, int> propertyToMatype;
+    auto propertyKey = [](int dimension, int propertyId) -> quint64
+    {
+        return (quint64(quint32(dimension)) << 32) | quint64(quint32(propertyId));
+    };
+    QHash<quint64, int> propertyToMatype;
     int nextMatype = kDefaultCalculationMatype;
+    for (const NasElement& element : std::as_const(elements))
+    {
+        const int propertyId = qMax(0, element.propertyId);
+        const quint64 key = propertyKey(element.dimension, propertyId);
+        if (!propertyToMatype.contains(key))
+            propertyToMatype.insert(key, nextMatype++);
+    }
     for (vtkIdType cellId = 0; cellId < grid->GetNumberOfCells(); ++cellId)
     {
         const NasElement& element =
             elements.at(insertedElementIndices.at(static_cast<int>(cellId)));
         const int propertyId = qMax(0, element.propertyId);
-        if (!propertyToMatype.contains(propertyId))
-            propertyToMatype.insert(propertyId, nextMatype++);
-        const int matype = propertyToMatype.value(propertyId);
+        const int matype = propertyToMatype.value(propertyKey(element.dimension, propertyId));
 
         if (matypeArray)
             matypeArray->SetValue(cellId, matype);
@@ -2088,12 +2191,35 @@ vtkSmartPointer<vtkUnstructuredGrid> MeshGridIO::importNastran(const QString& fi
             m_mshPickMap.cellIdToDomainTags[static_cast<MeshIdType>(cellId)].push_back(set.key);
     }
 
+    for (const BoundaryElement& boundary : std::as_const(boundaryElements))
+    {
+        const NasElement& element = elements.at(boundary.elementIndex);
+        const int propertyId = qMax(0, element.propertyId);
+        const int matype = propertyToMatype.value(propertyKey(element.dimension, propertyId));
+        const QString groupName =
+            propertyNames.value(propertyId,
+                                propertyId > 0 ? QStringLiteral("PID %1").arg(propertyId)
+                                               : QStringLiteral("未分组"));
+        m_mshPickMap.physIdToName.insert(matype, groupName);
+        MeshTagSet& set =
+            ensurePhysicalTagSet(m_mshPickMap, matype, element.dimension,
+                                 QStringLiteral("NastranBoundary"));
+        set.name = groupName;
+        for (vtkIdType pointId : boundary.pointIds)
+            set.pointIds.push_back(static_cast<MeshIdType>(pointId));
+        if (boundary.entityKey >= 0 && element.dimension == 2)
+            set.faceKeys.push_back(static_cast<MeshIdType>(boundary.entityKey));
+        else if (boundary.entityKey >= 0 && element.dimension == 1)
+            set.edgeKeys.push_back(static_cast<MeshIdType>(boundary.entityKey));
+    }
+
     m_mshPickMap.meshDim = meshDimension;
     PublicVariables::instance().set(PublicConstants::kMeshDimension, meshDimension, "mesh");
     normalizePhysicalTagSets(m_mshPickMap, QStringLiteral("Nastran"));
 
     qInfo() << "[Nastran] imported nodes=" << nodes.size()
             << "cells=" << grid->GetNumberOfCells()
+            << "boundary-elements=" << boundaryElements.size()
             << "unsupported=" << unsupportedElementCount
             << "invalid=" << invalidElementCount
             << "missing-node=" << missingNodeElementCount;
@@ -3811,97 +3937,18 @@ vtkSmartPointer<vtkUnstructuredGrid> MeshGridIO::loadFlac3dGrid(const QString& f
         if (ids.size() != 8)
             return false;
 
-        if (isBinaryGrid)
-        {
-            // Binary f3grid uses FLAC3D's internal brick topology, not VTK's corner order.
-            constexpr int flacToVtk[8] = {5, 7, 6, 3, 2, 4, 1, 0};
-            auto hex = vtkSmartPointer<vtkHexahedron>::New();
-            for (int vtkCorner = 0; vtkCorner < 8; ++vtkCorner)
-            {
-                const int sourceCorner = flacToVtk[vtkCorner];
-                if (!idMap.contains(ids[sourceCorner]))
-                    return false;
-                hex->GetPointIds()->SetId(vtkCorner, idMap.value(ids[sourceCorner]));
-            }
-            grid->InsertNextCell(hex->GetCellType(), hex->GetPointIds());
-            return true;
-        }
-
-        struct P
-        {
-            vtkIdType nid;
-            double x, y, z;
-        };
-        P p[8];
-
-        std::vector<double> xs(8), ys(8), zs(8);
-        for (int i = 0; i < 8; ++i)
-        {
-            const NodeData& n = nodes[ids[i]];
-            p[i].nid = idMap[ids[i]];
-            p[i].x = n.x;
-            p[i].y = n.y;
-            p[i].z = n.z;
-            xs[i] = n.x;
-            ys[i] = n.y;
-            zs[i] = n.z;
-        }
-
-        int axis = chooseMainAxis(xs, ys, zs);
-
-        double minv = 1e300, maxv = -1e300;
-        for (int i = 0; i < 8; ++i)
-        {
-            double v = (axis == 0 ? xs[i] : (axis == 1 ? ys[i] : zs[i]));
-            minv = std::min(minv, v);
-            maxv = std::max(maxv, v);
-        }
-        double mid = 0.5 * (minv + maxv);
-
-        QVector<int> bottom, top;
-        bottom.reserve(4);
-        top.reserve(4);
-        for (int i = 0; i < 8; ++i)
-        {
-            double v = (axis == 0 ? xs[i] : (axis == 1 ? ys[i] : zs[i]));
-            if (v <= mid)
-                bottom.push_back(i);
-            else
-                top.push_back(i);
-        }
-
-        if (bottom.size() != 4 || top.size() != 4)
-        {
-            QVector<QPair<double, int>> tmp;
-            tmp.reserve(8);
-            for (int i = 0; i < 8; ++i)
-            {
-                double v = (axis == 0 ? xs[i] : (axis == 1 ? ys[i] : zs[i]));
-                tmp.push_back(qMakePair(v, i));
-            }
-            std::sort(tmp.begin(), tmp.end(),
-                      [](auto& a, auto& b)
-                      {
-                          return a.first < b.first;
-                      });
-            bottom.clear();
-            top.clear();
-            for (int i = 0; i < 4; ++i)
-                bottom.push_back(tmp[i].second);
-            for (int i = 4; i < 8; ++i)
-                top.push_back(tmp[i].second);
-        }
-
-        sortByAngleInPlane(bottom, axis, xs, ys, zs);
-        sortByAngleInPlane(top, axis, xs, ys, zs);
-
+        // FLAC3D 的 B8 槽位顺序是文件格式的一部分，与单元在空间中的朝向无关。
+        // 不能按坐标最长轴重新猜测顶/底面，否则弧形、径向网格中相邻单元会
+        // 对同一个共享面生成不同的 VTK 拓扑，表现为折叠面和尖片。
+        constexpr int flacToVtk[8] = {5, 7, 6, 3, 2, 4, 1, 0};
         auto hex = vtkSmartPointer<vtkHexahedron>::New();
-        for (int k = 0; k < 4; ++k)
+        for (int vtkCorner = 0; vtkCorner < 8; ++vtkCorner)
         {
-            hex->GetPointIds()->SetId(k, p[bottom[k]].nid);
-            hex->GetPointIds()->SetId(4 + k, p[top[k]].nid);
+            const int sourceCorner = flacToVtk[vtkCorner];
+            if (!idMap.contains(ids[sourceCorner]))
+                return false;
+            hex->GetPointIds()->SetId(vtkCorner, idMap.value(ids[sourceCorner]));
         }
-
         grid->InsertNextCell(hex->GetCellType(), hex->GetPointIds());
         return true;
     };
@@ -3911,81 +3958,17 @@ vtkSmartPointer<vtkUnstructuredGrid> MeshGridIO::loadFlac3dGrid(const QString& f
         if (ids.size() != 6)
             return false;
 
-        struct P
-        {
-            vtkIdType nid;
-            double x, y, z;
-        };
-        P p[6];
-
-        std::vector<double> xs(6), ys(6), zs(6);
-        for (int i = 0; i < 6; ++i)
-        {
-            const NodeData& n = nodes[ids[i]];
-            p[i].nid = idMap[ids[i]];
-            p[i].x = n.x;
-            p[i].y = n.y;
-            p[i].z = n.z;
-            xs[i] = n.x;
-            ys[i] = n.y;
-            zs[i] = n.z;
-        }
-
-        int axis = chooseMainAxis(xs, ys, zs);
-
-        double minv = 1e300, maxv = -1e300;
-        for (int i = 0; i < 6; ++i)
-        {
-            double v = (axis == 0 ? xs[i] : (axis == 1 ? ys[i] : zs[i]));
-            minv = std::min(minv, v);
-            maxv = std::max(maxv, v);
-        }
-        double mid = 0.5 * (minv + maxv);
-
-        QVector<int> bottom, top;
-        bottom.reserve(3);
-        top.reserve(3);
-        for (int i = 0; i < 6; ++i)
-        {
-            double v = (axis == 0 ? xs[i] : (axis == 1 ? ys[i] : zs[i]));
-            if (v <= mid)
-                bottom.push_back(i);
-            else
-                top.push_back(i);
-        }
-
-        if (bottom.size() != 3 || top.size() != 3)
-        {
-            QVector<QPair<double, int>> tmp;
-            tmp.reserve(6);
-            for (int i = 0; i < 6; ++i)
-            {
-                double v = (axis == 0 ? xs[i] : (axis == 1 ? ys[i] : zs[i]));
-                tmp.push_back(qMakePair(v, i));
-            }
-            std::sort(tmp.begin(), tmp.end(),
-                      [](auto& a, auto& b)
-                      {
-                          return a.first < b.first;
-                      });
-            bottom.clear();
-            top.clear();
-            for (int i = 0; i < 3; ++i)
-                bottom.push_back(tmp[i].second);
-            for (int i = 3; i < 6; ++i)
-                top.push_back(tmp[i].second);
-        }
-
-        sortByAngleInPlane(bottom, axis, xs, ys, zs);
-        sortByAngleInPlane(top, axis, xs, ys, zs);
-
+        // W6 同样使用 FLAC3D 的标准槽位连接。该顺序保持两个三角面及三组
+        // 对应侧边，并使转换后的 vtkWedge 保持正方向。
+        constexpr int flacToVtk[6] = {0, 3, 1, 2, 5, 4};
         auto wedge = vtkSmartPointer<vtkWedge>::New();
-        for (int k = 0; k < 3; ++k)
+        for (int vtkCorner = 0; vtkCorner < 6; ++vtkCorner)
         {
-            wedge->GetPointIds()->SetId(k, p[bottom[k]].nid);
-            wedge->GetPointIds()->SetId(3 + k, p[top[k]].nid);
+            const int sourceCorner = flacToVtk[vtkCorner];
+            if (!idMap.contains(ids[sourceCorner]))
+                return false;
+            wedge->GetPointIds()->SetId(vtkCorner, idMap.value(ids[sourceCorner]));
         }
-
         grid->InsertNextCell(wedge->GetCellType(), wedge->GetPointIds());
         return true;
     };
@@ -4439,106 +4422,207 @@ vtkSmartPointer<vtkUnstructuredGrid> MeshGridIO::loadAbaqusInpGrid(const QString
     vtkNew<vtkUnstructuredGrid> grid;
     grid->SetPoints(pts);
 
-    QHash<int, QVector<vtkIdType>> elemIdToCellIds;
-    auto allIdsValid = [&](const QVector<int>& conn) -> bool
+    auto elementDimension = [](const QString& type) -> int
     {
-        for (int nid : conn)
-            if (!idMap.contains(nid))
+        if (type.startsWith("C3D"))
+            return 3;
+        if (type.startsWith("S"))
+            return 2;
+        if (type.startsWith("T3D") || type.startsWith("B31"))
+            return 1;
+        return 0;
+    };
+
+    int domainDimension = 0;
+    QHash<int, int> elementDimensionById;
+    for (const ElemBlock& e : std::as_const(elems))
+    {
+        const int dim = elementDimension(e.type);
+        elementDimensionById.insert(e.id, dim);
+        domainDimension = qMax(domainDimension, dim);
+    }
+    if (domainDimension <= 0)
+        return nullptr;
+    m_mshPickMap.meshDim = domainDimension;
+
+    QHash<int, QVector<vtkIdType>> elemIdToCellIds;
+    auto mapPointIds = [&](const QVector<int>& conn, QVector<vtkIdType>& pointIds) -> bool
+    {
+        pointIds.clear();
+        pointIds.reserve(conn.size());
+        for (int nodeId : conn)
+        {
+            if (!idMap.contains(nodeId))
                 return false;
+            pointIds.push_back(idMap.value(nodeId));
+        }
         return true;
     };
 
-    for (const ElemBlock& e : elems)
+    auto insertElement = [&](const ElemBlock& e) -> vtkIdType
     {
-        if (!allIdsValid(e.conn))
+        QVector<vtkIdType> pointIds;
+        if (!mapPointIds(e.conn, pointIds))
+        {
+            qWarning() << "Skip element: has undefined node id, type=" << e.type;
+            return -1;
+        }
+
+        int vtkType = VTK_EMPTY_CELL;
+        int insertedPointCount = pointIds.size();
+        if (e.type.startsWith("C3D8") && pointIds.size() == 8)
+            vtkType = VTK_HEXAHEDRON;
+        else if (e.type.startsWith("C3D4") && pointIds.size() == 4)
+            vtkType = VTK_TETRA;
+        else if (e.type.startsWith("C3D10") && pointIds.size() == 10)
+        {
+            vtkType = VTK_TETRA;
+            insertedPointCount = 4;
+        }
+        else if (e.type.startsWith("C3D6") && pointIds.size() == 6)
+            vtkType = VTK_WEDGE;
+        else if (e.type.startsWith("C3D5") && pointIds.size() == 5)
+            vtkType = VTK_PYRAMID;
+        else if (e.type.startsWith("S4") && pointIds.size() == 4)
+            vtkType = VTK_QUAD;
+        else if (e.type.startsWith("S3") && pointIds.size() == 3)
+            vtkType = VTK_TRIANGLE;
+        else if ((e.type.startsWith("T3D2") || e.type.startsWith("B31")) &&
+                 pointIds.size() == 2)
+            vtkType = VTK_LINE;
+        else if (e.type.startsWith("T3D3") && pointIds.size() == 3)
+            vtkType = VTK_QUADRATIC_EDGE;
+
+        if (vtkType == VTK_EMPTY_CELL)
+            return -1;
+        const vtkIdType cellId =
+            grid->InsertNextCell(vtkType, insertedPointCount, pointIds.constData());
+        elemIdToCellIds[e.id].push_back(cellId);
+        return cellId;
+    };
+
+    // 先插入最高维计算域，随后才能把 S4/S3 等面单元识别为实体边界。
+    for (const ElemBlock& e : std::as_const(elems))
+    {
+        if (elementDimensionById.value(e.id) == domainDimension)
+            insertElement(e);
+    }
+
+    auto pointSetKey = [](QVector<vtkIdType> pointIds) -> QString
+    {
+        std::sort(pointIds.begin(), pointIds.end());
+        QString key;
+        for (vtkIdType pointId : std::as_const(pointIds))
+        {
+            key += QString::number(pointId);
+            key += QLatin1Char(',');
+        }
+        return key;
+    };
+
+    double bounds[6] = {0.0, 0.0, 0.0, 0.0, 0.0, 0.0};
+    pts->GetBounds(bounds);
+    const double modelSpan = qMax(qMax(bounds[1] - bounds[0], bounds[3] - bounds[2]),
+                                  bounds[5] - bounds[4]);
+    const double coordinateTolerance = qMax(1.0e-8, modelSpan * 1.0e-7);
+    auto coordinateSetKey = [&](const QVector<vtkIdType>& pointIds) -> QString
+    {
+        QStringList coordinates;
+        coordinates.reserve(pointIds.size());
+        for (vtkIdType pointId : pointIds)
+        {
+            double p[3] = {0.0, 0.0, 0.0};
+            pts->GetPoint(pointId, p);
+            coordinates.push_back(
+                QStringLiteral("%1:%2:%3")
+                    .arg(qRound64(p[0] / coordinateTolerance))
+                    .arg(qRound64(p[1] / coordinateTolerance))
+                    .arg(qRound64(p[2] / coordinateTolerance)));
+        }
+        std::sort(coordinates.begin(), coordinates.end());
+        return coordinates.join(QLatin1Char(';'));
+    };
+
+    struct BoundaryRef
+    {
+        qint64 entityKey = -1;
+        QVector<vtkIdType> pointIds;
+    };
+    QHash<QString, BoundaryRef> domainBoundaryByNodeIds;
+    QHash<QString, BoundaryRef> domainBoundaryByCoordinates;
+    for (vtkIdType cellId = 0; cellId < grid->GetNumberOfCells(); ++cellId)
+    {
+        vtkCell* cell = grid->GetCell(cellId);
+        const int boundaryCount = !cell ? 0 : domainDimension == 3 ? cell->GetNumberOfFaces()
+                                                                    : cell->GetNumberOfEdges();
+        for (int boundaryId = 0; boundaryId < boundaryCount; ++boundaryId)
+        {
+            vtkCell* boundary = domainDimension == 3 ? cell->GetFace(boundaryId)
+                                                      : cell->GetEdge(boundaryId);
+            if (!boundary)
+                continue;
+            QVector<vtkIdType> boundaryPointIds;
+            boundaryPointIds.reserve(boundary->GetNumberOfPoints());
+            for (vtkIdType i = 0; i < boundary->GetNumberOfPoints(); ++i)
+                boundaryPointIds.push_back(boundary->GetPointId(i));
+            BoundaryRef ref;
+            ref.entityKey = (qint64(cellId) << 4) | (qint64(boundaryId) & 0xF);
+            ref.pointIds = boundaryPointIds;
+            domainBoundaryByNodeIds.insert(pointSetKey(boundaryPointIds), ref);
+            domainBoundaryByCoordinates.insert(coordinateSetKey(boundaryPointIds), ref);
+        }
+    }
+
+    struct BoundaryElement
+    {
+        int dimension = 0;
+        qint64 entityKey = -1;
+        QVector<vtkIdType> pointIds;
+    };
+    QHash<int, BoundaryElement> boundaryElementById;
+    for (const ElemBlock& e : std::as_const(elems))
+    {
+        const int dim = elementDimensionById.value(e.id);
+        if (dim == domainDimension)
+            continue;
+
+        QVector<vtkIdType> pointIds;
+        if (!mapPointIds(e.conn, pointIds))
         {
             qWarning() << "Skip element: has undefined node id, type=" << e.type;
             continue;
         }
 
-        if (e.type.startsWith("C3D8") && e.conn.size() == 8)
+        BoundaryRef boundaryRef;
+        bool isDomainBoundary = false;
+        if (dim == domainDimension - 1)
         {
-            vtkIdType ids[8];
-            for (int i = 0; i < 8; ++i)
-                ids[i] = idMap.value(e.conn[i]);
-            const vtkIdType cid = grid->InsertNextCell(VTK_HEXAHEDRON, 8, ids);
-            elemIdToCellIds[e.id].push_back(cid);
+            const auto nodeIt = domainBoundaryByNodeIds.constFind(pointSetKey(pointIds));
+            if (nodeIt != domainBoundaryByNodeIds.constEnd())
+            {
+                boundaryRef = nodeIt.value();
+                isDomainBoundary = true;
+            }
+            else
+            {
+                const auto coordinateIt =
+                    domainBoundaryByCoordinates.constFind(coordinateSetKey(pointIds));
+                if (coordinateIt != domainBoundaryByCoordinates.constEnd())
+                {
+                    boundaryRef = coordinateIt.value();
+                    isDomainBoundary = true;
+                }
+            }
         }
-        else if (e.type.startsWith("C3D4") && e.conn.size() == 4)
-        {
-            vtkIdType ids[4];
-            for (int i = 0; i < 4; ++i)
-                ids[i] = idMap.value(e.conn[i]);
-            const vtkIdType cid = grid->InsertNextCell(VTK_TETRA, 4, ids);
-            elemIdToCellIds[e.id].push_back(cid);
-        }
-        else if (e.type.startsWith("C3D10") && e.conn.size() == 10)
-        {
-            vtkIdType ids[4];
-            for (int i = 0; i < 4; ++i)
-                ids[i] = idMap.value(e.conn[i]);
-            const vtkIdType cid = grid->InsertNextCell(VTK_TETRA, 4, ids);
-            elemIdToCellIds[e.id].push_back(cid);
-        }
-        else if (e.type.startsWith("C3D6") && e.conn.size() == 6)
-        {
-            vtkIdType ids[6];
-            for (int i = 0; i < 6; ++i)
-                ids[i] = idMap.value(e.conn[i]);
-            const vtkIdType cid = grid->InsertNextCell(VTK_WEDGE, 6, ids);
-            elemIdToCellIds[e.id].push_back(cid);
-        }
-        else if (e.type.startsWith("C3D5") && e.conn.size() == 5)
-        {
-            vtkIdType ids[5];
-            for (int i = 0; i < 5; ++i)
-                ids[i] = idMap.value(e.conn[i]);
-            const vtkIdType cid = grid->InsertNextCell(VTK_PYRAMID, 5, ids);
-            elemIdToCellIds[e.id].push_back(cid);
-        }
-        else if (e.type.startsWith("S4") && e.conn.size() == 4)
-        {
-            vtkIdType ids[4];
-            for (int i = 0; i < 4; ++i)
-                ids[i] = idMap.value(e.conn[i]);
-            const vtkIdType cid = grid->InsertNextCell(VTK_QUAD, 4, ids);
-            elemIdToCellIds[e.id].push_back(cid);
-        }
-        else if (e.type.startsWith("S3") && e.conn.size() == 3)
-        {
-            vtkIdType ids[3];
-            for (int i = 0; i < 3; ++i)
-                ids[i] = idMap.value(e.conn[i]);
-            const vtkIdType cid = grid->InsertNextCell(VTK_TRIANGLE, 3, ids);
-            elemIdToCellIds[e.id].push_back(cid);
-        }
-        else if ((e.type.startsWith("T3D2") || e.type.startsWith("B31")) && e.conn.size() == 2)
-        {
-            vtkIdType ids[2];
-            for (int i = 0; i < 2; ++i)
-                ids[i] = idMap.value(e.conn[i]);
-            const vtkIdType cid = grid->InsertNextCell(VTK_LINE, 2, ids);
-            elemIdToCellIds[e.id].push_back(cid);
-        }
-        else if (e.type.startsWith("T3D3") && e.conn.size() == 3)
-        {
-            vtkIdType ids[3];
-            for (int i = 0; i < 3; ++i)
-                ids[i] = idMap.value(e.conn[i]);
-            const vtkIdType cid = grid->InsertNextCell(VTK_QUADRATIC_EDGE, 3, ids);
-            elemIdToCellIds[e.id].push_back(cid);
-        }
-    }
 
-    int domainDimension = 0;
-    for (vtkIdType cid = 0; cid < grid->GetNumberOfCells(); ++cid)
-    {
-        if (vtkCell* cell = grid->GetCell(cid))
-            domainDimension = qMax(domainDimension, cell->GetCellDimension());
+        // 混合维度文件中的低维单元由单元类型明确表示边界实体，不加入
+        // 最高维计算单元数组。匹配仅用于把边界关联回计算域的面或边。
+        boundaryElementById.insert(
+            e.id,
+            {dim,
+             isDomainBoundary ? boundaryRef.entityKey : -1,
+             isDomainBoundary ? boundaryRef.pointIds : pointIds});
     }
-    if (domainDimension <= 0)
-        return nullptr;
-    m_mshPickMap.meshDim = domainDimension;
 
     int nextPhysId = kDefaultCalculationMatype;
     QHash<QString, int> groupToPhysId;
@@ -4547,12 +4631,13 @@ vtkSmartPointer<vtkUnstructuredGrid> MeshGridIO::loadAbaqusInpGrid(const QString
         const QString g = groupName.trimmed();
         if (g.isEmpty())
             return 0;
-        if (groupToPhysId.contains(g))
-            return groupToPhysId.value(g);
+        const QString groupKey = QStringLiteral("%1:%2").arg(dim).arg(g);
+        if (groupToPhysId.contains(groupKey))
+            return groupToPhysId.value(groupKey);
         while (m_mshPickMap.physIdToName.contains(nextPhysId))
             ++nextPhysId;
         const int physId = nextPhysId++;
-        groupToPhysId.insert(g, physId);
+        groupToPhysId.insert(groupKey, physId);
         m_mshPickMap.physIdToName.insert(physId, g);
         m_mshPickMap.physIdToDim.insert(physId, dim);
         return physId;
@@ -4561,49 +4646,72 @@ vtkSmartPointer<vtkUnstructuredGrid> MeshGridIO::loadAbaqusInpGrid(const QString
     for (auto it = elsetToElemIds.constBegin(); it != elsetToElemIds.constEnd(); ++it)
     {
         const QString& setName = it.key();
-        QSet<int> allPointIds;
-        QSet<qint64> allCellIds;
-        int dim = 3;
+        struct GroupMembers
+        {
+            QSet<int> pointIds;
+            QSet<qint64> cellIds;
+            QSet<qint64> edgeKeys;
+            QSet<qint64> faceKeys;
+        };
+        QMap<int, GroupMembers> membersByDimension;
 
         for (int elemId : it.value())
         {
+            const auto boundaryIt = boundaryElementById.constFind(elemId);
+            if (boundaryIt != boundaryElementById.constEnd())
+            {
+                const BoundaryElement& boundary = boundaryIt.value();
+                GroupMembers& members = membersByDimension[boundary.dimension];
+                for (vtkIdType pointId : boundary.pointIds)
+                    members.pointIds.insert(static_cast<int>(pointId));
+                if (boundary.entityKey >= 0 && boundary.dimension == 2)
+                    members.faceKeys.insert(boundary.entityKey);
+                else if (boundary.entityKey >= 0 && boundary.dimension == 1)
+                    members.edgeKeys.insert(boundary.entityKey);
+                continue;
+            }
+
             const auto cids = elemIdToCellIds.value(elemId);
             for (vtkIdType cid : cids)
             {
                 if (cid < 0 || cid >= grid->GetNumberOfCells())
                     continue;
-                allCellIds.insert(static_cast<qint64>(cid));
-                if (auto* c = grid->GetCell(cid))
-                    dim = c->GetCellDimension();
                 vtkCell* c = grid->GetCell(cid);
                 if (!c)
                     continue;
+                GroupMembers& members = membersByDimension[c->GetCellDimension()];
+                members.cellIds.insert(static_cast<qint64>(cid));
                 for (vtkIdType k = 0; k < c->GetNumberOfPoints(); ++k)
-                {
-                    allPointIds.insert(static_cast<int>(c->GetPointId(k)));
-                }
+                    members.pointIds.insert(static_cast<int>(c->GetPointId(k)));
             }
         }
-        if (allCellIds.isEmpty() && allPointIds.isEmpty())
-            continue;
 
-        const int physId = ensurePhysId(setName, dim);
-        if (physId <= 0)
-            continue;
-
-        if (dim == domainDimension)
+        for (auto dimIt = membersByDimension.begin(); dimIt != membersByDimension.end(); ++dimIt)
         {
-            MeshTagSet& set =
-                ensureDomainPhysicalTagSet(m_mshPickMap, physId, domainDimension);
+            const int dim = dimIt.key();
+            const GroupMembers& members = dimIt.value();
+            if (members.cellIds.isEmpty() && members.pointIds.isEmpty())
+                continue;
+            const int physId = ensurePhysId(setName, dim);
+            if (physId <= 0)
+                continue;
+
+            MeshTagSet& set = ensurePhysicalTagSet(m_mshPickMap, physId, dim,
+                                                   QStringLiteral("AbaqusInpGrid"));
             set.name = setName;
-            set.cellIds = allCellIds.values().toVector();
-            for (MeshIdType cid : set.cellIds)
-                m_mshPickMap.cellIdToDomainTags[cid].push_back(set.key);
+            set.cellIds = members.cellIds.values().toVector();
+            set.pointIds.clear();
+            set.pointIds.reserve(members.pointIds.size());
+            for (int pointId : members.pointIds)
+                set.pointIds.push_back(static_cast<MeshIdType>(pointId));
+            set.edgeKeys = members.edgeKeys.values().toVector();
+            set.faceKeys = members.faceKeys.values().toVector();
+            if (dim == domainDimension)
+            {
+                for (MeshIdType cellId : std::as_const(set.cellIds))
+                    m_mshPickMap.cellIdToDomainTags[cellId].push_back(set.key);
+            }
         }
-        else if (dim == 2)
-            setPhysicalBoundaryPoints(m_mshPickMap, physId, 2, allPointIds.values().toVector(), QStringLiteral("AbaqusInpGrid"));
-        else
-            setPhysicalBoundaryPoints(m_mshPickMap, physId, 1, allPointIds.values().toVector(), QStringLiteral("AbaqusInpGrid"));
     }
 
     for (auto it = nsetToNodeIds.constBegin(); it != nsetToNodeIds.constEnd(); ++it)
@@ -4626,6 +4734,9 @@ vtkSmartPointer<vtkUnstructuredGrid> MeshGridIO::loadAbaqusInpGrid(const QString
     }
 
     normalizePhysicalTagSets(m_mshPickMap, QStringLiteral("AbaqusInpGrid"));
+    qInfo() << "[Abaqus] imported nodes=" << nodeMap.size()
+            << "cells=" << grid->GetNumberOfCells()
+            << "boundary-elements=" << boundaryElementById.size();
     return grid;
 }
 

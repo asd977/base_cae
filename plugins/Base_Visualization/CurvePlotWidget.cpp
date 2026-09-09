@@ -156,6 +156,13 @@ CurvePlotWidget::CurvePlotWidget(QWidget* parent) : QWidget(parent)
 
     rootLayout->addWidget(toolbar);
 
+    m_summaryLabel = new QLabel(this);
+    m_summaryLabel->setObjectName(QStringLiteral("curvePlotSummaryLabel"));
+    m_summaryLabel->setContentsMargins(12, 5, 12, 5);
+    m_summaryLabel->setWordWrap(true);
+    m_summaryLabel->setVisible(false);
+    rootLayout->addWidget(m_summaryLabel);
+
     m_vtkWidget = new QVTKOpenGLNativeWidget(this);
     m_vtkWidget->setObjectName(QStringLiteral("curvePlotVtkWidget"));
     m_vtkWidget->setEnableHiDPI(true);
@@ -197,6 +204,12 @@ CurvePlotWidget::CurvePlotWidget(QWidget* parent) : QWidget(parent)
 bool CurvePlotWidget::loadDataFromTraceFile(const QString& filePath, const QString& xField,
                                             const QSet<QString>& yFields, QString* errMsg)
 {
+    if (m_summaryLabel)
+    {
+        m_summaryLabel->clear();
+        m_summaryLabel->setVisible(false);
+    }
+
     QFile file(filePath);
     if (!file.open(QIODevice::ReadOnly | QIODevice::Text))
     {
@@ -259,6 +272,7 @@ bool CurvePlotWidget::loadDataFromTraceFile(const QString& filePath, const QStri
     m_yFields = orderedFields;
     m_points = parsed;
 
+    updateSummary();
     renderPlot();
 
     if (errMsg)
@@ -345,15 +359,70 @@ void CurvePlotWidget::renderPlot()
         plot->SetWidth(2.0f);
     }
 
+    if (m_titleLabel)
+    {
+        if (m_xField == QStringLiteral("FOS") && m_yFields.contains(QStringLiteral("LOOP")))
+            m_titleLabel->setText(tr("强度折减收敛曲线"));
+        else if (m_xField == QStringLiteral("ISTEP") &&
+                 m_yFields.contains(QStringLiteral("FOS")))
+            m_titleLabel->setText(tr("折减系数试算过程"));
+        else
+            m_titleLabel->setText(tr("计算过程曲线"));
+    }
+
     const QString xTitle = fieldDisplayName(m_xField);
+    const QString yTitle = m_normalized
+                               ? tr("相对变化（0–1）")
+                               : (m_yFields.size() == 1 ? fieldDisplayName(m_yFields.first())
+                                                        : tr("数值（多指标）"));
     m_chart->GetAxis(vtkAxis::BOTTOM)->SetTitle(xTitle.toUtf8().constData());
-    m_chart->GetAxis(vtkAxis::LEFT)
-        ->SetTitle((m_normalized ? tr("相对变化（0–1）") : tr("数值")).toUtf8().constData());
+    m_chart->GetAxis(vtkAxis::LEFT)->SetTitle(yTitle.toUtf8().constData());
 
     m_chart->RecalculateBounds();
     m_renderWindow->Render();
 
     updateStatus(QString());
+}
+
+void CurvePlotWidget::updateSummary()
+{
+    if (!m_summaryLabel)
+        return;
+
+    double minFos = std::numeric_limits<double>::max();
+    double maxFos = std::numeric_limits<double>::lowest();
+    const TracePoint* lastFosPoint = nullptr;
+    int fosPointCount = 0;
+
+    for (const TracePoint& point : m_points)
+    {
+        if (!point.hasFos || !std::isfinite(point.fos))
+            continue;
+
+        minFos = std::min(minFos, point.fos);
+        maxFos = std::max(maxFos, point.fos);
+        lastFosPoint = &point;
+        ++fosPointCount;
+    }
+
+    if (!lastFosPoint)
+    {
+        m_summaryLabel->setText(tr("TRACE 未提供折减系数，无法判断强度折减计算过程。"));
+        m_summaryLabel->setVisible(true);
+        return;
+    }
+
+    QString summary =
+        tr("试算点：%1 ｜ 系数范围：%2–%3 ｜ 末次系数：%4")
+            .arg(fosPointCount)
+            .arg(minFos, 0, 'f', 3)
+            .arg(maxFos, 0, 'f', 3)
+            .arg(lastFosPoint->fos, 0, 'f', 3);
+    if (lastFosPoint->hasLoop && std::isfinite(lastFosPoint->loop))
+        summary += tr("（迭代 %1 次）").arg(lastFosPoint->loop, 0, 'f', 0);
+
+    m_summaryLabel->setText(summary);
+    m_summaryLabel->setVisible(true);
 }
 
 vtkSmartPointer<vtkTable> CurvePlotWidget::buildPlotTable(const QStringList& fields) const
@@ -474,11 +543,11 @@ QString CurvePlotWidget::fieldDisplayName(const QString& field) const
 {
     const QString canonical = canonicalFieldName(field);
     if (canonical == QStringLiteral("FOS"))
-        return tr("安全系数");
+        return tr("折减系数");
     if (canonical == QStringLiteral("PTOT"))
         return tr("总荷载");
     if (canonical == QStringLiteral("MAX UR"))
-        return tr("最大位移比");
+        return tr("最大位移（m）");
     if (canonical == QStringLiteral("LOOP"))
         return tr("迭代次数");
     if (canonical == QStringLiteral("ISTEP"))

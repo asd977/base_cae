@@ -47,6 +47,7 @@ class CurvePlotWidget : public QWidget
 
     bool parseTraceLine(const QString& line, TracePoint& point) const;
     void renderPlot();
+    void updateSummary();
     vtkSmartPointer<vtkTable> buildPlotTable(const QStringList& fields) const;
     QStringList normalizedFieldOrder(const QSet<QString>& fields) const;
     double fieldValue(const TracePoint& point, const QString& field, bool* valid = nullptr) const;
@@ -56,6 +57,7 @@ class CurvePlotWidget : public QWidget
   private:
     QVTKOpenGLNativeWidget* m_vtkWidget = nullptr;
     QLabel* m_titleLabel = nullptr;
+    QLabel* m_summaryLabel = nullptr;
     QLabel* m_statusLabel = nullptr;
     QToolButton* m_normalizeButton = nullptr;
 

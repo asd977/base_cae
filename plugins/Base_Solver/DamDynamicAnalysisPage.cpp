@@ -94,8 +94,8 @@ DamDynamicAnalysisPage::DamDynamicAnalysisPage(QWidget* parent)
     ui->comboIFSETT->setItemData(1, QStringLiteral("1"));
     ui->editModalOrder->setValidator(
         new QIntValidator(1, std::numeric_limits<int>::max(), ui->editModalOrder));
-    ui->editModalOrder->setToolTip(QStringLiteral(
-        "模态分析启用时提取的振型阶数。该值对应求解器统一的模态阶数参数。"));
+    ui->editModalOrder->setToolTip(
+        QStringLiteral("模态分析启用时提取的振型阶数。"));
     ui->editWOMI1->setToolTip(QStringLiteral("未执行模态分析但进行地震波分析时填写。"));
 
     m_materialTable = new QTableWidget(ui->groupMaterialMapping);

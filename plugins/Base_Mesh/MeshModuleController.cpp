@@ -1,4 +1,4 @@
-#include "MeshModuleController.h"
+﻿#include "MeshModuleController.h"
 
 #include <EventManager.h>
 #include <BarElementPlacementWidget.h>
@@ -54,6 +54,7 @@
 #include <vtkXMLPolyDataWriter.h>
 #include <vtkXMLUnstructuredGridReader.h>
 #include <vtkXMLUnstructuredGridWriter.h>
+#include <vtkStaticCellLocator.h>
 #include <vtkStringArray.h>
 #include <vtkVariant.h>
 
@@ -4910,18 +4911,29 @@ void MeshModuleController::onBarElements()
 {
     if (!m_gridNode)
         return;
-    if (auto* existed = findDirectChildByKind(m_gridNode, QStringLiteral("BarElementPlacement")))
+
+    // 一组锚杆布置对应一个独立工程节点。每个节点可以有自己的材料编号、
+    // 几何参数和多次“添加锚杆”记录，避免所有锚杆挤在同一个页面里。
+    QSet<QString> existingTitles;
+    for (int i = 0; i < m_gridNode->childCount(); ++i)
     {
-        if (m_barElementWidget)
-            m_barElementWidget->refreshData();
-        if (auto* pm = ServiceRegistry::instance().getService<ProjectManagerService>())
-            pm->setCurrentItem(existed);
-        return;
+        auto* child = dynamic_cast<ProjectNode*>(m_gridNode->child(i));
+        if (!child)
+            continue;
+        if (child->data(0, ProjectNode::RoleKind).toString() ==
+            QStringLiteral("BarElementPlacement"))
+        {
+            existingTitles.insert(child->text(0));
+        }
     }
+    int placementIndex = 1;
+    while (existingTitles.contains(QStringLiteral("锚杆布置 %1").arg(placementIndex)))
+        ++placementIndex;
 
     auto* page = new BarElementPlacementWidget();
     m_barElementWidget = page;
-    auto* node = new ProjectNode(QStringLiteral("杆单元布置"), QUuid::createUuid().toString(), page);
+    auto* node = new ProjectNode(QStringLiteral("锚杆布置 %1").arg(placementIndex),
+                                 QUuid::createUuid().toString(), page);
     node->setData(0, ProjectNode::RoleModule, QStringLiteral("Mesh"));
     node->setData(0, ProjectNode::RoleKind, QStringLiteral("BarElementPlacement"));
     m_gridNode->addChild(node);
@@ -6122,6 +6134,9 @@ bool MeshModuleController::assignDamConstructionLayers(
 bool MeshModuleController::appendBarElements(const BarElementPlacement& placement,
                                              QString* errMsg)
 {
+    if (errMsg)
+        errMsg->clear();
+
     const auto fail = [errMsg](const QString& message)
     {
         if (errMsg)
@@ -6147,7 +6162,8 @@ bool MeshModuleController::appendBarElements(const BarElementPlacement& placemen
     const double dx = placement.end[0] - placement.start[0];
     const double dy = placement.end[1] - placement.start[1];
     const double dz = placement.end[2] - placement.start[2];
-    if (std::sqrt(dx * dx + dy * dy + dz * dz) <= 1.0e-12)
+    const double rodLength = std::sqrt(dx * dx + dy * dy + dz * dz);
+    if (rodLength <= 1.0e-12)
         return fail(QStringLiteral("杆单元起点和终点不能重合。"));
 
     const vtkIdType oldPointCount = m_importedGrid->GetNumberOfPoints();
@@ -6155,41 +6171,50 @@ bool MeshModuleController::appendBarElements(const BarElementPlacement& placemen
     const vtkIdType addedCellCount =
         static_cast<vtkIdType>(placement.arrayCount) * placement.segmentCount;
 
-    // 杆单元与其他网格单元使用同一套 MATYPE 材料区域。界面未指定区域时，
-    // 为本次新增单元分配一个尚未使用的普通区域；材料仍由材料模块统一关联。
-    QSet<int> usedMatypes;
-    if (vtkDataArray* existingMatypes =
-            m_importedGrid->GetCellData()->GetArray("MATYPE"))
+    // 一个“锚杆布置”工程节点统一使用一个 MATYPE。界面已指定时直接使用；
+    // 旧工程或未指定时仍保留自动分配，以兼容历史数据。
+    int rodMatype = placement.matype;
+    if (rodMatype != 0 &&
+        (rodMatype < FIRST_AUTO_MATYPE || rodMatype > MAX_SOLVER_MATYPE))
     {
-        for (vtkIdType cid = 0;
-             cid < oldCellCount && cid < existingMatypes->GetNumberOfTuples(); ++cid)
-        {
-            const int value = static_cast<int>(existingMatypes->GetTuple1(cid));
-            if (value >= FIRST_AUTO_MATYPE && value <= MAX_SOLVER_MATYPE)
-                usedMatypes.insert(value);
-        }
+        return fail(QStringLiteral("锚杆材料编号必须在 3 至 300 之间。"));
     }
-    if (auto* materialService =
-            ServiceRegistry::instance().getService<MaterialManagerService>())
+
+    if (rodMatype == 0)
     {
-        const QMap<int, QString> configured = materialService->calculationMaterialLabels();
-        for (auto it = configured.constBegin(); it != configured.constEnd(); ++it)
+        QSet<int> usedMatypes;
+        if (vtkDataArray* existingMatypes =
+                m_importedGrid->GetCellData()->GetArray("MATYPE"))
         {
-            if (it.key() >= FIRST_AUTO_MATYPE && it.key() <= MAX_SOLVER_MATYPE)
-                usedMatypes.insert(it.key());
+            for (vtkIdType cid = 0;
+                 cid < oldCellCount && cid < existingMatypes->GetNumberOfTuples(); ++cid)
+            {
+                const int value = static_cast<int>(existingMatypes->GetTuple1(cid));
+                if (value >= FIRST_AUTO_MATYPE && value <= MAX_SOLVER_MATYPE)
+                    usedMatypes.insert(value);
+            }
         }
-    }
-    int rodMatype = -1;
-    for (int candidate = FIRST_AUTO_MATYPE; candidate <= MAX_SOLVER_MATYPE; ++candidate)
-    {
-        if (!usedMatypes.contains(candidate))
+        if (auto* materialService =
+                ServiceRegistry::instance().getService<MaterialManagerService>())
         {
-            rodMatype = candidate;
-            break;
+            const QMap<int, QString> configured = materialService->calculationMaterialLabels();
+            for (auto it = configured.constBegin(); it != configured.constEnd(); ++it)
+            {
+                if (it.key() >= FIRST_AUTO_MATYPE && it.key() <= MAX_SOLVER_MATYPE)
+                    usedMatypes.insert(it.key());
+            }
         }
+        for (int candidate = FIRST_AUTO_MATYPE; candidate <= MAX_SOLVER_MATYPE; ++candidate)
+        {
+            if (!usedMatypes.contains(candidate))
+            {
+                rodMatype = candidate;
+                break;
+            }
+        }
+        if (rodMatype < FIRST_AUTO_MATYPE)
+            return fail(QStringLiteral("材料编号 3 至 300 已全部使用，无法为新增锚杆分配材料编号。"));
     }
-    if (rodMatype < FIRST_AUTO_MATYPE)
-        return fail(QStringLiteral("材料区域编号 3 至 300 已全部使用，无法为新增杆单元分配材料区域。"));
 
     int recordId = 1;
     if (vtkDataArray* records = m_importedGrid->GetCellData()->GetArray("BAR_GROUP"))
@@ -6225,42 +6250,86 @@ bool MeshModuleController::appendBarElements(const BarElementPlacement& placemen
     const double reuseToleranceSquared = reuseTolerance * reuseTolerance;
 
     // Locator for every point already present in the grid, including previous bars.
+    // It is used only to reuse coordinates that are already identical within the IIIN
+    // output precision. It must not move an anchor point to a nearby mesh node.
     auto pointLocator = vtkSmartPointer<vtkPointLocator>::New();
     pointLocator->SetDataSet(m_importedGrid);
     pointLocator->BuildLocator();
 
-    // Bar endpoints must connect to nodes used by a 2D/3D host cell. Do not silently
-    // create a visually coincident but topologically disconnected endpoint.
-    QSet<vtkIdType> hostPointIdSet;
+    // INOUSE.DAT already supports non-common-node bar endpoints. The solver marks those
+    // points as suspended, finds the host solid element and transforms the bar stiffness
+    // to the host element DOFs by the endpoint natural coordinates. Therefore anchor
+    // coordinates are kept exactly as entered here instead of being automatically snapped.
+    //
+    // The current solver interpolation routines are topology-specific:
+    //   2D -> SN2D4N, 3D -> SN3D8N.
+    // Thus a non-common-node endpoint is currently safe only inside a 4-node quad or an
+    // 8-node hexahedron. A point that is an actual host node can still be used with other
+    // solid topologies because INOUSE will classify that endpoint as common-node (LX=1/2/3).
+    int hostDimension = 0;
     for (vtkIdType cid = 0; cid < oldCellCount; ++cid)
     {
         vtkCell* cell = m_importedGrid->GetCell(cid);
-        if (!cell || cell->GetCellDimension() < 2 || !cell->GetPointIds())
+        if (cell)
+            hostDimension = qMax(hostDimension, cell->GetCellDimension());
+    }
+    if (hostDimension < 2)
+        return fail(QStringLiteral("当前网格中没有可与锚杆耦合的实体单元。"));
+
+    // 锚杆可以和其他“锚杆布置”节点共用同一个 MATYPE，但不能复用实体域
+    // 已在使用的 MATYPE。否则同一材料编号会同时指向围岩和杆材料，导出 IMAT 时
+    // 含义不再唯一。
+    if (vtkDataArray* existingMatypes = m_importedGrid->GetCellData()->GetArray("MATYPE"))
+    {
+        for (vtkIdType cid = 0; cid < oldCellCount; ++cid)
+        {
+            vtkCell* cell = m_importedGrid->GetCell(cid);
+            if (!cell || cell->GetCellDimension() != hostDimension ||
+                cid >= existingMatypes->GetNumberOfTuples())
+                continue;
+            if (static_cast<int>(existingMatypes->GetTuple1(cid)) == rodMatype)
+            {
+                return fail(QStringLiteral(
+                    "材料编号 %1 已被实体网格使用。锚杆材料编号可以在不同锚杆布置节点间复用，"
+                    "但不要与实体材料编号共用。")
+                                .arg(rodMatype));
+            }
+        }
+    }
+
+    QSet<vtkIdType> hostPointIdSet;
+    auto supportedHostGrid = vtkSmartPointer<vtkUnstructuredGrid>::New();
+    auto supportedHostPoints = vtkSmartPointer<vtkPoints>::New();
+    supportedHostPoints->DeepCopy(m_importedGrid->GetPoints());
+    supportedHostGrid->SetPoints(supportedHostPoints);
+    supportedHostGrid->Allocate(oldCellCount);
+
+    for (vtkIdType cid = 0; cid < oldCellCount; ++cid)
+    {
+        vtkCell* cell = m_importedGrid->GetCell(cid);
+        if (!cell || cell->GetCellDimension() != hostDimension || !cell->GetPointIds())
             continue;
+
         for (vtkIdType local = 0; local < cell->GetPointIds()->GetNumberOfIds(); ++local)
             hostPointIdSet.insert(cell->GetPointIds()->GetId(local));
+
+        const bool supported =
+            (hostDimension == 2 && cell->GetCellType() == VTK_QUAD &&
+             cell->GetNumberOfPoints() == 4) ||
+            (hostDimension == 3 && cell->GetCellType() == VTK_HEXAHEDRON &&
+             cell->GetNumberOfPoints() == 8);
+        if (supported)
+            supportedHostGrid->InsertNextCell(cell->GetCellType(), cell->GetPointIds());
     }
     if (hostPointIdSet.isEmpty())
-        return fail(QStringLiteral("当前网格中没有可连接杆端点的实体或面单元节点。"));
+        return fail(QStringLiteral("当前网格中没有可与锚杆连接的实体节点。"));
 
-    QVector<vtkIdType> hostPointIds;
-    hostPointIds.reserve(hostPointIdSet.size());
-    auto hostPoints = vtkSmartPointer<vtkPoints>::New();
-    hostPoints->SetDataType(m_importedGrid->GetPoints()->GetDataType());
-    for (vtkIdType pid = 0; pid < oldPointCount; ++pid)
+    auto supportedHostLocator = vtkSmartPointer<vtkStaticCellLocator>::New();
+    if (supportedHostGrid->GetNumberOfCells() > 0)
     {
-        if (!hostPointIdSet.contains(pid))
-            continue;
-        double xyz[3]{};
-        m_importedGrid->GetPoint(pid, xyz);
-        hostPoints->InsertNextPoint(xyz);
-        hostPointIds.push_back(pid);
+        supportedHostLocator->SetDataSet(supportedHostGrid);
+        supportedHostLocator->BuildLocator();
     }
-    auto hostGrid = vtkSmartPointer<vtkPolyData>::New();
-    hostGrid->SetPoints(hostPoints);
-    auto hostPointLocator = vtkSmartPointer<vtkPointLocator>::New();
-    hostPointLocator->SetDataSet(hostGrid);
-    hostPointLocator->BuildLocator();
 
     const auto distanceSquared = [](const double a[3], const double b[3])
     {
@@ -6319,10 +6388,10 @@ bool MeshModuleController::appendBarElements(const BarElementPlacement& placemen
             {
                 for (qint64 iz = bz - 1; iz <= bz + 1; ++iz)
                 {
-                    const auto ids = newPointBuckets.constFind(bucketKey(ix, iy, iz));
-                    if (ids == newPointBuckets.constEnd())
+                    const auto it = newPointBuckets.constFind(bucketKey(ix, iy, iz));
+                    if (it == newPointBuckets.constEnd())
                         continue;
-                    for (vtkIdType pid : ids.value())
+                    for (vtkIdType pid : it.value())
                     {
                         double existing[3]{};
                         points->GetPoint(pid, existing);
@@ -6349,22 +6418,43 @@ bool MeshModuleController::appendBarElements(const BarElementPlacement& placemen
         m_importedGrid->GetPoint(pid, existing);
         return distanceSquared(existing, xyz) <= reuseToleranceSquared ? pid : -1;
     };
-    const auto findHostPoint = [&](const double xyz[3]) -> vtkIdType
+    const auto isCommonHostPoint = [&](vtkIdType pointId)
     {
-        const vtkIdType localId = hostPointLocator->FindClosestPoint(xyz);
-        if (localId < 0 || localId >= hostPointIds.size())
-            return -1;
-        double existing[3]{};
-        hostPoints->GetPoint(localId, existing);
-        if (distanceSquared(existing, xyz) > reuseToleranceSquared)
-            return -1;
-        return hostPointIds.at(localId);
+        return pointId >= 0 && pointId < oldPointCount && hostPointIdSet.contains(pointId);
+    };
+    const auto canUseInouseEmbedding = [&](const double xyz[3])
+    {
+        if (!supportedHostLocator || supportedHostGrid->GetNumberOfCells() <= 0)
+            return false;
+        return supportedHostLocator->FindCell(const_cast<double*>(xyz)) >= 0;
+    };
+    const auto unsupportedEmbeddingMessage = [&](int copy, int segment,
+                                                  const double xyz[3])
+    {
+        const QString positionName = segment == 0
+                                         ? QStringLiteral("锚头")
+                                         : (segment == placement.segmentCount
+                                                ? QStringLiteral("锚固端")
+                                                : QStringLiteral("第 %1 个分段点").arg(segment));
+        const QString hostText = hostDimension == 2
+                                     ? QStringLiteral("二维4节点实体单元")
+                                     : QStringLiteral("三维8节点实体单元");
+        return QStringLiteral(
+                   "第 %1 根杆的%2坐标 (%3, %4, %5) 不在当前可耦合的%6内。"
+                   "非共节点锚杆目前仅支持二维4节点或三维8节点实体；请调整坐标，或从模型取实体节点。")
+            .arg(copy + 1)
+            .arg(positionName)
+            .arg(xyz[0], 0, 'g', 10)
+            .arg(xyz[1], 0, 'g', 10)
+            .arg(xyz[2], 0, 'g', 10)
+            .arg(hostText);
     };
 
     for (int copy = 0; copy < placement.arrayCount; ++copy)
     {
         QVector<vtkIdType> rodPointIds;
         rodPointIds.reserve(placement.segmentCount + 1);
+
         for (int segment = 0; segment <= placement.segmentCount; ++segment)
         {
             const double ratio = static_cast<double>(segment) / placement.segmentCount;
@@ -6376,18 +6466,15 @@ bool MeshModuleController::appendBarElements(const BarElementPlacement& placemen
                             + copy * placement.arrayOffset[axis];
             }
 
-            const bool isRodEndpoint = segment == 0 || segment == placement.segmentCount;
-            vtkIdType pointId = isRodEndpoint ? findHostPoint(xyz) : findOldPoint(xyz);
-            if (isRodEndpoint && pointId < 0)
-            {
-                return fail(QStringLiteral("第 %1 根杆的%2未与实体网格节点重合。"
-                                           "请点选实体节点，或将坐标调整到节点位置后再生成。")
-                                .arg(copy + 1)
-                                .arg(segment == 0 ? QStringLiteral("起点")
-                                                  : QStringLiteral("终点")));
-            }
+            vtkIdType pointId = findOldPoint(xyz);
             if (pointId < 0)
                 pointId = findCreatedPoint(xyz);
+
+            // Reusing an actual solid node means common-node coupling. Otherwise preserve
+            // the requested coordinate and let INOUSE.DAT provide the host-element mapping.
+            if (!isCommonHostPoint(pointId) && !canUseInouseEmbedding(xyz))
+                return fail(unsupportedEmbeddingMessage(copy, segment, xyz));
+
             if (pointId < 0)
             {
                 pointId = points->InsertNextPoint(xyz);
@@ -6488,6 +6575,33 @@ bool MeshModuleController::appendBarElements(const BarElementPlacement& placemen
         result->GetCellData()->AddArray(created);
         recordNames = created;
     }
+    else if (recordNames->GetNumberOfValues() < oldCellCount + addedCellCount)
+    {
+        const vtkIdType oldValues = recordNames->GetNumberOfValues();
+        recordNames->SetNumberOfValues(oldCellCount + addedCellCount);
+        for (vtkIdType cid = oldValues; cid < oldCellCount + addedCellCount; ++cid)
+            recordNames->SetValue(cid, std::string());
+    }
+
+    auto* placementUuids = vtkStringArray::SafeDownCast(
+        result->GetCellData()->GetAbstractArray("BAR_PLACEMENT_UUID"));
+    if (!placementUuids)
+    {
+        auto created = vtkSmartPointer<vtkStringArray>::New();
+        created->SetName("BAR_PLACEMENT_UUID");
+        created->SetNumberOfValues(oldCellCount + addedCellCount);
+        for (vtkIdType cid = 0; cid < oldCellCount + addedCellCount; ++cid)
+            created->SetValue(cid, std::string());
+        result->GetCellData()->AddArray(created);
+        placementUuids = created;
+    }
+    else if (placementUuids->GetNumberOfValues() < oldCellCount + addedCellCount)
+    {
+        const vtkIdType oldValues = placementUuids->GetNumberOfValues();
+        placementUuids->SetNumberOfValues(oldCellCount + addedCellCount);
+        for (vtkIdType cid = oldValues; cid < oldCellCount + addedCellCount; ++cid)
+            placementUuids->SetValue(cid, std::string());
+    }
     int maxElementId = 0;
     for (vtkIdType cid = 0; cid < oldCellCount; ++cid)
     {
@@ -6508,6 +6622,467 @@ bool MeshModuleController::appendBarElements(const BarElementPlacement& placemen
         elementIds->SetTuple1(cid, ++maxElementId);
         recordIds->SetTuple1(cid, recordId);
         recordNames->SetValue(cid, recordName.toStdString());
+        placementUuids->SetValue(cid, placement.placementUuid.toStdString());
+    }
+
+    result->Modified();
+    m_importedGrid = result;
+    m_hasGrid = true;
+    m_sourceFileName.clear();
+    if (m_importSettingsWidget)
+        m_importSettingsWidget->setSourceFileName(QString());
+    m_splitCacheSource = nullptr;
+    m_splitCacheLine = nullptr;
+    m_splitCacheNonLine = nullptr;
+    syncPickMapGroupingFromGrid(m_importedGrid);
+    displayCurrentGrid();
+    PickManager::instance().updateStructure();
+    if (m_gridEditingWidget)
+        m_gridEditingWidget->setEditableGrid(m_importedGrid, QString());
+    return true;
+}
+
+
+bool MeshModuleController::appendBarElementsBatch(
+    const QVector<BarElementPlacement>& placements, QString* errMsg)
+{
+    if (errMsg)
+        errMsg->clear();
+
+    const auto fail = [errMsg](const QString& message)
+    {
+        if (errMsg)
+            *errMsg = message;
+        return false;
+    };
+    if (placements.isEmpty())
+        return fail(QStringLiteral("没有可生成的锚杆。"));
+    if (!m_importedGrid || m_importedGrid->GetNumberOfCells() <= 0 ||
+        !m_importedGrid->GetPoints())
+        return fail(QStringLiteral("请先导入或生成实体网格。"));
+
+    normalizeGridAttributeTupleCounts(m_importedGrid);
+
+    const BarElementPlacement& firstPlacement = placements.first();
+    for (int i = 0; i < placements.size(); ++i)
+    {
+        const BarElementPlacement& placement = placements.at(i);
+        if (placement.segmentCount != 1 || placement.arrayCount != 1)
+            return fail(QStringLiteral("批量半自动布置只接受单段、单根锚杆。"));
+        if (placement.matype != firstPlacement.matype ||
+            placement.installationLayer != firstPlacement.installationLayer ||
+            placement.placementUuid != firstPlacement.placementUuid)
+        {
+            return fail(QStringLiteral("同一次区域布置中的锚杆必须属于同一布置节点和材料编号。"));
+        }
+        const double dx = placement.end[0] - placement.start[0];
+        const double dy = placement.end[1] - placement.start[1];
+        const double dz = placement.end[2] - placement.start[2];
+        if (std::sqrt(dx * dx + dy * dy + dz * dz) <= 1.0e-12)
+            return fail(QStringLiteral("第 %1 根锚杆的锚头与锚固端重合。").arg(i + 1));
+    }
+
+    const vtkIdType oldPointCount = m_importedGrid->GetNumberOfPoints();
+    const vtkIdType oldCellCount = m_importedGrid->GetNumberOfCells();
+    const vtkIdType addedCellCount = placements.size();
+
+    int rodMatype = firstPlacement.matype;
+    if (rodMatype != 0 &&
+        (rodMatype < FIRST_AUTO_MATYPE || rodMatype > MAX_SOLVER_MATYPE))
+    {
+        return fail(QStringLiteral("锚杆材料编号必须在 3 至 300 之间。"));
+    }
+    if (rodMatype == 0)
+    {
+        QSet<int> usedMatypes;
+        if (vtkDataArray* existingMatypes = m_importedGrid->GetCellData()->GetArray("MATYPE"))
+        {
+            for (vtkIdType cid = 0;
+                 cid < oldCellCount && cid < existingMatypes->GetNumberOfTuples(); ++cid)
+            {
+                const int value = static_cast<int>(existingMatypes->GetTuple1(cid));
+                if (value >= FIRST_AUTO_MATYPE && value <= MAX_SOLVER_MATYPE)
+                    usedMatypes.insert(value);
+            }
+        }
+        if (auto* materialService =
+                ServiceRegistry::instance().getService<MaterialManagerService>())
+        {
+            const QMap<int, QString> configured = materialService->calculationMaterialLabels();
+            for (auto it = configured.constBegin(); it != configured.constEnd(); ++it)
+            {
+                if (it.key() >= FIRST_AUTO_MATYPE && it.key() <= MAX_SOLVER_MATYPE)
+                    usedMatypes.insert(it.key());
+            }
+        }
+        for (int candidate = FIRST_AUTO_MATYPE; candidate <= MAX_SOLVER_MATYPE; ++candidate)
+        {
+            if (!usedMatypes.contains(candidate))
+            {
+                rodMatype = candidate;
+                break;
+            }
+        }
+        if (rodMatype < FIRST_AUTO_MATYPE)
+            return fail(QStringLiteral("材料编号 3 至 300 已全部使用，无法为新增锚杆分配材料编号。"));
+    }
+
+    int recordId = 1;
+    if (vtkDataArray* records = m_importedGrid->GetCellData()->GetArray("BAR_GROUP"))
+    {
+        for (vtkIdType cid = 0; cid < oldCellCount; ++cid)
+        {
+            vtkCell* cell = m_importedGrid->GetCell(cid);
+            if (cell && cell->GetCellDimension() == 1)
+                recordId = qMax(recordId, static_cast<int>(records->GetTuple1(cid)) + 1);
+        }
+    }
+
+    auto result = vtkSmartPointer<vtkUnstructuredGrid>::New();
+    result->DeepCopy(m_importedGrid);
+    if (!result->GetPoints() || result->GetNumberOfPoints() != oldPointCount ||
+        result->GetNumberOfCells() != oldCellCount)
+    {
+        return fail(QStringLiteral("复制原网格失败，无法生成锚杆。"));
+    }
+    vtkPoints* points = result->GetPoints();
+
+    double bounds[6]{};
+    m_importedGrid->GetBounds(bounds);
+    const double diagonal = std::sqrt(
+        (bounds[1] - bounds[0]) * (bounds[1] - bounds[0])
+        + (bounds[3] - bounds[2]) * (bounds[3] - bounds[2])
+        + (bounds[5] - bounds[4]) * (bounds[5] - bounds[4]));
+    const double reuseTolerance = qMax(5.0e-6, qMin(1.0e-3, diagonal * 1.0e-10));
+    const double reuseToleranceSquared = reuseTolerance * reuseTolerance;
+
+    auto pointLocator = vtkSmartPointer<vtkPointLocator>::New();
+    pointLocator->SetDataSet(m_importedGrid);
+    pointLocator->BuildLocator();
+
+    int hostDimension = 0;
+    for (vtkIdType cid = 0; cid < oldCellCount; ++cid)
+    {
+        if (vtkCell* cell = m_importedGrid->GetCell(cid))
+            hostDimension = qMax(hostDimension, cell->GetCellDimension());
+    }
+    if (hostDimension < 2)
+        return fail(QStringLiteral("当前网格中没有可与锚杆耦合的实体单元。"));
+
+    if (vtkDataArray* existingMatypes = m_importedGrid->GetCellData()->GetArray("MATYPE"))
+    {
+        for (vtkIdType cid = 0; cid < oldCellCount; ++cid)
+        {
+            vtkCell* cell = m_importedGrid->GetCell(cid);
+            if (!cell || cell->GetCellDimension() != hostDimension ||
+                cid >= existingMatypes->GetNumberOfTuples())
+                continue;
+            if (static_cast<int>(existingMatypes->GetTuple1(cid)) == rodMatype)
+            {
+                return fail(QStringLiteral(
+                    "材料编号 %1 已被实体网格使用，请为锚杆使用独立材料编号。")
+                                .arg(rodMatype));
+            }
+        }
+    }
+
+    QSet<vtkIdType> hostPointIdSet;
+    auto supportedHostGrid = vtkSmartPointer<vtkUnstructuredGrid>::New();
+    auto supportedHostPoints = vtkSmartPointer<vtkPoints>::New();
+    supportedHostPoints->DeepCopy(m_importedGrid->GetPoints());
+    supportedHostGrid->SetPoints(supportedHostPoints);
+    supportedHostGrid->Allocate(oldCellCount);
+    for (vtkIdType cid = 0; cid < oldCellCount; ++cid)
+    {
+        vtkCell* cell = m_importedGrid->GetCell(cid);
+        if (!cell || cell->GetCellDimension() != hostDimension || !cell->GetPointIds())
+            continue;
+        for (vtkIdType local = 0; local < cell->GetPointIds()->GetNumberOfIds(); ++local)
+            hostPointIdSet.insert(cell->GetPointIds()->GetId(local));
+
+        const bool supported =
+            (hostDimension == 2 && cell->GetCellType() == VTK_QUAD &&
+             cell->GetNumberOfPoints() == 4) ||
+            (hostDimension == 3 && cell->GetCellType() == VTK_HEXAHEDRON &&
+             cell->GetNumberOfPoints() == 8);
+        if (supported)
+            supportedHostGrid->InsertNextCell(cell->GetCellType(), cell->GetPointIds());
+    }
+    if (hostPointIdSet.isEmpty())
+        return fail(QStringLiteral("当前网格中没有可与锚杆连接的实体节点。"));
+
+    auto supportedHostLocator = vtkSmartPointer<vtkStaticCellLocator>::New();
+    if (supportedHostGrid->GetNumberOfCells() > 0)
+    {
+        supportedHostLocator->SetDataSet(supportedHostGrid);
+        supportedHostLocator->BuildLocator();
+    }
+
+    const auto distanceSquared = [](const double a[3], const double b[3])
+    {
+        return (a[0] - b[0]) * (a[0] - b[0])
+               + (a[1] - b[1]) * (a[1] - b[1])
+               + (a[2] - b[2]) * (a[2] - b[2]);
+    };
+    const auto bucketCoordinate = [reuseTolerance](double value) -> qint64
+    {
+        return static_cast<qint64>(std::floor(value / reuseTolerance));
+    };
+    const auto bucketKey = [](qint64 x, qint64 y, qint64 z)
+    {
+        return QStringLiteral("%1:%2:%3").arg(x).arg(y).arg(z);
+    };
+    const auto pointKey = [reuseTolerance](const double xyz[3])
+    {
+        const qint64 x = qRound64(xyz[0] / reuseTolerance);
+        const qint64 y = qRound64(xyz[1] / reuseTolerance);
+        const qint64 z = qRound64(xyz[2] / reuseTolerance);
+        return QStringLiteral("%1:%2:%3").arg(x).arg(y).arg(z);
+    };
+    const auto edgeKey = [&pointKey](const double first[3], const double second[3])
+    {
+        QString firstKey = pointKey(first);
+        QString secondKey = pointKey(second);
+        if (secondKey < firstKey)
+            std::swap(firstKey, secondKey);
+        return firstKey + QLatin1Char('|') + secondKey;
+    };
+
+    QSet<QString> occupiedEdges;
+    for (vtkIdType cid = 0; cid < oldCellCount; ++cid)
+    {
+        vtkCell* cell = m_importedGrid->GetCell(cid);
+        if (!cell || cell->GetCellType() != VTK_LINE || cell->GetNumberOfPoints() != 2)
+            continue;
+        double first[3]{};
+        double second[3]{};
+        m_importedGrid->GetPoint(cell->GetPointId(0), first);
+        m_importedGrid->GetPoint(cell->GetPointId(1), second);
+        occupiedEdges.insert(edgeKey(first, second));
+    }
+
+    QHash<QString, QVector<vtkIdType>> newPointBuckets;
+    const auto findCreatedPoint = [&](const double xyz[3]) -> vtkIdType
+    {
+        const qint64 bx = bucketCoordinate(xyz[0]);
+        const qint64 by = bucketCoordinate(xyz[1]);
+        const qint64 bz = bucketCoordinate(xyz[2]);
+        for (qint64 ix = bx - 1; ix <= bx + 1; ++ix)
+        {
+            for (qint64 iy = by - 1; iy <= by + 1; ++iy)
+            {
+                for (qint64 iz = bz - 1; iz <= bz + 1; ++iz)
+                {
+                    const auto it = newPointBuckets.constFind(bucketKey(ix, iy, iz));
+                    if (it == newPointBuckets.constEnd())
+                        continue;
+                    for (vtkIdType pid : it.value())
+                    {
+                        double existing[3]{};
+                        points->GetPoint(pid, existing);
+                        if (distanceSquared(existing, xyz) <= reuseToleranceSquared)
+                            return pid;
+                    }
+                }
+            }
+        }
+        return -1;
+    };
+    const auto registerCreatedPoint = [&](vtkIdType pid, const double xyz[3])
+    {
+        newPointBuckets[bucketKey(bucketCoordinate(xyz[0]), bucketCoordinate(xyz[1]),
+                                  bucketCoordinate(xyz[2]))]
+            .push_back(pid);
+    };
+    const auto findOldPoint = [&](const double xyz[3]) -> vtkIdType
+    {
+        const vtkIdType pid = pointLocator->FindClosestPoint(xyz);
+        if (pid < 0)
+            return -1;
+        double existing[3]{};
+        m_importedGrid->GetPoint(pid, existing);
+        return distanceSquared(existing, xyz) <= reuseToleranceSquared ? pid : -1;
+    };
+    const auto isCommonHostPoint = [&](vtkIdType pointId)
+    {
+        return pointId >= 0 && pointId < oldPointCount && hostPointIdSet.contains(pointId);
+    };
+    const auto canUseInouseEmbedding = [&](const double xyz[3])
+    {
+        if (!supportedHostLocator || supportedHostGrid->GetNumberOfCells() <= 0)
+            return false;
+        return supportedHostLocator->FindCell(const_cast<double*>(xyz)) >= 0;
+    };
+    const QString hostText = hostDimension == 2
+                                 ? QStringLiteral("二维4节点实体单元")
+                                 : QStringLiteral("三维8节点实体单元");
+
+    for (int barIndex = 0; barIndex < placements.size(); ++barIndex)
+    {
+        const BarElementPlacement& placement = placements.at(barIndex);
+        vtkIdType endpointIds[2] = {-1, -1};
+        const std::array<double, 3> endpointCoordinates[2] = {placement.start, placement.end};
+        for (int endpoint = 0; endpoint < 2; ++endpoint)
+        {
+            const double xyz[3] = {endpointCoordinates[endpoint][0],
+                                   endpointCoordinates[endpoint][1],
+                                   endpointCoordinates[endpoint][2]};
+            vtkIdType pointId = findOldPoint(xyz);
+            if (pointId < 0)
+                pointId = findCreatedPoint(xyz);
+
+            if (!isCommonHostPoint(pointId) && !canUseInouseEmbedding(xyz))
+            {
+                return fail(QStringLiteral(
+                    "第 %1 根锚杆的%2 (%3, %4, %5) 不在可由 INOUSE 耦合的%6内。"
+                    "请检查所选表面、锚杆长度或实体网格。")
+                                .arg(barIndex + 1)
+                                .arg(endpoint == 0 ? QStringLiteral("锚头")
+                                                   : QStringLiteral("锚固端"))
+                                .arg(xyz[0], 0, 'g', 10)
+                                .arg(xyz[1], 0, 'g', 10)
+                                .arg(xyz[2], 0, 'g', 10)
+                                .arg(hostText));
+            }
+
+            if (pointId < 0)
+            {
+                pointId = points->InsertNextPoint(xyz);
+                registerCreatedPoint(pointId, xyz);
+            }
+            endpointIds[endpoint] = pointId;
+        }
+
+        if (endpointIds[0] == endpointIds[1])
+            return fail(QStringLiteral("第 %1 根锚杆退化为零长度单元。").arg(barIndex + 1));
+
+        double first[3]{};
+        double second[3]{};
+        points->GetPoint(endpointIds[0], first);
+        points->GetPoint(endpointIds[1], second);
+        const QString currentEdgeKey = edgeKey(first, second);
+        if (occupiedEdges.contains(currentEdgeKey))
+            return fail(QStringLiteral("第 %1 根锚杆与已有杆单元重合，已取消本次生成。")
+                            .arg(barIndex + 1));
+        occupiedEdges.insert(currentEdgeKey);
+        result->InsertNextCell(VTK_LINE, 2, endpointIds);
+    }
+
+    const vtkIdType finalPointCount = points->GetNumberOfPoints();
+    if (finalPointCount < oldPointCount ||
+        result->GetNumberOfCells() != oldCellCount + addedCellCount)
+    {
+        return fail(QStringLiteral("追加区域锚杆后的网格数量校验失败，原网格未被修改。"));
+    }
+
+    normalizeGridAttributeTupleCounts(result, false, false);
+
+    const auto ensureIntArray = [](vtkDataSetAttributes* attributes, const char* name,
+                                   vtkIdType tupleCount, int defaultValue) -> vtkDataArray*
+    {
+        if (vtkDataArray* existing = attributes->GetArray(name))
+            return existing;
+        auto created = vtkSmartPointer<vtkIntArray>::New();
+        created->SetName(name);
+        created->SetNumberOfComponents(1);
+        created->SetNumberOfTuples(tupleCount);
+        created->FillComponent(0, defaultValue);
+        attributes->AddArray(created);
+        return created;
+    };
+
+    vtkDataArray* nodeIds = ensureIntArray(result->GetPointData(), "node_id",
+                                           finalPointCount, 0);
+    int maxNodeId = 0;
+    for (vtkIdType pid = 0; pid < oldPointCount; ++pid)
+    {
+        int nodeId = static_cast<int>(nodeIds->GetTuple1(pid));
+        if (nodeId <= 0)
+        {
+            nodeId = static_cast<int>(pid + 1);
+            nodeIds->SetTuple1(pid, nodeId);
+        }
+        maxNodeId = qMax(maxNodeId, nodeId);
+    }
+    for (vtkIdType pid = oldPointCount; pid < finalPointCount; ++pid)
+        nodeIds->SetTuple1(pid, ++maxNodeId);
+
+    vtkDataArray* matypes = ensureIntArray(result->GetCellData(), "MATYPE",
+                                           oldCellCount + addedCellCount, 2);
+    vtkDataArray* layers = ensureIntArray(result->GetCellData(), "LAYER",
+                                          oldCellCount + addedCellCount, 1);
+    vtkDataArray* ketypes = ensureIntArray(result->GetCellData(), "KETYPE",
+                                           oldCellCount + addedCellCount, 0);
+    vtkDataArray* elementIds = ensureIntArray(result->GetCellData(), "elem_id",
+                                              oldCellCount + addedCellCount, 0);
+    ensureIntArray(result->GetCellData(), "src_part", oldCellCount + addedCellCount, 0);
+    ensureIntArray(result->GetCellData(), "TAIL1", oldCellCount + addedCellCount, 0);
+    ensureIntArray(result->GetCellData(), "TAIL2", oldCellCount + addedCellCount, 0);
+    vtkDataArray* recordIds = ensureIntArray(result->GetCellData(), "BAR_GROUP",
+                                             oldCellCount + addedCellCount, 0);
+
+    auto* recordNames = vtkStringArray::SafeDownCast(
+        result->GetCellData()->GetAbstractArray("BAR_GROUP_NAME"));
+    if (!recordNames)
+    {
+        auto created = vtkSmartPointer<vtkStringArray>::New();
+        created->SetName("BAR_GROUP_NAME");
+        created->SetNumberOfValues(oldCellCount + addedCellCount);
+        for (vtkIdType cid = 0; cid < oldCellCount + addedCellCount; ++cid)
+            created->SetValue(cid, std::string());
+        result->GetCellData()->AddArray(created);
+        recordNames = created;
+    }
+    else if (recordNames->GetNumberOfValues() < oldCellCount + addedCellCount)
+    {
+        const vtkIdType oldValues = recordNames->GetNumberOfValues();
+        recordNames->SetNumberOfValues(oldCellCount + addedCellCount);
+        for (vtkIdType cid = oldValues; cid < oldCellCount + addedCellCount; ++cid)
+            recordNames->SetValue(cid, std::string());
+    }
+
+    auto* placementUuids = vtkStringArray::SafeDownCast(
+        result->GetCellData()->GetAbstractArray("BAR_PLACEMENT_UUID"));
+    if (!placementUuids)
+    {
+        auto created = vtkSmartPointer<vtkStringArray>::New();
+        created->SetName("BAR_PLACEMENT_UUID");
+        created->SetNumberOfValues(oldCellCount + addedCellCount);
+        for (vtkIdType cid = 0; cid < oldCellCount + addedCellCount; ++cid)
+            created->SetValue(cid, std::string());
+        result->GetCellData()->AddArray(created);
+        placementUuids = created;
+    }
+    else if (placementUuids->GetNumberOfValues() < oldCellCount + addedCellCount)
+    {
+        const vtkIdType oldValues = placementUuids->GetNumberOfValues();
+        placementUuids->SetNumberOfValues(oldCellCount + addedCellCount);
+        for (vtkIdType cid = oldValues; cid < oldCellCount + addedCellCount; ++cid)
+            placementUuids->SetValue(cid, std::string());
+    }
+
+    int maxElementId = 0;
+    for (vtkIdType cid = 0; cid < oldCellCount; ++cid)
+    {
+        int elementId = static_cast<int>(elementIds->GetTuple1(cid));
+        if (elementId <= 0)
+        {
+            elementId = static_cast<int>(cid + 1);
+            elementIds->SetTuple1(cid, elementId);
+        }
+        maxElementId = qMax(maxElementId, elementId);
+    }
+
+    const QString recordName = QStringLiteral("杆单元生成记录 %1").arg(recordId);
+    for (vtkIdType cid = oldCellCount; cid < oldCellCount + addedCellCount; ++cid)
+    {
+        matypes->SetTuple1(cid, rodMatype);
+        layers->SetTuple1(cid, firstPlacement.installationLayer);
+        ketypes->SetTuple1(cid, 1);
+        elementIds->SetTuple1(cid, ++maxElementId);
+        recordIds->SetTuple1(cid, recordId);
+        recordNames->SetValue(cid, recordName.toStdString());
+        placementUuids->SetValue(cid, firstPlacement.placementUuid.toStdString());
     }
 
     result->Modified();
@@ -6648,6 +7223,8 @@ QVector<BarElementRecordInfo> MeshModuleController::barElementRecords() const
         return result;
     vtkDataArray* matypes = m_importedGrid->GetCellData()->GetArray("MATYPE");
     vtkDataArray* layers = m_importedGrid->GetCellData()->GetArray("LAYER");
+    auto* placementUuids = vtkStringArray::SafeDownCast(
+        m_importedGrid->GetCellData()->GetAbstractArray("BAR_PLACEMENT_UUID"));
     QMap<int, BarElementRecordInfo> byId;
     for (vtkIdType cid = 0; cid < m_importedGrid->GetNumberOfCells(); ++cid)
     {
@@ -6662,10 +7239,144 @@ QVector<BarElementRecordInfo> MeshModuleController::barElementRecords() const
             info.matype = static_cast<int>(matypes->GetTuple1(cid));
         if (layers)
             info.installationLayer = static_cast<int>(layers->GetTuple1(cid));
+        if (placementUuids && cid < placementUuids->GetNumberOfValues())
+            info.placementUuid = QString::fromStdString(placementUuids->GetValue(cid));
     }
     for (auto it = byId.constBegin(); it != byId.constEnd(); ++it)
         result.push_back(it.value());
     return result;
+}
+
+bool MeshModuleController::setBarPlacementMatype(const QString& placementUuid,
+                                                   int matype,
+                                                   QString* errMsg)
+{
+    if (errMsg)
+        errMsg->clear();
+    if (placementUuid.trimmed().isEmpty())
+    {
+        if (errMsg)
+            *errMsg = QStringLiteral("锚杆布置节点无效。");
+        return false;
+    }
+    if (matype < FIRST_AUTO_MATYPE || matype > MAX_SOLVER_MATYPE)
+    {
+        if (errMsg)
+            *errMsg = QStringLiteral("锚杆材料编号必须在 3 至 300 之间。");
+        return false;
+    }
+    if (!m_importedGrid)
+        return true;
+
+    normalizeGridAttributeTupleCounts(m_importedGrid);
+    vtkDataArray* matypes = m_importedGrid->GetCellData()->GetArray("MATYPE");
+    int hostDimension = 0;
+    for (vtkIdType cid = 0; cid < m_importedGrid->GetNumberOfCells(); ++cid)
+    {
+        if (vtkCell* cell = m_importedGrid->GetCell(cid))
+            hostDimension = qMax(hostDimension, cell->GetCellDimension());
+    }
+    if (matypes && hostDimension >= 2)
+    {
+        for (vtkIdType cid = 0; cid < m_importedGrid->GetNumberOfCells() &&
+                                cid < matypes->GetNumberOfTuples(); ++cid)
+        {
+            vtkCell* cell = m_importedGrid->GetCell(cid);
+            if (cell && cell->GetCellDimension() == hostDimension &&
+                static_cast<int>(matypes->GetTuple1(cid)) == matype)
+            {
+                if (errMsg)
+                    *errMsg = QStringLiteral(
+                        "材料编号 %1 已被实体网格使用。锚杆请使用独立材料编号；不同锚杆布置节点可以共用同一锚杆材料编号。")
+                                  .arg(matype);
+                return false;
+            }
+        }
+    }
+    auto* placementUuids = vtkStringArray::SafeDownCast(
+        m_importedGrid->GetCellData()->GetAbstractArray("BAR_PLACEMENT_UUID"));
+    if (!matypes || !placementUuids)
+        return true; // 当前节点还没有实际生成锚杆。
+
+    bool changed = false;
+    const vtkIdType cellCount = m_importedGrid->GetNumberOfCells();
+    for (vtkIdType cid = 0; cid < cellCount; ++cid)
+    {
+        vtkCell* cell = m_importedGrid->GetCell(cid);
+        if (!cell || cell->GetCellDimension() != 1 ||
+            cid >= placementUuids->GetNumberOfValues())
+            continue;
+        const QString uuid = QString::fromStdString(placementUuids->GetValue(cid));
+        if (uuid != placementUuid)
+            continue;
+        if (static_cast<int>(matypes->GetTuple1(cid)) != matype)
+        {
+            matypes->SetTuple1(cid, matype);
+            changed = true;
+        }
+    }
+
+    if (!changed)
+        return true;
+
+    matypes->Modified();
+    m_importedGrid->GetCellData()->Modified();
+    m_importedGrid->Modified();
+    syncPickMapGroupingFromGrid(m_importedGrid);
+    displayCurrentGrid(false);
+    PickManager::instance().updateStructure();
+    if (m_gridEditingWidget)
+        m_gridEditingWidget->setEditableGrid(m_importedGrid, QString());
+    return true;
+}
+
+void MeshModuleController::setBarPlacementDisplayMode(bool active)
+{
+    if (!m_visualWidgetService || !m_importedGrid)
+        return;
+
+    if (!active)
+    {
+        // 重新走统一网格显示逻辑，完整恢复用户原来的颜色/筛选/不透明度设置。
+        displayCurrentGrid(false);
+        return;
+    }
+
+    if (!m_previewSurfaceActor || !m_previewLineActor || !m_previewLineMapper)
+        displayCurrentGrid(false);
+
+    if (m_previewSurfaceActor)
+    {
+        auto* prop = m_previewSurfaceActor->GetProperty();
+        // 锚杆布置时仍保持实体半透明，但把网格边显示出来。区域布置的
+        // 交互对象本来就是一个边界网格面，完全隐藏网格线会让用户不知道
+        // 当前可以点哪里，也很难判断是否真的选中了一个面。
+        prop->SetRepresentationToSurface();
+        prop->SetOpacity(0.30);
+        prop->SetColor(0.72, 0.75, 0.78);
+        prop->EdgeVisibilityOn();
+        prop->SetEdgeColor(0.22, 0.25, 0.28);
+        prop->SetLineWidth(1.0);
+        m_previewSurfaceActor->PickableOn();
+        if (m_previewSurfaceMapper)
+            m_previewSurfaceMapper->ScalarVisibilityOff();
+    }
+
+    if (m_previewLineActor)
+    {
+        auto* prop = m_previewLineActor->GetProperty();
+        prop->SetOpacity(1.0);
+        prop->SetLineWidth(3.0);
+        prop->SetSpecular(0.0);
+        prop->RenderLinesAsTubesOn();
+        // 锚杆统一一种显示颜色；材料编号只作为计算属性，不再按 MATYPE 变色。
+        prop->SetColor(232.0 / 255.0, 126.0 / 255.0, 48.0 / 255.0);
+    }
+
+    if (m_previewLineMapper)
+        m_previewLineMapper->ScalarVisibilityOff();
+
+    m_visualWidgetService->render();
 }
 
 void MeshModuleController::setEdgeControlRules(const QVector<EdgeControlRule>& rules)

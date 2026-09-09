@@ -5,23 +5,30 @@
 #include <PublicVariables.h>
 #include <services/VisualWidgetService.h>
 #include <vtkActor.h>
+#include <vtkActor2D.h>
 #include <vtkAppendFilter.h>
+#include <vtkCell.h>
 #include <vtkCellData.h>
 #include <vtkCellDataToPointData.h>
 #include <vtkCutter.h>
 #include <vtkDataArray.h>
 #include <vtkDataObject.h>
 #include <vtkDataSetMapper.h>
+#include <vtkDoubleArray.h>
+#include <vtkIdList.h>
+#include <vtkLabeledDataMapper.h>
 #include <vtkLookupTable.h>
 #include <vtkMultiBlockDataSet.h>
 #include <vtkPlane.h>
 #include <vtkPointData.h>
+#include <vtkPoints.h>
 #include <vtkPolyData.h>
 #include <vtkPolyDataMapper.h>
 #include <vtkProperty.h>
 #include <vtkRenderWindow.h>
 #include <vtkScalarBarActor.h>
 #include <vtkTecplotReader.h>
+#include <vtkTextProperty.h>
 #include <vtkUnstructuredGrid.h>
 
 #include <QByteArray>
@@ -115,6 +122,133 @@ static bool resolveSliceContourRange(vtkPolyData* sliceOutput,
     contourRange[0] = std::max(sliceRange[0], displayMin);
     contourRange[1] = std::min(sliceRange[1], displayMax);
     return contourRange[1] > contourRange[0];
+}
+
+static vtkSmartPointer<vtkActor2D> createSliceContourLabelActor(
+    const vtkSmartPointer<vtkActor>& contourActor,
+    const QString& scalarName,
+    double minV,
+    double maxV)
+{
+    if (!contourActor || scalarName.isEmpty() || !postContourStyle().labels)
+        return nullptr;
+
+    auto* contourMapper = vtkPolyDataMapper::SafeDownCast(contourActor->GetMapper());
+    if (!contourMapper)
+        return nullptr;
+    contourMapper->Update();
+
+    vtkPolyData* contourData = contourMapper->GetInput();
+    const QByteArray scalarNameUtf8 = scalarName.toUtf8();
+    vtkDataArray* contourScalars = contourData && contourData->GetPointData()
+                                       ? contourData->GetPointData()->GetArray(
+                                             scalarNameUtf8.constData())
+                                       : nullptr;
+    if (!contourData || !contourScalars || contourData->GetNumberOfCells() <= 0 ||
+        contourScalars->GetNumberOfTuples() < contourData->GetNumberOfPoints())
+        return nullptr;
+
+    struct LabelCandidate
+    {
+        double value{0.0};
+        vtkIdType pointId{-1};
+        double length{0.0};
+    };
+
+    QVector<LabelCandidate> candidates;
+    candidates.reserve(qMax(2, postContourStyle().levels));
+    const double tolerance = std::max(std::abs(maxV - minV), 1.0e-12) * 1.0e-5;
+
+    for (vtkIdType cellIndex = 0; cellIndex < contourData->GetNumberOfCells(); ++cellIndex)
+    {
+        vtkCell* cell = contourData->GetCell(cellIndex);
+        vtkIdList* ids = cell ? cell->GetPointIds() : nullptr;
+        if (!ids || ids->GetNumberOfIds() < 2)
+            continue;
+
+        const vtkIdType midpointId = ids->GetId(ids->GetNumberOfIds() / 2);
+        if (midpointId < 0 || midpointId >= contourData->GetNumberOfPoints())
+            continue;
+        const double value = contourScalars->GetComponent(midpointId, 0);
+        if (!std::isfinite(value))
+            continue;
+
+        double lineLength = 0.0;
+        double previousPoint[3]{0.0, 0.0, 0.0};
+        contourData->GetPoint(ids->GetId(0), previousPoint);
+        for (vtkIdType pointIndex = 1; pointIndex < ids->GetNumberOfIds(); ++pointIndex)
+        {
+            double point[3]{0.0, 0.0, 0.0};
+            contourData->GetPoint(ids->GetId(pointIndex), point);
+            const double dx = point[0] - previousPoint[0];
+            const double dy = point[1] - previousPoint[1];
+            const double dz = point[2] - previousPoint[2];
+            lineLength += std::sqrt(dx * dx + dy * dy + dz * dz);
+            previousPoint[0] = point[0];
+            previousPoint[1] = point[1];
+            previousPoint[2] = point[2];
+        }
+
+        int existingIndex = -1;
+        for (int i = 0; i < candidates.size(); ++i)
+        {
+            if (std::abs(candidates[i].value - value) <= tolerance)
+            {
+                existingIndex = i;
+                break;
+            }
+        }
+
+        const LabelCandidate candidate{value, midpointId, lineLength};
+        if (existingIndex < 0)
+            candidates.push_back(candidate);
+        else if (lineLength > candidates[existingIndex].length)
+            candidates[existingIndex] = candidate;
+    }
+
+    if (candidates.isEmpty())
+        return nullptr;
+
+    std::sort(candidates.begin(), candidates.end(),
+              [](const LabelCandidate& left, const LabelCandidate& right) {
+                  return left.value < right.value;
+              });
+
+    auto labelPoints = vtkSmartPointer<vtkPoints>::New();
+    auto labelValues = vtkSmartPointer<vtkDoubleArray>::New();
+    labelValues->SetName("ContourLabels");
+    for (const LabelCandidate& candidate : candidates)
+    {
+        double point[3]{0.0, 0.0, 0.0};
+        contourData->GetPoint(candidate.pointId, point);
+        labelPoints->InsertNextPoint(point);
+        labelValues->InsertNextValue(candidate.value);
+    }
+
+    auto labelData = vtkSmartPointer<vtkPolyData>::New();
+    labelData->SetPoints(labelPoints);
+    labelData->GetPointData()->SetScalars(labelValues);
+
+    auto labelMapper = vtkSmartPointer<vtkLabeledDataMapper>::New();
+    labelMapper->SetInputData(labelData);
+    labelMapper->SetLabelModeToLabelScalars();
+    const QByteArray labelFormat =
+        QStringLiteral("%.%1g").arg(postScalarBarStyle().precision).toLatin1();
+    labelMapper->SetLabelFormat(labelFormat.constData());
+    vtkTextProperty* textProperty = labelMapper->GetLabelTextProperty();
+    textProperty->SetFontSize(postContourStyle().labelFont);
+    textProperty->SetColor(0.08, 0.08, 0.08);
+    textProperty->SetBold(0);
+    textProperty->SetShadow(0);
+    textProperty->SetBackgroundColor(1.0, 1.0, 1.0);
+    textProperty->SetBackgroundOpacity(0.72);
+    textProperty->SetJustificationToCentered();
+    textProperty->SetVerticalJustificationToCentered();
+
+    auto labelActor = vtkSmartPointer<vtkActor2D>::New();
+    labelActor->SetMapper(labelMapper);
+    labelActor->PickableOff();
+    return labelActor;
 }
 
 SliceSettingsWidget::SliceSettingsWidget(VisualWidgetService* postProcessingWidget, QWidget* parent)
@@ -272,7 +406,7 @@ void SliceSettingsWidget::beforeLoad()
             double dataRange[2]{0.0, 1.0};
             array->GetRange(dataRange);
             if (property("postDisplayActive").toBool())
-                publishPostDisplayContext(field.name, dataRange[0], dataRange[1], true, false);
+                publishPostDisplayContext(field.name, dataRange[0], dataRange[1], true, true);
         }
     }
 
@@ -623,7 +757,7 @@ void SliceSettingsWidget::on_scalarComboBox_currentIndexChanged(int)
     double dataRange[2];
     arr->GetRange(dataRange);
     if (property("postDisplayActive").toBool())
-        publishPostDisplayContext(field.name, dataRange[0], dataRange[1], true, false);
+        publishPostDisplayContext(field.name, dataRange[0], dataRange[1], true, true);
     double range[2]{dataRange[0], dataRange[1]};
     resolvePostDisplayRange(field.name, dataRange[0], dataRange[1], range[0], range[1]);
     auto* scalarBar = m_visualService->scalarBarActor();
@@ -788,6 +922,11 @@ void SliceSettingsWidget::on_singleSliceRadioButton_toggled(bool checked)
             removeActorByService(m_visualService, postActorId(getUuid(), QStringLiteral("slice")), false);
         if (m_sliceContourActor)
             removeActorByService(m_visualService, postActorId(getUuid(), QStringLiteral("slice-contour")), false);
+        if (m_sliceContourLabelActor)
+            removePostPropByService(
+                m_visualService,
+                postActorId(getUuid(), QStringLiteral("slice-contour-labels")),
+                m_sliceContourLabelActor, false);
         m_singleDisplayed = false;
         if (m_actor)
             addActorByService(m_visualService, postActorId(getUuid(), QStringLiteral("surface")),
@@ -909,7 +1048,13 @@ void SliceSettingsWidget::buildSingleSliceResult()
         removeActorByService(m_visualService, postActorId(getUuid(), QStringLiteral("slice")), false);
     if (m_sliceContourActor)
         removeActorByService(m_visualService, postActorId(getUuid(), QStringLiteral("slice-contour")), false);
+    if (m_sliceContourLabelActor)
+        removePostPropByService(
+            m_visualService,
+            postActorId(getUuid(), QStringLiteral("slice-contour-labels")),
+            m_sliceContourLabelActor, false);
     m_sliceContourActor = nullptr;
+    m_sliceContourLabelActor = nullptr;
 
     m_sliceActor = vtkSmartPointer<vtkActor>::New();
     m_sliceActor->SetMapper(mapper);
@@ -923,8 +1068,17 @@ void SliceSettingsWidget::buildSingleSliceResult()
         m_sliceContourActor = createPostContourActor(cutter->GetOutputPort(), sliceArrayName,
                                                       contourRange[0], contourRange[1]);
     if (m_sliceContourActor)
+    {
         addActorByService(m_visualService, postActorId(getUuid(), QStringLiteral("slice-contour")),
                           m_sliceContourActor, QStringLiteral("切面等值线"), false);
+        m_sliceContourLabelActor = createSliceContourLabelActor(
+            m_sliceContourActor, sliceArrayName, contourRange[0], contourRange[1]);
+    }
+    if (m_sliceContourLabelActor)
+        addPostPropByService(
+            m_visualService,
+            postActorId(getUuid(), QStringLiteral("slice-contour-labels")),
+            m_sliceContourLabelActor, QStringLiteral("切面等值线数值"), false);
     applyStandardPostScalarBar(m_visualService, ResultDisplayNames::scalarBarName(field.name));
     m_visualService->showScalarBar(postScalarBarShouldBeVisible(), false);
 }
@@ -1030,15 +1184,25 @@ void SliceSettingsWidget::buildMultiSliceResult()
                           actor, QStringLiteral("切面 %1").arg(sliceIndex + 1), false);
 
         vtkSmartPointer<vtkActor> contourActor;
+        vtkSmartPointer<vtkActor2D> contourLabelActor;
         double contourRange[2]{0.0, 0.0};
         if (postContourStyle().enabled &&
             resolveSliceContourRange(cutter->GetOutput(), sliceArrayName, range, contourRange))
             contourActor = createPostContourActor(cutter->GetOutputPort(), sliceArrayName,
                                                    contourRange[0], contourRange[1]);
         if (contourActor)
+        {
             addActorByService(m_visualService,
                               postActorId(getUuid(), QStringLiteral("slice-contour-%1").arg(sliceIndex)),
                               contourActor, QStringLiteral("切面等值线 %1").arg(sliceIndex + 1), false);
+            contourLabelActor = createSliceContourLabelActor(
+                contourActor, sliceArrayName, contourRange[0], contourRange[1]);
+        }
+        if (contourLabelActor)
+            addPostPropByService(
+                m_visualService,
+                postActorId(getUuid(), QStringLiteral("slice-contour-labels-%1").arg(sliceIndex)),
+                contourLabelActor, QStringLiteral("切面等值线数值 %1").arg(sliceIndex + 1), false);
 
         m_multiPlanes << plane;
         m_multiCutters << cutter;
@@ -1046,6 +1210,7 @@ void SliceSettingsWidget::buildMultiSliceResult()
         m_multiActors << actor;
         // 保持与 m_multiActors 的索引严格对齐；空切面/常量切面没有真实等值线。
         m_multiContourActors << contourActor;
+        m_multiContourLabelActors << contourLabelActor;
     }
 
     applyStandardPostScalarBar(m_visualService, ResultDisplayNames::scalarBarName(field.name));
@@ -1068,6 +1233,14 @@ void SliceSettingsWidget::hideMultiSlicesFromScene()
                 m_visualService,
                 postActorId(getUuid(), QStringLiteral("slice-contour-%1").arg(i)), false);
     }
+    for (int i = 0; i < m_multiContourLabelActors.size(); ++i)
+    {
+        if (m_multiContourLabelActors[i])
+            removePostPropByService(
+                m_visualService,
+                postActorId(getUuid(), QStringLiteral("slice-contour-labels-%1").arg(i)),
+                m_multiContourLabelActors[i], false);
+    }
 }
 
 void SliceSettingsWidget::clearMultiSlicesAll()
@@ -1078,6 +1251,7 @@ void SliceSettingsWidget::clearMultiSlicesAll()
     m_multiMappers.clear();
     m_multiActors.clear();
     m_multiContourActors.clear();
+    m_multiContourLabelActors.clear();
 }
 
 void SliceSettingsWidget::reattachAccordingToDisplayState()
@@ -1102,6 +1276,13 @@ void SliceSettingsWidget::reattachAccordingToDisplayState()
                     m_visualService,
                     postActorId(getUuid(), QStringLiteral("slice-contour-%1").arg(i)),
                     m_multiContourActors[i], QStringLiteral("切面等值线 %1").arg(i + 1), false);
+        for (int i = 0; i < m_multiContourLabelActors.size(); ++i)
+            if (m_multiContourLabelActors[i])
+                addPostPropByService(
+                    m_visualService,
+                    postActorId(getUuid(), QStringLiteral("slice-contour-labels-%1").arg(i)),
+                    m_multiContourLabelActors[i],
+                    QStringLiteral("切面等值线数值 %1").arg(i + 1), false);
         return;
     }
 
@@ -1112,6 +1293,11 @@ void SliceSettingsWidget::reattachAccordingToDisplayState()
         if (m_sliceContourActor)
             addActorByService(m_visualService, postActorId(getUuid(), QStringLiteral("slice-contour")),
                           m_sliceContourActor, QStringLiteral("切面等值线"), false);
+        if (m_sliceContourLabelActor)
+            addPostPropByService(
+                m_visualService,
+                postActorId(getUuid(), QStringLiteral("slice-contour-labels")),
+                m_sliceContourLabelActor, QStringLiteral("切面等值线数值"), false);
         if (m_visualService)
             m_visualService->render();
         return;
@@ -1135,5 +1321,10 @@ void SliceSettingsWidget::detachAllFromScene()
         removeActorByService(m_visualService, postActorId(getUuid(), QStringLiteral("slice")), false);
     if (m_sliceContourActor)
         removeActorByService(m_visualService, postActorId(getUuid(), QStringLiteral("slice-contour")), false);
+    if (m_sliceContourLabelActor)
+        removePostPropByService(
+            m_visualService,
+            postActorId(getUuid(), QStringLiteral("slice-contour-labels")),
+            m_sliceContourLabelActor, false);
     hideMultiSlicesFromScene();
 }

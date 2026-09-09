@@ -462,7 +462,7 @@ inline void setupComputeControls(QWidget* page)
     auto* standardButton = new QPushButton(QStringLiteral("规范法计算"), panel);
     standardButton->setObjectName(QStringLiteral("btnStandardCompute"));
     standardButton->setProperty("computeMethod", QStringLiteral("standard"));
-    standardButton->setToolTip(QStringLiteral("规范法计算接口预留，当前尚未接入实际计算。"));
+    standardButton->setToolTip(QStringLiteral("当前分析暂不支持规范法计算。"));
 
     numericalButton->setProperty("computeMethod", QStringLiteral("numerical"));
     numericalButton->setText(QStringLiteral("数值法计算"));
@@ -481,7 +481,7 @@ inline void setupComputeControls(QWidget* page)
         QMessageBox::information(
             page,
             QStringLiteral("规范法计算"),
-            QStringLiteral("规范法计算接口已预留，当前尚未接入实际计算。"));
+            QStringLiteral("当前分析暂不支持规范法计算。"));
     });
 
     new ComputeControlsBinder(page, numericalButton, standardButton);

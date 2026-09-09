@@ -169,7 +169,7 @@
           <item>
            <widget class="QCheckBox" name="fosCheckBox">
             <property name="text">
-             <string>安全系数</string>
+             <string>折减系数</string>
             </property>
            </widget>
           </item>
@@ -199,7 +199,7 @@
           <item>
            <widget class="QCheckBox" name="maxUrCheckBox">
             <property name="text">
-             <string>最大位移比</string>
+             <string>最大位移（m）</string>
             </property>
            </widget>
           </item>

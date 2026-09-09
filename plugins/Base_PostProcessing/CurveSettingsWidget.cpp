@@ -58,12 +58,17 @@ CurveSettingsWidget::CurveSettingsWidget(VisualWidgetService* visualService, QWi
 
     ui->xFieldComboBox->addItem(QStringLiteral("计算步"), QStringLiteral("ISTEP"));
     ui->xFieldComboBox->addItem(QStringLiteral("迭代次数"), QStringLiteral("LOOP"));
-    ui->xFieldComboBox->addItem(QStringLiteral("安全系数"), QStringLiteral("FOS"));
-    // 默认只显示最常用的两条曲线，避免不同量纲的 4 条曲线首次打开时挤在一起。
-    ui->fosCheckBox->setChecked(true);
+    ui->xFieldComboBox->addItem(QStringLiteral("折减系数"), QStringLiteral("FOS"));
+
+    // 强度折减计算默认查看 FOS-LOOP 收敛趋势。ISTEP-FOS 只反映预设的试算步长，
+    // 容易被误读为安全系数随计算步增长。
+    const int defaultXIndex = ui->xFieldComboBox->findData(QStringLiteral("FOS"));
+    if (defaultXIndex >= 0)
+        ui->xFieldComboBox->setCurrentIndex(defaultXIndex);
+    ui->fosCheckBox->setChecked(false);
     ui->ptotCheckBox->setChecked(false);
-    ui->maxUrCheckBox->setChecked(true);
-    ui->loopCheckBox->setChecked(false);
+    ui->maxUrCheckBox->setChecked(false);
+    ui->loopCheckBox->setChecked(true);
 
 
     // 设置窗口始终显示与曲线一致的颜色说明；图表右上角图例仍由复选框单独控制。
@@ -146,7 +151,7 @@ void CurveSettingsWidget::loadJson(const QJsonObject& obj)
 
     const QString resultDir = obj.value("resultDir").toString();
     const QString fileName = obj.value("fileName").toString();
-    const QString xField = obj.value("xField").toString("ISTEP");
+    const QString xField = obj.value("xField").toString("FOS");
 
     if (!resultDir.isEmpty())
     {
@@ -174,10 +179,10 @@ void CurveSettingsWidget::loadJson(const QJsonObject& obj)
     if (xIdx >= 0)
         ui->xFieldComboBox->setCurrentIndex(xIdx);
 
-    ui->fosCheckBox->setChecked(obj.value("showFos").toBool(true));
+    ui->fosCheckBox->setChecked(obj.value("showFos").toBool(false));
     ui->ptotCheckBox->setChecked(obj.value("showPtot").toBool(false));
-    ui->maxUrCheckBox->setChecked(obj.value("showMaxUr").toBool(true));
-    ui->loopCheckBox->setChecked(obj.value("showLoop").toBool(false));
+    ui->maxUrCheckBox->setChecked(obj.value("showMaxUr").toBool(false));
+    ui->loopCheckBox->setChecked(obj.value("showLoop").toBool(true));
     ui->showLegendCheckBox->setChecked(obj.value("showLegend").toBool(false));
     updateLoopAvailability();
 }
@@ -336,7 +341,7 @@ void CurveSettingsWidget::updateLoopAvailability()
                                      : QString());
     ui->fosCheckBox->setEnabled(!fosIsXAxis);
     ui->fosCheckBox->setToolTip(fosIsXAxis
-                                    ? QStringLiteral("横轴已选择安全系数，不能同时作为纵轴")
+                                    ? QStringLiteral("横轴已选择折减系数，不能同时作为纵轴")
                                     : QString());
 }
 

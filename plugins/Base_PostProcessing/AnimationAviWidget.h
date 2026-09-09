@@ -50,6 +50,7 @@ class AnimationAviWidget : public BasePage
     void on_frameSlider_valueChanged(int value);
     void on_fpsSpin_valueChanged(double value);
     void on_fixRangeCheckBox_toggled(bool checked);
+    void on_showExcavatedCheckBox_toggled(bool checked);
     void onTick();
 
   private:
@@ -60,6 +61,8 @@ class AnimationAviWidget : public BasePage
     void activateSelectedSequence();
 
     const PostAnimationSequenceModel::Sequence* currentSequence() const;
+    QString frameFilePath(const PostAnimationSequenceModel::Frame& frame) const;
+    bool currentSequenceHasExcavatedVariant() const;
     bool loadFrame(int index, bool updateScalarList = false);
     vtkSmartPointer<vtkUnstructuredGrid> readGrid(const QString& filePath);
     void clearGridCache();
@@ -110,6 +113,7 @@ class AnimationAviWidget : public BasePage
     QString m_pendingRangeKey;
     QString m_pendingSequenceKey;
     QString m_pendingScalar;
+    bool m_pendingShowExcavated{false};
     QJsonObject m_pendingJson;
 
     QTimer m_timer;

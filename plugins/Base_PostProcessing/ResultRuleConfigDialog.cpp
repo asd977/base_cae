@@ -110,9 +110,11 @@ bool editFileRule(ResultFileRule& rule, QWidget* parent)
 
     rule.displayName = displayEdit->text().trimmed();
     rule.fileName = fileEdit->text().trimmed();
-    rule.format = rule.fileName.endsWith(QStringLiteral(".vtu"), Qt::CaseInsensitive)
-                      ? QStringLiteral("vtu")
-                      : QStringLiteral("tecplot");
+    rule.format = rule.fileName.endsWith(QStringLiteral(".vtm"), Qt::CaseInsensitive)
+                      ? QStringLiteral("vtm")
+                      : (rule.fileName.endsWith(QStringLiteral(".vtu"), Qt::CaseInsensitive)
+                             ? QStringLiteral("vtu")
+                             : QStringLiteral("tecplot"));
     rule.description = descEdit->text().trimmed();
 
     if (rule.fileName.isEmpty())
@@ -363,9 +365,11 @@ QVector<ResultFileRule> ResultRuleConfigDialog::collectFileRules() const
         if (rule.displayName.isEmpty())
             rule.displayName = rule.fileName;
 
-        rule.format = rule.fileName.endsWith(QStringLiteral(".vtu"), Qt::CaseInsensitive)
-                          ? QStringLiteral("vtu")
-                          : QStringLiteral("tecplot");
+        rule.format = rule.fileName.endsWith(QStringLiteral(".vtm"), Qt::CaseInsensitive)
+                          ? QStringLiteral("vtm")
+                          : (rule.fileName.endsWith(QStringLiteral(".vtu"), Qt::CaseInsensitive)
+                                 ? QStringLiteral("vtu")
+                                 : QStringLiteral("tecplot"));
 
         rules.push_back(rule);
     }

@@ -1,4 +1,4 @@
-#pragma once
+﻿#pragma once
 #include <services/MeshModuleControllerService.h>
 #include <vtkSmartPointer.h>
 
@@ -76,8 +76,13 @@ class MeshModuleController : public QObject, public MeshModuleControllerService
     QVector<VolumeControlRule> volumeControlRules() const override;
     bool appendBarElements(const BarElementPlacement& placement,
                            QString* errMsg = nullptr) override;
+    bool appendBarElementsBatch(const QVector<BarElementPlacement>& placements,
+                                QString* errMsg = nullptr) override;
     bool removeBarElementRecord(int recordId, QString* errMsg = nullptr) override;
     QVector<BarElementRecordInfo> barElementRecords() const override;
+    bool setBarPlacementMatype(const QString& placementUuid, int matype,
+                               QString* errMsg = nullptr) override;
+    void setBarPlacementDisplayMode(bool active) override;
 
   private:
     void initAction();

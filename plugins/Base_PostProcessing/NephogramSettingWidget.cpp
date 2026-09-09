@@ -49,6 +49,7 @@
 #include <QDebug>
 #include <QDoubleSpinBox>
 #include <QElapsedTimer>
+#include <QHash>
 #include <QDir>
 #include <QFileInfo>
 #include <QJsonObject>
@@ -93,6 +94,36 @@ bool sameResultFile(const QString& left, const QString& right)
         return false;
     return normalizedResultFilePath(left).compare(
                normalizedResultFilePath(right), Qt::CaseInsensitive) == 0;
+}
+
+bool isExcavatedResultFile(const QString& path)
+{
+    return QFileInfo(path).completeBaseName().endsWith(
+        QStringLiteral("_with_excavated"), Qt::CaseInsensitive);
+}
+
+QString logicalResultFileKey(const QString& path)
+{
+    if (path.trimmed().isEmpty())
+        return QString();
+    const QFileInfo info(path);
+    QString base = info.completeBaseName();
+    const QString marker = QStringLiteral("_with_excavated");
+    if (base.endsWith(marker, Qt::CaseInsensitive))
+        base.chop(marker.size());
+
+    QString fileName = base;
+    if (!info.suffix().isEmpty())
+        fileName += QLatin1Char('.') + info.suffix().toLower();
+    return QDir::cleanPath(QDir(info.absolutePath()).filePath(fileName)).toCaseFolded();
+}
+
+QString logicalResultDisplayName(QString name)
+{
+    const QString marker = QStringLiteral("（含已开挖体）");
+    if (name.endsWith(marker))
+        name.chop(marker.size());
+    return name.trimmed();
 }
 
 bool scalarArrayMatchesSurface(vtkPolyData* surface, const QString& scalarName,
@@ -159,6 +190,15 @@ NephogramSettingWidget::NephogramSettingWidget(VisualWidgetService* postProcessi
     connect(ui->resultTimeComboBox,
             QOverload<int>::of(&QComboBox::currentIndexChanged), this,
             &NephogramSettingWidget::on_resultTimeComboBox_currentIndexChanged);
+    connect(ui->showExcavatedCheckBox, &QCheckBox::toggled, this, [this](bool) {
+        if (m_loadingState)
+            return;
+
+        const QString previousFile = ui->stepComboBox->currentData().toString();
+        populateResultFileCombo(previousFile);
+        if (ui->stepComboBox->count() > 0)
+            on_stepComboBox_currentIndexChanged(ui->stepComboBox->currentIndex());
+    });
 
     connect(ui->autoRangeCheckBox, &QCheckBox::toggled, this, [this](bool) {
         updateRangeEditorState();
@@ -253,51 +293,6 @@ NephogramSettingWidget::NephogramSettingWidget(VisualWidgetService* postProcessi
             refreshCurrentVisualization();
         });
 
-    // 全局透明度改变时，普通不透明云图与透明域界面显示之间切换。
-    // 不修改结果网格，也不参与材料/分层筛选。
-    EventManager::instance().registerHandler(
-        QStringLiteral("visualization.opacity.changed"), this,
-        [this](const QVariantMap&)
-        {
-            if (!property("postDisplayActive").toBool())
-                return;
-
-            // 不透明首帧不需要域界面，避免工程首次进入后处理时遍历全部体单元。
-            // 第一次真正进入半透明状态时只同步准备一次；后续拖动只切换 Mapper
-            // 输入和修改 Actor 透明度，不再重跑结果筛选、色标和等值线管线。
-            // 以当前云图 Actor 的实际透明度为准，而不是只看全局滑块值。
-            // 这样 Actor 自身基础透明度不为 1.0 时也不会选错 Mapper 输入。
-            const double opacity = m_actor && m_actor->GetProperty()
-                                       ? m_actor->GetProperty()->GetOpacity()
-                                       : 1.0;
-            const bool needsDomainSurface =
-                opacity < 0.999 && !postMeshFilterReport().customFilter;
-            if (needsDomainSurface)
-                ensureTransparentDomainSurface();
-
-            const bool surfacePrepared =
-                m_transparentDomainSurface &&
-                m_transparentDomainSurface->GetNumberOfCells() > 0;
-            const bool wantsDomainSurface =
-                opacity < 0.999 && !postMeshFilterReport().customFilter &&
-                surfacePrepared;
-            if (wantsDomainSurface == m_usingTransparentDomainSurface)
-                return;
-
-            vtkDataSet* mapperInput = wantsDomainSurface
-                                          ? static_cast<vtkDataSet*>(
-                                                m_transparentDomainSurface.GetPointer())
-                                          : static_cast<vtkDataSet*>(m_grid.GetPointer());
-            if (!m_mapper || !mapperInput)
-                return;
-
-            m_mapper->SetInputData(mapperInput);
-            m_mapper->Modified();
-            m_usingTransparentDomainSurface = wantsDomainSurface;
-
-            // 发送透明度事件的 VisualizationWidget 会统一 Render；这里不单独绘制。
-        });
-
     updateRangeEditorState();
     // 工程恢复阶段只创建页面，不在构造函数里扫描结果目录。
     // 首次真正进入页面或恢复该页 JSON 状态时再初始化结果选项。
@@ -327,31 +322,6 @@ void NephogramSettingWidget::ensureActorAttached()
     // 统一 Render，避免透明模型在一次页面切换中连续绘制两帧。
     m_actorAttached = addActorByService(m_visualService, actorId, m_actor,
                                         QStringLiteral("云图"), false);
-}
-
-bool NephogramSettingWidget::ensureTransparentDomainSurface()
-{
-    if (m_transparentDomainSurface &&
-        m_transparentDomainSurface->GetNumberOfCells() > 0)
-        return true;
-    if (!m_grid || m_grid->GetNumberOfCells() <= 0)
-        return false;
-
-    QElapsedTimer domainTimer;
-    domainTimer.start();
-    vtkSmartPointer<vtkPolyData> surface =
-        postBuildDomainAwareDisplaySurface(m_grid, m_visualService);
-    if (!surface || surface->GetNumberOfCells() <= 0)
-        return false;
-
-    m_transparentDomainSurface = surface;
-    const qint64 domainMs = domainTimer.elapsed();
-    if (domainMs >= 100)
-        qInfo() << "[PostPerf] transparent domain surface prepare"
-                << domainMs << "ms"
-                << "volumeCells=" << m_grid->GetNumberOfCells()
-                << "surfaceCells=" << surface->GetNumberOfCells();
-    return true;
 }
 
 void NephogramSettingWidget::syncScalarBarFromCurrent()
@@ -593,13 +563,131 @@ void NephogramSettingWidget::on_stepComboBox_currentIndexChanged(int index)
         return;
     }
 
-    if (QFileInfo(filePath).suffix().compare(QStringLiteral("vtu"),
-                                              Qt::CaseInsensitive) == 0)
+    const QString suffix = QFileInfo(filePath).suffix().toLower();
+    if (suffix == QStringLiteral("vtu") || suffix == QStringLiteral("vtm"))
     {
         readVtu(filePath);
         return;
     }
     readTecplot(filePath);
+}
+
+void NephogramSettingWidget::populateResultFileCombo(const QString& preferredFile)
+{
+    struct ResultPair
+    {
+        QString key;
+        PostResultAutoPrepare::ResultFile regular;
+        PostResultAutoPrepare::ResultFile excavated;
+        bool hasRegular{false};
+        bool hasExcavated{false};
+    };
+
+    const QString projectDir =
+        PublicVariables::instance().get(PublicConstants::kProjectDirectoryKey).toString();
+    const QVector<PostResultAutoPrepare::ResultFile> files =
+        PostResultAutoPrepare::resultFilesForFrame(
+            projectDir, m_dataPath,
+            PostResultSelectionUtils::selectedFrameKey(ui->resultTimeComboBox), true);
+
+    QVector<ResultPair> pairs;
+    pairs.reserve(files.size());
+    for (const auto& file : files)
+    {
+        const QString key = logicalResultFileKey(file.filePath);
+        int pairIndex = -1;
+        for (int i = 0; i < pairs.size(); ++i)
+        {
+            if (pairs.at(i).key == key)
+            {
+                pairIndex = i;
+                break;
+            }
+        }
+        if (pairIndex < 0)
+        {
+            ResultPair pair;
+            pair.key = key;
+            pairs.push_back(pair);
+            pairIndex = pairs.size() - 1;
+        }
+
+        ResultPair& pair = pairs[pairIndex];
+        if (isExcavatedResultFile(file.filePath))
+        {
+            pair.excavated = file;
+            pair.hasExcavated = true;
+        }
+        else
+        {
+            pair.regular = file;
+            pair.hasRegular = true;
+        }
+    }
+
+    bool hasExcavatedAlternative = false;
+    for (const ResultPair& pair : pairs)
+    {
+        if (pair.hasRegular && pair.hasExcavated)
+        {
+            hasExcavatedAlternative = true;
+            break;
+        }
+    }
+
+    bool showExcavated = ui->showExcavatedCheckBox->isChecked();
+    if (!hasExcavatedAlternative && showExcavated)
+    {
+        const QSignalBlocker blocker(ui->showExcavatedCheckBox);
+        ui->showExcavatedCheckBox->setChecked(false);
+        showExcavated = false;
+    }
+    ui->showExcavatedCheckBox->setVisible(hasExcavatedAlternative);
+    ui->showExcavatedCheckBox->setEnabled(hasExcavatedAlternative);
+    ui->showExcavatedCheckBox->setToolTip(
+        hasExcavatedAlternative
+            ? QStringLiteral("勾选后仅改变显示范围：把当前阶段已经开挖的区域一并显示。")
+            : QString());
+
+    QString preferredKey = logicalResultFileKey(preferredFile);
+    if (preferredKey.isEmpty())
+        preferredKey = logicalResultFileKey(
+            PostResultSelectionUtils::sharedResultSelection().resultFile);
+
+    const QSignalBlocker comboBlocker(ui->stepComboBox);
+    ui->stepComboBox->clear();
+    QHash<QString, int> displayNameCounts;
+    int preferredIndex = -1;
+    for (const ResultPair& pair : pairs)
+    {
+        const PostResultAutoPrepare::ResultFile* selected = nullptr;
+        if (showExcavated && pair.hasExcavated)
+            selected = &pair.excavated;
+        else if (pair.hasRegular)
+            selected = &pair.regular;
+        else if (pair.hasExcavated)
+            selected = &pair.excavated;
+        if (!selected)
+            continue;
+
+        QString displayName = logicalResultDisplayName(
+            pair.hasRegular ? pair.regular.displayName : selected->displayName);
+        if (displayName.isEmpty())
+            displayName = QStringLiteral("结果数据");
+        const int count = displayNameCounts.value(displayName) + 1;
+        displayNameCounts.insert(displayName, count);
+        if (count > 1)
+            displayName += QStringLiteral(" (%1)").arg(count);
+
+        const int index = ui->stepComboBox->count();
+        ui->stepComboBox->addItem(displayName, selected->filePath);
+        if (!preferredKey.isEmpty() && pair.key == preferredKey)
+            preferredIndex = index;
+    }
+
+    if (preferredIndex < 0 && ui->stepComboBox->count() > 0)
+        preferredIndex = 0;
+    ui->stepComboBox->setCurrentIndex(preferredIndex);
 }
 
 void NephogramSettingWidget::loadFileName(const QString& dataPath)
@@ -620,10 +708,8 @@ void NephogramSettingWidget::loadFileName(const QString& dataPath)
 
     PostResultSelectionUtils::populateTimeCombo(
         ui->resultTimeComboBox, projectDir, dataPath, previousTime, true);
-    PostResultSelectionUtils::populateResultCombo(
-        ui->stepComboBox, projectDir, dataPath,
-        PostResultSelectionUtils::selectedFrameKey(ui->resultTimeComboBox),
-        previousFile, true);
+    m_dataPath = dataPath;
+    populateResultFileCombo(previousFile);
 
     if (ui->stepComboBox->count() > 0)
         on_stepComboBox_currentIndexChanged(ui->stepComboBox->currentIndex());
@@ -662,17 +748,8 @@ void NephogramSettingWidget::on_resultTimeComboBox_currentIndexChanged(int)
 {
     PostResultSelectionUtils::rememberBasicSelection(ui->analysisComboBox, ui->resultDirComboBox,
                                                      ui->resultTimeComboBox, ui->stepComboBox);
-    const QString projectDir =
-        PublicVariables::instance().get(PublicConstants::kProjectDirectoryKey).toString();
-    const QString previousName = ui->stepComboBox->currentText();
-    PostResultSelectionUtils::populateResultCombo(
-        ui->stepComboBox, projectDir, m_dataPath,
-        PostResultSelectionUtils::selectedFrameKey(ui->resultTimeComboBox),
-        QString(), true);
-
-    const int sameName = ui->stepComboBox->findText(previousName);
-    if (sameName >= 0)
-        ui->stepComboBox->setCurrentIndex(sameName);
+    const QString previousFile = ui->stepComboBox->currentData().toString();
+    populateResultFileCombo(previousFile);
     if (ui->stepComboBox->count() > 0)
         on_stepComboBox_currentIndexChanged(ui->stepComboBox->currentIndex());
 }
@@ -690,13 +767,11 @@ void NephogramSettingWidget::readTecplot(const QString& fileName)
     QElapsedTimer loadTimer;
     loadTimer.start();
     invalidateDisplaySurface();
-    m_transparentDomainSurface = nullptr;
-    m_usingTransparentDomainSurface = false;
     m_grid = nullptr;
     m_loadedFileName = fileName;
 
-    // Tecplot/VTU 统一读取成标准 vtkUnstructuredGrid。新内部结果优先是二进制 VTU；
-    // 旧 Tecplot 仍由 PostTecplotUtils 兼容。普通云图不再读取任何 Surface 旁路缓存。
+    // VTM/VTU/Tecplot 统一适配成标准 vtkUnstructuredGrid。新内部结果是按
+    // MATYPE 分块的二进制 VTM；旧格式仍兼容，普通云图不读任何 Surface 旁路缓存。
     QString gridError;
     m_grid = PostTecplotUtils::readGrid(fileName, &gridError);
     const qint64 gridReadMs = loadTimer.elapsed();
@@ -843,39 +918,10 @@ void NephogramSettingWidget::updateNephogram(const QString& selectedScalarName,
                                    dataRange[0], dataRange[1]))
         return;
 
-    // 普通云图直接显示筛选后的完整 vtkUnstructuredGrid。
-    // 这是 VTK/商软的常规路径，也避免把退化单元的内部三角化面误当成结果面。
-    // 只有“未做材料/分层筛选 + 当前为半透明”时，才额外使用域界面 Surface，
-    // 以满足透明状态能够看到内部材料/分层云图的需求。
-    bool mapperUsePointData = usePointData;
-    vtkDataSet* mapperInput = displayGrid;
-    const bool customDomainFilter = postMeshFilterReport().customFilter;
-
-    // 新 Actor 挂入注册表时，可视化服务才会乘上当前全局透明度。
-    // 这里不渲染，只为后续按“实际有效透明度”选择正确 Mapper 输入。
-    ensureActorAttached();
-    const bool translucent = m_actor && m_actor->GetProperty() &&
-                             m_actor->GetProperty()->GetOpacity() < 0.999;
-    m_usingTransparentDomainSurface = false;
-
-    if (translucent && !customDomainFilter)
-    {
-        ensureTransparentDomainSurface();
-        if (m_transparentDomainSurface &&
-            m_transparentDomainSurface->GetNumberOfCells() > 0 &&
-            scalarArrayMatchesSurface(m_transparentDomainSurface,
-                                      selectedScalarName, mapperUsePointData))
-        {
-            mapperInput = m_transparentDomainSurface;
-            m_usingTransparentDomainSurface = true;
-        }
-    }
-
-    // 材料/分层筛选时始终直接显示筛选后的 vtkUnstructuredGrid；
-    // 不会因为透明模式去展开内部域界面。等值线 Surface 使用独立缓存。
-
-    m_mapper->SetInputData(mapperInput);
-    configureMapper(m_mapper, selectedScalarName, mapperUsePointData,
+    // 域拓扑已经由结果 VTM Block 保留。云图、透明度、切面和切块都消费同一份
+    // vtkUnstructuredGrid，不再因透明度变化构造/切换另一张域 Surface。
+    m_mapper->SetInputData(displayGrid);
+    configureMapper(m_mapper, selectedScalarName, usePointData,
                     minV, maxV,
                     vtkLookupTable::SafeDownCast(
                         m_visualService->scalarBarActor()->GetLookupTable()));
@@ -1185,6 +1231,7 @@ QJsonObject NephogramSettingWidget::saveJson()
     obj[QStringLiteral("resultDir")] = ui->resultDirComboBox->currentData().toString();
     obj[QStringLiteral("resultTime")] = ui->resultTimeComboBox->currentData().toString();
     obj[QStringLiteral("step")] = ui->stepComboBox->currentText();
+    obj[QStringLiteral("showExcavatedRegion")] = ui->showExcavatedCheckBox->isChecked();
     obj[QStringLiteral("autoRange")] = ui->autoRangeCheckBox->isChecked();
     obj[QStringLiteral("rangeMin")] = ui->rangeMinSpinBox->value();
     obj[QStringLiteral("rangeMax")] = ui->rangeMaxSpinBox->value();
@@ -1254,6 +1301,14 @@ void NephogramSettingWidget::loadJson(const QJsonObject& obj)
     const QString resultTime = obj.value(QStringLiteral("resultTime")).toString();
     const QString step = obj.value(QStringLiteral("step")).toString();
     const QString scalar = obj.value(QStringLiteral("scalar")).toString();
+    const bool showExcavatedRegion =
+        obj.contains(QStringLiteral("showExcavatedRegion"))
+            ? obj.value(QStringLiteral("showExcavatedRegion")).toBool(false)
+            : step.contains(QStringLiteral("含已开挖体"));
+    {
+        const QSignalBlocker blocker(ui->showExcavatedCheckBox);
+        ui->showExcavatedCheckBox->setChecked(showExcavatedRegion);
+    }
     if (useLegacyDisplaySettings && !scalar.isEmpty() &&
         obj.contains(QStringLiteral("autoRange")))
     {
@@ -1332,7 +1387,7 @@ void NephogramSettingWidget::loadJson(const QJsonObject& obj)
 
 void NephogramSettingWidget::readVtu(const QString& fileName)
 {
-    // VTU/Tecplot 都走 PostTecplotUtils 的统一入口：统一内存缓存、中文路径兼容、
+    // VTM/VTU/Tecplot 都走 PostTecplotUtils 的统一入口：统一内存缓存、中文路径兼容、
     // TOPOLOGY_TYPE 和旧退化单元修复，避免不同页面对同一结果读出不同的数据。
     readTecplot(fileName);
 }

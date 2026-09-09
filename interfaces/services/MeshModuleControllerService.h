@@ -1,4 +1,4 @@
-#ifndef MESH_MODULE_CONTROLLER_SERVICE_H
+﻿#ifndef MESH_MODULE_CONTROLLER_SERVICE_H
 #define MESH_MODULE_CONTROLLER_SERVICE_H
 
 #include <QHash>
@@ -88,7 +88,9 @@ struct BarElementPlacement
     std::array<double, 3> arrayOffset{{0.0, 0.0, 0.0}};
     int segmentCount = 1;
     int arrayCount = 1;
-    int installationLayer = -1;
+    int installationLayer = 1;
+    int matype = 0;
+    QString placementUuid;
 };
 
 struct BarElementRecordInfo
@@ -96,7 +98,8 @@ struct BarElementRecordInfo
     int id = 0;
     int cellCount = 0;
     int matype = 0;
-    int installationLayer = -1;
+    int installationLayer = 1;
+    QString placementUuid;
 };
 
 struct MeshModuleControllerService
@@ -148,8 +151,13 @@ struct MeshModuleControllerService
                                              QString* errMsg = nullptr) = 0;
     virtual bool appendBarElements(const BarElementPlacement& placement,
                                    QString* errMsg = nullptr) = 0;
+    virtual bool appendBarElementsBatch(const QVector<BarElementPlacement>& placements,
+                                        QString* errMsg = nullptr) = 0;
     virtual bool removeBarElementRecord(int recordId, QString* errMsg = nullptr) = 0;
     virtual QVector<BarElementRecordInfo> barElementRecords() const = 0;
+    virtual bool setBarPlacementMatype(const QString& placementUuid, int matype,
+                                       QString* errMsg = nullptr) = 0;
+    virtual void setBarPlacementDisplayMode(bool active) = 0;
 
     virtual void setEdgeControlRules(const QVector<EdgeControlRule>& rules) = 0;
     virtual void setFaceControlRules(const QVector<FaceControlRule>& rules) = 0;

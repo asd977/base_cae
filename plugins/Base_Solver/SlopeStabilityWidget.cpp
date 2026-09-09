@@ -131,7 +131,7 @@ SlopeStabilityWidget::SlopeStabilityWidget(QWidget* parent)
     ui->line15Combo->addItem(QStringLiteral("系统统一阻尼"), QStringLiteral("0"));
     ui->line15Combo->setEnabled(false);
     ui->line15Combo->setToolTip(
-        QStringLiteral("当前前端未提供 MACHAN.DAT 材料阻尼映射，仅导出系统统一阻尼。"));
+        QStringLiteral("当前仅支持系统统一阻尼。"));
     ui->line16Combo->setItemData(0, "0");
     ui->line16Combo->setItemData(1, "1");
     ui->line19Combo->setItemData(0, "1");

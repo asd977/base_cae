@@ -6,6 +6,7 @@
 #include <QFileInfo>
 #include <QMap>
 #include <QSet>
+#include <QStringList>
 
 #include <algorithm>
 #include <utility>
@@ -34,17 +35,38 @@ QString normalizedStageName(const PostResultAutoPrepare::ResultGroup& group)
                                                : group.stageName.trimmed();
 }
 
+bool isExcavatedVariant(const PostResultAutoPrepare::ResultFile& file)
+{
+    const QString baseName = QFileInfo(file.filePath).completeBaseName();
+    return baseName.endsWith(QStringLiteral("_with_excavated"), Qt::CaseInsensitive) ||
+           file.displayName.trimmed().endsWith(QStringLiteral("（含已开挖体）"));
+}
+
+QString baseResultName(const PostResultAutoPrepare::ResultFile& file)
+{
+    QString name = file.displayName.trimmed();
+    const QStringList suffixes = {QStringLiteral("（含已开挖体）"),
+                                  QStringLiteral("（含已开挖区域）")};
+    for (const QString& suffix : suffixes)
+    {
+        if (name.endsWith(suffix))
+        {
+            name.chop(suffix.size());
+            break;
+        }
+    }
+    return name.trimmed().isEmpty() ? QStringLiteral("结果数据") : name.trimmed();
+}
+
 QString normalizedResultKey(const PostResultAutoPrepare::ResultFile& file)
 {
     const QString kind = file.kind.trimmed().toCaseFolded();
-    const QString name = file.displayName.trimmed().toCaseFolded();
-    return kind + QLatin1Char('|') + name;
+    return kind + QLatin1Char('|') + baseResultName(file).toCaseFolded();
 }
 
 QString resultName(const PostResultAutoPrepare::ResultFile& file)
 {
-    return file.displayName.trimmed().isEmpty() ? QStringLiteral("结果数据")
-                                                 : file.displayName.trimmed();
+    return baseResultName(file);
 }
 
 QString stageCategory(const QString& stageName)
@@ -95,22 +117,49 @@ void sortAndDeduplicateFrames(PostAnimationSequenceModel::Sequence& sequence)
         return left.label.localeAwareCompare(right.label) < 0;
     });
 
-    QSet<QString> seenFrameKeys;
-    QSet<QString> seenPaths;
+    QSet<QString> seen;
     sequence.frames.erase(
         std::remove_if(sequence.frames.begin(), sequence.frames.end(),
                        [&](const PostAnimationSequenceModel::Frame& frame)
     {
-        const QString path = QFileInfo(frame.filePath).absoluteFilePath().toCaseFolded();
-        const QString frameKey = frame.frameKey.trimmed().toCaseFolded();
-        if ((!frameKey.isEmpty() && seenFrameKeys.contains(frameKey)) ||
-            seenPaths.contains(path))
+        QString key = frame.identityKey.trimmed().toCaseFolded();
+        if (key.isEmpty())
+            key = frame.frameKey.trimmed().toCaseFolded();
+        if (key.isEmpty())
+            key = frame.label.trimmed().toCaseFolded() +
+                  QStringLiteral("|%1").arg(frame.order);
+        if (seen.contains(key))
             return true;
-        if (!frameKey.isEmpty())
-            seenFrameKeys.insert(frameKey);
-        seenPaths.insert(path);
+        seen.insert(key);
         return false;
     }), sequence.frames.end());
+}
+
+void mergeFrame(PostAnimationSequenceModel::Sequence& sequence,
+                PostAnimationSequenceModel::Frame frame, bool excavated)
+{
+    auto iterator = std::find_if(
+        sequence.frames.begin(), sequence.frames.end(),
+        [&](const PostAnimationSequenceModel::Frame& existing)
+        {
+            return existing.identityKey == frame.identityKey;
+        });
+
+    if (iterator == sequence.frames.end())
+    {
+        if (excavated)
+        {
+            frame.excavatedFilePath = frame.filePath;
+            frame.filePath.clear();
+        }
+        sequence.frames.push_back(std::move(frame));
+        return;
+    }
+
+    if (excavated)
+        iterator->excavatedFilePath = frame.filePath;
+    else
+        iterator->filePath = frame.filePath;
 }
 
 void appendUnique(QVector<PostAnimationSequenceModel::NamedKey>& values,
@@ -144,12 +193,16 @@ void PostAnimationSequenceModel::rebuild(const QString& projectDir)
 
         for (const PostResultAutoPrepare::ResultFile& file : files)
         {
-            if (file.format.compare(QStringLiteral("tecplot"),
-                                    Qt::CaseInsensitive) != 0 ||
-                file.filePath.trimmed().isEmpty())
+            const QString format = file.format.toLower();
+            const bool supported =
+                format == QStringLiteral("tecplot") ||
+                format == QStringLiteral("vtu") ||
+                format == QStringLiteral("vtm");
+            if (!supported || file.filePath.trimmed().isEmpty())
                 continue;
 
             const QString fileResultKey = normalizedResultKey(file);
+            const bool excavatedVariant = isExcavatedVariant(file);
             Frame frame;
             frame.filePath = file.filePath;
             frame.frameKey = file.frameKey;
@@ -177,7 +230,10 @@ void PostAnimationSequenceModel::rebuild(const QString& projectDir)
                 frame.label = file.frameLabel.trimmed().isEmpty()
                                   ? QStringLiteral("计算时刻索引 %1").arg(file.frameOrder)
                                   : file.frameLabel.trimmed();
-                sequence.frames.push_back(frame);
+                frame.identityKey = !file.frameKey.trimmed().isEmpty()
+                                        ? file.frameKey.trimmed().toCaseFolded()
+                                        : QStringLiteral("time:%1").arg(file.frameOrder);
+                mergeFrame(sequence, std::move(frame), excavatedVariant);
             }
             else
             {
@@ -198,7 +254,8 @@ void PostAnimationSequenceModel::rebuild(const QString& projectDir)
                 sequence.supportsInterpolation = false;
                 frame.label = stageName.isEmpty() ? group.displayName : stageName;
                 frame.order = group.order;
-                sequence.frames.push_back(frame);
+                frame.identityKey = QDir(group.sourcePath).absolutePath().toCaseFolded();
+                mergeFrame(sequence, std::move(frame), excavatedVariant);
             }
         }
     }
@@ -253,6 +310,21 @@ int PostAnimationSequenceModel::sequenceIndex(const QString& sequenceKey) const
     {
         if (m_sequences.at(index).key == sequenceKey)
             return index;
+    }
+
+    // 兼容旧工程：旧版把“含已开挖体”作为独立结果序列写入 key。
+    QString legacyBaseKey = sequenceKey;
+    legacyBaseKey.replace(QStringLiteral("（含已开挖体）"), QString(),
+                          Qt::CaseInsensitive);
+    legacyBaseKey.replace(QStringLiteral("（含已开挖区域）"), QString(),
+                          Qt::CaseInsensitive);
+    if (legacyBaseKey != sequenceKey)
+    {
+        for (int index = 0; index < m_sequences.size(); ++index)
+        {
+            if (m_sequences.at(index).key == legacyBaseKey)
+                return index;
+        }
     }
     return -1;
 }

@@ -1,6 +1,7 @@
 #pragma once
 
 #include <BasePage.h>
+#include <vtkActor2D.h>
 #include <vtkSmartPointer.h>
 
 #include <QString>
@@ -104,6 +105,7 @@ class SliceSettingsWidget : public BasePage
     vtkSmartPointer<vtkPlane> m_plane;
     vtkSmartPointer<vtkActor> m_sliceActor;
     vtkSmartPointer<vtkActor> m_sliceContourActor;
+    vtkSmartPointer<vtkActor2D> m_sliceContourLabelActor;
 
     // 多切面：一组结果（确认后生成）
     QVector<vtkSmartPointer<vtkPlane>> m_multiPlanes;
@@ -111,6 +113,7 @@ class SliceSettingsWidget : public BasePage
     QVector<vtkSmartPointer<vtkPolyDataMapper>> m_multiMappers;
     QVector<vtkSmartPointer<vtkActor>> m_multiActors;
     QVector<vtkSmartPointer<vtkActor>> m_multiContourActors;
+    QVector<vtkSmartPointer<vtkActor2D>> m_multiContourLabelActors;
 
     // 显示状态（用于 beforeLoad 挂回）
     bool m_singleDisplayed{false}; // 正在显示单切面结果
