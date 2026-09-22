@@ -3262,6 +3262,10 @@ bool MeshGridIO::exportIiinFile(const QString& fileName, vtkUnstructuredGrid* gr
 
         int mat = matypeArr ? matypeArr->GetValue(cid) : kDefaultCalculationMatype;
         int lay = layerArr ? layerArr->GetValue(cid) : kDefaultConstructionLayer;
+        // 杆单元在求解器协议中用负 LAYER 表示安装级次。
+        // 这里同时兼容旧工程中已保存的正数杆单元层号。
+        if (c->GetCellDimension() == 1 && k == 1)
+            lay = -std::max(1, std::abs(lay));
         int t1 = tail1Arr ? tail1Arr->GetValue(cid) : 0;
         int t2 = tail2Arr ? tail2Arr->GetValue(cid) : 0;
 

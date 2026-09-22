@@ -1765,10 +1765,10 @@ void UiFrame::buildRibbonTabs()
             auto* panel = cate->addPannel("检查");
             auto* actCheck = makeAction(this, ":/resources/menu/geometry/check-repair.svg", "&检查修复");
             auto* actMeasure = makeAction(this, ":/resources/menu/geometry/measure.svg", "&测量");
-            addActionToPanel(panel, actCheck, 2);
-            addActionToPanel(panel, actMeasure, 2);
-            bindEvent(this, actCheck, PublicConstants::kActionGeomCheckRepair);
-            bindEvent(this, actMeasure, PublicConstants::kActionGeomMeasure);
+            // addActionToPanel(panel, actCheck, 2);
+            // addActionToPanel(panel, actMeasure, 2);
+            // bindEvent(this, actCheck, PublicConstants::kActionGeomCheckRepair);
+            // bindEvent(this, actMeasure, PublicConstants::kActionGeomMeasure);
         }
     }
 

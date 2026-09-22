@@ -133,6 +133,21 @@ QPushButton[primary="true"]:pressed {
     border-color: #195985;
 }
 
+BarElementPlacementWidget QPushButton[inlineAction="true"] {
+    min-height: 24px;
+    padding: 0px 8px;
+    color: #2878b0;
+    background: transparent;
+    border: 1px solid transparent;
+    border-radius: 3px;
+}
+
+BarElementPlacementWidget QPushButton[inlineAction="true"]:hover {
+    color: #00599f;
+    background: #deedf6;
+    border-color: #a8bfce;
+}
+
 /* Collapsible section controls remain structural, not decorative bands. */
 QPushButton#sectionTitleButton {
     min-height: 29px;

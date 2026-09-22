@@ -8163,6 +8163,28 @@ bool Solver::updatePrepDatFiles(const QString& projectDir, int solverMode, int v
         }
     }
 
+    // 杆单元安装级次在求解器协议中必须写成负 LAYER。旧工程和直接导入的
+    // IIIN.DAT 可能仍保存正数，这里只修正本次计算副本，不改用户源文件。
+    const int ketypeTokenIndex = manod + 1;
+    const int layerTokenIndex = manod + 3;
+    for (int i = 0; i < nelem; ++i)
+    {
+        QString& line = lines[firstElemLine + i];
+        const QVector<QRegularExpressionMatch> matches = integerMatches(line);
+        if (matches.size() <= layerTokenIndex)
+            return false;
+        if (matches.at(ketypeTokenIndex).captured().toInt() != 1)
+            continue;
+
+        const QRegularExpressionMatch& layerMatch = matches.at(layerTokenIndex);
+        const int layer = layerMatch.captured().toInt();
+        QString replacement = QString::number(-qMax(1, qAbs(layer)));
+        if (layerMatch.capturedLength() > replacement.size())
+            replacement = replacement.rightJustified(layerMatch.capturedLength(),
+                                                       QLatin1Char(' '));
+        line.replace(layerMatch.capturedStart(), layerMatch.capturedLength(), replacement);
+    }
+
     const int safeVerticalAxis = (verticalAxis >= 1 && verticalAxis <= 3) ? verticalAxis : 2;
     const QRegularExpression headerRe(R"(^\s*\d+\s+\d+)");
     const QRegularExpressionMatch match = headerRe.match(lines[1]);

@@ -88,11 +88,16 @@ class BarElementPlacementWidget : public BasePage
     void updateDefinitionUi();
     bool updateEndFromLengthDirection(bool showWarning = false);
     void updateLengthLabel();
+    void setPickStatus(const QString& text);
+    void setActionStatus(const QString& text);
     void updateArrayUi();
     void refreshRecords();
     void initializeMaterialNumber();
     void updateMaterialStatus();
     int resolveMaterialNumberForCreate();
+    void ensureRecordHighlightActor();
+    void showRecordHighlight(int recordId);
+    void clearRecordHighlight();
     void ensurePreviewActors();
     void removePreviewActors();
     void clearPreviewGeometry();
@@ -126,6 +131,7 @@ class BarElementPlacementWidget : public BasePage
     QCheckBox* m_surfaceWholeFace = nullptr;
     QComboBox* m_surfaceDirectionMode = nullptr;
     QLabel* m_surfaceStatus = nullptr;
+    QCheckBox* m_surfacePickCheckBox = nullptr;
     QPushButton* m_clearSurfaceButton = nullptr;
     QTimer* m_surfacePreviewTimer = nullptr;
 
@@ -140,6 +146,7 @@ class BarElementPlacementWidget : public BasePage
     QLabel* m_actionStatus = nullptr;
     QPushButton* m_createButton = nullptr;
     QTableWidget* m_records = nullptr;
+    QLabel* m_recordEmptyLabel = nullptr;
 
     PickTarget m_pickTarget = PickTarget::None;
     std::array<double, 3> m_legacyArrayDirection{{0.0, 0.0, 0.0}};
@@ -153,6 +160,8 @@ class BarElementPlacementWidget : public BasePage
     VisualWidgetService* m_visual = nullptr;
     vtkSmartPointer<vtkPolyData> m_previewPolyData;
     vtkSmartPointer<vtkActor> m_previewActor;
+    vtkSmartPointer<vtkPolyData> m_recordHighlightPolyData;
+    vtkSmartPointer<vtkActor> m_recordHighlightActor;
     vtkSmartPointer<vtkPolyData> m_surfaceGuidePolyData;
     vtkSmartPointer<vtkActor> m_surfaceGuideActor;
     vtkSmartPointer<vtkBillboardTextActor3D> m_surfaceULabelActor;

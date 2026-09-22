@@ -10,7 +10,9 @@
 #include <vtkBillboardTextActor3D.h>
 #include <vtkCell.h>
 #include <vtkCellArray.h>
+#include <vtkCellData.h>
 #include <vtkCellType.h>
+#include <vtkDataArray.h>
 #include <vtkPoints.h>
 #include <vtkPolyData.h>
 #include <vtkPolyDataMapper.h>
@@ -57,7 +59,37 @@ constexpr int kMaxSemiAutoBars = 5000;
 QColor barDisplayColor()
 {
     // 锚杆统一使用一种显示颜色；MATYPE 是计算属性，不承担显示分类。
-    return QColor(232, 126, 48);
+    return QColor(248, 112, 24);
+}
+
+QString friendlyBarError(const QString& message)
+{
+    const QString text = message.trimmed();
+    if (text.isEmpty())
+        return QStringLiteral("当前操作没有完成，请检查布置参数后重试。");
+
+    if (text.contains(QStringLiteral("INOUSE"), Qt::CaseInsensitive) ||
+        text.contains(QStringLiteral("分段节点")) ||
+        text.contains(QStringLiteral("宿主")) ||
+        text.contains(QStringLiteral("可耦合")))
+    {
+        return QStringLiteral("有锚杆伸出了实体网格，请调整锚杆方向或长度后重试。");
+    }
+    if (text.contains(QStringLiteral("8 节点")) ||
+        text.contains(QStringLiteral("8节点")) ||
+        text.contains(QStringLiteral("六面体")))
+    {
+        return QStringLiteral("所选区域的网格类型暂不支持锚杆布置，请改选六面体网格区域。");
+    }
+    if (text.contains(QStringLiteral("零长度")) ||
+        text.contains(QStringLiteral("长度过小")))
+    {
+        return QStringLiteral("锚杆长度太小，请重新设置锚头和锚固端。");
+    }
+    if (text.contains(QStringLiteral("重合")))
+        return QStringLiteral("该位置已有锚杆，请调整位置或间隔后重试。");
+
+    return text;
 }
 
 double pointDistance(const double a[3], const double b[3])
@@ -83,21 +115,24 @@ BarElementPlacementWidget::BarElementPlacementWidget(QWidget* parent)
 {
     Q_UNUSED(parent);
     auto* root = new QVBoxLayout(this);
-    root->setContentsMargins(8, 8, 8, 8);
-    root->setSpacing(8);
+    root->setContentsMargins(10, 10, 10, 10);
+    root->setSpacing(10);
 
-    auto* geometryBox = new QGroupBox(QStringLiteral("锚杆布置"), this);
+    auto* geometryBox = new QGroupBox(QStringLiteral("布置"), this);
     auto* geometryLayout = new QVBoxLayout(geometryBox);
-    geometryLayout->setSpacing(8);
+    geometryLayout->setContentsMargins(10, 10, 10, 10);
+    geometryLayout->setSpacing(10);
 
     auto* placementForm = new QFormLayout();
+    placementForm->setFieldGrowthPolicy(QFormLayout::AllNonFixedFieldsGrow);
+    placementForm->setHorizontalSpacing(10);
+    placementForm->setVerticalSpacing(7);
     m_placementMode = new QComboBox(geometryBox);
     m_placementMode->addItem(QStringLiteral("手动布置"),
                              static_cast<int>(PlacementMode::Manual));
     m_placementMode->addItem(QStringLiteral("区域布置"),
                              static_cast<int>(PlacementMode::SurfaceSemiAuto));
-    m_placementMode->setMaximumWidth(180);
-    placementForm->addRow(QStringLiteral("布置方式"), m_placementMode);
+    placementForm->addRow(QStringLiteral("方式"), m_placementMode);
     geometryLayout->addLayout(placementForm);
 
     // ---------------- 手动布置 ----------------
@@ -108,26 +143,20 @@ BarElementPlacementWidget::BarElementPlacementWidget(QWidget* parent)
     manualLayout->setContentsMargins(0, 0, 0, 0);
     manualLayout->setSpacing(8);
 
-    auto* manualHint = new QLabel(
-        QStringLiteral("确定锚头与锚固端后添加锚杆。"),
-        m_manualPanel);
-    manualHint->setWordWrap(true);
-    manualLayout->addWidget(manualHint);
-
     auto* definitionForm = new QFormLayout();
-    definitionForm->setHorizontalSpacing(8);
-    definitionForm->setVerticalSpacing(6);
+    definitionForm->setFieldGrowthPolicy(QFormLayout::AllNonFixedFieldsGrow);
+    definitionForm->setHorizontalSpacing(10);
+    definitionForm->setVerticalSpacing(7);
     m_definitionMode = new QComboBox(m_manualPanel);
     // 新建节点默认“两点定义”；旧工程仍按保存的 data 恢复，不受条目顺序影响。
-    m_definitionMode->addItem(QStringLiteral("两点定义（推荐）"),
+    m_definitionMode->addItem(QStringLiteral("按两个端点"),
                               static_cast<int>(DefinitionMode::TwoPoints));
-    m_definitionMode->addItem(QStringLiteral("锚头 + 长度 + 方向"),
+    m_definitionMode->addItem(QStringLiteral("按长度和方向"),
                               static_cast<int>(DefinitionMode::HeadLengthDirection));
-    m_definitionMode->setMaximumWidth(220);
-    definitionForm->addRow(QStringLiteral("定义方式"), m_definitionMode);
+    definitionForm->addRow(QStringLiteral("定位"), m_definitionMode);
     manualLayout->addLayout(definitionForm);
 
-    auto* endpointBox = new QGroupBox(QStringLiteral("端点"), m_manualPanel);
+    auto* endpointBox = new QGroupBox(QStringLiteral("端点坐标"), m_manualPanel);
     auto* coordinateGrid = new QGridLayout(endpointBox);
     coordinateGrid->setContentsMargins(10, 10, 10, 10);
     coordinateGrid->setHorizontalSpacing(8);
@@ -135,8 +164,8 @@ BarElementPlacementWidget::BarElementPlacementWidget(QWidget* parent)
     coordinateGrid->setColumnStretch(1, 1);
 
     auto* startTitle = new QLabel(QStringLiteral("锚头"), endpointBox);
-    m_pickStartButton = new QPushButton(QStringLiteral("取点"), endpointBox);
-    m_pickStartButton->setMaximumWidth(86);
+    m_pickStartButton = new QPushButton(QStringLiteral("从模型选择"), endpointBox);
+    m_pickStartButton->setMaximumWidth(104);
     m_pickStartButton->setToolTip(QStringLiteral("从模型中读取一个实体网格节点作为锚头。"));
     coordinateGrid->addWidget(startTitle, 0, 0);
     coordinateGrid->addWidget(m_pickStartButton, 0, 1, 1, 1, Qt::AlignRight);
@@ -158,8 +187,8 @@ BarElementPlacementWidget::BarElementPlacementWidget(QWidget* parent)
     }
 
     m_endRowLabel = new QLabel(QStringLiteral("锚固端"), endpointBox);
-    m_pickEndButton = new QPushButton(QStringLiteral("取点"), endpointBox);
-    m_pickEndButton->setMaximumWidth(86);
+    m_pickEndButton = new QPushButton(QStringLiteral("从模型选择"), endpointBox);
+    m_pickEndButton->setMaximumWidth(104);
     m_pickEndButton->setToolTip(QStringLiteral("从模型中读取一个实体网格节点作为锚固端。"));
     coordinateGrid->addWidget(m_endRowLabel, 4, 0);
     coordinateGrid->addWidget(m_pickEndButton, 4, 1, 1, 1, Qt::AlignRight);
@@ -176,6 +205,7 @@ BarElementPlacementWidget::BarElementPlacementWidget(QWidget* parent)
 
     m_lengthDirectionPanel = new QGroupBox(QStringLiteral("长度与方向"), m_manualPanel);
     auto* directionForm = new QFormLayout(m_lengthDirectionPanel);
+    directionForm->setFieldGrowthPolicy(QFormLayout::AllNonFixedFieldsGrow);
     directionForm->setContentsMargins(10, 10, 10, 10);
     directionForm->setHorizontalSpacing(8);
     directionForm->setVerticalSpacing(6);
@@ -184,8 +214,6 @@ BarElementPlacementWidget::BarElementPlacementWidget(QWidget* parent)
     m_length->setRange(0.0, 1.0e12);
     m_length->setDecimals(8);
     m_length->setValue(1.0);
-    m_length->setMinimumWidth(112);
-    m_length->setMaximumWidth(150);
     m_length->setToolTip(QStringLiteral("锚头到锚固端的实际长度。"));
     directionForm->addRow(QStringLiteral("锚杆长度"), m_length);
 
@@ -207,16 +235,19 @@ BarElementPlacementWidget::BarElementPlacementWidget(QWidget* parent)
                         updateEndFromLengthDirection(false);
                 });
     }
-    m_pickDirectionButton = new QPushButton(QStringLiteral("从模型取方向"), directionRow);
-    m_pickDirectionButton->setMaximumWidth(118);
-    m_pickDirectionButton->setToolTip(QStringLiteral("点击模型节点，用“锚头 → 该节点”确定方向。"));
+    m_pickDirectionButton = new QPushButton(QStringLiteral("从模型选择方向"), directionRow);
+    m_pickDirectionButton->setMaximumWidth(132);
+    m_pickDirectionButton->setToolTip(QStringLiteral("在模型中点击一点，用锚头到该点的方向作为锚杆方向。"));
     directionGrid->addWidget(m_pickDirectionButton, 3, 0, 1, 2, Qt::AlignLeft);
     directionForm->addRow(QStringLiteral("方向向量"), directionRow);
     manualLayout->addWidget(m_lengthDirectionPanel);
 
     m_lengthLabel = new QLabel(m_manualPanel);
-    m_pickStatus = new QLabel(QStringLiteral("先确定两个端点。"), m_manualPanel);
+    m_lengthLabel->setProperty("secondary", true);
+    m_pickStatus = new QLabel(m_manualPanel);
+    m_pickStatus->setProperty("secondary", true);
     m_pickStatus->setWordWrap(true);
+    m_pickStatus->setVisible(false);
     manualLayout->addWidget(m_lengthLabel);
     manualLayout->addWidget(m_pickStatus);
     geometryLayout->addWidget(m_manualPanel);
@@ -227,39 +258,38 @@ BarElementPlacementWidget::BarElementPlacementWidget(QWidget* parent)
     surfaceLayout->setContentsMargins(0, 0, 0, 0);
     surfaceLayout->setSpacing(10);
 
-    auto* semiHint = new QLabel(
-        QStringLiteral("选择施工面并设置长度、间隔后生成。"),
-        m_surfacePanel);
-    semiHint->setWordWrap(true);
-    surfaceLayout->addWidget(semiHint);
-
-    // 1. 选择施工面：进入区域布置后拾取始终有效，不再要求额外点击“开始选择”。
-    auto* surfaceSelectBox = new QGroupBox(QStringLiteral("1. 选择施工面"), m_surfacePanel);
+    auto* surfaceSelectBox = new QGroupBox(QStringLiteral("施工面"), m_surfacePanel);
     auto* surfaceSelectLayout = new QVBoxLayout(surfaceSelectBox);
     surfaceSelectLayout->setContentsMargins(10, 10, 10, 10);
     surfaceSelectLayout->setSpacing(8);
 
-    m_surfaceWholeFace = new QCheckBox(QStringLiteral("自动选择整片平面"), surfaceSelectBox);
+    m_surfaceWholeFace = new QCheckBox(QStringLiteral("扩展到连续平面"), surfaceSelectBox);
     m_surfaceWholeFace->setChecked(true);
-    m_surfaceWholeFace->setToolTip(QStringLiteral("推荐开启。单击一个网格面后，只扩展到同一连续平面，不跨越折角。点击面同时作为网格间隔的计算基准。"));
+    m_surfaceWholeFace->setToolTip(QStringLiteral("选择一个网格面后，自动扩展到同一连续平面。"));
     surfaceSelectLayout->addWidget(m_surfaceWholeFace);
 
     auto* surfaceStatusRow = new QHBoxLayout();
     surfaceStatusRow->setContentsMargins(0, 0, 0, 0);
     surfaceStatusRow->setSpacing(8);
-    m_surfaceStatus = new QLabel(QStringLiteral("在模型中单击一个开挖面。"), surfaceSelectBox);
+    m_surfaceStatus = new QLabel(QStringLiteral("勾选“启用点选”后，在模型中选择施工面"), surfaceSelectBox);
+    m_surfaceStatus->setProperty("secondary", true);
     m_surfaceStatus->setWordWrap(true);
-    m_clearSurfaceButton = new QPushButton(QStringLiteral("重新选择"), surfaceSelectBox);
+    m_surfacePickCheckBox = new QCheckBox(QStringLiteral("启用点选"), surfaceSelectBox);
+    m_surfacePickCheckBox->setToolTip(QStringLiteral("勾选后，可在模型中点选或取消施工面。"));
+    m_clearSurfaceButton = new QPushButton(QStringLiteral("清除"), surfaceSelectBox);
+    m_clearSurfaceButton->setMaximumWidth(56);
     m_clearSurfaceButton->setEnabled(false);
-    m_clearSurfaceButton->setToolTip(QStringLiteral("清除当前施工面选择，然后重新点选。"));
+    m_clearSurfaceButton->setToolTip(QStringLiteral("清除已选择的施工面。"));
     surfaceStatusRow->addWidget(m_surfaceStatus, 1);
+    surfaceStatusRow->addWidget(m_surfacePickCheckBox);
     surfaceStatusRow->addWidget(m_clearSurfaceButton);
     surfaceSelectLayout->addLayout(surfaceStatusRow);
     surfaceLayout->addWidget(surfaceSelectBox);
 
-    // 2. 布置参数：方向 1/2 直接对应模型中显示的 1/2 指示线。
-    auto* surfaceParamBox = new QGroupBox(QStringLiteral("2. 布置参数"), m_surfacePanel);
+    // U/V 参数直接对应模型中显示的两条面内方向指示线。
+    auto* surfaceParamBox = new QGroupBox(QStringLiteral("布置参数"), m_surfacePanel);
     auto* surfaceForm = new QFormLayout(surfaceParamBox);
+    surfaceForm->setFieldGrowthPolicy(QFormLayout::AllNonFixedFieldsGrow);
     surfaceForm->setContentsMargins(10, 10, 10, 10);
     surfaceForm->setHorizontalSpacing(10);
     surfaceForm->setVerticalSpacing(8);
@@ -269,34 +299,29 @@ BarElementPlacementWidget::BarElementPlacementWidget(QWidget* parent)
     m_surfaceLength->setDecimals(4);
     m_surfaceLength->setSingleStep(0.1);
     m_surfaceLength->setValue(1.0);
-    m_surfaceLength->setToolTip(QStringLiteral("锚头端到锚固端的实际长度。应用层只生成这两个端点。"));
+    m_surfaceLength->setToolTip(QStringLiteral("锚头到锚固端的实际长度。"));
     surfaceForm->addRow(QStringLiteral("锚杆长度"), m_surfaceLength);
 
     m_surfaceGridIntervalU = new QSpinBox(surfaceParamBox);
     m_surfaceGridIntervalU->setRange(1, 1000);
     m_surfaceGridIntervalU->setValue(1);
-    m_surfaceGridIntervalU->setSuffix(QStringLiteral(" 格"));
-    m_surfaceGridIntervalU->setToolTip(QStringLiteral("沿模型中标记“1”的方向，从本次点击面开始计算。1 格表示每个网格面都布置，2 格表示隔 1 格布置。"));
-    surfaceForm->addRow(QStringLiteral("方向 1 间隔"), m_surfaceGridIntervalU);
+    m_surfaceGridIntervalU->setSuffix(QStringLiteral(" 个网格"));
+    m_surfaceGridIntervalU->setToolTip(QStringLiteral("沿模型中 U 向指示线布置；1 表示每个网格均布置。"));
+    surfaceForm->addRow(QStringLiteral("U 向间隔"), m_surfaceGridIntervalU);
 
     m_surfaceGridIntervalV = new QSpinBox(surfaceParamBox);
     m_surfaceGridIntervalV->setRange(1, 1000);
     m_surfaceGridIntervalV->setValue(1);
-    m_surfaceGridIntervalV->setSuffix(QStringLiteral(" 格"));
-    m_surfaceGridIntervalV->setToolTip(QStringLiteral("沿模型中标记“2”的方向，从本次点击面开始计算。1 格表示每个网格面都布置，2 格表示隔 1 格布置。"));
-    surfaceForm->addRow(QStringLiteral("方向 2 间隔"), m_surfaceGridIntervalV);
+    m_surfaceGridIntervalV->setSuffix(QStringLiteral(" 个网格"));
+    m_surfaceGridIntervalV->setToolTip(QStringLiteral("沿模型中 V 向指示线布置；1 表示每个网格均布置。"));
+    surfaceForm->addRow(QStringLiteral("V 向间隔"), m_surfaceGridIntervalV);
 
     m_surfaceDirectionMode = new QComboBox(surfaceParamBox);
     m_surfaceDirectionMode->addItem(QStringLiteral("朝围岩侧"), 0);
-    m_surfaceDirectionMode->addItem(QStringLiteral("反向（朝开挖侧）"), 1);
-    m_surfaceDirectionMode->setToolTip(QStringLiteral("通常选择开挖体表面，因此默认锚杆背离所选开挖体、朝围岩侧生成。请以模型中的锚杆预览为准；方向不对时直接切换为反向。"));
+    m_surfaceDirectionMode->addItem(QStringLiteral("朝开挖侧"), 1);
+    m_surfaceDirectionMode->setToolTip(QStringLiteral("锚杆沿所选施工面的法向生成。"));
     surfaceForm->addRow(QStringLiteral("锚杆方向"), m_surfaceDirectionMode);
 
-    auto* directionHint = new QLabel(
-        QStringLiteral("方向 1 / 方向 2 会显示在模型的点击位置；修改长度、间隔或方向后，预览会自动更新。"),
-        surfaceParamBox);
-    directionHint->setWordWrap(true);
-    surfaceForm->addRow(QString(), directionHint);
     surfaceLayout->addWidget(surfaceParamBox);
 
     geometryLayout->addWidget(m_surfacePanel);
@@ -341,6 +366,14 @@ BarElementPlacementWidget::BarElementPlacementWidget(QWidget* parent)
     });
     connect(m_clearSurfaceButton, &QPushButton::clicked,
             this, &BarElementPlacementWidget::clearSurfaceSelection);
+    connect(m_surfacePickCheckBox, &QCheckBox::toggled, this, [this](bool checked)
+    {
+        if (checked)
+            activateSurfacePick();
+        else
+            deactivateSurfacePick();
+        updateSurfacePickStatus();
+    });
     connect(&PickManager::instance(), &PickManager::nodePicked, this,
             [this](const QString& domain, const QString& activeUuid, GridKind kind,
                    vtkIdType, int nodeId, double x, double y, double z,
@@ -357,7 +390,7 @@ BarElementPlacementWidget::BarElementPlacementWidget(QWidget* parent)
             [this](const QString& domain, const QString& activeUuid,
                    PickMode mode, GridKind kind)
             {
-                if (!m_pageActive || !isSurfaceSemiAuto() ||
+                if (!m_pageActive || !isSurfaceSemiAuto() || !m_surfacePickActive ||
                     mode != PickMode::Face || kind != GridKind::Solid ||
                     domain != getPageType() || activeUuid != m_uuid)
                     return;
@@ -370,7 +403,8 @@ BarElementPlacementWidget::BarElementPlacementWidget(QWidget* parent)
             [this](const QString& domain, const QString& activeUuid, GridKind kind,
                    vtkIdType faceKey, bool selected)
             {
-                if (!m_pageActive || !isSurfaceSemiAuto() || kind != GridKind::Solid ||
+                if (!m_pageActive || !isSurfaceSemiAuto() || !m_surfacePickActive ||
+                    kind != GridKind::Solid ||
                     domain != getPageType() || activeUuid != m_uuid)
                     return;
 
@@ -398,73 +432,55 @@ BarElementPlacementWidget::BarElementPlacementWidget(QWidget* parent)
 
     root->addWidget(geometryBox);
 
-    auto* propertyBox = new QGroupBox(QStringLiteral("施工属性与生成"), this);
+    auto* propertyBox = new QGroupBox(QStringLiteral("生成设置"), this);
     auto* form = new QFormLayout(propertyBox);
+    form->setFieldGrowthPolicy(QFormLayout::AllNonFixedFieldsGrow);
     form->setContentsMargins(10, 10, 10, 10);
     form->setHorizontalSpacing(8);
     form->setVerticalSpacing(6);
 
-    // 面向客户显示“第几级”，不暴露洞室求解器内部使用的负层号。
-    // 项目网格中仍保存正数安装级；Base_Solver 在洞室计算临时 IIIN.DAT 中
-    // 将 KETYPE=1 的杆单元转换为 LAYER=-1/-2/...，避免污染其他分析类型。
-    auto* stageMaterialRow = new QWidget(propertyBox);
-    auto* stageMaterialLayout = new QHBoxLayout(stageMaterialRow);
-    stageMaterialLayout->setContentsMargins(0, 0, 0, 0);
-    stageMaterialLayout->setSpacing(12);
-
-    auto* stageLabel = new QLabel(QStringLiteral("安装级"), stageMaterialRow);
-    m_installationLayer = new QSpinBox(stageMaterialRow);
-    m_installationLayer->setRange(1, 999);
-    m_installationLayer->setValue(1);
-    m_installationLayer->setPrefix(QStringLiteral("第 "));
-    m_installationLayer->setSuffix(QStringLiteral(" 级"));
-    m_installationLayer->setMaximumWidth(116);
+    // 杆单元的施工层按求解器 IIIN 约定使用负数：第 1 级为 -1，
+    // 第 2 级为 -2，依此类推。界面直接显示真实 LAYER，避免显示值与计算值不一致。
+    m_installationLayer = new QSpinBox(propertyBox);
+    m_installationLayer->setRange(-999, -1);
+    m_installationLayer->setValue(-1);
     m_installationLayer->setToolTip(
-        QStringLiteral("锚杆从该开挖级开始参与计算。界面按第 1、2、3…级填写；洞室求解时会自动转换为 LAYER=-1、-2、-3…。"));
+        QStringLiteral("杆单元的 LAYER：第 1 级填 -1，第 2 级填 -2。"));
+    form->addRow(QStringLiteral("安装层号"), m_installationLayer);
 
-    auto* materialLabel = new QLabel(QStringLiteral("材料"), stageMaterialRow);
-    m_materialStatus = new QLabel(stageMaterialRow);
-    m_materialStatus->setToolTip(QStringLiteral("对应求解器锚杆材料号；材料参数在材料模块中设置。"));
-
-    stageMaterialLayout->addWidget(stageLabel);
-    stageMaterialLayout->addWidget(m_installationLayer);
-    stageMaterialLayout->addSpacing(6);
-    stageMaterialLayout->addWidget(materialLabel);
-    stageMaterialLayout->addWidget(m_materialStatus);
-    stageMaterialLayout->addStretch(1);
-    form->addRow(stageMaterialRow);
+    m_materialStatus = new QLabel(propertyBox);
+    m_materialStatus->setProperty("secondary", true);
+    m_materialStatus->setToolTip(QStringLiteral("锚杆材料由系统分配，参数可在材料模块中设置。"));
+    form->addRow(QStringLiteral("材料"), m_materialStatus);
 
     m_manualArrayPanel = new QWidget(propertyBox);
     auto* manualArrayForm = new QFormLayout(m_manualArrayPanel);
+    manualArrayForm->setFieldGrowthPolicy(QFormLayout::AllNonFixedFieldsGrow);
     manualArrayForm->setContentsMargins(0, 0, 0, 0);
     manualArrayForm->setHorizontalSpacing(8);
     manualArrayForm->setVerticalSpacing(6);
     m_arrayMode = new QComboBox(m_manualArrayPanel);
     m_arrayMode->addItem(QStringLiteral("单根"), 0);
     m_arrayMode->addItem(QStringLiteral("阵列"), 1);
-    m_arrayMode->setMaximumWidth(150);
     manualArrayForm->addRow(QStringLiteral("排列方式"), m_arrayMode);
 
     m_arrayRow = new QWidget(m_manualArrayPanel);
     auto* arrayLayout = new QFormLayout(m_arrayRow);
+    arrayLayout->setFieldGrowthPolicy(QFormLayout::AllNonFixedFieldsGrow);
     arrayLayout->setContentsMargins(0, 0, 0, 0);
     arrayLayout->setHorizontalSpacing(8);
     arrayLayout->setVerticalSpacing(6);
     m_arrayCount = new QSpinBox(m_arrayRow);
     m_arrayCount->setRange(2, 10000);
     m_arrayCount->setValue(2);
-    m_arrayCount->setMaximumWidth(150);
     m_arraySpacing = new QDoubleSpinBox(m_arrayRow);
     m_arraySpacing->setRange(0.0, 1.0e12);
     m_arraySpacing->setDecimals(8);
     m_arraySpacing->setValue(1.0);
-    m_arraySpacing->setMinimumWidth(112);
-    m_arraySpacing->setMaximumWidth(150);
     m_arrayAxis = new QComboBox(m_arrayRow);
     m_arrayAxis->addItem(QStringLiteral("X 方向"), 0);
     m_arrayAxis->addItem(QStringLiteral("Y 方向"), 1);
     m_arrayAxis->addItem(QStringLiteral("Z 方向"), 2);
-    m_arrayAxis->setMaximumWidth(150);
     arrayLayout->addRow(QStringLiteral("数量"), m_arrayCount);
     arrayLayout->addRow(QStringLiteral("间距"), m_arraySpacing);
     arrayLayout->addRow(QStringLiteral("偏移方向"), m_arrayAxis);
@@ -487,7 +503,7 @@ BarElementPlacementWidget::BarElementPlacementWidget(QWidget* parent)
             this, [this](int) { updatePreview(); });
 
     m_createButton = new QPushButton(QStringLiteral("生成锚杆"), propertyBox);
-    m_createButton->setMaximumWidth(104);
+    m_createButton->setMaximumWidth(118);
     auto* createRow = new QWidget(propertyBox);
     auto* createLayout = new QHBoxLayout(createRow);
     createLayout->setContentsMargins(0, 0, 0, 0);
@@ -495,25 +511,54 @@ BarElementPlacementWidget::BarElementPlacementWidget(QWidget* parent)
     createLayout->addWidget(m_createButton);
     form->addRow(createRow);
     m_actionStatus = new QLabel(propertyBox);
+    m_actionStatus->setProperty("secondary", true);
     m_actionStatus->setWordWrap(true);
+    m_actionStatus->setVisible(false);
     form->addRow(QString(), m_actionStatus);
     connect(m_createButton, &QPushButton::clicked, this, &BarElementPlacementWidget::createBars);
     root->addWidget(propertyBox);
 
-    auto* recordBox = new QGroupBox(QStringLiteral("已生成锚杆"), this);
+    auto* recordBox = new QGroupBox(QStringLiteral("锚杆记录"), this);
+    recordBox->setMinimumHeight(164);
     auto* recordLayout = new QVBoxLayout(recordBox);
+    recordLayout->setContentsMargins(10, 10, 10, 10);
+    recordLayout->setSpacing(6);
+    m_recordEmptyLabel = new QLabel(QStringLiteral("暂无已生成锚杆"), recordBox);
+    m_recordEmptyLabel->setProperty("secondary", true);
+    m_recordEmptyLabel->setAlignment(Qt::AlignCenter);
+    m_recordEmptyLabel->setMinimumHeight(104);
+    recordLayout->addWidget(m_recordEmptyLabel);
     m_records = new QTableWidget(0, 2, recordBox);
-    m_records->setHorizontalHeaderLabels(
-        {QStringLiteral("锚杆数"), QStringLiteral("操作")});
+    m_records->horizontalHeader()->setVisible(false);
+    m_records->verticalHeader()->setVisible(false);
     m_records->horizontalHeader()->setSectionResizeMode(0, QHeaderView::Stretch);
     m_records->horizontalHeader()->setSectionResizeMode(1, QHeaderView::ResizeToContents);
     m_records->setSelectionBehavior(QAbstractItemView::SelectRows);
     m_records->setSelectionMode(QAbstractItemView::SingleSelection);
     m_records->setEditTriggers(QAbstractItemView::NoEditTriggers);
-    m_records->setMinimumHeight(96);
-    m_records->setMaximumHeight(132);
+    m_records->setShowGrid(false);
+    m_records->setAlternatingRowColors(true);
+    m_records->verticalHeader()->setDefaultSectionSize(30);
+    m_records->setMinimumHeight(120);
+    m_records->setMaximumHeight(260);
+    m_records->setVisible(false);
     m_records->setVerticalScrollBarPolicy(Qt::ScrollBarAsNeeded);
     recordLayout->addWidget(m_records);
+    connect(m_records, &QTableWidget::itemSelectionChanged, this,
+            [this]()
+            {
+                const QList<QTableWidgetItem*> selectedItems = m_records->selectedItems();
+                const int currentRow = selectedItems.isEmpty()
+                                           ? -1
+                                           : selectedItems.first()->row();
+                if (currentRow < 0 || !m_records->item(currentRow, 0))
+                {
+                    clearRecordHighlight();
+                    return;
+                }
+                showRecordHighlight(
+                    m_records->item(currentRow, 0)->data(Qt::UserRole).toInt());
+            });
     root->addWidget(recordBox);
     root->addStretch(1);
 
@@ -528,10 +573,8 @@ QDoubleSpinBox* BarElementPlacementWidget::coordinateSpin(double value)
 {
     auto* spin = new QDoubleSpinBox(this);
     spin->setRange(-1.0e12, 1.0e12);
-    spin->setDecimals(8);
+    spin->setDecimals(6);
     spin->setValue(value);
-    spin->setMinimumWidth(112);
-    spin->setMaximumWidth(150);
     spin->setKeyboardTracking(false);
     return spin;
 }
@@ -540,10 +583,8 @@ QDoubleSpinBox* BarElementPlacementWidget::directionSpin(double value)
 {
     auto* spin = new QDoubleSpinBox(this);
     spin->setRange(-1.0e9, 1.0e9);
-    spin->setDecimals(8);
+    spin->setDecimals(6);
     spin->setValue(value);
-    spin->setMinimumWidth(112);
-    spin->setMaximumWidth(150);
     spin->setKeyboardTracking(false);
     return spin;
 }
@@ -573,9 +614,7 @@ void BarElementPlacementWidget::beforeLoad()
     updateDefinitionUi();
     ensurePreviewActors();
     updatePlacementUi();
-
-    if (isSurfaceSemiAuto())
-        activateSurfacePick();
+    deactivateSurfacePick();
 }
 
 void BarElementPlacementWidget::beforeUnload()
@@ -588,8 +627,7 @@ void BarElementPlacementWidget::beforeUnload()
 
     // 先退出页面状态，再清理选择，避免 clearSelection 触发新的预览任务。
     m_pageActive = false;
-    if (m_surfacePickActive)
-        PickManager::instance().clearSelection(getPageType(), m_uuid, PickMode::Face);
+    PickManager::instance().clearSelection(getPageType(), m_uuid, PickMode::Face);
     m_surfaceLayoutSeedFaces.clear();
     deactivateSurfacePick();
 
@@ -599,23 +637,46 @@ void BarElementPlacementWidget::beforeUnload()
 
 void BarElementPlacementWidget::activateSurfacePick()
 {
-    if (!m_pageActive || !isSurfaceSemiAuto() || m_surfacePickActive)
+    if (!m_pageActive || !isSurfaceSemiAuto())
+    {
+        if (m_surfacePickCheckBox)
+        {
+            const QSignalBlocker blocker(m_surfacePickCheckBox);
+            m_surfacePickCheckBox->setChecked(false);
+        }
         return;
+    }
 
-    PickManager& picker = PickManager::instance();
-    picker.activate(getPageType(), m_uuid, PickMode::Face);
-    picker.setClickPickEnabled(getPageType(), m_uuid, true);
-    picker.setBoxSelectEnabled(getPageType(), m_uuid, false);
-    m_surfacePickActive = true;
+    if (!m_surfacePickActive)
+    {
+        if (m_records)
+            m_records->clearSelection();
+        clearRecordHighlight();
+        PickManager& picker = PickManager::instance();
+        picker.activate(getPageType(), m_uuid, PickMode::Face);
+        picker.setClickPickEnabled(getPageType(), m_uuid, true);
+        picker.setBoxSelectEnabled(getPageType(), m_uuid, false);
+        m_surfacePickActive = true;
+    }
+    if (m_surfacePickCheckBox)
+    {
+        const QSignalBlocker blocker(m_surfacePickCheckBox);
+        m_surfacePickCheckBox->setChecked(true);
+    }
 }
 
 void BarElementPlacementWidget::deactivateSurfacePick()
 {
-    if (!m_surfacePickActive)
-        return;
-
-    PickManager::instance().deactivate(getPageType(), m_uuid, PickMode::Face);
-    m_surfacePickActive = false;
+    if (m_surfacePickActive)
+    {
+        PickManager::instance().deactivate(getPageType(), m_uuid, PickMode::Face);
+        m_surfacePickActive = false;
+    }
+    if (m_surfacePickCheckBox)
+    {
+        const QSignalBlocker blocker(m_surfacePickCheckBox);
+        m_surfacePickCheckBox->setChecked(false);
+    }
 }
 
 void BarElementPlacementWidget::handlePlacementModeChanged()
@@ -627,14 +688,13 @@ void BarElementPlacementWidget::handlePlacementModeChanged()
     {
         if (isSurfaceSemiAuto())
         {
-            activateSurfacePick();
+            deactivateSurfacePick();
         }
         else
         {
             if (m_surfacePreviewTimer)
                 m_surfacePreviewTimer->stop();
-            if (m_surfacePickActive)
-                PickManager::instance().clearSelection(getPageType(), m_uuid, PickMode::Face);
+            PickManager::instance().clearSelection(getPageType(), m_uuid, PickMode::Face);
             m_surfaceLayoutSeedFaces.clear();
             deactivateSurfacePick();
         }
@@ -653,10 +713,12 @@ void BarElementPlacementWidget::updatePlacementUi()
     if (m_manualArrayPanel)
         m_manualArrayPanel->setVisible(!semi);
     if (m_createButton)
+    {
+        m_createButton->setEnabled(true);
         m_createButton->setText(semi ? QStringLiteral("生成锚杆")
                                      : QStringLiteral("添加锚杆"));
-    if (m_actionStatus)
-        m_actionStatus->clear();
+    }
+    setActionStatus(QString());
 
     updateSurfacePickStatus();
     if (semi)
@@ -679,22 +741,20 @@ void BarElementPlacementWidget::updateSurfacePickStatus()
 
     if (m_clearSurfaceButton)
         m_clearSurfaceButton->setEnabled(selectedCount > 0);
-    if (m_createButton && isSurfaceSemiAuto())
-    {
-        m_createButton->setEnabled(false);
-        m_createButton->setText(QStringLiteral("生成锚杆"));
-    }
 
     if (selectedCount > 0)
     {
         m_surfaceStatus->setText(
-            QStringLiteral("已选 %1 个网格面 · 正在更新预览……")
+            QStringLiteral("已选择 %1 个网格面")
                 .arg(selectedCount));
+    }
+    else if (m_surfacePickActive)
+    {
+        m_surfaceStatus->setText(QStringLiteral("请在模型中点击施工面"));
     }
     else
     {
-        m_surfaceStatus->setText(
-            QStringLiteral("在模型中单击一个开挖面。选中后会立即显示锚杆预览。"));
+        m_surfaceStatus->setText(QStringLiteral("勾选“启用点选”后，在模型中选择施工面"));
     }
 }
 
@@ -933,8 +993,7 @@ BarElementPlacementWidget::buildSurfaceBars(QString* errMsg, int* selectedFaceCo
         {
             if (errMsg)
             {
-                *errMsg = QStringLiteral(
-                    "所选区域包含非 8 节点六面体实体单元。当前求解器的锚杆 INOUSE 耦合只支持 8 节点六面体宿主，请重新选择。");
+                *errMsg = QStringLiteral("所选区域的网格类型暂不支持锚杆布置，请改选六面体网格区域。");
             }
             return {};
         }
@@ -1161,7 +1220,7 @@ BarElementPlacementWidget::buildSurfaceBars(QString* errMsg, int* selectedFaceCo
         }
 
         // 每个区域的两个网格方向直接来自“这次点击的 seed 面”的两组相邻边。
-        // 不再用全局 Z 猜“横向/纵向”；用户在视图里直接看方向 1 / 方向 2。
+        // 不再用全局 Z 猜“横向/纵向”；用户在视图里直接看 U/V 方向。
         vtkIdType regionSeedFaceKey = -1;
         int regionSeedFaceIndex = -1;
         for (int seedIndex = m_surfaceLayoutSeedFaces.size() - 1; seedIndex >= 0; --seedIndex)
@@ -1203,12 +1262,12 @@ BarElementPlacementWidget::buildSurfaceBars(QString* errMsg, int* selectedFaceCo
             return {};
         }
 
-        // 为了让同一片面上不同点击位置的“方向 1/2”尽量稳定：
-        // 有明显竖向分量时，方向 2 取更接近全局 Z 的那组边；水平面则方向 1 取更接近全局 X 的那组边。
+        // 为了让同一片面上不同点击位置的 U/V 方向尽量稳定：
+        // 有明显竖向分量时，V 取更接近全局 Z 的那组边；水平面则 U 取更接近全局 X 的那组边。
         const std::array<double, 3> globalZ{{0.0, 0.0, 1.0}};
         const std::array<double, 3> globalX{{1.0, 0.0, 0.0}};
-        std::array<double, 3> horizontal{}; // UI：方向 1
-        std::array<double, 3> vertical{};   // UI：方向 2
+        std::array<double, 3> horizontal{}; // UI：U 向
+        std::array<double, 3> vertical{};   // UI：V 向
         const double zA = std::abs(dot3(edgeA, globalZ));
         const double zB = std::abs(dot3(edgeB, globalZ));
         if (qMax(zA, zB) > 0.25)
@@ -1334,13 +1393,12 @@ BarElementPlacementWidget::buildSurfaceBars(QString* errMsg, int* selectedFaceCo
             PreviewBar bar;
             bar.start = face.center;
 
-            // 区域布置的业务语义：所选面属于开挖体。face.inward 指向该面所属
-            // Hex（开挖侧）内部，因此默认锚杆方向取反，背离开挖体、朝围岩侧。
-            // “反向”仅用于用户明确需要相反施工方向时。
+            // face.inward 始终指向所选面的实体宿主单元。对实体岩体网格来说，
+            // 默认“朝围岩侧”即沿 inward，反向才朝向开挖空间。
             const bool reverseDirection = m_surfaceDirectionMode &&
                                           m_surfaceDirectionMode->currentData().toInt() == 1;
             for (int axis = 0; axis < 3; ++axis)
-                bar.direction[axis] = reverseDirection ? face.inward[axis] : -face.inward[axis];
+                bar.direction[axis] = reverseDirection ? -face.inward[axis] : face.inward[axis];
             for (int axis = 0; axis < 3; ++axis)
                 bar.end[axis] = bar.start[axis] + length * bar.direction[axis];
             bars.push_back(bar);
@@ -1363,8 +1421,18 @@ void BarElementPlacementWidget::beginCoordinatePick(PickTarget target)
     if (isSurfaceSemiAuto() || !m_pageActive)
         return;
 
+    if (m_manualPickActive && m_pickTarget == target)
+    {
+        finishCoordinatePick();
+        setPickStatus(QString());
+        return;
+    }
     if (m_manualPickActive)
         finishCoordinatePick();
+
+    if (m_records)
+        m_records->clearSelection();
+    clearRecordHighlight();
 
     PickManager& picker = PickManager::instance();
     picker.activate(getPageType(), m_uuid, PickMode::Node);
@@ -1374,23 +1442,20 @@ void BarElementPlacementWidget::beginCoordinatePick(PickTarget target)
     m_manualPickActive = true;
 
     m_pickTarget = target;
-    m_pickStartButton->setEnabled(target != PickTarget::Start);
-    m_pickEndButton->setEnabled(target != PickTarget::End);
-    m_pickDirectionButton->setEnabled(target != PickTarget::DirectionPoint);
-    m_pickStartButton->setText(target == PickTarget::Start ? QStringLiteral("点击模型…")
-                                                           : QStringLiteral("取点"));
-    m_pickEndButton->setText(target == PickTarget::End ? QStringLiteral("点击模型…")
-                                                       : QStringLiteral("取点"));
+    m_pickStartButton->setText(target == PickTarget::Start ? QStringLiteral("取消选择")
+                                                           : QStringLiteral("从模型选择"));
+    m_pickEndButton->setText(target == PickTarget::End ? QStringLiteral("取消选择")
+                                                       : QStringLiteral("从模型选择"));
     m_pickDirectionButton->setText(target == PickTarget::DirectionPoint
-                                       ? QStringLiteral("点击模型…")
-                                       : QStringLiteral("从模型取方向"));
+                                       ? QStringLiteral("取消选择")
+                                       : QStringLiteral("从模型选择方向"));
 
     if (target == PickTarget::Start)
-        m_pickStatus->setText(QStringLiteral("正在取锚头：请点击一个实体网格节点。"));
+        setPickStatus(QStringLiteral("请在模型中点击锚头位置"));
     else if (target == PickTarget::End)
-        m_pickStatus->setText(QStringLiteral("正在取锚固端：请点击一个实体网格节点。"));
+        setPickStatus(QStringLiteral("请在模型中点击锚固端位置"));
     else
-        m_pickStatus->setText(QStringLiteral("正在取方向：请点击一个节点，方向为“锚头 → 该节点”。"));
+        setPickStatus(QStringLiteral("请在模型中点击锚杆朝向的一侧"));
 }
 
 void BarElementPlacementWidget::finishCoordinatePick()
@@ -1407,23 +1472,24 @@ void BarElementPlacementWidget::finishCoordinatePick()
     if (m_pickStartButton)
     {
         m_pickStartButton->setEnabled(true);
-        m_pickStartButton->setText(QStringLiteral("取点"));
+        m_pickStartButton->setText(QStringLiteral("从模型选择"));
     }
     if (m_pickEndButton)
     {
         m_pickEndButton->setEnabled(true);
-        m_pickEndButton->setText(QStringLiteral("取点"));
+        m_pickEndButton->setText(QStringLiteral("从模型选择"));
     }
     if (m_pickDirectionButton)
     {
         m_pickDirectionButton->setEnabled(true);
-        m_pickDirectionButton->setText(QStringLiteral("从模型取方向"));
+        m_pickDirectionButton->setText(QStringLiteral("从模型选择方向"));
     }
 }
 
 void BarElementPlacementWidget::applyPickedCoordinate(int nodeId,
                                                        double x, double y, double z)
 {
+    Q_UNUSED(nodeId);
     if (m_pickTarget == PickTarget::None)
         return;
 
@@ -1438,7 +1504,7 @@ void BarElementPlacementWidget::applyPickedCoordinate(int nodeId,
         if (norm <= kDirectionEpsilon)
         {
             finishCoordinatePick();
-            m_pickStatus->setText(QStringLiteral("方向点不能与锚头位置重合。"));
+            setPickStatus(QStringLiteral("方向参考点不能与锚头重合"));
             return;
         }
         const double direction[3] = {dx / norm, dy / norm, dz / norm};
@@ -1462,17 +1528,17 @@ void BarElementPlacementWidget::applyPickedCoordinate(int nodeId,
 
     if (target == PickTarget::Start)
     {
-        m_pickStatus->setText(definitionMode() == DefinitionMode::TwoPoints
-                                  ? QStringLiteral("锚头已取（节点 %1）。下一步取锚固端。").arg(nodeId)
-                                  : QStringLiteral("锚头已取（节点 %1）。继续设置长度与方向。").arg(nodeId));
+        setPickStatus(definitionMode() == DefinitionMode::TwoPoints
+                          ? QStringLiteral("已获取锚头，请继续选择锚固端")
+                          : QStringLiteral("已获取锚头"));
     }
     else if (target == PickTarget::End)
     {
-        m_pickStatus->setText(QStringLiteral("锚固端已取（节点 %1）。预览已更新，可直接添加。").arg(nodeId));
+        setPickStatus(QStringLiteral("端点已确定"));
     }
     else
     {
-        m_pickStatus->setText(QStringLiteral("方向已更新（节点 %1）。预览已更新。").arg(nodeId));
+        setPickStatus(QStringLiteral("方向已更新"));
     }
     updateLengthLabel();
 }
@@ -1492,9 +1558,7 @@ void BarElementPlacementWidget::updateDefinitionUi()
     if (byDirection)
         updateEndFromLengthDirection(false);
     updateLengthLabel();
-    m_pickStatus->setText(byDirection
-        ? QStringLiteral("先确定锚头，再设置长度和方向；模型会实时预览锚固端。")
-        : QStringLiteral("推荐分别点击两个“取点”按钮确定锚头和锚固端，也可直接输入坐标。"));
+    setPickStatus(QString());
 }
 
 bool BarElementPlacementWidget::updateEndFromLengthDirection(bool showWarning)
@@ -1541,8 +1605,24 @@ void BarElementPlacementWidget::updateLengthLabel()
     const double dy = m_end[1]->value() - m_start[1]->value();
     const double dz = m_end[2]->value() - m_start[2]->value();
     const double length = std::sqrt(dx * dx + dy * dy + dz * dz);
-    m_lengthLabel->setText(QStringLiteral("当前长度：%1").arg(QString::number(length, 'g', 10)));
+    m_lengthLabel->setText(QStringLiteral("锚杆长度  %1").arg(QString::number(length, 'g', 10)));
     updatePreview();
+}
+
+void BarElementPlacementWidget::setPickStatus(const QString& text)
+{
+    if (!m_pickStatus)
+        return;
+    m_pickStatus->setText(text);
+    m_pickStatus->setVisible(!text.trimmed().isEmpty());
+}
+
+void BarElementPlacementWidget::setActionStatus(const QString& text)
+{
+    if (!m_actionStatus)
+        return;
+    m_actionStatus->setText(text);
+    m_actionStatus->setVisible(!text.trimmed().isEmpty());
 }
 
 void BarElementPlacementWidget::updateArrayUi()
@@ -1717,13 +1797,120 @@ void BarElementPlacementWidget::updateMaterialStatus()
         return;
     m_materialStatus->setStyleSheet(QString());
     m_materialStatus->setText(m_assignedMatype >= 3 && m_assignedMatype <= 300
-                                  ? QString::number(m_assignedMatype)
-                                  : QStringLiteral("待分配"));
+                                  ? QStringLiteral("自动分配")
+                                  : QStringLiteral("暂不可用"));
 }
 
 QString BarElementPlacementWidget::previewPropId(const QString& suffix) const
 {
     return QStringLiteral("mesh.bar-placement.%1.%2").arg(m_uuid, suffix);
+}
+
+void BarElementPlacementWidget::ensureRecordHighlightActor()
+{
+    if (!m_visual)
+        m_visual = ServiceRegistry::instance().getService<VisualWidgetService>();
+    if (!m_visual || m_recordHighlightActor)
+        return;
+
+    m_recordHighlightPolyData = vtkSmartPointer<vtkPolyData>::New();
+    auto mapper = vtkSmartPointer<vtkPolyDataMapper>::New();
+    mapper->SetInputData(m_recordHighlightPolyData);
+    mapper->ScalarVisibilityOff();
+    mapper->SetResolveCoincidentTopologyToPolygonOffset();
+    mapper->SetRelativeCoincidentTopologyLineOffsetParameters(-1.0, -8.0);
+
+    m_recordHighlightActor = vtkSmartPointer<vtkActor>::New();
+    m_recordHighlightActor->SetMapper(mapper);
+    m_recordHighlightActor->PickableOff();
+    m_recordHighlightActor->SetVisibility(false);
+    auto* property = m_recordHighlightActor->GetProperty();
+    property->SetColor(1.0, 0.82, 0.08);
+    property->SetLineWidth(3.4);
+    property->SetPointSize(8.0);
+    property->RenderLinesAsTubesOn();
+    property->RenderPointsAsSpheresOn();
+    property->LightingOff();
+    property->SetOpacity(1.0);
+
+    m_visual->addProp(previewPropId(QStringLiteral("record-highlight")),
+                      m_recordHighlightActor, QStringLiteral("网格"),
+                      QStringLiteral("选中锚杆"), false, false);
+}
+
+void BarElementPlacementWidget::showRecordHighlight(int recordId)
+{
+    ensureRecordHighlightActor();
+    if (!m_recordHighlightActor || !m_recordHighlightPolyData || recordId <= 0)
+    {
+        clearRecordHighlight();
+        return;
+    }
+
+    auto* service = ServiceRegistry::instance().getService<MeshModuleControllerService>();
+    vtkUnstructuredGrid* grid = service ? service->getVtkUnstructuredGrid().GetPointer() : nullptr;
+    vtkDataArray* recordIds = grid && grid->GetCellData()
+                                  ? grid->GetCellData()->GetArray("BAR_GROUP")
+                                  : nullptr;
+    if (!grid || !grid->GetPoints() || !recordIds)
+    {
+        clearRecordHighlight();
+        return;
+    }
+
+    auto points = vtkSmartPointer<vtkPoints>::New();
+    auto lines = vtkSmartPointer<vtkCellArray>::New();
+    auto verts = vtkSmartPointer<vtkCellArray>::New();
+    int highlightedBars = 0;
+    for (vtkIdType cellId = 0; cellId < grid->GetNumberOfCells(); ++cellId)
+    {
+        if (cellId >= recordIds->GetNumberOfTuples() ||
+            static_cast<int>(recordIds->GetTuple1(cellId)) != recordId)
+        {
+            continue;
+        }
+
+        vtkCell* cell = grid->GetCell(cellId);
+        if (!cell || cell->GetCellDimension() != 1 || !cell->GetPointIds() ||
+            cell->GetPointIds()->GetNumberOfIds() < 2)
+        {
+            continue;
+        }
+
+        QVector<vtkIdType> highlightPointIds;
+        highlightPointIds.reserve(cell->GetPointIds()->GetNumberOfIds());
+        for (vtkIdType local = 0; local < cell->GetPointIds()->GetNumberOfIds(); ++local)
+        {
+            double xyz[3]{};
+            grid->GetPoint(cell->GetPointIds()->GetId(local), xyz);
+            highlightPointIds.push_back(points->InsertNextPoint(xyz));
+        }
+        lines->InsertNextCell(highlightPointIds.size(), highlightPointIds.constData());
+        const vtkIdType headPoint = highlightPointIds.first();
+        verts->InsertNextCell(1, &headPoint);
+        ++highlightedBars;
+    }
+
+    m_recordHighlightPolyData->SetPoints(points);
+    m_recordHighlightPolyData->SetLines(lines);
+    m_recordHighlightPolyData->SetVerts(verts);
+    m_recordHighlightPolyData->Modified();
+    m_recordHighlightActor->SetVisibility(highlightedBars > 0);
+    if (m_visual)
+        m_visual->render();
+}
+
+void BarElementPlacementWidget::clearRecordHighlight()
+{
+    if (m_recordHighlightPolyData)
+    {
+        m_recordHighlightPolyData->Initialize();
+        m_recordHighlightPolyData->Modified();
+    }
+    if (m_recordHighlightActor)
+        m_recordHighlightActor->SetVisibility(false);
+    if (m_visual)
+        m_visual->render();
 }
 
 void BarElementPlacementWidget::ensurePreviewActors()
@@ -1743,8 +1930,8 @@ void BarElementPlacementWidget::ensurePreviewActors()
     // 预览只负责显示，绝不能参与任何节点/面/框选。
     m_previewActor->PickableOff();
     auto* prop = m_previewActor->GetProperty();
-    prop->SetLineWidth(3.0);
-    prop->SetPointSize(5.0);
+    prop->SetLineWidth(2.6);
+    prop->SetPointSize(6.5);
     prop->RenderLinesAsTubesOn();
     prop->RenderPointsAsSpheresOn();
     prop->SetOpacity(1.0);
@@ -1762,36 +1949,37 @@ void BarElementPlacementWidget::ensurePreviewActors()
     m_surfaceGuideActor->SetMapper(guideMapper);
     m_surfaceGuideActor->PickableOff();
     m_surfaceGuideActor->SetVisibility(false);
-    m_surfaceGuideActor->GetProperty()->SetLineWidth(5.0);
-    m_surfaceGuideActor->GetProperty()->SetColor(0.95, 0.82, 0.18);
+    m_surfaceGuideActor->GetProperty()->SetLineWidth(3.0);
+    m_surfaceGuideActor->GetProperty()->RenderLinesAsTubesOn();
+    m_surfaceGuideActor->GetProperty()->SetColor(0.0, 0.62, 1.0);
     m_visual->addProp(previewPropId(QStringLiteral("surface-guide")), m_surfaceGuideActor,
                       QStringLiteral("网格"), QStringLiteral("锚杆布置方向"), false, false);
 
     m_surfaceULabelActor = vtkSmartPointer<vtkBillboardTextActor3D>::New();
     m_surfaceULabelActor->PickableOff();
     m_surfaceULabelActor->SetVisibility(false);
-    m_surfaceULabelActor->GetTextProperty()->SetFontSize(17);
+    m_surfaceULabelActor->GetTextProperty()->SetFontSize(15);
     m_surfaceULabelActor->GetTextProperty()->SetBold(true);
-    m_surfaceULabelActor->GetTextProperty()->SetColor(0.95, 0.82, 0.18);
-    m_surfaceULabelActor->SetInput("1");
+    m_surfaceULabelActor->GetTextProperty()->SetColor(0.0, 0.62, 1.0);
+    m_surfaceULabelActor->SetInput("U");
     m_visual->addProp(previewPropId(QStringLiteral("surface-guide-u")), m_surfaceULabelActor,
-                      QStringLiteral("网格"), QStringLiteral("锚杆方向1"), false, false);
+                      QStringLiteral("网格"), QStringLiteral("锚杆 U 向"), false, false);
 
     m_surfaceVLabelActor = vtkSmartPointer<vtkBillboardTextActor3D>::New();
     m_surfaceVLabelActor->PickableOff();
     m_surfaceVLabelActor->SetVisibility(false);
-    m_surfaceVLabelActor->GetTextProperty()->SetFontSize(17);
+    m_surfaceVLabelActor->GetTextProperty()->SetFontSize(15);
     m_surfaceVLabelActor->GetTextProperty()->SetBold(true);
-    m_surfaceVLabelActor->GetTextProperty()->SetColor(0.95, 0.82, 0.18);
-    m_surfaceVLabelActor->SetInput("2");
+    m_surfaceVLabelActor->GetTextProperty()->SetColor(0.0, 0.62, 1.0);
+    m_surfaceVLabelActor->SetInput("V");
     m_visual->addProp(previewPropId(QStringLiteral("surface-guide-v")), m_surfaceVLabelActor,
-                      QStringLiteral("网格"), QStringLiteral("锚杆方向2"), false, false);
+                      QStringLiteral("网格"), QStringLiteral("锚杆 V 向"), false, false);
 
     m_startLabelActor = vtkSmartPointer<vtkBillboardTextActor3D>::New();
     m_startLabelActor->PickableOff();
-    m_startLabelActor->GetTextProperty()->SetFontSize(16);
+    m_startLabelActor->GetTextProperty()->SetFontSize(13);
     m_startLabelActor->GetTextProperty()->SetBold(false);
-    m_startLabelActor->GetTextProperty()->SetBackgroundOpacity(0.55);
+    m_startLabelActor->GetTextProperty()->SetBackgroundOpacity(0.3);
     m_startLabelActor->GetTextProperty()->SetBackgroundColor(0.12, 0.12, 0.12);
     m_startLabelActor->GetTextProperty()->SetColor(color.redF(), color.greenF(), color.blueF());
     m_visual->addProp(previewPropId(QStringLiteral("start-label")), m_startLabelActor,
@@ -1799,9 +1987,9 @@ void BarElementPlacementWidget::ensurePreviewActors()
 
     m_endLabelActor = vtkSmartPointer<vtkBillboardTextActor3D>::New();
     m_endLabelActor->PickableOff();
-    m_endLabelActor->GetTextProperty()->SetFontSize(15);
+    m_endLabelActor->GetTextProperty()->SetFontSize(13);
     m_endLabelActor->GetTextProperty()->SetBold(false);
-    m_endLabelActor->GetTextProperty()->SetBackgroundOpacity(0.45);
+    m_endLabelActor->GetTextProperty()->SetBackgroundOpacity(0.3);
     m_endLabelActor->GetTextProperty()->SetBackgroundColor(0.12, 0.12, 0.12);
     m_endLabelActor->GetTextProperty()->SetColor(color.redF(), color.greenF(), color.blueF());
     m_visual->addProp(previewPropId(QStringLiteral("end-label")), m_endLabelActor,
@@ -1820,10 +2008,13 @@ void BarElementPlacementWidget::removePreviewActors()
         m_visual->removeProp(previewPropId(QStringLiteral("surface-guide-v")), false);
         m_visual->removeProp(previewPropId(QStringLiteral("start-label")), false);
         m_visual->removeProp(previewPropId(QStringLiteral("end-label")), false);
+        m_visual->removeProp(previewPropId(QStringLiteral("record-highlight")), false);
         m_visual->render();
     }
     m_previewPolyData = nullptr;
     m_previewActor = nullptr;
+    m_recordHighlightPolyData = nullptr;
+    m_recordHighlightActor = nullptr;
     m_surfaceGuidePolyData = nullptr;
     m_surfaceGuideActor = nullptr;
     m_surfaceULabelActor = nullptr;
@@ -1851,9 +2042,8 @@ void BarElementPlacementWidget::updatePreview()
     if (isSurfaceSemiAuto())
     {
         int selectedFaces = 0;
-        int selectedRegions = 0;
         QString error;
-        const QVector<PreviewBar> bars = buildSurfaceBars(&error, &selectedFaces, &selectedRegions);
+        const QVector<PreviewBar> bars = buildSurfaceBars(&error, &selectedFaces, nullptr);
 
         if (m_surfaceGuideActor && m_surfaceGuidePolyData &&
             m_surfaceULabelActor && m_surfaceVLabelActor)
@@ -1892,12 +2082,10 @@ void BarElementPlacementWidget::updatePreview()
             }
         }
 
-        const bool canCreate = error.isEmpty() && selectedFaces > 0 && !bars.isEmpty();
         if (m_createButton)
         {
-            m_createButton->setEnabled(canCreate);
-            m_createButton->setText(canCreate
-                                        ? QStringLiteral("生成 %1 根锚杆").arg(bars.size())
+            m_createButton->setText(error.isEmpty() && !bars.isEmpty()
+                                        ? QStringLiteral("生成 %1 根").arg(bars.size())
                                         : QStringLiteral("生成锚杆"));
         }
         if (m_clearSurfaceButton)
@@ -1907,26 +2095,19 @@ void BarElementPlacementWidget::updatePreview()
         {
             if (!error.isEmpty())
             {
-                m_surfaceStatus->setText(error);
+                m_surfaceStatus->setText(friendlyBarError(error));
             }
             else if (selectedFaces <= 0)
             {
-                m_surfaceStatus->setText(
-                    QStringLiteral("在模型中单击一个开挖面。选中后会立即显示锚杆预览。"));
+                m_surfaceStatus->setText(m_surfacePickActive
+                                             ? QStringLiteral("请在模型中点击施工面")
+                                             : QStringLiteral("勾选“启用点选”后，在模型中选择施工面"));
             }
             else
             {
-                const int intervalU = m_surfaceGridIntervalU ? m_surfaceGridIntervalU->value() : 1;
-                const int intervalV = m_surfaceGridIntervalV ? m_surfaceGridIntervalV->value() : 1;
-                const QString directionText = (m_surfaceDirectionMode &&
-                                               m_surfaceDirectionMode->currentData().toInt() == 1)
-                                                  ? QStringLiteral("反向（朝开挖侧）")
-                                                  : QStringLiteral("朝围岩侧");
-                QString status = QStringLiteral("已选：%1 个区域 / %2 个网格面\n预计：%3 根锚杆    方向：%4\n间隔：方向 1 每 %5 格，方向 2 每 %6 格\n继续点击可追加；点击已选区域可取消。")
-                                     .arg(selectedRegions).arg(selectedFaces)
-                                     .arg(bars.size()).arg(directionText)
-                                     .arg(intervalU).arg(intervalV);
-                m_surfaceStatus->setText(status);
+                m_surfaceStatus->setText(
+                    QStringLiteral("已选 %1 个网格面 · 预计 %2 根锚杆")
+                        .arg(selectedFaces).arg(bars.size()));
             }
         }
 
@@ -1940,33 +2121,17 @@ void BarElementPlacementWidget::updatePreview()
             const vtkIdType p1 = points->InsertNextPoint(bar.end.data());
             vtkIdType ids[2] = {p0, p1};
             lines->InsertNextCell(2, ids);
-            // 区域预览同时显示锚头 P1 和锚固端 P2。
+            // 只标记露在施工面上的锚头，避免两端点重叠成密集点阵。
             verts->InsertNextCell(1, &ids[0]);
-            verts->InsertNextCell(1, &ids[1]);
         }
 
         if (m_startLabelActor)
-        {
-            if (!bars.isEmpty())
-            {
-                const PreviewBar& first = bars.first();
-                QString label = QStringLiteral("预览 %1 根").arg(bars.size());
-                m_startLabelActor->SetInput(label.toUtf8().constData());
-                m_startLabelActor->SetPosition(first.start[0], first.start[1], first.start[2]);
-                m_startLabelActor->SetVisibility(1);
-            }
-            else
-            {
-                m_startLabelActor->SetVisibility(0);
-            }
-        }
+            m_startLabelActor->SetVisibility(0);
         if (m_endLabelActor)
             m_endLabelActor->SetVisibility(0);
     }
     else
     {
-        if (m_createButton)
-            m_createButton->setEnabled(true);
         if (!m_start[0] || !m_end[0])
             return;
         const int requestedCount =
@@ -1976,16 +2141,10 @@ void BarElementPlacementWidget::updatePreview()
         const int previewCount = qMin(requestedCount, kPreviewBarLimit);
         const std::array<double, 3> offset = currentArrayOffset();
 
-        const double dx0 = m_end[0]->value() - m_start[0]->value();
-        const double dy0 = m_end[1]->value() - m_start[1]->value();
-        const double dz0 = m_end[2]->value() - m_start[2]->value();
-        const bool baseBarValid = std::sqrt(dx0 * dx0 + dy0 * dy0 + dz0 * dz0) > kDirectionEpsilon;
-        const bool arrayValid = requestedCount <= 1 || !m_arraySpacing || m_arraySpacing->value() > kDirectionEpsilon;
         if (m_createButton)
         {
-            m_createButton->setEnabled(baseBarValid && arrayValid);
             m_createButton->setText(requestedCount > 1
-                                        ? QStringLiteral("添加 %1 根锚杆").arg(requestedCount)
+                                        ? QStringLiteral("添加 %1 根").arg(requestedCount)
                                         : QStringLiteral("添加锚杆"));
         }
 
@@ -2011,12 +2170,7 @@ void BarElementPlacementWidget::updatePreview()
             const double x = m_start[0]->value();
             const double y = m_start[1]->value();
             const double z = m_start[2]->value();
-            QString label = QStringLiteral("锚头  X=%1  Y=%2  Z=%3")
-                                .arg(QString::number(x, 'g', 9),
-                                     QString::number(y, 'g', 9),
-                                     QString::number(z, 'g', 9));
-            if (requestedCount > kPreviewBarLimit)
-                label += QStringLiteral("  （预览前 %1 根）").arg(kPreviewBarLimit);
+            const QString label = QStringLiteral("锚头");
             m_startLabelActor->SetInput(label.toUtf8().constData());
             m_startLabelActor->SetPosition(x, y, z);
             m_startLabelActor->SetVisibility(1);
@@ -2027,10 +2181,7 @@ void BarElementPlacementWidget::updatePreview()
             const double x = m_end[0]->value();
             const double y = m_end[1]->value();
             const double z = m_end[2]->value();
-            const QString label = QStringLiteral("锚固端  X=%1  Y=%2  Z=%3")
-                                      .arg(QString::number(x, 'g', 9),
-                                           QString::number(y, 'g', 9),
-                                           QString::number(z, 'g', 9));
+            const QString label = QStringLiteral("锚固端");
             m_endLabelActor->SetInput(label.toUtf8().constData());
             m_endLabelActor->SetPosition(x, y, z);
             m_endLabelActor->SetVisibility(1);
@@ -2074,9 +2225,9 @@ QJsonObject BarElementPlacementWidget::saveJson()
     obj[QStringLiteral("surface_grid_interval_v")] = m_surfaceGridIntervalV->value();
     obj[QStringLiteral("surface_whole_face")] = m_surfaceWholeFace->isChecked();
     obj[QStringLiteral("surface_direction_mode")] = m_surfaceDirectionMode->currentData().toInt();
-    // installation_stage 是面向 UI 的正数级次。保留 installation_layer 兼容旧工程；
-    // 二者在项目中均保存正数，洞室求解时再由 Base_Solver 转成负 LATYPE。
-    obj[QStringLiteral("installation_stage")] = m_installationLayer->value();
+    // installation_stage 保留正数级次用于兼容旧工程；
+    // installation_layer 保存真实的负 LAYER，与网格和 IIIN.DAT 保持一致。
+    obj[QStringLiteral("installation_stage")] = std::abs(m_installationLayer->value());
     obj[QStringLiteral("installation_layer")] = m_installationLayer->value();
     obj[QStringLiteral("array_mode")] = m_arrayMode->currentData().toInt();
     obj[QStringLiteral("array_offset")] = offset;
@@ -2177,13 +2328,15 @@ void BarElementPlacementWidget::loadJson(const QJsonObject& obj)
     const int surfaceDirectionIndex = m_surfaceDirectionMode->findData(surfaceDirection);
     if (surfaceDirectionIndex >= 0)
         m_surfaceDirectionMode->setCurrentIndex(surfaceDirectionIndex);
-    int installationStage = obj.value(QStringLiteral("installation_stage")).toInt(0);
-    if (installationStage <= 0)
-    {
-        // 兼容旧工程：早期可能直接保存 LAYER（正数或负数）。界面统一显示为正数级次。
-        installationStage = std::abs(obj.value(QStringLiteral("installation_layer")).toInt(1));
-    }
-    m_installationLayer->setValue(std::clamp(installationStage, 1, 999));
+    int installationLayer = 0;
+    if (obj.contains(QStringLiteral("installation_layer")))
+        installationLayer = obj.value(QStringLiteral("installation_layer")).toInt(0);
+    if (installationLayer == 0)
+        installationLayer = obj.value(QStringLiteral("installation_stage")).toInt(1);
+    // 旧工程的 installation_layer 与 installation_stage 可能是正数，
+    // 载入时转换成当前的负 LAYER 约定。
+    installationLayer = -std::max(1, std::abs(installationLayer));
+    m_installationLayer->setValue(std::clamp(installationLayer, -999, -1));
     const int placement = obj.value(QStringLiteral("placement_mode"))
                               .toInt(static_cast<int>(PlacementMode::Manual));
     const int placementIndex = m_placementMode->findData(placement);
@@ -2207,7 +2360,19 @@ void BarElementPlacementWidget::refreshData()
 
 void BarElementPlacementWidget::refreshRecords()
 {
+    int selectedRecordId = 0;
+    const QList<QTableWidgetItem*> selectedItems = m_records->selectedItems();
+    if (!selectedItems.isEmpty() && m_records->item(selectedItems.first()->row(), 0))
+    {
+        selectedRecordId =
+            m_records->item(selectedItems.first()->row(), 0)->data(Qt::UserRole).toInt();
+    }
+    clearRecordHighlight();
     m_records->setRowCount(0);
+    m_records->setVisible(false);
+    if (m_recordEmptyLabel)
+        m_recordEmptyLabel->setVisible(true);
+
     auto* service = ServiceRegistry::instance().getService<MeshModuleControllerService>();
     if (!service)
         return;
@@ -2221,6 +2386,7 @@ void BarElementPlacementWidget::refreshRecords()
         });
 
     bool foundMatype = false;
+    int rowToRestore = -1;
     for (const BarElementRecordInfo& record : records)
     {
         if (hasScopedRecords && record.placementUuid != m_uuid)
@@ -2234,18 +2400,36 @@ void BarElementPlacementWidget::refreshRecords()
 
         const int row = m_records->rowCount();
         m_records->insertRow(row);
-        auto* countItem = new QTableWidgetItem(QString::number(record.cellCount));
+        auto* countItem = new QTableWidgetItem(
+            QStringLiteral("%1 根锚杆").arg(record.cellCount));
         countItem->setData(Qt::UserRole, record.id);
-        countItem->setTextAlignment(Qt::AlignCenter);
+        countItem->setTextAlignment(Qt::AlignVCenter | Qt::AlignLeft);
         m_records->setItem(row, 0, countItem);
+        if (record.id == selectedRecordId)
+            rowToRestore = row;
 
         auto* removeButton = new QPushButton(QStringLiteral("删除"), m_records);
+        removeButton->setFlat(true);
+        removeButton->setProperty("inlineAction", true);
         m_records->setCellWidget(row, 1, removeButton);
         connect(removeButton, &QPushButton::clicked, this, [this, row]()
         {
             m_records->setCurrentCell(row, 0);
             removeSelectedRecord();
         });
+    }
+
+    const bool hasRecords = m_records->rowCount() > 0;
+    m_records->setVisible(hasRecords);
+    if (m_recordEmptyLabel)
+        m_recordEmptyLabel->setVisible(!hasRecords);
+    if (hasRecords)
+    {
+        const int tableHeight = qBound(120, m_records->rowCount() * 32 + 2, 260);
+        m_records->setMinimumHeight(tableHeight);
+        m_records->setMaximumHeight(tableHeight);
+        if (rowToRestore >= 0)
+            m_records->setCurrentCell(rowToRestore, 0);
     }
 
     updateMaterialStatus();
@@ -2265,24 +2449,23 @@ void BarElementPlacementWidget::createBars()
     const int matype = resolveMaterialNumberForCreate();
     if (matype < 3 || matype > 300)
     {
-        QMessageBox::warning(this, QStringLiteral("锚杆材料编号"),
-                             QStringLiteral("材料编号 3 至 300 已全部使用，无法为当前锚杆布置分配材料编号。"));
+        QMessageBox::warning(this, QStringLiteral("无法生成锚杆"),
+                             QStringLiteral("没有可用的锚杆材料，请先整理材料设置。"));
         return;
     }
 
     QString resultMessage;
     int barCount = 0;
-    int barElementCount = 0;
 
     if (isSurfaceSemiAuto())
     {
         int selectedFaces = 0;
-        int selectedRegions = 0;
         QString buildError;
-        const QVector<PreviewBar> bars = buildSurfaceBars(&buildError, &selectedFaces, &selectedRegions);
+        const QVector<PreviewBar> bars = buildSurfaceBars(&buildError, &selectedFaces, nullptr);
         if (!buildError.isEmpty())
         {
-            QMessageBox::warning(this, QStringLiteral("区域布置"), buildError);
+            QMessageBox::warning(this, QStringLiteral("无法生成锚杆"),
+                                 friendlyBarError(buildError));
             return;
         }
         if (bars.isEmpty())
@@ -2302,7 +2485,7 @@ void BarElementPlacementWidget::createBars()
             placement.segmentCount = 1;
             placement.arrayCount = 1;
             placement.arrayOffset = {{0.0, 0.0, 0.0}};
-            placement.installationLayer = m_installationLayer ? m_installationLayer->value() : 1;
+            placement.installationLayer = m_installationLayer ? m_installationLayer->value() : -1;
             placement.matype = matype;
             placement.placementUuid = m_uuid;
             placements.push_back(placement);
@@ -2310,13 +2493,14 @@ void BarElementPlacementWidget::createBars()
 
         if (!service->appendBarElementsBatch(placements, &resultMessage))
         {
-            QMessageBox::warning(this, QStringLiteral("批量生成锚杆失败"),
-                                 resultMessage.isEmpty() ? QStringLiteral("无法修改当前网格。")
-                                                         : resultMessage);
+            QMessageBox::warning(
+                this, QStringLiteral("无法生成锚杆"),
+                friendlyBarError(resultMessage.isEmpty()
+                                     ? QStringLiteral("无法修改当前网格。")
+                                     : resultMessage));
             return;
         }
         barCount = placements.size();
-        barElementCount = barCount;
     }
     else
     {
@@ -2331,7 +2515,7 @@ void BarElementPlacementWidget::createBars()
             placement.end[axis] = m_end[axis]->value();
         }
         placement.segmentCount = 1;
-        placement.installationLayer = m_installationLayer ? m_installationLayer->value() : 1;
+        placement.installationLayer = m_installationLayer ? m_installationLayer->value() : -1;
         placement.matype = matype;
         placement.placementUuid = m_uuid;
         if (m_arrayMode->currentData().toInt() == 1)
@@ -2363,13 +2547,14 @@ void BarElementPlacementWidget::createBars()
 
         if (!service->appendBarElements(placement, &resultMessage))
         {
-            QMessageBox::warning(this, QStringLiteral("添加锚杆失败"),
-                                 resultMessage.isEmpty() ? QStringLiteral("无法修改当前网格。")
-                                                         : resultMessage);
+            QMessageBox::warning(
+                this, QStringLiteral("无法添加锚杆"),
+                friendlyBarError(resultMessage.isEmpty()
+                                     ? QStringLiteral("无法修改当前网格。")
+                                     : resultMessage));
             return;
         }
         barCount = placement.arrayCount;
-        barElementCount = barCount;
     }
 
     auto& picker = PickManager::instance();
@@ -2379,15 +2564,18 @@ void BarElementPlacementWidget::createBars()
             m_surfacePreviewTimer->stop();
         picker.clearSelection(getPageType(), m_uuid, PickMode::Face);
         m_surfaceLayoutSeedFaces.clear();
+        deactivateSurfacePick();
     }
     else
     {
         picker.clearSelection(getPageType(), m_uuid, PickMode::Node);
     }
 
-    // 网格显示刷新由 MeshModuleController 统一同步 PickManager；当前 Face 会话保持不变。
+    // 网格显示刷新由 MeshModuleController 统一同步 PickManager。
     updatePlacementUi();
     refreshRecords();
+    if (m_records && m_records->rowCount() > 0)
+        m_records->setCurrentCell(m_records->rowCount() - 1, 0);
     updateMaterialStatus();
     if (isSurfaceSemiAuto())
     {
@@ -2396,15 +2584,8 @@ void BarElementPlacementWidget::createBars()
             m_surfacePreviewTimer->stop();
         updatePreview();
     }
-    if (m_actionStatus)
-    {
-        QString status = QStringLiteral("生成完成：%1 根锚杆 · 材料 %2 · 第 %3 级安装")
-                             .arg(barCount).arg(matype)
-                             .arg(m_installationLayer ? m_installationLayer->value() : 1);
-        if (!resultMessage.trimmed().isEmpty())
-            status += QLatin1Char('\n') + resultMessage.trimmed();
-        m_actionStatus->setText(status);
-    }
+    QString status = QStringLiteral("已生成 %1 根锚杆").arg(barCount);
+    setActionStatus(status);
 }
 
 void BarElementPlacementWidget::removeSelectedRecord()
@@ -2425,6 +2606,5 @@ void BarElementPlacementWidget::removeSelectedRecord()
 
     updatePlacementUi();
     refreshRecords();
-    if (m_actionStatus)
-        m_actionStatus->setText(QStringLiteral("选中的锚杆已删除。"));
+    setActionStatus(QStringLiteral("锚杆已删除"));
 }

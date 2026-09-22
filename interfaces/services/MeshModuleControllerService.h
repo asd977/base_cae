@@ -88,7 +88,7 @@ struct BarElementPlacement
     std::array<double, 3> arrayOffset{{0.0, 0.0, 0.0}};
     int segmentCount = 1;
     int arrayCount = 1;
-    int installationLayer = 1;
+    int installationLayer = -1;
     int matype = 0;
     QString placementUuid;
 };
@@ -98,7 +98,7 @@ struct BarElementRecordInfo
     int id = 0;
     int cellCount = 0;
     int matype = 0;
-    int installationLayer = 1;
+    int installationLayer = -1;
     QString placementUuid;
 };
 

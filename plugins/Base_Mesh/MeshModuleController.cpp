@@ -55,7 +55,6 @@
 #include <vtkXMLPolyDataWriter.h>
 #include <vtkXMLUnstructuredGridReader.h>
 #include <vtkXMLUnstructuredGridWriter.h>
-#include <vtkStaticCellLocator.h>
 #include <vtkStringArray.h>
 #include <vtkVariant.h>
 
@@ -2614,6 +2613,46 @@ static void meshDisplayApplyGlobalState(vtkUnstructuredGrid* fullGrid,
 
 static void syncPickMapGroupingFromGrid(vtkUnstructuredGrid* grid);
 
+static bool normalizeRodElementLayers(vtkUnstructuredGrid* grid)
+{
+    if (!grid || !grid->GetCellData())
+        return false;
+
+    vtkDataArray* ketypes = grid->GetCellData()->GetArray("KETYPE");
+    vtkDataArray* layers = grid->GetCellData()->GetArray("LAYER");
+    if (!ketypes || !layers)
+        return false;
+
+    bool changed = false;
+    const vtkIdType tupleCount = qMin(grid->GetNumberOfCells(),
+                                      qMin(ketypes->GetNumberOfTuples(),
+                                           layers->GetNumberOfTuples()));
+    for (vtkIdType cellId = 0; cellId < tupleCount; ++cellId)
+    {
+        vtkCell* cell = grid->GetCell(cellId);
+        if (!cell || cell->GetCellDimension() != 1 ||
+            static_cast<int>(ketypes->GetTuple1(cellId)) != 1)
+        {
+            continue;
+        }
+
+        const int current = static_cast<int>(layers->GetTuple1(cellId));
+        const int normalized = -qMax(1, qAbs(current));
+        if (current != normalized)
+        {
+            layers->SetTuple1(cellId, normalized);
+            changed = true;
+        }
+    }
+
+    if (changed)
+    {
+        layers->Modified();
+        grid->Modified();
+    }
+    return changed;
+}
+
 MeshModuleController::MeshModuleController(QObject* parent) : QObject(parent)
 {
     ServiceRegistry::instance().registerService<MeshModuleControllerService>(this);
@@ -3117,6 +3156,8 @@ bool MeshModuleController::loadProject()
         }
 
         m_importedGrid = grid;
+        if (normalizeRodElementLayers(m_importedGrid))
+            writeMeshGridCache(binaryCachePath, m_importedGrid);
         if (!hasSavedVerticalAxis)
             m_verticalAxis = MeshGridIO::verticalAxisOfGrid(m_importedGrid, m_verticalAxis);
         MeshGridIO::setVerticalAxis(m_importedGrid, m_verticalAxis);
@@ -3928,6 +3969,7 @@ void MeshModuleController::importGridFile(const QString& fileName)
     }
 
     m_importedGrid = grid;
+    normalizeRodElementLayers(m_importedGrid);
     m_hasGrid = true;
     m_sourceFileName = fileName;
 
@@ -6358,16 +6400,8 @@ bool MeshModuleController::appendBarElements(const BarElementPlacement& placemen
     pointLocator->SetDataSet(m_importedGrid);
     pointLocator->BuildLocator();
 
-    // INOUSE.DAT already supports non-common-node bar endpoints. The solver marks those
-    // points as suspended, finds the host solid element and transforms the bar stiffness
-    // to the host element DOFs by the endpoint natural coordinates. Therefore anchor
-    // coordinates are kept exactly as entered here instead of being automatically snapped.
-    //
-    // The current solver interpolation routines are topology-specific:
-    //   2D -> SN2D4N, 3D -> SN3D8N.
-    // Thus a non-common-node endpoint is currently safe only inside a 4-node quad or an
-    // 8-node hexahedron. A point that is an actual host node can still be used with other
-    // solid topologies because INOUSE will classify that endpoint as common-node (LX=1/2/3).
+    // 建模层保留用户给出的锚杆坐标，不在这里强制裁剪、吸附或拒绝实体外节点。
+    // 节点与实体的耦合关系由后续求解输入生成阶段处理。
     int hostDimension = 0;
     for (vtkIdType cid = 0; cid < oldCellCount; ++cid)
     {
@@ -6397,40 +6431,6 @@ bool MeshModuleController::appendBarElements(const BarElementPlacement& placemen
                                 .arg(rodMatype));
             }
         }
-    }
-
-    QSet<vtkIdType> hostPointIdSet;
-    auto supportedHostGrid = vtkSmartPointer<vtkUnstructuredGrid>::New();
-    auto supportedHostPoints = vtkSmartPointer<vtkPoints>::New();
-    supportedHostPoints->DeepCopy(m_importedGrid->GetPoints());
-    supportedHostGrid->SetPoints(supportedHostPoints);
-    supportedHostGrid->Allocate(oldCellCount);
-
-    for (vtkIdType cid = 0; cid < oldCellCount; ++cid)
-    {
-        vtkCell* cell = m_importedGrid->GetCell(cid);
-        if (!cell || cell->GetCellDimension() != hostDimension || !cell->GetPointIds())
-            continue;
-
-        for (vtkIdType local = 0; local < cell->GetPointIds()->GetNumberOfIds(); ++local)
-            hostPointIdSet.insert(cell->GetPointIds()->GetId(local));
-
-        const bool supported =
-            (hostDimension == 2 && cell->GetCellType() == VTK_QUAD &&
-             cell->GetNumberOfPoints() == 4) ||
-            (hostDimension == 3 && cell->GetCellType() == VTK_HEXAHEDRON &&
-             cell->GetNumberOfPoints() == 8);
-        if (supported)
-            supportedHostGrid->InsertNextCell(cell->GetCellType(), cell->GetPointIds());
-    }
-    if (hostPointIdSet.isEmpty())
-        return fail(QStringLiteral("当前网格中没有可与锚杆连接的实体节点。"));
-
-    auto supportedHostLocator = vtkSmartPointer<vtkStaticCellLocator>::New();
-    if (supportedHostGrid->GetNumberOfCells() > 0)
-    {
-        supportedHostLocator->SetDataSet(supportedHostGrid);
-        supportedHostLocator->BuildLocator();
     }
 
     const auto distanceSquared = [](const double a[3], const double b[3])
@@ -6520,38 +6520,6 @@ bool MeshModuleController::appendBarElements(const BarElementPlacement& placemen
         m_importedGrid->GetPoint(pid, existing);
         return distanceSquared(existing, xyz) <= reuseToleranceSquared ? pid : -1;
     };
-    const auto isCommonHostPoint = [&](vtkIdType pointId)
-    {
-        return pointId >= 0 && pointId < oldPointCount && hostPointIdSet.contains(pointId);
-    };
-    const auto canUseInouseEmbedding = [&](const double xyz[3])
-    {
-        if (!supportedHostLocator || supportedHostGrid->GetNumberOfCells() <= 0)
-            return false;
-        return supportedHostLocator->FindCell(const_cast<double*>(xyz)) >= 0;
-    };
-    const auto unsupportedEmbeddingMessage = [&](int copy, int segment,
-                                                  const double xyz[3])
-    {
-        const QString positionName = segment == 0
-                                         ? QStringLiteral("锚头")
-                                         : (segment == placement.segmentCount
-                                                ? QStringLiteral("锚固端")
-                                                : QStringLiteral("第 %1 个分段点").arg(segment));
-        const QString hostText = hostDimension == 2
-                                     ? QStringLiteral("二维4节点实体单元")
-                                     : QStringLiteral("三维8节点实体单元");
-        return QStringLiteral(
-                   "第 %1 根杆的%2坐标 (%3, %4, %5) 不在当前可耦合的%6内。"
-                   "非共节点锚杆目前仅支持二维4节点或三维8节点实体；请调整坐标，或从模型取实体节点。")
-            .arg(copy + 1)
-            .arg(positionName)
-            .arg(xyz[0], 0, 'g', 10)
-            .arg(xyz[1], 0, 'g', 10)
-            .arg(xyz[2], 0, 'g', 10)
-            .arg(hostText);
-    };
-
     for (int copy = 0; copy < placement.arrayCount; ++copy)
     {
         QVector<vtkIdType> rodPointIds;
@@ -6571,11 +6539,6 @@ bool MeshModuleController::appendBarElements(const BarElementPlacement& placemen
             vtkIdType pointId = findOldPoint(xyz);
             if (pointId < 0)
                 pointId = findCreatedPoint(xyz);
-
-            // Reusing an actual solid node means common-node coupling. Otherwise preserve
-            // the requested coordinate and let INOUSE.DAT provide the host-element mapping.
-            if (!isCommonHostPoint(pointId) && !canUseInouseEmbedding(xyz))
-                return fail(unsupportedEmbeddingMessage(copy, segment, xyz));
 
             if (pointId < 0)
             {
@@ -6715,11 +6678,12 @@ bool MeshModuleController::appendBarElements(const BarElementPlacement& placemen
         }
         maxElementId = qMax(maxElementId, elementId);
     }
+    const int installationLayer = -qMax(1, qAbs(placement.installationLayer));
     const QString recordName = QStringLiteral("杆单元生成记录 %1").arg(recordId);
     for (vtkIdType cid = oldCellCount; cid < oldCellCount + addedCellCount; ++cid)
     {
         matypes->SetTuple1(cid, rodMatype);
-        layers->SetTuple1(cid, placement.installationLayer);
+        layers->SetTuple1(cid, installationLayer);
         ketypes->SetTuple1(cid, 1);
         elementIds->SetTuple1(cid, ++maxElementId);
         recordIds->SetTuple1(cid, recordId);
@@ -6890,38 +6854,6 @@ bool MeshModuleController::appendBarElementsBatch(
         }
     }
 
-    QSet<vtkIdType> hostPointIdSet;
-    auto supportedHostGrid = vtkSmartPointer<vtkUnstructuredGrid>::New();
-    auto supportedHostPoints = vtkSmartPointer<vtkPoints>::New();
-    supportedHostPoints->DeepCopy(m_importedGrid->GetPoints());
-    supportedHostGrid->SetPoints(supportedHostPoints);
-    supportedHostGrid->Allocate(oldCellCount);
-    for (vtkIdType cid = 0; cid < oldCellCount; ++cid)
-    {
-        vtkCell* cell = m_importedGrid->GetCell(cid);
-        if (!cell || cell->GetCellDimension() != hostDimension || !cell->GetPointIds())
-            continue;
-        for (vtkIdType local = 0; local < cell->GetPointIds()->GetNumberOfIds(); ++local)
-            hostPointIdSet.insert(cell->GetPointIds()->GetId(local));
-
-        const bool supported =
-            (hostDimension == 2 && cell->GetCellType() == VTK_QUAD &&
-             cell->GetNumberOfPoints() == 4) ||
-            (hostDimension == 3 && cell->GetCellType() == VTK_HEXAHEDRON &&
-             cell->GetNumberOfPoints() == 8);
-        if (supported)
-            supportedHostGrid->InsertNextCell(cell->GetCellType(), cell->GetPointIds());
-    }
-    if (hostPointIdSet.isEmpty())
-        return fail(QStringLiteral("当前网格中没有可与锚杆连接的实体节点。"));
-
-    auto supportedHostLocator = vtkSmartPointer<vtkStaticCellLocator>::New();
-    if (supportedHostGrid->GetNumberOfCells() > 0)
-    {
-        supportedHostLocator->SetDataSet(supportedHostGrid);
-        supportedHostLocator->BuildLocator();
-    }
-
     const auto distanceSquared = [](const double a[3], const double b[3])
     {
         return (a[0] - b[0]) * (a[0] - b[0])
@@ -7007,20 +6939,6 @@ bool MeshModuleController::appendBarElementsBatch(
         m_importedGrid->GetPoint(pid, existing);
         return distanceSquared(existing, xyz) <= reuseToleranceSquared ? pid : -1;
     };
-    const auto isCommonHostPoint = [&](vtkIdType pointId)
-    {
-        return pointId >= 0 && pointId < oldPointCount && hostPointIdSet.contains(pointId);
-    };
-    const auto canUseInouseEmbedding = [&](const double xyz[3])
-    {
-        if (!supportedHostLocator || supportedHostGrid->GetNumberOfCells() <= 0)
-            return false;
-        return supportedHostLocator->FindCell(const_cast<double*>(xyz)) >= 0;
-    };
-    const QString hostText = hostDimension == 2
-                                 ? QStringLiteral("二维4节点实体单元")
-                                 : QStringLiteral("三维8节点实体单元");
-
     for (int barIndex = 0; barIndex < placements.size(); ++barIndex)
     {
         const BarElementPlacement& placement = placements.at(barIndex);
@@ -7038,19 +6956,6 @@ bool MeshModuleController::appendBarElementsBatch(
             vtkIdType pointId = findOldPoint(xyz);
             if (pointId < 0)
                 pointId = findCreatedPoint(xyz);
-
-            if (!isCommonHostPoint(pointId) && !canUseInouseEmbedding(xyz))
-            {
-                return fail(QStringLiteral(
-                    "第 %1 根锚杆的第 %2 个分段节点 (%3, %4, %5) 不在可由 INOUSE 耦合的%6内。"
-                    "请检查所选表面、锚杆长度、分段数或实体网格。")
-                                .arg(barIndex + 1)
-                                .arg(nodeIndex + 1)
-                                .arg(xyz[0], 0, 'g', 10)
-                                .arg(xyz[1], 0, 'g', 10)
-                                .arg(xyz[2], 0, 'g', 10)
-                                .arg(hostText));
-            }
 
             if (pointId < 0)
             {
@@ -7191,11 +7096,12 @@ bool MeshModuleController::appendBarElementsBatch(
         maxElementId = qMax(maxElementId, elementId);
     }
 
+    const int installationLayer = -qMax(1, qAbs(firstPlacement.installationLayer));
     const QString recordName = QStringLiteral("杆单元生成记录 %1").arg(recordId);
     for (vtkIdType cid = oldCellCount; cid < oldCellCount + addedCellCount; ++cid)
     {
         matypes->SetTuple1(cid, rodMatype);
-        layers->SetTuple1(cid, firstPlacement.installationLayer);
+        layers->SetTuple1(cid, installationLayer);
         ketypes->SetTuple1(cid, 1);
         elementIds->SetTuple1(cid, ++maxElementId);
         recordIds->SetTuple1(cid, recordId);
@@ -7356,7 +7262,7 @@ QVector<BarElementRecordInfo> MeshModuleController::barElementRecords() const
         if (matypes)
             info.matype = static_cast<int>(matypes->GetTuple1(cid));
         if (layers)
-            info.installationLayer = static_cast<int>(layers->GetTuple1(cid));
+            info.installationLayer = -qMax(1, qAbs(static_cast<int>(layers->GetTuple1(cid))));
         if (placementUuids && cid < placementUuids->GetNumberOfValues())
             info.placementUuid = QString::fromStdString(placementUuids->GetValue(cid));
     }
@@ -7466,9 +7372,11 @@ void MeshModuleController::setBarPlacementDisplayMode(bool active)
     if (m_previewSurfaceActor)
     {
         auto* prop = m_previewSurfaceActor->GetProperty();
-        prop->SetOpacity(0.18);
-        prop->SetColor(0.72, 0.75, 0.78);
-        prop->EdgeVisibilityOff();
+        prop->SetOpacity(1.0);
+        prop->SetColor(0.78, 0.80, 0.82);
+        prop->EdgeVisibilityOn();
+        prop->SetEdgeColor(0.58, 0.61, 0.64);
+        prop->SetLineWidth(0.7);
         if (m_previewSurfaceMapper)
             m_previewSurfaceMapper->ScalarVisibilityOff();
     }
@@ -7477,9 +7385,9 @@ void MeshModuleController::setBarPlacementDisplayMode(bool active)
     {
         auto* prop = m_previewLineActor->GetProperty();
         prop->SetOpacity(1.0);
-        prop->SetLineWidth(3.0);
+        prop->SetLineWidth(1.8);
         prop->SetSpecular(0.0);
-        prop->RenderLinesAsTubesOn();
+        prop->RenderLinesAsTubesOff();
         // 锚杆统一一种显示颜色；材料编号只作为计算属性，不再按 MATYPE 变色。
         prop->SetColor(232.0 / 255.0, 126.0 / 255.0, 48.0 / 255.0);
     }

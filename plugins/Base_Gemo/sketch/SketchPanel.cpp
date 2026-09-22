@@ -22,6 +22,7 @@
 #include <QAction>
 #include <QApplication>
 #include <QButtonGroup>
+#include <QBoxLayout>
 #include <QCheckBox>
 #include <QComboBox>
 #include <QMenu>
@@ -1366,6 +1367,10 @@ void Sketch2DDialog::initUi()
     ui->pointCoordinateGroup->setVisible(false);
     ui->arcAngleRow->setVisible(false);
 
+    // 对象列表和绘图辅助保持常显，避免用户为了常用操作反复展开/收起。
+    ui->tableGroup->setVisible(true);
+    ui->optionGroup->setVisible(true);
+
     if (ui->gridSnapCheck)
         ui->gridSnapCheck->setChecked(true);
     if (ui->snapCheck)
@@ -1560,8 +1565,10 @@ void Sketch2DDialog::initUi()
     ui->objectsTable->setSelectionMode(QAbstractItemView::ExtendedSelection);
     ui->objectsTable->setSelectionBehavior(QAbstractItemView::SelectRows);
     ui->objectsTable->setEditTriggers(QAbstractItemView::NoEditTriggers);
-    ui->objectsTable->setToolTip(tr("草图元素列表。单击选择，Ctrl/Shift 多选，双击进入控制点编辑。"));
-    styleSketchTable(ui->objectsTable, 118, 190);
+    // 保留完整对象信息，最后一列自动撑满剩余宽度。
+    ui->objectsTable->setColumnHidden(3, false);
+    ui->objectsTable->setToolTip(tr("对象列表。Ctrl/Shift 可多选。"));
+    styleSketchTable(ui->objectsTable, 130, 210);
 
     if (ui->editObjectButton)
     {
@@ -1895,14 +1902,14 @@ QString Sketch2DDialog::operationHintText() const
     if (command == Command::Select)
     {
         if (m_selectedPointObjectIndex >= 0 && m_selectedPointIndex >= 0)
-            return tr("修改下方 U、V 坐标。");
+            return tr("拖动端点，或输入 U/V。");
 
         const QList<int> rows = selectedCommittedIndices();
         if (rows.size() == 1)
-            return tr("单击控制点编辑，右键操作。");
+            return tr("拖动控制点编辑；Ctrl/Shift 多选。");
         if (rows.size() > 1)
-            return tr("已选择 %1 个对象。").arg(rows.size());
-        return tr("单击选择，拖动框选，右键绘图。");
+            return tr("已选择 %1 个对象；Delete 删除。").arg(rows.size());
+        return tr("单击选择，拖动框选。");
     }
 
     if (command == Command::Polyline)
@@ -2316,6 +2323,7 @@ void Sketch2DDialog::refreshObjectTable()
     if (ui->objectsTitleLabel)
         ui->objectsTitleLabel->setText(tr("已应用对象：%1 个").arg(static_cast<int>(m_committedDocuments.size())));
 
+
     updateActionButtons();
 }
 
@@ -2604,14 +2612,23 @@ int Sketch2DDialog::findNearestCommittedObject(double u, double v) const
 
 bool Sketch2DDialog::findNearestEndpoint(double u, double v, int& objectIndex, int& pointIndex, Point2D& point) const
 {
-    // 端点选择使用比吸附更宽松的容差。吸附需要精确，选择则应允许
-    // 用户在可见控制点附近点击，而不是必须压中一个像素。
+    // 只允许操作“当前单选对象”已经显示出来的控制点。
+    // 以前会扫描所有对象的隐藏端点，复杂 DXF 中按下鼠标时很容易
+    // 意外拖动另一条线，甚至抢走原本想做的框选。
+    const int selectedRow = selectedCommittedIndex();
+    if (selectedRow < 0)
+    {
+        objectIndex = -1;
+        pointIndex = -1;
+        return false;
+    }
+
     const double threshold = std::max(pointSnapTolerance() * 2.0, precisionStep() * 0.75);
     double best = threshold;
     objectIndex = -1;
     pointIndex = -1;
 
-    for (int row = 0; row < static_cast<int>(m_committedDocuments.size()); ++row)
+    for (int row = selectedRow; row <= selectedRow; ++row)
     {
         const auto& document = documentForCommittedRow(row);
         // 只把真正可编辑的控制点作为端点。displayPoints() 对圆、圆弧和
@@ -4037,7 +4054,10 @@ void Sketch2DDialog::handleSketchClick(double u, double v, bool rightButton)
                 if (row >= 0)
                 {
                     clearEndpointSelection();
-                    selectObjectRow(row);
+                    // 在已经多选的对象上右键时保留整组选择，避免右键菜单
+                    // 一弹出就把多选缩成一个对象。
+                    if (!selectedCommittedIndices().contains(row))
+                        selectObjectRow(row);
                 }
             }
         }
@@ -4048,10 +4068,14 @@ void Sketch2DDialog::handleSketchClick(double u, double v, bool rightButton)
     const Command command = currentCommand();
     if (command == Command::Select)
     {
+        const Qt::KeyboardModifiers modifiers = QApplication::keyboardModifiers();
+        const bool additive = modifiers.testFlag(Qt::ControlModifier) ||
+                              modifiers.testFlag(Qt::ShiftModifier);
+
         int objectIndex = -1;
         int pointIndex = -1;
         Point2D point;
-        if (findNearestEndpoint(u, v, objectIndex, pointIndex, point))
+        if (!additive && findNearestEndpoint(u, v, objectIndex, pointIndex, point))
         {
             selectEndpoint(objectIndex, pointIndex, point);
             setStatus(tr("已选择端点。"), true);
@@ -4062,10 +4086,33 @@ void Sketch2DDialog::handleSketchClick(double u, double v, bool rightButton)
         if (row >= 0)
         {
             clearEndpointSelection();
-            selectObjectRow(row);
-            setStatus(tr("已选择：%1").arg(documentTypeText(documentForCommittedRow(row))), true);
+            if (additive && ui->objectsTable && ui->objectsTable->selectionModel())
+            {
+                const QModelIndex index = ui->objectsTable->model()->index(row, 0);
+                ui->objectsTable->selectionModel()->select(
+                    index, QItemSelectionModel::Toggle | QItemSelectionModel::Rows);
+                ui->objectsTable->setCurrentCell(row, 0, QItemSelectionModel::NoUpdate);
+                updateSelectionHighlight();
+                updateActionButtons();
+                updateInfoPanel();
+            }
+            else
+            {
+                selectObjectRow(row);
+            }
+
+            const QList<int> selectedRows = selectedCommittedIndices();
+            const int count = selectedRows.size();
+            if (count <= 0)
+                setStatus(tr("未选中"), true);
+            else if (count == 1)
+                setStatus(tr("已选择：%1")
+                              .arg(documentTypeText(documentForCommittedRow(selectedRows.front()))),
+                          true);
+            else
+                setStatus(tr("已选择 %1 个对象。").arg(count), true);
         }
-        else
+        else if (!additive)
         {
             clearSketchSelection();
             setStatus(tr("未选中"), true);
@@ -5155,9 +5202,13 @@ void Sketch2DDialog::importDxfToSketch()
     resetProfileSegmentState();
     clearPendingPoint();
     setCommand(Command::Select);
+    // DXF 已有精确坐标，继续编辑时优先吸附已有端点，不再默认把点拉到网格上。
+    if (ui->gridSnapCheck)
+        ui->gridSnapCheck->setChecked(false);
     refreshPointTable();
     refreshObjectTable();
     clearSketchSelection();
+
 
     QString message = tr("已从 %1 导入 %2 个草图元素（%3 个精确直线/圆弧）。")
                           .arg(QFileInfo(filePath).fileName())
