@@ -73,4 +73,16 @@ class VisualWidgetService
                                         QString* errMsg = nullptr) = 0;
     virtual void showVisualizationView() = 0;
     virtual void setViewToolbarVisible(bool visible) = 0;
+
+    // Optional sketch-mode hooks. Existing visual widgets remain source-compatible.
+    virtual void setSketchModeEnabled(bool enabled, const QString& title = QString())
+    {
+        Q_UNUSED(enabled);
+        Q_UNUSED(title);
+    }
+
+    virtual void setSketchStatusText(const QString& text)
+    {
+        Q_UNUSED(text);
+    }
 };

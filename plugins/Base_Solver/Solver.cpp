@@ -1,4 +1,4 @@
-﻿#include "Solver.h"
+#include "Solver.h"
 
 #include <ContextMenuHub.h>
 #include <EventManager.h>
@@ -49,6 +49,7 @@
 #include <functional>
 #include <limits>
 #include <map>
+#include <memory>
 #include <set>
 #include <utility>
 #include <vector>
@@ -81,6 +82,7 @@
 #include "GeoStressOuterForcePage.h"
 #include "GeoStressSideFacePage.h"
 #include "SlopeStabilityWidget.h"
+#include "SlopeStandardMethodDialog.h"
 #include "SolverSettingWidget.h"
 
 namespace
@@ -89,6 +91,62 @@ constexpr int kSolverCustomTitleRole = Qt::UserRole + 104;
 constexpr char kLegacyNamedAnalysisWorkspaceRoot[] = u8"计算结果";
 constexpr char kLegacyAnalysisWorkspaceRoot[] = ".analysis_runs";
 constexpr char kLegacyAnalysisManifestFileName[] = "analysis.json";
+
+void connectSlopeLimitResultForwarder(SlopeStandardAnalysisWidget* page, ProjectNode* analysisNode)
+{
+    if (!page || !analysisNode)
+        return;
+    QObject::connect(page, &SlopeStandardAnalysisWidget::resultReady, page,
+                     [analysisNode](const QString& jobDirectory, double requiredFactor,
+                                    bool horizontalReversed, double horizontalMinimum,
+                                    double horizontalMaximum)
+                     {
+                         QVariantMap data;
+                         data.insert(QStringLiteral("analysisUuid"), analysisNode->getUuid());
+                         data.insert(QStringLiteral("analysisName"), analysisNode->text(0));
+                         data.insert(QStringLiteral("analysisKind"),
+                                     QStringLiteral("SlopeLimitEquilibriumAnalysis"));
+                         data.insert(QStringLiteral("resultRoot"),
+                                     QDir(jobDirectory).absolutePath());
+                         data.insert(QStringLiteral("requiredFactor"), requiredFactor);
+                         data.insert(QStringLiteral("horizontalReversed"), horizontalReversed);
+                         data.insert(QStringLiteral("horizontalMinimum"), horizontalMinimum);
+                         data.insert(QStringLiteral("horizontalMaximum"), horizontalMaximum);
+                         EventManager::instance().sendEvent(
+                             QStringLiteral("slope.limit.equilibrium.result.ready"), data);
+                     });
+}
+
+void connectSlopeLimitNavigation(SlopeStandardAnalysisWidget* page, ProjectNode* analysisNode)
+{
+    if (!page || !analysisNode)
+        return;
+
+    QObject::connect(page, &SlopeStandardAnalysisWidget::openSectionRequested, page,
+                     [analysisNode]()
+                     {
+                         auto* pm = ServiceRegistry::instance().getService<ProjectManagerService>();
+                         if (!pm)
+                             return;
+                         for (ProjectNode* child : analysisNode->getChildren())
+                         {
+                             if (child && child->getPage()
+                                 && child->getPage()->getPageType()
+                                        == QStringLiteral("SlopeLimitEquilibriumSection"))
+                             {
+                                 analysisNode->setExpanded(true);
+                                 pm->setCurrentItem(child);
+                                 return;
+                             }
+                         }
+                     });
+    QObject::connect(page, &SlopeStandardAnalysisWidget::openAnalysisRequested, page,
+                     [analysisNode]()
+                     {
+                         if (auto* pm = ServiceRegistry::instance().getService<ProjectManagerService>())
+                             pm->setCurrentItem(analysisNode);
+                     });
+}
 
 int readFirstLineInteger(const QString& filePath, int preferredIndex)
 {
@@ -473,6 +531,26 @@ void terminateDeployedSolvers()
 {
     QProcess::execute("taskkill", {"-f", "-im", "PCCAE_CPU.exe"});
     QProcess::execute("taskkill", {"-f", "-im", "PCCAE_GPU.exe"});
+    QProcess::execute("taskkill", {"-f", "-im", "A0_FEMANALYSIS.exe"});
+}
+
+QString deployedCaveBlockExecutable()
+{
+    const QString appDir = QCoreApplication::applicationDirPath();
+    // A0_FEMANALYSIS 是第三方的通用“计算分析”程序，并非块体专用 EXE。
+    // 正式部署统一放在 solver/FEMAnalysis 下；保留旧目录作为兼容查找。
+    const QStringList candidates = {
+        QDir(appDir).filePath(QStringLiteral("solver/FEMAnalysis/A0_FEMANALYSIS.exe")),
+        QDir(appDir).filePath(QStringLiteral("solver/BlockStability/A0_FEMANALYSIS.exe")),
+        QDir(appDir).filePath(QStringLiteral("solver/A0_FEMANALYSIS/A0_FEMANALYSIS.exe"))
+    };
+    for (const QString& candidate : candidates)
+    {
+        const QFileInfo info(candidate);
+        if (info.exists() && info.isFile())
+            return QDir::toNativeSeparators(info.absoluteFilePath());
+    }
+    return {};
 }
 
 QString solverErrorFromText(const QString& text)
@@ -525,6 +603,8 @@ QString solverErrorFromRunLogs(const QString& workspace, qint64 startedAtMs)
 QString customerFacingSolverFailure(const QString& technicalReason)
 {
     const QString reason = technicalReason.trimmed();
+    if (reason.contains(QStringLiteral("未生成块体稳定计算结果")))
+        return QStringLiteral("未生成块体稳定计算结果。请完成块体计算后再关闭计算窗口。");
     if (reason.contains(QStringLiteral("FILE DOES NOT EXIST"), Qt::CaseInsensitive)
         || reason.contains(QStringLiteral("does not exist"), Qt::CaseInsensitive))
     {
@@ -1140,6 +1220,8 @@ QString solverNodeBaseTitle(const QString& kind)
         {QStringLiteral("SeepageAnalysis"), QStringLiteral("渗流分析")},
         {QStringLiteral("DamAnalysis"), QStringLiteral("土石坝分析")},
         {QStringLiteral("SlopeStabilityAnalysis"), QStringLiteral("边坡分析")},
+        {QStringLiteral("SlopeLimitEquilibriumAnalysis"), QStringLiteral("极限平衡")},
+        {QStringLiteral("SlopeLimitEquilibriumSection"), QStringLiteral("断面")},
         {QStringLiteral("CaveExcavationAnalysis"), QStringLiteral("洞室开挖工程")},
         {QStringLiteral("CaveBlockStabilityAnalysis"), QStringLiteral("块体稳定分析")},
         {QStringLiteral("FillStorageCycle"), QStringLiteral("填筑蓄水")},
@@ -1174,7 +1256,9 @@ QString solverNodeRelationshipHint(ProjectNode* node)
          QStringLiteral("衬砌与围岩接触的外表面")},
         {QStringLiteral("CaveCraneBeamArea"), QStringLiteral("吊车梁所在实体区域")},
         {QStringLiteral("SeepageNaturalBoundary"), QStringLiteral("初始地下水自由面")},
-        {QStringLiteral("DamIceRegion"), QStringLiteral("结冰作用节点")}};
+        {QStringLiteral("DamIceRegion"), QStringLiteral("结冰作用节点")},
+        {QStringLiteral("SlopeLimitEquilibriumSection"),
+         QStringLiteral("设置计算断面")}};
     return hints.value(kind);
 }
 
@@ -1182,7 +1266,8 @@ bool solverNodeUsesAutomaticIndex(const QString& kind)
 {
     static const QSet<QString> repeatableKinds = {
         QStringLiteral("SeepageAnalysis"), QStringLiteral("DamAnalysis"),
-        QStringLiteral("SlopeStabilityAnalysis"), QStringLiteral("CaveExcavationAnalysis"),
+        QStringLiteral("SlopeStabilityAnalysis"), QStringLiteral("SlopeLimitEquilibriumAnalysis"),
+        QStringLiteral("CaveExcavationAnalysis"),
         QStringLiteral("CaveBlockStabilityAnalysis"),
         QStringLiteral("GeoStressRegressionSideFace"), QStringLiteral("CaveExcavationBody"),
         QStringLiteral("CaveBlockPlane"), QStringLiteral("SeepageNaturalBoundary")};
@@ -1193,7 +1278,8 @@ bool solverNodeCanRename(const QString& kind)
 {
     static const QSet<QString> renamableKinds = {
         QStringLiteral("SeepageAnalysis"), QStringLiteral("DamAnalysis"),
-        QStringLiteral("SlopeStabilityAnalysis"), QStringLiteral("CaveExcavationAnalysis"),
+        QStringLiteral("SlopeStabilityAnalysis"), QStringLiteral("SlopeLimitEquilibriumAnalysis"),
+        QStringLiteral("CaveExcavationAnalysis"),
         QStringLiteral("CaveBlockStabilityAnalysis"),
         QStringLiteral("GeoStressRegressionSideFace"), QStringLiteral("CaveExcavationBody"),
         QStringLiteral("CaveBlockPlane"), QStringLiteral("SeepageNaturalBoundary")};
@@ -1217,7 +1303,11 @@ int solverChildOrderRank(ProjectNode* parent, ProjectNode* child)
     const QString childKind = child->data(0, ProjectNode::RoleKind).toString();
     const QString pageType = child->getPage() ? child->getPage()->getPageType() : QString();
 
-    if (parentKind == QStringLiteral("DamAnalysis"))
+    if (parentKind == QStringLiteral("SlopeLimitEquilibriumAnalysis"))
+    {
+        if (childKind == QStringLiteral("SlopeLimitEquilibriumSection")) return 0;
+    }
+    else if (parentKind == QStringLiteral("DamAnalysis"))
     {
         if (childKind == QStringLiteral("FillStorageCycle")) return 0;
         if (childKind == QStringLiteral("DamDynamicAnalysis")) return 1;
@@ -1299,7 +1389,12 @@ void setSolverNodeTitle(ProjectNode* node, const QString& title)
     node->setName(title);
     node->setText(0, title);
     if (node->getPage())
+    {
         node->getPage()->setDisplayName(title);
+        // 计算页需要用工程树节点名称作为用户可见的结果目录名。
+        // 用 QObject 动态属性传递，避免把 ProjectNode 依赖扩散进页面数据模型。
+        node->getPage()->setProperty("solverNodeTitle", title);
+    }
 }
 
 QStringList caveIcaveLineKeys()
@@ -1527,8 +1622,24 @@ bool Solver::loadProject()
                     {
                         onComputeSlopeStability(analysisNode);
                     });
+            connect(slopePage, &SlopeStabilityWidget::limitEquilibriumRequested, this,
+                    &Solver::onSpecificationCheckAction);
             connectStopRequest(slopePage);
             analysisPage = slopePage;
+        }
+        else if (analysisType == "SlopeLimitEquilibriumAnalysis")
+        {
+            const QString uuid = analysisObj.value("uuid").toString(QUuid::createUuid().toString());
+            auto sharedState = std::make_shared<QJsonObject>();
+            auto* page = new SlopeStandardAnalysisWidget(
+                uuid, QJsonArray(), QString(), QString(), QString(), nullptr, true,
+                SlopeStandardAnalysisWidget::PageRole::AnalysisSettings, sharedState);
+            analysisNode = new ProjectNode(
+                analysisObj.value("title").toString("极限平衡"), uuid, page);
+            page->loadJson(analysisState);
+            connectSlopeLimitResultForwarder(page, analysisNode);
+            connectSlopeLimitNavigation(page, analysisNode);
+            analysisPage = page;
         }
         else if (analysisType == "CaveExcavationAnalysis")
         {
@@ -1546,6 +1657,7 @@ bool Solver::loadProject()
             analysisNode = new ProjectNode(
                 analysisObj.value("title").toString("块体稳定分析"),
                 analysisObj.value("uuid").toString(QUuid::createUuid().toString()), blockPage);
+            blockPage->setBlockGroupId(analysisNode->getUuid());
             blockPage->loadJson(analysisState);
             connect(blockPage, &CaveBlockStabilityWidget::computeRequested, this,
                     [this, analysisNode]()
@@ -1571,6 +1683,8 @@ bool Solver::loadProject()
         bool hasGeoStressRegressionNode = false;
         bool hasCaveSupportComputationNode = false;
         QJsonObject legacyCaveReinforcementState;
+        QVector<QJsonObject> legacySlopeCaseStates;
+        QStringList legacySlopeCaseTitles;
         for (const auto& childV : analysisObj.value("children").toArray())
         {
             const QJsonObject childObj = childV.toObject();
@@ -1648,6 +1762,24 @@ bool Solver::loadProject()
             {
                 page = new GeoStressOuterForcePage();
             }
+            else if (type == "SlopeLimitEquilibriumSection")
+            {
+                auto* settingsPage = dynamic_cast<SlopeStandardAnalysisWidget*>(analysisNode->getPage());
+                if (settingsPage)
+                {
+                    page = new SlopeStandardAnalysisWidget(
+                        analysisNode->getUuid(), QJsonArray(), QString(), QString(), QString(), nullptr, true,
+                        SlopeStandardAnalysisWidget::PageRole::SectionEditor, settingsPage->sharedState());
+                }
+            }
+            else if (type == "SlopeLimitEquilibriumCase")
+            {
+                // v2 兼容：旧版把多个工况放在一个极限平衡父节点下。
+                // 新版一个分析节点就是一个工况，因此先收集，循环结束后迁移。
+                legacySlopeCaseStates.append(childObj.value("state").toObject());
+                legacySlopeCaseTitles.append(childObj.value("title").toString());
+                continue;
+            }
             else if (type == "CaveSupportComputation")
             {
                 page = new CaveSupportComputationPage();
@@ -1697,6 +1829,10 @@ bool Solver::loadProject()
             auto* node = new ProjectNode(
                 childTitle,
                 childObj.value("uuid").toString(QUuid::createUuid().toString()), page);
+            if (auto* blockPlanePage = dynamic_cast<CaveBlockPlanePage*>(page))
+                blockPlanePage->setBlockGroupId(analysisNode->getUuid());
+            if (auto* blockSettingsPage = dynamic_cast<CaveBlockStabilityWidget*>(page))
+                blockSettingsPage->setBlockGroupId(node->getUuid());
             if (type == "FillStorageCycle")
                 setupNodeRole(node, "FillStorageCycle");
             else if (type == "DamDynamicAnalysis")
@@ -1709,6 +1845,8 @@ bool Solver::loadProject()
                 setupNodeRole(node, "GeoStressRegressionMeasurePoint");
             else if (type == "GeoStressRegressionOuterForce")
                 setupNodeRole(node, "GeoStressRegressionOuterForce");
+            else if (type == "SlopeLimitEquilibriumSection")
+                setupNodeRole(node, "SlopeLimitEquilibriumSection");
             else if (type == "CaveSupportComputation")
                 setupNodeRole(node, "CaveSupportComputation");
             else if (type == "CaveCraneBeamArea")
@@ -1798,6 +1936,11 @@ bool Solver::loadProject()
                     legacyDamDynamicState = legacyState;
             }
             page->loadJson(childState);
+            if (type == QStringLiteral("SlopeLimitEquilibriumSection"))
+            {
+                if (auto* sectionPage = dynamic_cast<SlopeStandardAnalysisWidget*>(page))
+                    connectSlopeLimitNavigation(sectionPage, analysisNode);
+            }
             if (analysisType == "CaveExcavationAnalysis" && type == "CaveSupportComputation"
                 && !hasAnyIcaveLineKey(childState) && hasAnyIcaveLineValue(analysisState))
             {
@@ -1871,6 +2014,8 @@ bool Solver::loadProject()
                     auto* gcNode = new ProjectNode(
                         gcObj.value("title").toString("子项"),
                         gcObj.value("uuid").toString(QUuid::createUuid().toString()), gcPage);
+                    if (auto* blockPlanePage = dynamic_cast<CaveBlockPlanePage*>(gcPage))
+                        blockPlanePage->setBlockGroupId(node->getUuid());
                     if (gcType == "GeoStressRegressionSideFace")
                         setupNodeRole(gcNode, "GeoStressRegressionSideFace");
                     else if (gcType == "GeoStressRegressionMeasurePoint")
@@ -1905,6 +2050,26 @@ bool Solver::loadProject()
                     }
                 }
             }
+        }
+
+        if (analysisType == QStringLiteral("SlopeLimitEquilibriumAnalysis"))
+        {
+            // v2 -> v3：旧版第一个“工况”提升为当前分析本身，其余工况在
+            // 当前分析加入根节点后再迁移成同级的独立分析节点。
+            if (!legacySlopeCaseStates.isEmpty())
+            {
+                if (auto* settingsPage =
+                        dynamic_cast<SlopeStandardAnalysisWidget*>(analysisNode->getPage()))
+                    settingsPage->loadJson(legacySlopeCaseStates.first());
+                const QString firstTitle = legacySlopeCaseTitles.value(0).trimmed();
+                if (!firstTitle.isEmpty())
+                {
+                    analysisNode->setData(0, kSolverCustomTitleRole, firstTitle);
+                    setSolverNodeTitle(analysisNode, firstTitle);
+                }
+            }
+            if (!findChildByPageType(analysisNode, QStringLiteral("SlopeLimitEquilibriumSection")))
+                addSlopeLimitSectionNode(analysisNode, false);
         }
 
         if (analysisType == QStringLiteral("CaveExcavationAnalysis")
@@ -2072,6 +2237,8 @@ bool Solver::loadProject()
             setupNodeRole(analysisNode, "SeepageAnalysis");
         else if (analysisType == "SlopeStabilityAnalysis")
             setupNodeRole(analysisNode, "SlopeStabilityAnalysis");
+        else if (analysisType == "SlopeLimitEquilibriumAnalysis")
+            setupNodeRole(analysisNode, "SlopeLimitEquilibriumAnalysis");
         else if (analysisType == "CaveExcavationAnalysis")
             setupNodeRole(analysisNode, "CaveExcavationAnalysis");
         else if (analysisType == "CaveBlockStabilityAnalysis")
@@ -2084,6 +2251,93 @@ bool Solver::loadProject()
         for (ProjectNode* child : analysisNode->getChildren())
             syncChildNodeNames(child);
         m_root->addChild(analysisNode);
+
+        if (analysisType == QStringLiteral("SlopeLimitEquilibriumAnalysis")
+            && legacySlopeCaseStates.size() > 1)
+        {
+            for (int i = 1; i < legacySlopeCaseStates.size(); ++i)
+            {
+                const QString migratedUuid = QUuid::createUuid().toString();
+                auto migratedShared = std::make_shared<QJsonObject>();
+                auto* migratedPage = new SlopeStandardAnalysisWidget(
+                    migratedUuid, QJsonArray(), QString(), QString(), QString(), nullptr, true,
+                    SlopeStandardAnalysisWidget::PageRole::AnalysisSettings, migratedShared);
+                migratedPage->loadJson(legacySlopeCaseStates.at(i));
+                QString migratedTitle = legacySlopeCaseTitles.value(i).trimmed();
+                if (migratedTitle.isEmpty())
+                    migratedTitle = QStringLiteral("极限平衡");
+                auto* migratedNode = new ProjectNode(migratedTitle, migratedUuid, migratedPage);
+                setupNodeRole(migratedNode, QStringLiteral("SlopeLimitEquilibriumAnalysis"));
+                if (!legacySlopeCaseTitles.value(i).trimmed().isEmpty())
+                    migratedNode->setData(0, kSolverCustomTitleRole, migratedTitle);
+                connectSlopeLimitResultForwarder(migratedPage, migratedNode);
+                connectSlopeLimitNavigation(migratedPage, migratedNode);
+                m_root->addChild(migratedNode);
+                addSlopeLimitSectionNode(migratedNode, false);
+                migratedNode->setExpanded(false);
+            }
+        }
+
+        // 迁移旧版本：规范/极限平衡数据曾经寄存在“边坡分析”节点中。
+        // v3 不再创建“工况”子节点；每个旧工况直接迁移成一个独立分析节点。
+        if (analysisType == QStringLiteral("SlopeStabilityAnalysis")
+            && (analysisState.contains(QStringLiteral("standard_method_cases"))
+                || !analysisState.value(QStringLiteral("standard_method_dat")).toString().trimmed().isEmpty()))
+        {
+            QVector<QJsonObject> migratedStates;
+            QStringList migratedTitles;
+            const QJsonArray legacyCases =
+                analysisState.value(QStringLiteral("standard_method_cases")).toArray();
+            if (!legacyCases.isEmpty())
+            {
+                for (const QJsonValue& value : legacyCases)
+                {
+                    if (!value.isObject())
+                        continue;
+                    const QJsonObject caseObject = value.toObject();
+                    QJsonObject state;
+                    state[QStringLiteral("cases")] = QJsonArray{caseObject};
+                    state[QStringLiteral("current_case")] =
+                        caseObject.value(QStringLiteral("id"));
+                    migratedStates.append(state);
+                    migratedTitles.append(
+                        caseObject.value(QStringLiteral("name")).toString());
+                }
+            }
+            else
+            {
+                QJsonObject state;
+                state[QStringLiteral("legacy_dat")] =
+                    analysisState.value(QStringLiteral("standard_method_dat"));
+                state[QStringLiteral("last_job")] =
+                    analysisState.value(QStringLiteral("standard_method_last_job"));
+                migratedStates.append(state);
+                migratedTitles.append(QString());
+            }
+
+            for (int i = 0; i < migratedStates.size(); ++i)
+            {
+                const QString leUuid = QUuid::createUuid().toString();
+                auto shared = std::make_shared<QJsonObject>();
+                auto* lePage = new SlopeStandardAnalysisWidget(
+                    leUuid, QJsonArray(), QString(), QString(), QString(), nullptr, true,
+                    SlopeStandardAnalysisWidget::PageRole::AnalysisSettings, shared);
+                lePage->loadJson(migratedStates.at(i));
+                QString title = migratedTitles.value(i).trimmed();
+                if (title.isEmpty())
+                    title = QStringLiteral("极限平衡");
+                auto* leNode = new ProjectNode(title, leUuid, lePage);
+                setupNodeRole(leNode, QStringLiteral("SlopeLimitEquilibriumAnalysis"));
+                if (!migratedTitles.value(i).trimmed().isEmpty())
+                    leNode->setData(0, kSolverCustomTitleRole, title);
+                connectSlopeLimitResultForwarder(lePage, leNode);
+                connectSlopeLimitNavigation(lePage, leNode);
+                m_root->addChild(leNode);
+                addSlopeLimitSectionNode(leNode, false);
+                leNode->setExpanded(false);
+            }
+        }
+
         // 工程打开时只展示计算分析的直接子节点，不递归展开每个分析。
         analysisNode->setExpanded(false);
         syncSeepageConditionalNodes(analysisNode);
@@ -2183,6 +2437,8 @@ void Solver::initTreeMenu()
                                           [this]() { onStressStrainAction(); });
                 ContextMenuHub::addAction(menu, this, "新增边坡分析",
                                           [this]() { onSlopeStabilityAction(); });
+                ContextMenuHub::addAction(menu, this, "新增极限平衡",
+                                          [this]() { onSpecificationCheckAction(); });
                 ContextMenuHub::addAction(menu, this, "新增洞室开挖工程",
                                           [this]() { onCaveExcavationAction(); });
                 ContextMenuHub::addAction(menu, this, "新增块体稳定分析",
@@ -2201,6 +2457,19 @@ void Solver::initTreeMenu()
                         auto* analysisNode = pm ? pm->findNodeByUuid(uuid) : nullptr;
                         if (analysisNode)
                             addSeepageNaturalBoundaryNode(analysisNode, true);
+                    });
+            }
+            else if (kind == QStringLiteral("SlopeLimitEquilibriumAnalysis"))
+            {
+                ContextMenuHub::addSeparator(menu);
+                ContextMenuHub::addAction(
+                    menu, this, "复制分析",
+                    [this, uuid]()
+                    {
+                        auto* pm = ServiceRegistry::instance().getService<ProjectManagerService>();
+                        auto* analysisNode = pm ? pm->findNodeByUuid(uuid) : nullptr;
+                        if (analysisNode)
+                            duplicateSlopeLimitAnalysisNode(analysisNode);
                     });
             }
             else if (kind == QStringLiteral("CaveExcavationAnalysis"))
@@ -2484,6 +2753,23 @@ void Solver::renameNodeByUuid(const QString& uuid)
                              QStringLiteral("名称不能为空。"));
         return;
     }
+
+    // 极限平衡分析的节点名称会直接作为结果目录名，因此名称本身必须是合法
+    // 的文件夹名称。节点名称同时要求在同一级中唯一（下方统一重复检查）。
+    if (kind == QStringLiteral("SlopeLimitEquilibriumAnalysis"))
+    {
+#ifdef Q_OS_WIN
+        static const QRegularExpression invalidPathChars(QStringLiteral(R"([<>:"/\\|?*])"));
+        if (newTitle.contains(invalidPathChars) || newTitle.endsWith(QLatin1Char('.'))
+            || newTitle.endsWith(QLatin1Char(' ')))
+        {
+            QMessageBox::warning(
+                nullptr, QStringLiteral("名称无效"),
+                QStringLiteral("名称不能包含 \\ / : * ? \" < > |，也不能以空格或句点结尾。"));
+            return;
+        }
+#endif
+    }
     if (newTitle == currentTitle && solverNodeHasCustomTitle(node))
         return;
 
@@ -2497,7 +2783,7 @@ void Solver::renameNodeByUuid(const QString& uuid)
                 && sibling->text(0).compare(displayTitle, Qt::CaseInsensitive) == 0)
             {
                 QMessageBox::warning(nullptr, QStringLiteral("名称重复"),
-                                     QStringLiteral("同一级中已存在“%1”，请使用其他名称。")
+                                     QStringLiteral("已存在“%1”，请使用其他名称。")
                                          .arg(displayTitle));
                 return;
             }
@@ -2642,7 +2928,8 @@ void Solver::refreshRootOverview() const
         const QString kind = child ? child->data(0, ProjectNode::RoleKind).toString() : QString();
         if (kind == QStringLiteral("SeepageAnalysis")) ++seepage;
         else if (kind == QStringLiteral("DamAnalysis")) ++dam;
-        else if (kind == QStringLiteral("SlopeStabilityAnalysis")) ++slope;
+        else if (kind == QStringLiteral("SlopeStabilityAnalysis")
+                 || kind == QStringLiteral("SlopeLimitEquilibriumAnalysis")) ++slope;
         else if (kind == QStringLiteral("CaveExcavationAnalysis")) ++cave;
         else if (kind == QStringLiteral("CaveBlockStabilityAnalysis")) ++block;
     }
@@ -3598,6 +3885,7 @@ void Solver::addCaveBlockPlaneNode(ProjectNode* blockNode, bool setCurrent) cons
         return;
 
     auto* page = new CaveBlockPlanePage();
+    page->setBlockGroupId(blockNode->getUuid());
     auto* node = new ProjectNode(QStringLiteral("滑块面"), QUuid::createUuid().toString(), page);
     setupNodeRole(node, "CaveBlockPlane");
     blockNode->addChild(node);
@@ -3745,6 +4033,7 @@ void Solver::onCaveBlockStabilityAction()
     auto* blockPage = new CaveBlockStabilityWidget();
     const QString analysisName = QStringLiteral("块体稳定分析");
     auto* analysisNode = new ProjectNode(analysisName, QUuid::createUuid().toString(), blockPage);
+    blockPage->setBlockGroupId(analysisNode->getUuid());
     setupNodeRole(analysisNode, "CaveBlockStabilityAnalysis");
 
     connect(blockPage, &CaveBlockStabilityWidget::computeRequested, this,
@@ -3777,7 +4066,9 @@ void Solver::onSlopeStabilityAction()
             {
                 onComputeSlopeStability(analysisNode);
             });
-            connectStopRequest(slopePage);
+    connect(slopePage, &SlopeStabilityWidget::limitEquilibriumRequested, this,
+            &Solver::onSpecificationCheckAction);
+    connectStopRequest(slopePage);
 
     m_root->addChild(analysisNode);
     analysisNode->setExpanded(true);
@@ -3786,42 +4077,93 @@ void Solver::onSlopeStabilityAction()
         pm->setCurrentItem(analysisNode);
 }
 
+void Solver::addSlopeLimitSectionNode(ProjectNode* analysisNode, bool setCurrent) const
+{
+    if (!analysisNode)
+        return;
+
+    if (findChildByPageType(analysisNode, QStringLiteral("SlopeLimitEquilibriumSection")))
+        return;
+
+    auto* settingsPage = dynamic_cast<SlopeStandardAnalysisWidget*>(analysisNode->getPage());
+    if (!settingsPage)
+        return;
+
+    const QString uuid = QUuid::createUuid().toString();
+    auto* page = new SlopeStandardAnalysisWidget(
+        analysisNode->getUuid(), QJsonArray(), QString(), QString(), QString(), nullptr, true,
+        SlopeStandardAnalysisWidget::PageRole::SectionEditor, settingsPage->sharedState());
+    auto* node = new ProjectNode(QStringLiteral("断面"), uuid, page);
+    setupNodeRole(node, QStringLiteral("SlopeLimitEquilibriumSection"));
+    connectSlopeLimitNavigation(page, analysisNode);
+    analysisNode->addChild(node);
+    analysisNode->setExpanded(true);
+    if (setCurrent)
+        if (auto* pm = ServiceRegistry::instance().getService<ProjectManagerService>())
+            pm->setCurrentItem(node);
+}
+
+void Solver::duplicateSlopeLimitAnalysisNode(ProjectNode* analysisNode)
+{
+    if (!m_root || !analysisNode)
+        return;
+    auto* sourcePage = dynamic_cast<SlopeStandardAnalysisWidget*>(analysisNode->getPage());
+    if (!sourcePage)
+        return;
+
+    QJsonObject state = sourcePage->saveJson();
+    state[QStringLiteral("last_job")] = QString();
+    QJsonArray cases = state.value(QStringLiteral("cases")).toArray();
+    for (int i = 0; i < cases.size(); ++i)
+    {
+        QJsonObject one = cases.at(i).toObject();
+        one[QStringLiteral("last_job")] = QString();
+        cases[i] = one;
+    }
+    state[QStringLiteral("cases")] = cases;
+
+    const QString uuid = QUuid::createUuid().toString();
+    auto sharedState = std::make_shared<QJsonObject>();
+    auto* page = new SlopeStandardAnalysisWidget(
+        uuid, QJsonArray(), QString(), QString(), QString(), nullptr, true,
+        SlopeStandardAnalysisWidget::PageRole::AnalysisSettings, sharedState);
+    page->loadJson(state);
+    auto* node = new ProjectNode(QStringLiteral("极限平衡"), uuid, page);
+    setupNodeRole(node, QStringLiteral("SlopeLimitEquilibriumAnalysis"));
+    connectSlopeLimitResultForwarder(page, node);
+    connectSlopeLimitNavigation(page, node);
+    m_root->addChild(node);
+    addSlopeLimitSectionNode(node, false);
+    node->setExpanded(true);
+    syncAnalysisNodeNames();
+    refreshRootOverview();
+    if (auto* pm = ServiceRegistry::instance().getService<ProjectManagerService>())
+        pm->setCurrentItem(node);
+}
+
 void Solver::onSpecificationCheckAction()
 {
     if (!m_root)
         return;
 
-    // 规范验算是边坡分析的一种计算方式。优先复用最新的边坡分析，使其 DAT
-    // 输入和最近一次结果继续随该分析节点保存；工程中尚无边坡分析时自动创建。
-    ProjectNode* analysisNode = nullptr;
-    const auto children = m_root->getChildren();
-    for (auto it = children.crbegin(); it != children.crend(); ++it)
-    {
-        ProjectNode* candidate = *it;
-        if (candidate && candidate->data(0, ProjectNode::RoleKind).toString()
-                             == QStringLiteral("SlopeStabilityAnalysis"))
-        {
-            analysisNode = candidate;
-            break;
-        }
-    }
+    const QString uuid = QUuid::createUuid().toString();
+    auto sharedState = std::make_shared<QJsonObject>();
+    auto* page = new SlopeStandardAnalysisWidget(
+        uuid, QJsonArray(), QString(), QString(), QString(), nullptr, true,
+        SlopeStandardAnalysisWidget::PageRole::AnalysisSettings, sharedState);
+    auto* analysisNode = new ProjectNode(QStringLiteral("极限平衡"), uuid, page);
+    setupNodeRole(analysisNode, QStringLiteral("SlopeLimitEquilibriumAnalysis"));
 
-    if (!analysisNode)
-    {
-        onSlopeStabilityAction();
-        const auto updatedChildren = m_root->getChildren();
-        if (!updatedChildren.isEmpty())
-            analysisNode = updatedChildren.last();
-    }
+    connectSlopeLimitResultForwarder(page, analysisNode);
+    connectSlopeLimitNavigation(page, analysisNode);
 
-    auto* page = analysisNode
-                     ? dynamic_cast<SlopeStabilityWidget*>(analysisNode->getPage())
-                     : nullptr;
-    if (!page)
-        return;
+    m_root->addChild(analysisNode);
+    addSlopeLimitSectionNode(analysisNode, false);
+    analysisNode->setExpanded(true);
+    syncAnalysisNodeNames();
+    refreshRootOverview();
     if (auto* pm = ServiceRegistry::instance().getService<ProjectManagerService>())
         pm->setCurrentItem(analysisNode);
-    QTimer::singleShot(0, page, [page]() { page->openStandardMethodDialog(); });
 }
 
 void Solver::onComputeSeepage(ProjectNode* analysisNode)
@@ -6080,6 +6422,65 @@ void Solver::onComputeCaveBlockStability(ProjectNode* analysisNode)
         }
     }
 
+    // A0_FEMANALYSIS 的块体流程会直接读取当前数据目录下的 IIIN.DAT。
+    // 每次计算前都从当前网格刷新，避免沿用旧 SliderCase 的网格。
+    const QString projectDir =
+        PublicVariables::instance().get(PublicConstants::kProjectDirectoryKey).toString();
+    QDir sliderDir(QDir(projectDir).filePath(QStringLiteral("SliderCase")));
+    if (!QDir().mkpath(sliderDir.absolutePath()))
+    {
+        QMessageBox::warning(nullptr, QStringLiteral("无法开始计算"),
+                             QStringLiteral("无法准备块体稳定计算数据。"));
+        return;
+    }
+
+    const QString targetIiin = sliderDir.filePath(QStringLiteral("IIIN.DAT"));
+    bool iiinReady = false;
+    if (auto* meshSvc = ServiceRegistry::instance().getService<MeshModuleControllerService>())
+    {
+        const QString sourceMeshPath = meshSvc->sourceMeshFilePath();
+        const QFileInfo sourceInfo(sourceMeshPath);
+        const bool sourceIsDat =
+            sourceInfo.exists() &&
+            sourceInfo.suffix().compare(QStringLiteral("dat"), Qt::CaseInsensitive) == 0;
+        if (sourceIsDat)
+        {
+            const QString sourceAbs = QFileInfo(sourceMeshPath).absoluteFilePath();
+            const QString targetAbs = QFileInfo(targetIiin).absoluteFilePath();
+            if (QDir::cleanPath(sourceAbs).compare(QDir::cleanPath(targetAbs), Qt::CaseInsensitive) == 0)
+                iiinReady = QFileInfo(targetIiin).exists() && QFileInfo(targetIiin).size() > 0;
+            else
+            {
+                QFile::remove(targetIiin);
+                iiinReady = QFile::copy(sourceMeshPath, targetIiin);
+            }
+        }
+        else
+        {
+            QString iiinError;
+            iiinReady = meshSvc->exportIiinDatFile(targetIiin, &iiinError);
+            if (!iiinReady)
+                qWarning().noquote() << "块体稳定网格数据生成失败:" << iiinError;
+        }
+    }
+    if (!iiinReady)
+    {
+        const QString stagedIiin =
+            QDir(SolverFilePaths::outputInputDirectory(projectDir))
+                .filePath(QStringLiteral("IIIN.DAT"));
+        if (QFileInfo::exists(stagedIiin))
+        {
+            QFile::remove(targetIiin);
+            iiinReady = QFile::copy(stagedIiin, targetIiin);
+        }
+    }
+    if (!iiinReady || !QFileInfo::exists(targetIiin))
+    {
+        QMessageBox::warning(nullptr, QStringLiteral("请检查网格"),
+                             QStringLiteral("当前网格无法用于块体稳定计算。"));
+        return;
+    }
+
     if (blockPage->exportDatFiles(planePages))
     {
         launchCaveBlockSolverExecutable(analysisNode);
@@ -6158,6 +6559,20 @@ void Solver::handleSolverProcessFinished(int exitCode, QProcess::ExitStatus exit
     if (m_solverFailureDetail.isEmpty())
         m_solverFailureDetail =
             solverErrorFromRunLogs(m_activeAnalysisWorkspace, m_solverStartedAtMs);
+
+    // A0_FEMANALYSIS 是旧式 GUI 程序，正常关闭进程并不代表用户已经完成块体计算。
+    // 只有实际生成 SAFE_CAVEBLK.DAT 才视为块体稳定计算完成。
+    if (m_solverFailureDetail.isEmpty() &&
+        m_activeAnalysisKind == QStringLiteral("CaveBlockStabilityAnalysis") &&
+        exitStatus == QProcess::NormalExit && exitCode == 0)
+    {
+        const QFileInfo resultInfo(
+            QDir(m_activeAnalysisWorkspace)
+                .filePath(QStringLiteral("SliderCase/SAFE_CAVEBLK.DAT")));
+        if (!resultInfo.exists() || resultInfo.size() <= 0)
+            m_solverFailureDetail =
+                QStringLiteral("未生成块体稳定计算结果。请完成块体计算后再关闭计算窗口。");
+    }
 
     const bool succeeded = exitStatus == QProcess::NormalExit && exitCode == 0
                            && m_solverFailureDetail.isEmpty();
@@ -6274,7 +6689,8 @@ bool Solver::canDeleteNode(ProjectNode* node) const
         QStringLiteral("CaveLiningOuterBoundary"),
         QStringLiteral("CaveCraneBeamArea"),
         QStringLiteral("DamIceRegion"),
-        QStringLiteral("DamDynamicAnalysis")};
+        QStringLiteral("DamDynamicAnalysis"),
+        QStringLiteral("SlopeLimitEquilibriumSection")};
     if (fixedKinds.contains(kind))
         return false;
 
@@ -7310,17 +7726,13 @@ bool Solver::beginCommonCompute(
 
 bool Solver::launchCaveBlockSolverExecutable(ProjectNode* analysisNode)
 {
-    SolverRuntimeOptions runtimeOptions = solverRuntimeOptions();
-    runtimeOptions.useGpu = false;
-    runtimeOptions.deviceCode = 0;
-    runtimeOptions.executableRelativePath = QStringLiteral("solver/PCCAE_CPU/PCCAE_CPU.exe");
-    const QString exePath = deployedSolverExecutable(runtimeOptions);
+    const QString exePath = deployedCaveBlockExecutable();
     if (!QFileInfo::exists(exePath))
     {
-        qWarning() << "solver executable missing:" << exePath;
+        qWarning() << "A0_FEMANALYSIS.exe missing from solver/FEMAnalysis";
         QMessageBox::warning(
-            nullptr, QStringLiteral("计算程序未启动"),
-            QStringLiteral("计算程序安装不完整。请修复或重新安装软件。"));
+            nullptr, QStringLiteral("计算程序未安装"),
+            QStringLiteral("未找到块体稳定计算程序。请检查软件安装后重试。"));
         return false;
     }
 
@@ -7351,8 +7763,52 @@ bool Solver::launchCaveBlockSolverExecutable(ProjectNode* analysisNode)
         return false;
     }
 
+    // MESG227.DAT 是从工程临时 SliderCase 复制到分析工作区的。
+    // 将其中可能保存的旧数据目录同步为本次工作目录，避免原程序把中间文件
+    // 又写回工程根目录的 SliderCase。
+    {
+        const QString mesgPath = QDir(sliderDir).filePath(QStringLiteral("MESG227.DAT"));
+        QFile mesgFile(mesgPath);
+        if (mesgFile.open(QIODevice::ReadOnly | QIODevice::Text))
+        {
+            QString text = QString::fromUtf8(mesgFile.readAll());
+            mesgFile.close();
+            QString oldDir = QDir::toNativeSeparators(
+                QDir(projectDir).filePath(QStringLiteral("SliderCase")));
+            QString newDir = QDir::toNativeSeparators(QDir(sliderDir).absolutePath());
+            if (!oldDir.endsWith(QLatin1Char('\\'))) oldDir += QLatin1Char('\\');
+            if (!newDir.endsWith(QLatin1Char('\\'))) newDir += QLatin1Char('\\');
+            if (text.contains(oldDir, Qt::CaseInsensitive))
+            {
+                text.replace(oldDir, newDir, Qt::CaseInsensitive);
+                if (mesgFile.open(QIODevice::WriteOnly | QIODevice::Text | QIODevice::Truncate))
+                    mesgFile.write(text.toUtf8());
+            }
+        }
+    }
+
+    // A0_FEMANALYSIS 通过固定的 D:/IIIDIR.DAT 判断“研究对象”。
+    // 块体稳定入口只出现在 IOBJECT=6（地下洞室）菜单中。
+    // 启动第三方程序前暂时切到 6，程序退出后恢复用户原来的 IIIDIR，
+    // 这里只改变入口类型，不代替用户点击任何按钮。
+    QString originalIiiDirContent;
+    {
+        QFile iiiDirFile(QStringLiteral("D:/IIIDIR.DAT"));
+        if (iiiDirFile.open(QIODevice::ReadOnly | QIODevice::Text))
+            originalIiiDirContent = QString::fromLocal8Bit(iiiDirFile.readAll());
+    }
+
+    auto restoreOriginalIiiDir = [originalIiiDirContent]() {
+        if (originalIiiDirContent.isEmpty())
+            return;
+        QFile iiiDirFile(QStringLiteral("D:/IIIDIR.DAT"));
+        if (iiiDirFile.open(QIODevice::WriteOnly | QIODevice::Text | QIODevice::Truncate))
+            iiiDirFile.write(originalIiiDirContent.toLocal8Bit());
+    };
+
     if (!updateCaveBlockIiiDirDat(sliderDir))
     {
+        restoreOriginalIiiDir();
         QMessageBox::warning(
             nullptr, QStringLiteral("计算程序未启动"),
             QStringLiteral("块体稳定计算准备失败。请保存工程后重试。"));
@@ -7375,9 +7831,10 @@ bool Solver::launchCaveBlockSolverExecutable(ProjectNode* analysisNode)
                           m_activeAnalysisType, QStringLiteral("running"));
 
     m_solverProcess = new QProcess(this);
-    // 滑块计算仍使用 PCCAE_CPU.exe；运行前把 D:/IIIDIR.DAT 指向 SliderCase
-    // 并写入滑块需要的 6 工况，使求解器进入滑块流程而不是 MESG_IAUTO 自动分发流程。
-    m_solverProcess->setWorkingDirectory(QDir(sliderDir).absolutePath());
+    // 原始块体稳定功能实际位于 A0_FEMANALYSIS.exe 内部的 CAVEBLK 流程。
+    // IIIDIR 指向当前计算目录，并临时把 IOBJECT 设为地下洞室入口。
+    // 工作目录使用 EXE 所在目录，保证旧程序旁边的运行时 DLL/资源可被正常找到。
+    m_solverProcess->setWorkingDirectory(QFileInfo(exePath).absolutePath());
     m_solverProcess->setProgram(exePath);
     m_solverProcess->setArguments(QStringList());
     m_solverProcess->setProcessChannelMode(QProcess::MergedChannels);
@@ -7394,7 +7851,8 @@ bool Solver::launchCaveBlockSolverExecutable(ProjectNode* analysisNode)
 
     connect(m_solverProcess,
             QOverload<int, QProcess::ExitStatus>::of(&QProcess::finished), this,
-            [this](int exitCode, QProcess::ExitStatus exitStatus) {
+            [this, restoreOriginalIiiDir](int exitCode, QProcess::ExitStatus exitStatus) {
+                restoreOriginalIiiDir();
                 handleSolverProcessFinished(exitCode, exitStatus);
             });
 
@@ -7406,12 +7864,16 @@ bool Solver::launchCaveBlockSolverExecutable(ProjectNode* analysisNode)
             nullptr, QStringLiteral("计算程序未启动"),
             QStringLiteral("块体稳定计算程序无法启动。请检查软件安装后重试。"));
 
+        restoreOriginalIiiDir();
         writeAnalysisManifest(m_activeAnalysisWorkspace, m_activeAnalysisUuid,
                               m_activeAnalysisName, m_activeAnalysisKind,
                               m_activeAnalysisType, QStringLiteral("failed"));
         finishSolverProcess(false);
         return false;
     }
+
+    // 这里只负责启动第三方计算程序。
+    // 不扫描窗口、不发送按钮消息，也不代替用户操作旧程序界面。
 
     setComputeWidgetRunning(m_activeComputeWidget, true);
     return true;
@@ -7569,56 +8031,36 @@ int Solver::solverModeFromAnalysisType(const QString& analysisType) const
 
 bool Solver::updateCaveBlockIiiDirDat(const QString& sliderDir) const
 {
-    QFile file("D:/IIIDIR.DAT");
+    QFile file(QStringLiteral("D:/IIIDIR.DAT"));
     if (!file.exists() || !file.open(QIODevice::ReadOnly | QIODevice::Text))
         return false;
 
-    QString content = QString::fromLocal8Bit(file.readAll());
+    const QString content = QString::fromLocal8Bit(file.readAll());
     file.close();
-    QStringList lines = content.split(QRegularExpression("\\r?\\n"), Qt::KeepEmptyParts);
-    if (lines.size() < 9)
+    QStringList lines = content.split(QRegularExpression(QStringLiteral("\\r?\\n")),
+                                      Qt::KeepEmptyParts);
+    if (lines.isEmpty())
         return false;
 
     QString nativeSliderDir = QDir::toNativeSeparators(QDir(sliderDir).absolutePath());
-    if (!nativeSliderDir.endsWith('\\'))
-        nativeSliderDir += "\\";
+    if (!nativeSliderDir.endsWith(QLatin1Char('\\')))
+        nativeSliderDir += QLatin1Char('\\');
 
-    lines[0] = QString("'%1'").arg(nativeSliderDir);
-    lines[4] = QString("%1  IDEVICE").arg(0, 9);
-    lines[5] = QString("%1  ILOG_GZKZR").arg(0, 9);
-    lines[6] = QString("%1  ILOG_SOLVE").arg(0, 9);
-
-    bool updatedModeLine = false;
-    for (int i = lines.size() - 1; i >= 1; --i)
-    {
-        const QString trimmed = lines[i].trimmed();
-        const bool quotedPath = trimmed.startsWith("'") && trimmed.endsWith("'") &&
-                                (trimmed.contains('\\') || trimmed.contains('/'));
-        if (quotedPath)
-        {
-            lines[i] = QString("'%1'").arg(nativeSliderDir);
-            if (i + 1 < lines.size())
-            {
-                bool ok = false;
-                lines[i + 1].trimmed().toInt(&ok);
-                if (ok)
-                {
-                    lines[i + 1] = QString("%1   ").arg(6, 12);
-                    updatedModeLine = true;
-                }
-            }
-            break;
-        }
-    }
-
-    if (!updatedModeLine)
+    // A0_FEMANALYSIS 通过 IIIDIR 首行取得当前数据目录，
+    // 并通过第 9 行 IOBJECT 决定“对不同研究对象开展计算”后显示哪组菜单。
+    // 块体稳定入口位于地下洞室菜单，因此本次外部程序会话临时使用 IOBJECT=6。
+    // 注意：这不是 PCCAE_CPU 的 IAUTO，也不会自动点击第三方程序。
+    if (lines.size() < 9)
         return false;
+    lines[0] = QStringLiteral("'%1'").arg(nativeSliderDir);
+    lines[8] = QStringLiteral("        6  IOBJECT");
 
     if (!file.open(QIODevice::WriteOnly | QIODevice::Text | QIODevice::Truncate))
         return false;
-    file.write(lines.join("\n").toLocal8Bit());
+    file.write(lines.join(QLatin1Char('\n')).toLocal8Bit());
     return true;
 }
+
 
 bool Solver::updateIiiDirDat(const QString& projectDir, int solverMode, int deviceCode) const
 {

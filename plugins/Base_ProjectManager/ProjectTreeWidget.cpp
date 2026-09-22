@@ -348,7 +348,10 @@ void ProjectTreeWidget::contextMenuEvent(QContextMenuEvent* event)
         return;
 
     QAction* chosen = menu.exec(event->globalPos());
-    if (chosen != renameProjectAction)
+    // Closing a context menu also returns nullptr.  For non-root nodes the
+    // project rename action is nullptr as well, so comparing the two pointers
+    // directly used to treat a dismissed menu as "Rename".
+    if (!renameProjectAction || chosen != renameProjectAction)
         return;
 
     bool accepted = false;

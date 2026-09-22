@@ -24,7 +24,7 @@ MaterialModel createHuangjinpingModel()
                          << QStringLiteral("开挖状态") << QStringLiteral("荷载释放系数")
                          << QStringLiteral("再生开挖级") << QStringLiteral("变形模量（GPa）")
                          << QStringLiteral("泊松比") << QStringLiteral("容重（t/m³）")
-                         << QStringLiteral("内摩擦系数") << QStringLiteral("凝聚力（MPa）")
+                         << QStringLiteral("内摩擦系数 f") << QStringLiteral("凝聚力（MPa）")
                          << QStringLiteral("剪胀角（°）") << QStringLiteral("松弛系数")
                          << QStringLiteral("松弛距离");
 
@@ -203,10 +203,10 @@ MaterialModel createDagangshanIsotropicModel()
                   << QStringLiteral("剪胀角(°)");
     model.displayColumns << QStringLiteral("序号") << QStringLiteral("变形模量（GPa）")
                          << QStringLiteral("泊松比") << QStringLiteral("容重（t/m³）")
-                         << QStringLiteral("内摩擦系数") << QStringLiteral("凝聚力（MPa）")
+                         << QStringLiteral("内摩擦系数 f") << QStringLiteral("凝聚力（MPa）")
                          << QStringLiteral("抗压强度 Rc（0=自动）")
                          << QStringLiteral("抗拉强度 Rt（0=自动）")
-                         << QStringLiteral("残余内摩擦系数（0=沿用峰值）")
+                         << QStringLiteral("残余内摩擦系数 fr（0=沿用峰值）")
                          << QStringLiteral("残余凝聚力（0=沿用峰值）")
                          << QStringLiteral("剪胀角（°）");
 

@@ -5,6 +5,7 @@
 #include <QAbstractItemView>
 #include <QAbstractScrollArea>
 #include <QBrush>
+#include <QButtonGroup>
 #include <QCheckBox>
 #include <QColor>
 #include <QDoubleValidator>
@@ -20,6 +21,7 @@
 #include <QMetaObject>
 #include <QMouseEvent>
 #include <QResizeEvent>
+#include <QRadioButton>
 #include <QPaintEvent>
 #include <QScopedValueRollback>
 #include <QScrollBar>
@@ -30,7 +32,9 @@
 #include <QTimer>
 #include <QToolButton>
 #include <QVBoxLayout>
+#include <QVariant>
 #include <algorithm>
+#include <cmath>
 #include <PickManager.h>
 #include <ServiceRegistry.h>
 #include <services/MeshModuleControllerService.h>
@@ -148,6 +152,54 @@ class AppliedRegionListWidget final : public QListWidget
 constexpr int FIRST_COMPUTABLE_MATYPE = 2;
 constexpr int FIRST_SUGGESTED_MATYPE = 3;
 constexpr int MAX_SOLVER_MATYPE = 300;
+constexpr double PI_VALUE = 3.14159265358979323846;
+constexpr double MAX_FRICTION_ANGLE_DEG = 89.999999;
+
+bool isFrictionCoefficientColumn(const QString& column)
+{
+    return column == QStringLiteral("抗剪断强度内摩擦系数") ||
+           column == QStringLiteral("残余抗剪断强度内摩擦系数");
+}
+
+bool isResidualFrictionCoefficientColumn(const QString& column)
+{
+    return column == QStringLiteral("残余抗剪断强度内摩擦系数");
+}
+
+bool isDirectFrictionAngleColumn(const QString& modelKey, const QString& column)
+{
+    if (column == QStringLiteral("φ0(°)") || column == QStringLiteral("FAI(°)"))
+        return true;
+    return modelKey == QStringLiteral("soil_nanshui") && column == QStringLiteral("φ0");
+}
+
+QString frictionCoefficientHelpText()
+{
+    return QStringLiteral("摩擦系数，无量纲。");
+}
+
+QString frictionAngleHelpText(const QString& coefficientColumn)
+{
+    if (isResidualFrictionCoefficientColumn(coefficientColumn))
+        return QStringLiteral("残余内摩擦角，单位 °。");
+
+    return QStringLiteral("内摩擦角，单位 °。");
+}
+
+QString formatLinkedNumber(double value, int decimals = 6)
+{
+    if (!std::isfinite(value))
+        return QString();
+
+    QString text = QString::number(value, 'f', decimals);
+    while (text.contains(QLatin1Char('.')) && text.endsWith(QLatin1Char('0')))
+        text.chop(1);
+    if (text.endsWith(QLatin1Char('.')))
+        text.chop(1);
+    if (text == QStringLiteral("-0"))
+        text = QStringLiteral("0");
+    return text;
+}
 
 bool isComputableMatype(int matype)
 {
@@ -254,6 +306,9 @@ void configureParameterFormLayout(QFormLayout* layout)
 
 QString parameterUnit(const QString& modelKey, const QString& column)
 {
+    if (isFrictionCoefficientColumn(column))
+        return QStringLiteral("无量纲");
+
     if (column == QStringLiteral("变形模量E（GPa）") ||
         column == QStringLiteral("变模E1,E2（GPa）") ||
         column == QStringLiteral("屈服后变模E2（GPa）") ||
@@ -362,6 +417,108 @@ QWidget* createParameterFieldWidget(QLineEdit* editor, const QString& unit, QWid
     return field;
 }
 
+QWidget* createFrictionFieldWidget(QLineEdit* editor, const QString& unit, QWidget* parent)
+{
+    auto* field = new QWidget(parent);
+    auto* layout = new QHBoxLayout(field);
+    layout->setContentsMargins(0, 0, 0, 0);
+    layout->setSpacing(10);
+
+    editor->setMinimumHeight(30);
+    layout->addWidget(editor, 1);
+
+    auto* unitLabel = new QLabel(unit, field);
+    unitLabel->setObjectName(QStringLiteral("materialUnitLabel"));
+    unitLabel->setMinimumWidth(48);
+    unitLabel->setMaximumWidth(58);
+    unitLabel->setAlignment(Qt::AlignLeft | Qt::AlignVCenter);
+    layout->addWidget(unitLabel, 0);
+
+    const QColor textColor = unitLabel->palette().color(QPalette::WindowText);
+    const QColor baseColor = unitLabel->palette().color(QPalette::Base);
+    const qreal weight = 0.58;
+    const QColor muted = QColor::fromRgbF(
+        baseColor.redF() * (1.0 - weight) + textColor.redF() * weight,
+        baseColor.greenF() * (1.0 - weight) + textColor.greenF() * weight,
+        baseColor.blueF() * (1.0 - weight) + textColor.blueF() * weight);
+    QPalette unitPalette = unitLabel->palette();
+    unitPalette.setColor(QPalette::WindowText, muted);
+    unitLabel->setPalette(unitPalette);
+
+    return field;
+}
+
+QRadioButton* createFrictionChoice(const QString& text, const QString& toolTip, QWidget* parent)
+{
+    auto* choice = new QRadioButton(text, parent);
+    choice->setToolTip(toolTip);
+    choice->setCursor(Qt::PointingHandCursor);
+    choice->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Fixed);
+    return choice;
+}
+
+void setFrictionEditorReadOnly(QLineEdit* editor, bool readOnly)
+{
+    if (!editor)
+        return;
+
+    editor->setReadOnly(readOnly);
+
+    // 仅 setReadOnly/QPalette 会被应用程序级 QSS 的 QLineEdit 白底覆盖。
+    // 对换算值直接设置局部背景/文字颜色，让“可输入”和“换算结果”一眼可区分。
+    if (readOnly)
+    {
+        const QPalette sourcePalette = editor->parentWidget() ? editor->parentWidget()->palette()
+                                                              : editor->palette();
+        const QColor base = sourcePalette.color(QPalette::Base);
+        const QColor mid = sourcePalette.color(QPalette::Mid);
+        const qreal shadeWeight = 0.14;
+        const QColor mutedBase = QColor::fromRgbF(
+            base.redF() * (1.0 - shadeWeight) + mid.redF() * shadeWeight,
+            base.greenF() * (1.0 - shadeWeight) + mid.greenF() * shadeWeight,
+            base.blueF() * (1.0 - shadeWeight) + mid.blueF() * shadeWeight);
+        const QColor mutedText = sourcePalette.color(QPalette::Disabled, QPalette::Text);
+
+        editor->setStyleSheet(
+            QStringLiteral("QLineEdit { background-color: %1; color: %2; }")
+                .arg(mutedBase.name(QColor::HexRgb), mutedText.name(QColor::HexRgb)));
+    }
+    else
+    {
+        editor->setStyleSheet(QString());
+    }
+}
+
+void setFrictionInputState(QLineEdit* angleEdit, QRadioButton* angleChoice,
+                           QLineEdit* coefficientEdit, QRadioButton* coefficientChoice,
+                           bool angleInput, bool editable = true)
+{
+    if (!angleEdit || !coefficientEdit || !angleChoice || !coefficientChoice)
+        return;
+
+    angleChoice->setEnabled(editable);
+    coefficientChoice->setEnabled(editable);
+    setFrictionEditorReadOnly(angleEdit, !editable || !angleInput);
+    setFrictionEditorReadOnly(coefficientEdit, !editable || angleInput);
+
+    if (!editable)
+    {
+        angleEdit->setToolTip(QStringLiteral("沿用峰值。"));
+        coefficientEdit->setToolTip(QStringLiteral("沿用峰值。"));
+        return;
+    }
+
+    const QString coefficientColumn =
+        angleEdit->property("frictionCoefficientColumn").toString();
+    const bool residual = isResidualFrictionCoefficientColumn(coefficientColumn);
+    angleEdit->setToolTip(angleInput ? frictionAngleHelpText(coefficientColumn)
+                                    : QStringLiteral("自动换算。"));
+    coefficientEdit->setToolTip(
+        angleInput ? QStringLiteral("自动换算。")
+                   : (residual ? QStringLiteral("残余摩擦系数，无量纲。")
+                               : frictionCoefficientHelpText()));
+}
+
 QLabel* createSubsectionLabel(const QString& text, QWidget* parent)
 {
     auto* label = new QLabel(text, parent);
@@ -420,15 +577,14 @@ QString parameterHelpText(const QString& modelKey, const QString& column)
         text = QStringLiteral("控制横向变形与轴向变形的关系。");
     else if (column == QStringLiteral("泊松比μ1") || column == QStringLiteral("泊松比μ2"))
         text = QStringLiteral("控制对应流变阶段的横向变形。");
-    else if (column == QStringLiteral("φ0(°)") || column == QStringLiteral("φ0") ||
-             column == QStringLiteral("FAI(°)"))
-        text = QStringLiteral("反映材料的摩擦抗剪能力。");
+    else if (isDirectFrictionAngleColumn(modelKey, column))
+        text = QStringLiteral("内摩擦角，单位 °。");
     else if (column == QStringLiteral("Δφ(°)") || column == QStringLiteral("Δφ"))
         text = QStringLiteral("控制摩擦角随应力状态的变化。");
     else if (column == QStringLiteral("c(KPa)") || column == QStringLiteral("CO(KPa)"))
         text = QStringLiteral("反映材料的黏聚抗剪能力。");
     else if (column == QStringLiteral("抗剪断强度内摩擦系数"))
-        text = QStringLiteral("反映岩体的摩擦抗剪能力。");
+        text = QStringLiteral("内摩擦系数，无量纲。");
     else if (column == QStringLiteral("凝聚力C‘（MPa）"))
         text = QStringLiteral("反映岩体的黏聚抗剪能力。");
     else if (column == QStringLiteral("抗压强度Rc（MPa）"))
@@ -436,7 +592,7 @@ QString parameterHelpText(const QString& modelKey, const QString& column)
     else if (column == QStringLiteral("抗拉强度Rt（MPa）"))
         text = QStringLiteral("独立抗拉强度 Rt；填 0 时仍按旧逻辑由 c、φ 自动推导。");
     else if (column == QStringLiteral("残余抗剪断强度内摩擦系数"))
-        text = QStringLiteral("破坏后的残余内摩擦系数；填 0 时沿用峰值内摩擦系数。");
+        text = QStringLiteral("残余摩擦系数，无量纲。");
     else if (column == QStringLiteral("残余凝聚力C‘（MPa）"))
         text = QStringLiteral("破坏后的残余凝聚力；填 0 时沿用峰值凝聚力。");
     else if (column == QStringLiteral("剪胀角(°)"))
@@ -883,6 +1039,10 @@ void MaterialEntryWidget::onValueEdited(const QString& text)
 
     const QString column = lineEdit->property("columnName").toString();
     entry->properties.insert(column, text);
+    if (isFrictionCoefficientColumn(column))
+        refreshFrictionAngleFields(entry);
+    if (isDirectFrictionAngleColumn(model->key, column))
+        refreshFrictionCoefficientFields(model, entry);
     m_materialManager->notifyEntryUpdated(m_entryId, false);
 }
 
@@ -1478,17 +1638,317 @@ void MaterialEntryWidget::rebuildForm(MaterialModel* model, MaterialEntry* entry
 
         if (!entry->properties.contains(column))
             entry->properties.insert(column, defaultMaterialPropertyValue(model->key, column));
+
+        const bool directAngleColumn = isDirectFrictionAngleColumn(model->key, column);
+        const bool coefficientColumn = isFrictionCoefficientColumn(column);
+        const bool frictionPair = directAngleColumn || coefficientColumn;
+
         auto* valueEdit = new QLineEdit(entry->properties.value(column), targetParent);
         valueEdit->setMinimumWidth(10);
-        valueEdit->setValidator(createMaterialNumberValidator(valueEdit));
+        auto* valueValidator = createMaterialNumberValidator(valueEdit);
+        if (coefficientColumn)
+            valueValidator->setBottom(0.0);
+        if (directAngleColumn)
+        {
+            valueValidator->setBottom(0.0);
+            valueValidator->setTop(MAX_FRICTION_ANGLE_DEG);
+            valueValidator->setDecimals(6);
+            valueValidator->setNotation(QDoubleValidator::StandardNotation);
+        }
+        valueEdit->setValidator(valueValidator);
         valueEdit->setProperty("columnName", column);
         const QString toolTip = parameterHelpText(model->key, column);
         valueEdit->setToolTip(toolTip);
         connect(valueEdit, &QLineEdit::textEdited, this, &MaterialEntryWidget::onValueEdited);
-        QWidget* fieldWidget = createParameterFieldWidget(valueEdit, unit, targetParent);
-        targetLayout->addRow(createParameterLabel(label, toolTip, targetParent), fieldWidget);
         m_valueEdits.insert(column, valueEdit);
+
+        if (!frictionPair)
+        {
+            targetLayout->addRow(createParameterLabel(label, toolTip, targetParent),
+                                 createParameterFieldWidget(valueEdit, unit, targetParent));
+            continue;
+        }
+
+        // 两个摩擦参数始终同时显示。单选项表示当前输入值，另一项只读显示换算结果。
+        if (directAngleColumn)
+        {
+            auto* coefficientEdit = new QLineEdit(targetParent);
+            coefficientEdit->setMinimumWidth(10);
+            auto* coefficientValidator = createMaterialNumberValidator(coefficientEdit);
+            coefficientValidator->setBottom(0.0);
+            coefficientEdit->setValidator(coefficientValidator);
+            coefficientEdit->setProperty("frictionAngleColumn", column);
+            coefficientEdit->setToolTip(frictionCoefficientHelpText());
+
+            connect(coefficientEdit, &QLineEdit::textEdited, this,
+                    [this, coefficientEdit](const QString& text)
+                    {
+                        if (m_isUpdating || !coefficientEdit)
+                            return;
+
+                        MaterialModel* linkedModel = nullptr;
+                        MaterialEntry* linkedEntry = lookupEntry(&linkedModel);
+                        if (!linkedEntry || !linkedModel)
+                            return;
+
+                        bool ok = false;
+                        const double coefficient = QLocale::c().toDouble(text, &ok);
+                        if (!ok || coefficient < 0.0)
+                            return;
+
+                        const QString angleColumn =
+                            coefficientEdit->property("frictionAngleColumn").toString();
+                        if (!isDirectFrictionAngleColumn(linkedModel->key, angleColumn))
+                            return;
+
+                        const double angleDeg = std::atan(coefficient) * 180.0 / PI_VALUE;
+                        const QString angleText = formatLinkedNumber(angleDeg);
+                        linkedEntry->properties.insert(angleColumn, angleText);
+
+                        const auto angleIt = m_valueEdits.constFind(angleColumn);
+                        if (angleIt != m_valueEdits.constEnd() && angleIt.value())
+                        {
+                            const QSignalBlocker blocker(angleIt.value());
+                            angleIt.value()->setText(angleText);
+                        }
+
+                        m_materialManager->notifyEntryUpdated(m_entryId, false);
+                    });
+
+            auto* angleChoice = createFrictionChoice(QStringLiteral("内摩擦角 φ"),
+                                                      QStringLiteral("按内摩擦角输入。"),
+                                                      targetParent);
+            auto* coefficientChoice = createFrictionChoice(QStringLiteral("内摩擦系数 f"),
+                                                            QStringLiteral("按摩擦系数输入。"),
+                                                            targetParent);
+            auto* choiceGroup = new QButtonGroup(targetParent);
+            choiceGroup->setExclusive(true);
+            choiceGroup->addButton(angleChoice);
+            choiceGroup->addButton(coefficientChoice);
+            angleChoice->setChecked(true);
+
+            targetLayout->addRow(angleChoice,
+                                 createFrictionFieldWidget(valueEdit, QStringLiteral("°"),
+                                                           targetParent));
+            targetLayout->addRow(coefficientChoice,
+                                 createFrictionFieldWidget(coefficientEdit,
+                                                           QStringLiteral("无量纲"), targetParent));
+            m_frictionCoefficientEdits.insert(column, coefficientEdit);
+
+            valueEdit->setProperty("frictionCoefficientColumn", QString());
+            setFrictionInputState(valueEdit, angleChoice, coefficientEdit, coefficientChoice,
+                                  true);
+            connect(angleChoice, &QRadioButton::toggled, this,
+                    [valueEdit, angleChoice, coefficientEdit, coefficientChoice](bool checked)
+                    {
+                        if (!checked)
+                            return;
+                        setFrictionInputState(valueEdit, angleChoice, coefficientEdit,
+                                              coefficientChoice, true);
+                    });
+            connect(coefficientChoice, &QRadioButton::toggled, this,
+                    [valueEdit, angleChoice, coefficientEdit, coefficientChoice](bool checked)
+                    {
+                        if (!checked)
+                            return;
+                        setFrictionInputState(valueEdit, angleChoice, coefficientEdit,
+                                              coefficientChoice, false);
+                    });
+            continue;
+        }
+
+        // 原模型保存摩擦系数：界面仍优先按工程上更直观的内摩擦角输入，
+        // 换算后的系数继续写回原字段，求解器接口保持不变。
+        auto* angleEdit = new QLineEdit(targetParent);
+        angleEdit->setMinimumWidth(10);
+        auto* angleValidator =
+            new QDoubleValidator(0.0, MAX_FRICTION_ANGLE_DEG, 6, angleEdit);
+        angleValidator->setNotation(QDoubleValidator::StandardNotation);
+        QLocale angleLocale = QLocale::c();
+        angleLocale.setNumberOptions(QLocale::RejectGroupSeparator);
+        angleValidator->setLocale(angleLocale);
+        angleEdit->setValidator(angleValidator);
+        angleEdit->setProperty("frictionCoefficientColumn", column);
+        angleEdit->setToolTip(frictionAngleHelpText(column));
+
+        QCheckBox* inheritPeakCheck = nullptr;
+        const bool residualFriction = isResidualFrictionCoefficientColumn(column);
+        if (residualFriction)
+        {
+            inheritPeakCheck = new QCheckBox(QStringLiteral("摩擦参数沿用峰值"), targetParent);
+            inheritPeakCheck->setToolTip(QStringLiteral("残余摩擦参数与峰值一致。"));
+            inheritPeakCheck->setCursor(Qt::PointingHandCursor);
+            targetLayout->addRow(inheritPeakCheck);
+        }
+
+        connect(angleEdit, &QLineEdit::textEdited, this,
+                [this, angleEdit](const QString& text)
+                {
+                    if (m_isUpdating || !angleEdit)
+                        return;
+
+                    MaterialModel* linkedModel = nullptr;
+                    MaterialEntry* linkedEntry = lookupEntry(&linkedModel);
+                    if (!linkedEntry || !linkedModel)
+                        return;
+
+                    const QString coefficientColumn =
+                        angleEdit->property("frictionCoefficientColumn").toString();
+                    if (!isFrictionCoefficientColumn(coefficientColumn))
+                        return;
+
+                    bool ok = false;
+                    const double angleDeg = QLocale::c().toDouble(text, &ok);
+                    if (!ok || angleDeg < 0.0 || angleDeg >= 90.0)
+                        return;
+
+                    const double coefficient = std::tan(angleDeg * PI_VALUE / 180.0);
+                    const QString coefficientText = QString::number(coefficient, 'g', 12);
+                    linkedEntry->properties.insert(coefficientColumn, coefficientText);
+
+                    const auto coefficientIt = m_valueEdits.constFind(coefficientColumn);
+                    if (coefficientIt != m_valueEdits.constEnd() && coefficientIt.value())
+                    {
+                        const QSignalBlocker blocker(coefficientIt.value());
+                        coefficientIt.value()->setText(coefficientText);
+                    }
+
+                    if (coefficientColumn == QStringLiteral("抗剪断强度内摩擦系数"))
+                        refreshFrictionAngleFields(linkedEntry);
+
+                    m_materialManager->notifyEntryUpdated(m_entryId, false);
+                });
+
+        auto* angleChoice = createFrictionChoice(
+            residualFriction ? QStringLiteral("残余内摩擦角 φr")
+                             : QStringLiteral("内摩擦角 φ"),
+            residualFriction ? QStringLiteral("按残余内摩擦角输入。")
+                             : QStringLiteral("按内摩擦角输入。"),
+            targetParent);
+        auto* coefficientChoice = createFrictionChoice(
+            residualFriction ? QStringLiteral("残余摩擦系数 fr")
+                             : QStringLiteral("内摩擦系数 f"),
+            residualFriction ? QStringLiteral("按残余摩擦系数输入。")
+                             : QStringLiteral("按摩擦系数输入。"),
+            targetParent);
+        auto* choiceGroup = new QButtonGroup(targetParent);
+        choiceGroup->setExclusive(true);
+        choiceGroup->addButton(angleChoice);
+        choiceGroup->addButton(coefficientChoice);
+        angleChoice->setChecked(true);
+
+        targetLayout->addRow(angleChoice,
+                             createFrictionFieldWidget(angleEdit, QStringLiteral("°"),
+                                                       targetParent));
+        targetLayout->addRow(coefficientChoice,
+                             createFrictionFieldWidget(valueEdit, QStringLiteral("无量纲"),
+                                                       targetParent));
+        m_frictionAngleEdits.insert(column, angleEdit);
+
+        const auto applyInputState =
+            [angleEdit, angleChoice, valueEdit, coefficientChoice, inheritPeakCheck]()
+            {
+                const bool inherited = inheritPeakCheck && inheritPeakCheck->isChecked();
+                setFrictionInputState(angleEdit, angleChoice, valueEdit, coefficientChoice,
+                                      angleChoice->isChecked(), !inherited);
+            };
+
+        connect(angleChoice, &QRadioButton::toggled, this,
+                [applyInputState](bool checked)
+                {
+                    if (checked)
+                        applyInputState();
+                });
+        connect(coefficientChoice, &QRadioButton::toggled, this,
+                [applyInputState](bool checked)
+                {
+                    if (checked)
+                        applyInputState();
+                });
+
+        if (inheritPeakCheck)
+        {
+            bool residualOk = false;
+            const double storedResidual = entry->properties.value(column).toDouble(&residualOk);
+            inheritPeakCheck->setProperty("lastResidualCoefficient",
+                                          residualOk && storedResidual > 0.0
+                                              ? QVariant(storedResidual)
+                                              : QVariant());
+            inheritPeakCheck->setChecked(!residualOk || storedResidual <= 0.0);
+
+            connect(inheritPeakCheck, &QCheckBox::toggled, this,
+                    [this, inheritPeakCheck, angleEdit, angleChoice, valueEdit,
+                     coefficientChoice, column](bool checked)
+                    {
+                        if (m_isUpdating)
+                            return;
+
+                        MaterialModel* linkedModel = nullptr;
+                        MaterialEntry* linkedEntry = lookupEntry(&linkedModel);
+                        if (!linkedEntry || !linkedModel)
+                            return;
+
+                        if (checked)
+                        {
+                            bool currentOk = false;
+                            const double currentValue =
+                                linkedEntry->properties.value(column).toDouble(&currentOk);
+                            if (currentOk && currentValue > 0.0)
+                                inheritPeakCheck->setProperty("lastResidualCoefficient",
+                                                              currentValue);
+                            linkedEntry->properties.insert(column, QStringLiteral("0"));
+                        }
+                        else
+                        {
+                            bool restoreOk = false;
+                            double restoreValue =
+                                inheritPeakCheck->property("lastResidualCoefficient")
+                                    .toDouble(&restoreOk);
+                            if (!restoreOk || restoreValue <= 0.0)
+                            {
+                                bool peakOk = false;
+                                restoreValue =
+                                    linkedEntry->properties
+                                        .value(QStringLiteral("抗剪断强度内摩擦系数"))
+                                        .toDouble(&peakOk);
+                                if (!peakOk || restoreValue <= 0.0)
+                                    restoreValue = 0.000001;
+                            }
+                            linkedEntry->properties.insert(
+                                column, QString::number(restoreValue, 'g', 12));
+                        }
+
+                        refreshFrictionAngleFields(linkedEntry);
+                        setFrictionInputState(angleEdit, angleChoice, valueEdit,
+                                              coefficientChoice, angleChoice->isChecked(),
+                                              !checked);
+                        m_materialManager->notifyEntryUpdated(m_entryId, false);
+                    });
+
+            // 自定义残余值若最终确实为 0，则回到“沿用峰值”状态。
+            // 使用 editingFinished，避免用户输入 0.x 时在键入首个 0 就被打断。
+            const auto restoreInheritedStateIfZero = [inheritPeakCheck](QLineEdit* editor)
+            {
+                if (!inheritPeakCheck || inheritPeakCheck->isChecked() || !editor)
+                    return;
+                bool ok = false;
+                const double value = QLocale::c().toDouble(editor->text(), &ok);
+                if (ok && value <= 0.0)
+                    inheritPeakCheck->setChecked(true);
+            };
+            connect(angleEdit, &QLineEdit::editingFinished, this,
+                    [restoreInheritedStateIfZero, angleEdit]()
+                    { restoreInheritedStateIfZero(angleEdit); });
+            connect(valueEdit, &QLineEdit::editingFinished, this,
+                    [restoreInheritedStateIfZero, valueEdit]()
+                    { restoreInheritedStateIfZero(valueEdit); });
+        }
+
+        applyInputState();
     }
+
+    refreshFrictionAngleFields(entry);
+    refreshFrictionCoefficientFields(model, entry);
 
     updateConditionalParameterVisibility(model->key, entry, m_advancedLayout, m_valueEdits);
 
@@ -1583,6 +2043,8 @@ void MaterialEntryWidget::clearForm()
     m_basicLayout = nullptr;
     m_advancedLayout = nullptr;
     m_valueEdits.clear();
+    m_frictionAngleEdits.clear();
+    m_frictionCoefficientEdits.clear();
     m_seepageCombo = nullptr;
     m_seepageFieldsWidget = nullptr;
     m_seepageFieldsLayout = nullptr;
@@ -1604,6 +2066,90 @@ void MaterialEntryWidget::clearForm()
     m_lastHoveredIndex = -1;
     m_matypeDropdownOpen = false;
     m_matypeOptionsLoaded = false;
+}
+
+void MaterialEntryWidget::refreshFrictionAngleFields(const MaterialEntry* entry)
+{
+    if (!entry)
+        return;
+
+    bool peakOk = false;
+    const double peakCoefficient =
+        entry->properties.value(QStringLiteral("抗剪断强度内摩擦系数")).toDouble(&peakOk);
+    const double peakAngleDeg = peakOk
+                                    ? std::atan(qMax(0.0, peakCoefficient)) * 180.0 / PI_VALUE
+                                    : 0.0;
+
+    for (auto it = m_frictionAngleEdits.constBegin(); it != m_frictionAngleEdits.constEnd(); ++it)
+    {
+        QLineEdit* angleEdit = it.value();
+        if (!angleEdit)
+            continue;
+
+        const QString coefficientColumn = it.key();
+        bool ok = false;
+        const double coefficient = entry->properties.value(coefficientColumn).toDouble(&ok);
+        const QSignalBlocker blocker(angleEdit);
+
+        if (!ok)
+        {
+            angleEdit->clear();
+            continue;
+        }
+
+        if (isResidualFrictionCoefficientColumn(coefficientColumn) && coefficient <= 0.0)
+        {
+            if (peakOk)
+                angleEdit->setText(formatLinkedNumber(peakAngleDeg));
+            else
+                angleEdit->clear();
+            angleEdit->setPlaceholderText(QStringLiteral("沿用峰值"));
+
+            const auto coefficientIt = m_valueEdits.constFind(coefficientColumn);
+            if (coefficientIt != m_valueEdits.constEnd() && coefficientIt.value())
+            {
+                const QSignalBlocker coefficientBlocker(coefficientIt.value());
+                coefficientIt.value()->setText(peakOk ? formatLinkedNumber(peakCoefficient)
+                                                       : QString());
+            }
+            continue;
+        }
+
+        const double angleDeg = std::atan(qMax(0.0, coefficient)) * 180.0 / PI_VALUE;
+        angleEdit->setText(formatLinkedNumber(angleDeg));
+        angleEdit->setPlaceholderText(QString());
+    }
+}
+
+void MaterialEntryWidget::refreshFrictionCoefficientFields(const MaterialModel* model,
+                                                            const MaterialEntry* entry)
+{
+    if (!model || !entry)
+        return;
+
+    for (auto it = m_frictionCoefficientEdits.constBegin();
+         it != m_frictionCoefficientEdits.constEnd(); ++it)
+    {
+        QLineEdit* coefficientEdit = it.value();
+        if (!coefficientEdit)
+            continue;
+
+        const QString angleColumn = it.key();
+        if (!isDirectFrictionAngleColumn(model->key, angleColumn))
+            continue;
+
+        bool ok = false;
+        const double angleDeg = entry->properties.value(angleColumn).toDouble(&ok);
+        const QSignalBlocker blocker(coefficientEdit);
+        if (!ok || angleDeg < 0.0 || angleDeg >= 90.0)
+        {
+            coefficientEdit->clear();
+            continue;
+        }
+
+        const double coefficient = std::tan(angleDeg * PI_VALUE / 180.0);
+        coefficientEdit->setText(QString::number(coefficient, 'g', 12));
+    }
 }
 
 MaterialEntry* MaterialEntryWidget::lookupEntry(MaterialModel** model) const

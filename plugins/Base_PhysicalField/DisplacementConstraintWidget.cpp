@@ -753,24 +753,11 @@ DisplacementConstraintWidget::DisplacementConstraintWidget(QWidget* parent)
     connect(ui->UZLineEdit, QOverload<int>::of(&QComboBox::currentIndexChanged), this,
             constraintDirectionChanged);
 
-    // 默认交互就是“直接点击边界整片选择”。smartPatchCheckBox 仅作为内部状态保留，
-    // 主界面不再要求用户先开启点选、再开启整片选择。
-    connect(ui->smartPatchCheckBox, &QCheckBox::toggled, this,
-            [this](bool on)
-            {
-                PickManager& pickManager = PickManager::instance();
-                if (on)
-                {
-                    const QSignalBlocker blocker(ui->pickEnableCheckBox);
-                    ui->pickEnableCheckBox->setChecked(false);
-                    pickManager.updateStructure();
-                    pickManager.activate(getPageType(), m_uuid, PickMode::Node);
-                }
-                pickManager.setClickPickEnabled(
-                    getPageType(), m_uuid, on || ui->pickEnableCheckBox->isChecked());
-            });
+    // “开启点选”和“点选整片”是两个独立开关：
+    // 前者只控制鼠标单击是否参与选择；后者只决定一次单击是否扩展到连续边界整片。
+    // 框选、分组和坐标范围选择不受“点选整片”影响。
 
-    // 分组、精确节点和坐标范围都是常规选区入口，直接显示。
+    // 分组、点选控制和坐标范围都是常规选区入口，直接显示。
     ui->advancedPanel->setVisible(true);
 
     updateCoordinateControlState();
@@ -867,29 +854,22 @@ void DisplacementConstraintWidget::beforeLoad()
 
     QObject::disconnect(ui->pickEnableCheckBox, nullptr, this, nullptr);
     connect(ui->pickEnableCheckBox, &QCheckBox::toggled, this,
-            [this](bool preciseNodeMode)
+            [this](bool enabled)
             {
                 PickManager& pickManager = PickManager::instance();
-                pickManager.updateStructure();
-                pickManager.activate(getPageType(), m_uuid, PickMode::Node);
-
-                // 可临时切换为单节点点选；关闭后自动回到默认整片选择。
+                if (enabled)
                 {
-                    const QSignalBlocker blocker(ui->smartPatchCheckBox);
-                    ui->smartPatchCheckBox->setChecked(!preciseNodeMode);
+                    // 显示筛选可能刚刚重建 surface，重新同步后直接恢复点选，
+                    // 不再要求用户切一次边/面或离开页面。
+                    pickManager.updateStructure();
+                    pickManager.activate(getPageType(), m_uuid, PickMode::Node);
                 }
-                pickManager.setClickPickEnabled(getPageType(), m_uuid, true);
+                pickManager.setClickPickEnabled(getPageType(), m_uuid, enabled);
             });
 
-    // 进入页面即处于约束范围编辑状态：单击边界直接整片添加/取消。
-    // 省掉“开启点选”和“点选整片”两个前置操作。
-    {
-        const QSignalBlocker pointBlocker(ui->pickEnableCheckBox);
-        const QSignalBlocker patchBlocker(ui->smartPatchCheckBox);
-        ui->pickEnableCheckBox->setChecked(false);
-        ui->smartPatchCheckBox->setChecked(true);
-    }
-    pickManager.setClickPickEnabled(getPageType(), m_uuid, true);
+    // 不强制重置用户选择。新页面由 .ui 默认开启点选、开启整片；
+    // 已存在页面在本次会话中切换回来时保留用户刚才的开关状态。
+    pickManager.setClickPickEnabled(getPageType(), m_uuid, ui->pickEnableCheckBox->isChecked());
 
     if (!m_coordinateRangeLoaded)
         onUseMeshBounds();
@@ -1024,8 +1004,7 @@ void DisplacementConstraintWidget::onSelectByCoordinateRange()
     PickManager& pickManager = PickManager::instance();
     pickManager.updateStructure();
     pickManager.setClickPickEnabled(getPageType(), m_uuid,
-                                    ui->pickEnableCheckBox->isChecked() ||
-                                        ui->smartPatchCheckBox->isChecked());
+                                    ui->pickEnableCheckBox->isChecked());
     const QVector<vtkIdType> solidPointIds =
         boundaryPointsInCoordinateRange(pickManager.solidGrid(), filter);
     const QVector<vtkIdType> linePointIds =
@@ -1068,6 +1047,8 @@ QJsonObject DisplacementConstraintWidget::saveJson()
     obj["ux"] = ui->UXLineEdit->currentData().toString();
     obj["uy"] = ui->UYLineEdit->currentData().toString();
     obj["uz"] = ui->UZLineEdit->currentData().toString();
+    obj["click_pick_enabled"] = ui->pickEnableCheckBox->isChecked();
+    obj["whole_patch_on_click"] = ui->smartPatchCheckBox->isChecked();
 
     QJsonObject coordinateRange;
     coordinateRange["use_x"] = ui->coordXCheckBox->isChecked();
@@ -1144,6 +1125,9 @@ void DisplacementConstraintWidget::loadJson(const QJsonObject& obj)
                        obj.value("uy").toString(ui->UYLineEdit->currentData().toString()));
     setConstraintValue(ui->UZLineEdit,
                        obj.value("uz").toString(ui->UZLineEdit->currentData().toString()));
+
+    ui->pickEnableCheckBox->setChecked(obj.value("click_pick_enabled").toBool(true));
+    ui->smartPatchCheckBox->setChecked(obj.value("whole_patch_on_click").toBool(true));
 
     const QJsonObject coordinateRange = obj.value("coordinate_range").toObject();
     if (!coordinateRange.isEmpty())
@@ -1629,7 +1613,7 @@ void DisplacementConstraintWidget::onNodePicked(const QString& domain, const QSt
     if (activeUuid != m_uuid)
         return;
 
-    if (ui->smartPatchCheckBox->isChecked())
+    if (ui->pickEnableCheckBox->isChecked() && ui->smartPatchCheckBox->isChecked())
     {
         PickManager& pickManager = PickManager::instance();
         vtkUnstructuredGrid* grid =

@@ -1,4 +1,4 @@
-﻿#include "PostResultGenerator.h"
+#include "PostResultGenerator.h"
 #include "PostTecplotUtils.h"
 
 #include <PublicConstants.h>
@@ -12,6 +12,7 @@
 #include <QMap>
 #include <QRegularExpression>
 #include <QSet>
+#include <QStringConverter>
 #include <QTemporaryDir>
 #include <QTemporaryFile>
 #include <QTextStream>
@@ -1377,10 +1378,8 @@ QHash<int, QVector<double>> readElementRuptureValues(const QString& filePath, co
     for (const Element& element : mesh.elements)
     {
         const RuptureFlags flags = flagsByElement.value(element.id);
-        values.insert(element.id,
-                      {(flags.shear || flags.tensile) ? 1.0 : 0.0,
-                       flags.shear ? 1.0 : 0.0,
-                       flags.tensile ? 1.0 : 0.0});
+        const double failureType = flags.tensile ? 2.0 : (flags.shear ? 1.0 : 0.0);
+        values.insert(element.id, {failureType});
     }
     return values;
 }
@@ -1994,6 +1993,42 @@ bool generateCellField(const QDir& outputDir, const Mesh& mesh,
     return generated;
 }
 
+QVector<QVector<double>> buildPlasticZoneStressValues(
+    const Mesh& mesh,
+    const QVector<QVector<double>>& principalStress,
+    const QHash<int, QVector<double>>& ruptureValues)
+{
+    QSet<int> plasticNodeIds;
+    for (const Element& element : mesh.elements)
+    {
+        const QVector<double> rupture = ruptureValues.value(element.id);
+        if (rupture.isEmpty() || rupture.first() <= 0.5)
+            continue;
+        for (int nodeId : element.nodes)
+        {
+            if (nodeId > 0)
+                plasticNodeIds.insert(nodeId);
+        }
+    }
+
+    QVector<QVector<double>> values;
+    values.reserve(mesh.nodes.size());
+    for (int i = 0; i < mesh.nodes.size(); ++i)
+    {
+        double value = 0.0;
+        if (plasticNodeIds.contains(mesh.nodes.at(i).id) &&
+            i < principalStress.size() && !principalStress.at(i).isEmpty())
+        {
+            // 求解器 MODPRI 的第 1 项就是最大主应力 PRS1。这里只在已经发生
+            // 剪切/拉伸破坏的区域保留 PRS1；非破坏区置 0，但显示端仍保留完整几何。
+            value = principalStress.at(i).at(0);
+        }
+        values.push_back({value});
+    }
+
+    return values;
+}
+
 QString outputName(bool external, const QString& legacyName, const QString& internalBase,
                    const QString& suffix)
 {
@@ -2295,12 +2330,48 @@ PostResultGenerator::Result PostResultGenerator::generate(const Options& options
         generateCellField(outputDir, mesh, expanded, groups, stressMasks,
                           outputName(external, QStringLiteral("TEC_RUPT.DAT"),
                                      QStringLiteral("failure_zone"), source.suffix),
-                          QStringLiteral("FAILURE ZONE"),
-                          {QStringLiteral("FAILURE_ZONE"),
-                           QStringLiteral("SHEAR_FAILURE"),
-                           QStringLiteral("TENSILE_FAILURE")},
+                          QStringLiteral("PLASTIC FAILURE TYPE"),
+                          {QStringLiteral("FAILURE_ZONE")},
                           values, result, optionalExpandedWithExcavated);
     }
+
+    // 每个有强度折减输出的工况都补充“最大塑性应力”。这里不把塑性应变
+    // 冒充应力，而是用 IIICMM 的实际破坏区筛出塑性/破坏区域，再读取同工况
+    // MODPRI 的最大主应力 PRS1。非破坏区写 0 但保留完整几何，不再裁掉模型。
+    QHash<QString, FieldSource> ruptureBySuffix;
+    for (const FieldSource& source : ruptureSources)
+        ruptureBySuffix.insert(source.suffix.toCaseFolded(), source);
+    for (const FieldSource& stressSource : principalSources)
+    {
+        const auto ruptureIt = ruptureBySuffix.constFind(stressSource.suffix.toCaseFolded());
+        if (ruptureIt == ruptureBySuffix.constEnd())
+            continue;
+
+        QString stressWarning;
+        QString ruptureWarning;
+        const auto rawStress = readNodeValues(stressSource.path, mesh,
+                                              mesh.dimension == 3 ? 3 : 2,
+                                              &stressWarning);
+        const auto rupture = readElementRuptureValues(ruptureIt->path, mesh,
+                                                      &ruptureWarning);
+        if (!stressWarning.isEmpty())
+            result.warnings << stressWarning;
+        if (!ruptureWarning.isEmpty())
+            result.warnings << ruptureWarning;
+        if (rawStress.isEmpty() || rupture.isEmpty())
+            continue;
+
+        const auto principalStress = buildPrincipalStress(rawStress, mesh.dimension);
+        const auto plasticZoneStress = buildPlasticZoneStressValues(
+            mesh, principalStress, rupture);
+        generateField(outputDir, mesh, expanded, groups, stressMasks,
+                      outputName(external, QStringLiteral("TEC_PLS_STRESS.DAT"),
+                                 QStringLiteral("plastic_zone_stress"), stressSource.suffix),
+                      QStringLiteral("MAX PLASTIC STRESS"),
+                      {QStringLiteral("PLASTIC_ZONE_PRS1(MPa)")},
+                      plasticZoneStress, result, optionalExpandedWithExcavated);
+    }
+
 
     result.ok = !result.generatedFiles.isEmpty();
     if (!result.ok)

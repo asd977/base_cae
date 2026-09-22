@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ui version="4.0">
+ <class>GeometryCheckDialog</class>
+ <widget class="QWidget" name="GeometryCheckDialog">
+  <property name="windowTitle"><string>几何检查与修复</string></property>
+  <property name="minimumSize"><size><width>420</width><height>460</height></size></property>
+  <layout class="QVBoxLayout" name="mainLayout">
+   <property name="leftMargin"><number>12</number></property><property name="topMargin"><number>10</number></property><property name="rightMargin"><number>12</number></property><property name="bottomMargin"><number>10</number></property><property name="spacing"><number>10</number></property>
+   <item><layout class="QHBoxLayout" name="sourceLayout">
+    <item><widget class="QLabel" name="objectLabel"><property name="text"><string>对象</string></property></widget></item>
+    <item><widget class="QComboBox" name="objectCombo"><property name="sizePolicy"><sizepolicy hsizetype="Expanding" vsizetype="Fixed"><horstretch>1</horstretch><verstretch>0</verstretch></sizepolicy></property></widget></item>
+    <item><widget class="QPushButton" name="focusButton"><property name="text"><string>定位</string></property></widget></item>
+    <item><widget class="QPushButton" name="checkButton"><property name="text"><string>检查</string></property></widget></item>
+    <item><widget class="QPushButton" name="repairButton"><property name="text"><string>修复</string></property></widget></item>
+   </layout></item>
+   <item><widget class="QGroupBox" name="optionGroup"><property name="title"><string>检查设置</string></property>
+    <layout class="QGridLayout" name="optionLayout">
+     <item row="0" column="0"><widget class="QLabel" name="smallEdgeLabel"><property name="text"><string>小边阈值</string></property></widget></item>
+     <item row="0" column="1"><widget class="QDoubleSpinBox" name="smallEdgeSpin"><property name="decimals"><number>8</number></property><property name="minimum"><double>0.000000001</double></property><property name="maximum"><double>1000000.0</double></property><property name="value"><double>0.001</double></property><property name="suffix"><string> mm</string></property><property name="keyboardTracking"><bool>false</bool></property></widget></item>
+     <item row="0" column="2"><widget class="QLabel" name="smallFaceLabel"><property name="text"><string>小面阈值</string></property></widget></item>
+     <item row="0" column="3"><widget class="QDoubleSpinBox" name="smallFaceSpin"><property name="decimals"><number>8</number></property><property name="minimum"><double>0.000000000001</double></property><property name="maximum"><double>1000000000000.0</double></property><property name="value"><double>0.0001</double></property><property name="suffix"><string> mm²</string></property><property name="keyboardTracking"><bool>false</bool></property></widget></item>
+     <item row="1" column="0"><widget class="QLabel" name="toleranceLabel"><property name="text"><string>修复精度</string></property></widget></item>
+     <item row="1" column="1"><widget class="QDoubleSpinBox" name="toleranceSpin"><property name="decimals"><number>9</number></property><property name="minimum"><double>0.0000000001</double></property><property name="maximum"><double>1.0</double></property><property name="value"><double>0.000001</double></property><property name="suffix"><string> mm</string></property><property name="keyboardTracking"><bool>false</bool></property></widget></item>
+     <item row="1" column="2"><widget class="QCheckBox" name="sewCheck"><property name="text"><string>尝试闭合开放曲面</string></property><property name="checked"><bool>true</bool></property></widget></item>
+     <item row="1" column="3"><widget class="QCheckBox" name="unifyCheck"><property name="text"><string>合并重复面和边</string></property><property name="toolTip"><string>修复后部分边、面编号可能变化</string></property></widget></item>
+    </layout>
+   </widget></item>
+   <item><widget class="QLabel" name="summaryLabel"><property name="minimumHeight"><number>34</number></property><property name="text"><string>选择对象后点击“检查”。</string></property><property name="wordWrap"><bool>true</bool></property></widget></item>
+   <item><widget class="QTableWidget" name="reportTable"/></item>
+  </layout>
+ </widget><resources/><connections/>
+</ui>

@@ -198,6 +198,22 @@
         <file>resources/menu/minimal/mat-builtin-material.svg</file>
         <file>resources/menu/minimal/mat-builtin-seepage.svg</file>
         <file>resources/menu/minimal/mat-transition.svg</file>
+        <file>resources/menu/geometry/sketch.svg</file>
+        <file>resources/menu/geometry/extrude.svg</file>
+        <file>resources/menu/geometry/revolve.svg</file>
+        <file>resources/menu/geometry/sweep.svg</file>
+        <file>resources/menu/geometry/loft.svg</file>
+        <file>resources/menu/geometry/cut-extrude.svg</file>
+        <file>resources/menu/geometry/fillet.svg</file>
+        <file>resources/menu/geometry/chamfer.svg</file>
+        <file>resources/menu/geometry/split.svg</file>
+        <file>resources/menu/geometry/transform.svg</file>
+        <file>resources/menu/geometry/mirror.svg</file>
+        <file>resources/menu/geometry/pattern.svg</file>
+        <file>resources/menu/geometry/undo.svg</file>
+        <file>resources/menu/geometry/redo.svg</file>
+        <file>resources/menu/geometry/check-repair.svg</file>
+        <file>resources/menu/geometry/measure.svg</file>
         <file>resources/menu/concept/view-visualization.svg</file>
         <file>resources/menu/concept/view-model.svg</file>
         <file>resources/menu/concept/view-quantity.svg</file>
@@ -220,4 +236,3 @@
         <file>resources/menu/concept/dark/help-about-dark.svg</file>
     </qresource>
 </RCC>
-

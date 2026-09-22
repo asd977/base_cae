@@ -4,11 +4,10 @@
 #include <BasePage.h>
 
 #include <QJsonObject>
+#include <QJsonArray>
 #include <QMap>
-#include <QPointer>
 
 class QWidget;
-class SlopeStandardMethodDialog;
 
 namespace Ui
 {
@@ -36,6 +35,7 @@ class SlopeStabilityWidget : public BasePage
   signals:
     void computeRequested();
     void stopRequested();
+    void limitEquilibriumRequested();
 
 
   private slots:
@@ -63,9 +63,6 @@ class SlopeStabilityWidget : public BasePage
   private:
     Ui::SlopeStabilityWidget* ui;
     QMap<int, QWidget*> m_lineEditors;
-    QPointer<SlopeStandardMethodDialog> m_standardDialog;
-    QString m_standardDatText;
-    QString m_standardLastJobDirectory;
     bool exportTdtraceDatFile() const;
     bool exportMaterialMappingsFile() const;
 };

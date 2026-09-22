@@ -1,0 +1,935 @@
+<?xml version='1.0' encoding='utf-8'?>
+<ui version="4.0">
+ <class>Sketch2DDialog</class>
+ <widget class="QWidget" name="Sketch2DDialog">
+  <layout class="QVBoxLayout" name="mainLayout">
+   <property name="leftMargin">
+    <number>0</number>
+   </property>
+   <property name="topMargin">
+    <number>0</number>
+   </property>
+   <property name="rightMargin">
+    <number>0</number>
+   </property>
+   <property name="bottomMargin">
+    <number>0</number>
+   </property>
+   <property name="spacing">
+    <number>0</number>
+   </property>
+   <item>
+    <widget class="QLabel" name="headerLabel">
+     <property name="objectName">
+      <string>pageHeaderLabel</string>
+     </property>
+     <property name="text">
+      <string>二维草图</string>
+     </property>
+    </widget>
+   </item>
+   <item>
+    <layout class="QVBoxLayout" name="contentLayout">
+     <property name="leftMargin">
+      <number>8</number>
+     </property>
+     <property name="topMargin">
+      <number>8</number>
+     </property>
+     <property name="rightMargin">
+      <number>8</number>
+     </property>
+     <property name="bottomMargin">
+      <number>8</number>
+     </property>
+     <property name="spacing">
+      <number>6</number>
+     </property>
+     <item>
+      <widget class="QGroupBox" name="planeGroup">
+       <property name="title">
+        <string>平面</string>
+       </property>
+       <layout class="QGridLayout" name="planeLayout">
+        <property name="leftMargin">
+         <number>8</number>
+        </property>
+        <property name="topMargin">
+         <number>8</number>
+        </property>
+        <property name="rightMargin">
+         <number>8</number>
+        </property>
+        <property name="bottomMargin">
+         <number>8</number>
+        </property>
+        <property name="horizontalSpacing">
+         <number>6</number>
+        </property>
+        <property name="verticalSpacing">
+         <number>6</number>
+        </property>
+        <item row="0" column="0">
+         <widget class="QLabel" name="planeLabel">
+          <property name="text">
+           <string>平面</string>
+          </property>
+         </widget>
+        </item>
+        <item row="0" column="1">
+         <widget class="QComboBox" name="planeCombo" />
+        </item>
+        <item row="1" column="0">
+         <widget class="QLabel" name="offsetLabel">
+          <property name="text">
+           <string>偏移</string>
+          </property>
+         </widget>
+        </item>
+        <item row="1" column="1">
+         <widget class="QDoubleSpinBox" name="offsetSpin">
+          <property name="decimals">
+           <number>4</number>
+          </property>
+          <property name="minimum">
+           <double>-1000000.000000000000000</double>
+          </property>
+          <property name="maximum">
+           <double>1000000.000000000000000</double>
+          </property>
+          <property name="singleStep">
+           <double>1.000000000000000</double>
+          </property>
+         </widget>
+        </item>
+        <item row="2" column="0">
+         <widget class="QLabel" name="outputModeLabel">
+          <property name="text">
+           <string>输出</string>
+          </property>
+         </widget>
+        </item>
+         <item row="2" column="1">
+          <widget class="QComboBox" name="outputModeCombo" />
+         </item>
+         <item row="3" column="0" colspan="2">
+          <widget class="QPushButton" name="importDxfButton">
+           <property name="minimumHeight">
+            <number>30</number>
+           </property>
+           <property name="text">
+            <string>导入 DXF 到草图</string>
+           </property>
+          </widget>
+         </item>
+        </layout>
+      </widget>
+     </item>
+     <item>
+      <widget class="QGroupBox" name="operationGroup">
+       <property name="title">
+        <string>操作</string>
+       </property>
+       <layout class="QVBoxLayout" name="operationLayout">
+        <property name="leftMargin">
+         <number>8</number>
+        </property>
+        <property name="topMargin">
+         <number>8</number>
+        </property>
+        <property name="rightMargin">
+         <number>8</number>
+        </property>
+        <property name="bottomMargin">
+         <number>8</number>
+        </property>
+        <property name="spacing">
+         <number>5</number>
+        </property>
+        <item>
+         <widget class="QLabel" name="currentOperationLabel">
+          <property name="text">
+           <string>选择</string>
+          </property>
+          <property name="styleSheet">
+           <string notr="true">font-weight:600;</string>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <widget class="QLabel" name="cursorInfoLabel">
+          <property name="text">
+           <string>U --   V --</string>
+          </property>
+          <property name="styleSheet">
+           <string notr="true">color:#475569;</string>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <widget class="QLabel" name="operationHintLabel">
+          <property name="text">
+           <string>单击选择，拖动框选，右键绘图。</string>
+          </property>
+          <property name="wordWrap">
+           <bool>true</bool>
+          </property>
+          <property name="styleSheet">
+           <string notr="true">color:#475569;</string>
+          </property>
+         </widget>
+        </item>
+       </layout>
+      </widget>
+     </item>
+     <item>
+      <widget class="QGroupBox" name="toolGroupBox">
+       <property name="visible">
+        <bool>false</bool>
+       </property>
+       <property name="title">
+        <string>绘制工具</string>
+       </property>
+       <layout class="QGridLayout" name="toolLayout">
+        <property name="leftMargin">
+         <number>8</number>
+        </property>
+        <property name="topMargin">
+         <number>8</number>
+        </property>
+        <property name="rightMargin">
+         <number>8</number>
+        </property>
+        <property name="bottomMargin">
+         <number>8</number>
+        </property>
+        <property name="horizontalSpacing">
+         <number>6</number>
+        </property>
+        <property name="verticalSpacing">
+         <number>6</number>
+        </property>
+        <item row="0" column="0">
+         <widget class="QPushButton" name="selectButton">
+          <property name="text">
+           <string>选择</string>
+          </property>
+          <property name="checkable">
+           <bool>true</bool>
+          </property>
+          <property name="minimumHeight">
+           <number>30</number>
+          </property>
+         </widget>
+        </item>
+        <item row="0" column="1">
+         <widget class="QPushButton" name="lineButton">
+          <property name="text">
+           <string>轮廓</string>
+          </property>
+          <property name="checkable">
+           <bool>true</bool>
+          </property>
+          <property name="minimumHeight">
+           <number>30</number>
+          </property>
+         </widget>
+        </item>
+        <item row="1" column="0">
+         <widget class="QPushButton" name="rectButton">
+          <property name="text">
+           <string>矩形</string>
+          </property>
+          <property name="checkable">
+           <bool>true</bool>
+          </property>
+          <property name="minimumHeight">
+           <number>30</number>
+          </property>
+         </widget>
+        </item>
+        <item row="1" column="1">
+         <widget class="QPushButton" name="circleButton">
+          <property name="text">
+           <string>圆</string>
+          </property>
+          <property name="checkable">
+           <bool>true</bool>
+          </property>
+          <property name="minimumHeight">
+           <number>30</number>
+          </property>
+         </widget>
+        </item>
+        <item row="2" column="0">
+         <widget class="QPushButton" name="arcButton">
+          <property name="text">
+           <string>圆弧</string>
+          </property>
+          <property name="checkable">
+           <bool>true</bool>
+          </property>
+          <property name="minimumHeight">
+           <number>30</number>
+          </property>
+         </widget>
+        </item>
+        <item row="2" column="1">
+         <widget class="QPushButton" name="curveButton">
+          <property name="text">
+           <string>样条</string>
+          </property>
+          <property name="checkable">
+           <bool>true</bool>
+          </property>
+          <property name="minimumHeight">
+           <number>30</number>
+          </property>
+         </widget>
+        </item>
+        <item row="3" column="0" colspan="2">
+         <widget class="QPushButton" name="pointButton">
+          <property name="text">
+           <string>点</string>
+          </property>
+          <property name="checkable">
+           <bool>true</bool>
+          </property>
+          <property name="minimumHeight">
+           <number>30</number>
+          </property>
+         </widget>
+        </item>
+        <item row="4" column="0">
+         <widget class="QPushButton" name="finishButton">
+          <property name="text">
+           <string>结束</string>
+          </property>
+         </widget>
+        </item>
+        <item row="4" column="1">
+         <widget class="QPushButton" name="closeButton">
+          <property name="text">
+           <string>闭合</string>
+          </property>
+         </widget>
+        </item>
+       </layout>
+      </widget>
+     </item>
+     <item>
+      <widget class="QGroupBox" name="editGroup">
+       <property name="visible">
+        <bool>false</bool>
+       </property>
+       <property name="title">
+        <string>修整</string>
+       </property>
+       <layout class="QGridLayout" name="editLayout">
+        <property name="leftMargin">
+         <number>8</number>
+        </property>
+        <property name="topMargin">
+         <number>8</number>
+        </property>
+        <property name="rightMargin">
+         <number>8</number>
+        </property>
+        <property name="bottomMargin">
+         <number>8</number>
+        </property>
+        <property name="horizontalSpacing">
+         <number>6</number>
+        </property>
+        <property name="verticalSpacing">
+         <number>5</number>
+        </property>
+        <item row="0" column="0" colspan="2">
+         <widget class="QPushButton" name="mergeEndpointsButton">
+          <property name="text">
+           <string>合并</string>
+          </property>
+         </widget>
+        </item>
+        <item row="1" column="0" colspan="2">
+         <widget class="QPushButton" name="checkClosureButton">
+          <property name="text">
+           <string>检查</string>
+          </property>
+         </widget>
+        </item>
+       </layout>
+      </widget>
+     </item>
+     <item>
+      <widget class="QGroupBox" name="tableGroup">
+       <property name="visible">
+        <bool>false</bool>
+       </property>
+       <property name="title">
+        <string>草图数据</string>
+       </property>
+       <layout class="QVBoxLayout" name="tableLayout">
+        <property name="leftMargin">
+         <number>8</number>
+        </property>
+        <property name="topMargin">
+         <number>8</number>
+        </property>
+        <property name="rightMargin">
+         <number>8</number>
+        </property>
+        <property name="bottomMargin">
+         <number>8</number>
+        </property>
+        <property name="spacing">
+         <number>5</number>
+        </property>
+        <item>
+         <widget class="QLabel" name="objectsTitleLabel">
+          <property name="text">
+           <string>对象</string>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <widget class="QTableWidget" name="objectsTable">
+          <property name="minimumHeight">
+           <number>82</number>
+          </property>
+          <property name="maximumHeight">
+           <number>110</number>
+          </property>
+          <property name="selectionMode">
+           <enum>QAbstractItemView::SingleSelection</enum>
+          </property>
+          <property name="selectionBehavior">
+           <enum>QAbstractItemView::SelectRows</enum>
+          </property>
+          <property name="editTriggers">
+           <set>QAbstractItemView::NoEditTriggers</set>
+          </property>
+          <column>
+           <property name="text">
+            <string>序号</string>
+           </property>
+          </column>
+          <column>
+           <property name="text">
+            <string>类型</string>
+           </property>
+          </column>
+          <column>
+           <property name="text">
+            <string>信息</string>
+           </property>
+          </column>
+         </widget>
+        </item>
+        <item>
+         <layout class="QHBoxLayout" name="objectButtonRow">
+          <item>
+           <widget class="QPushButton" name="editObjectButton">
+            <property name="text">
+             <string>编辑</string>
+            </property>
+           </widget>
+          </item>
+          <item>
+           <widget class="QPushButton" name="deleteObjectButton">
+            <property name="text">
+             <string>删除</string>
+            </property>
+           </widget>
+          </item>
+         </layout>
+        </item>
+        <item>
+         <widget class="QLabel" name="pointsTitleLabel">
+          <property name="text">
+           <string>坐标</string>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <widget class="QTableWidget" name="pointsTable">
+          <property name="minimumHeight">
+           <number>105</number>
+          </property>
+          <property name="maximumHeight">
+           <number>130</number>
+          </property>
+          <property name="selectionMode">
+           <enum>QAbstractItemView::SingleSelection</enum>
+          </property>
+          <property name="selectionBehavior">
+           <enum>QAbstractItemView::SelectRows</enum>
+          </property>
+          <property name="editTriggers">
+           <set>QAbstractItemView::DoubleClicked|QAbstractItemView::EditKeyPressed</set>
+          </property>
+          <column>
+           <property name="text">
+            <string>U</string>
+           </property>
+          </column>
+          <column>
+           <property name="text">
+            <string>V</string>
+           </property>
+          </column>
+         </widget>
+        </item>
+        <item>
+         <layout class="QGridLayout" name="tableButtonRow">
+          <item row="0" column="0">
+           <widget class="QPushButton" name="undoButton">
+            <property name="text">
+             <string>撤销</string>
+            </property>
+           </widget>
+          </item>
+          <item row="0" column="1">
+           <widget class="QPushButton" name="redoButton">
+            <property name="text">
+             <string>重做</string>
+            </property>
+           </widget>
+          </item>
+          <item row="1" column="0">
+           <widget class="QPushButton" name="deleteButton">
+            <property name="text">
+             <string>删除点</string>
+            </property>
+           </widget>
+          </item>
+          <item row="1" column="1">
+           <widget class="QPushButton" name="reverseButton">
+            <property name="text">
+             <string>反向</string>
+            </property>
+           </widget>
+          </item>
+          <item row="2" column="0" colspan="2">
+           <widget class="QPushButton" name="clearButton">
+            <property name="text">
+             <string>清空</string>
+            </property>
+           </widget>
+          </item>
+         </layout>
+        </item>
+       </layout>
+      </widget>
+     </item>
+     <item>
+      <widget class="QGroupBox" name="bottomGroup">
+       <property name="visible">
+        <bool>false</bool>
+       </property>
+       <property name="title">
+        <string>生成</string>
+       </property>
+       <layout class="QVBoxLayout" name="bottomLayout">
+        <property name="leftMargin">
+         <number>8</number>
+        </property>
+        <property name="topMargin">
+         <number>8</number>
+        </property>
+        <property name="rightMargin">
+         <number>8</number>
+        </property>
+        <property name="bottomMargin">
+         <number>8</number>
+        </property>
+        <property name="spacing">
+         <number>5</number>
+        </property>
+        <item>
+         <widget class="QLabel" name="statusLabel">
+          <property name="text">
+           <string />
+          </property>
+          <property name="wordWrap">
+           <bool>true</bool>
+          </property>
+          <property name="minimumHeight">
+           <number>34</number>
+          </property>
+          <property name="maximumHeight">
+           <number>52</number>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <widget class="QPushButton" name="generateButton">
+          <property name="minimumHeight">
+           <number>34</number>
+          </property>
+          <property name="text">
+           <string>应用草图</string>
+          </property>
+         </widget>
+        </item>
+       </layout>
+      </widget>
+     </item>
+     <item>
+      <widget class="QGroupBox" name="pointCoordinateGroup">
+       <property name="visible">
+        <bool>false</bool>
+       </property>
+       <property name="title">
+        <string>选中点</string>
+       </property>
+       <layout class="QFormLayout" name="pointCoordinateForm">
+        <property name="leftMargin">
+         <number>8</number>
+        </property>
+        <property name="topMargin">
+         <number>8</number>
+        </property>
+        <property name="rightMargin">
+         <number>8</number>
+        </property>
+        <property name="bottomMargin">
+         <number>8</number>
+        </property>
+        <property name="horizontalSpacing">
+         <number>8</number>
+        </property>
+        <property name="verticalSpacing">
+         <number>6</number>
+        </property>
+        <item row="0" column="0" colspan="2">
+         <widget class="QLabel" name="pointCoordinateLabel">
+          <property name="text">
+           <string>未选择端点</string>
+          </property>
+          <property name="wordWrap">
+           <bool>true</bool>
+          </property>
+         </widget>
+        </item>
+        <item row="1" column="0">
+         <widget class="QLabel" name="pointULabel">
+          <property name="text">
+           <string>U</string>
+          </property>
+         </widget>
+        </item>
+        <item row="1" column="1">
+         <widget class="QDoubleSpinBox" name="pointUSpin">
+          <property name="decimals">
+           <number>4</number>
+          </property>
+          <property name="minimum">
+           <double>-1000000000.0</double>
+          </property>
+          <property name="maximum">
+           <double>1000000000.0</double>
+          </property>
+          <property name="singleStep">
+           <double>1.0</double>
+          </property>
+          <property name="suffix">
+           <string> mm</string>
+          </property>
+          <property name="keyboardTracking">
+           <bool>false</bool>
+          </property>
+         </widget>
+        </item>
+        <item row="2" column="0">
+         <widget class="QLabel" name="pointVLabel">
+          <property name="text">
+           <string>V</string>
+          </property>
+         </widget>
+        </item>
+        <item row="2" column="1">
+         <widget class="QDoubleSpinBox" name="pointVSpin">
+          <property name="decimals">
+           <number>4</number>
+          </property>
+          <property name="minimum">
+           <double>-1000000000.0</double>
+          </property>
+          <property name="maximum">
+           <double>1000000000.0</double>
+          </property>
+          <property name="singleStep">
+           <double>1.0</double>
+          </property>
+          <property name="suffix">
+           <string> mm</string>
+          </property>
+          <property name="keyboardTracking">
+           <bool>false</bool>
+          </property>
+         </widget>
+        </item>
+       </layout>
+      </widget>
+     </item>
+     <item>
+      <widget class="QGroupBox" name="optionGroup">
+       <property name="title">
+        <string>辅助选项</string>
+       </property>
+       <layout class="QGridLayout" name="optionLayout">
+        <property name="leftMargin">
+         <number>8</number>
+        </property>
+        <property name="topMargin">
+         <number>8</number>
+        </property>
+        <property name="rightMargin">
+         <number>8</number>
+        </property>
+        <property name="bottomMargin">
+         <number>8</number>
+        </property>
+        <property name="horizontalSpacing">
+         <number>6</number>
+        </property>
+        <property name="verticalSpacing">
+         <number>5</number>
+        </property>
+        <item row="0" column="0">
+         <widget class="QCheckBox" name="snapCheck">
+          <property name="text">
+           <string>端点</string>
+          </property>
+          <property name="checked">
+           <bool>true</bool>
+          </property>
+         </widget>
+        </item>
+        <item row="0" column="1">
+         <widget class="QDoubleSpinBox" name="pointSnapSpin">
+          <property name="decimals">
+           <number>3</number>
+          </property>
+          <property name="minimum">
+           <double>0.001000000000000</double>
+          </property>
+          <property name="maximum">
+           <double>1000000.000000000000000</double>
+          </property>
+          <property name="singleStep">
+           <double>0.050000000000000</double>
+          </property>
+          <property name="value">
+           <double>0.120000000000000</double>
+          </property>
+         </widget>
+        </item>
+        <item row="1" column="0">
+         <widget class="QLabel" name="gridStepLabel">
+          <property name="text">
+           <string>网格边长</string>
+          </property>
+         </widget>
+        </item>
+        <item row="1" column="1">
+         <widget class="QDoubleSpinBox" name="gridStepSpin">
+          <property name="decimals">
+           <number>3</number>
+          </property>
+          <property name="minimum">
+           <double>0.001000000000000</double>
+          </property>
+          <property name="maximum">
+           <double>1000000.000000000000000</double>
+          </property>
+          <property name="singleStep">
+           <double>1.000000000000000</double>
+          </property>
+          <property name="value">
+           <double>1.000000000000000</double>
+          </property>
+         </widget>
+        </item>
+        <item row="2" column="0" colspan="2">
+         <widget class="QCheckBox" name="gridSnapCheck">
+          <property name="text">
+           <string>启用网格吸附</string>
+          </property>
+          <property name="checked">
+           <bool>true</bool>
+          </property>
+         </widget>
+        </item>
+        <item row="3" column="0">
+         <widget class="QLabel" name="gridSnapStepLabel">
+          <property name="text">
+           <string>吸附步长</string>
+          </property>
+         </widget>
+        </item>
+        <item row="3" column="1">
+         <widget class="QDoubleSpinBox" name="gridSnapStepSpin">
+          <property name="decimals">
+           <number>3</number>
+          </property>
+          <property name="minimum">
+           <double>0.001000000000000</double>
+          </property>
+          <property name="maximum">
+           <double>1000000.000000000000000</double>
+          </property>
+          <property name="singleStep">
+           <double>1.000000000000000</double>
+          </property>
+          <property name="value">
+           <double>1.000000000000000</double>
+          </property>
+         </widget>
+        </item>
+        <item row="4" column="0">
+         <widget class="QCheckBox" name="autoCloseCheck">
+          <property name="text">
+           <string>首点</string>
+          </property>
+          <property name="checked">
+           <bool>true</bool>
+          </property>
+         </widget>
+        </item>
+        <item row="4" column="1">
+         <widget class="QDoubleSpinBox" name="autoCloseToleranceSpin">
+          <property name="decimals">
+           <number>3</number>
+          </property>
+          <property name="minimum">
+           <double>0.001000000000000</double>
+          </property>
+          <property name="maximum">
+           <double>1000000.000000000000000</double>
+          </property>
+          <property name="singleStep">
+           <double>0.050000000000000</double>
+          </property>
+          <property name="value">
+           <double>0.250000000000000</double>
+          </property>
+         </widget>
+        </item>
+        <item row="5" column="0">
+         <widget class="QCheckBox" name="orthoCheck">
+          <property name="text">
+           <string>正交</string>
+          </property>
+         </widget>
+        </item>
+        <item row="5" column="1">
+         <widget class="QCheckBox" name="showAxesCheck">
+          <property name="text">
+           <string>轴线</string>
+          </property>
+          <property name="checked">
+           <bool>false</bool>
+          </property>
+         </widget>
+        </item>
+        <item row="6" column="0">
+         <widget class="QLabel" name="arcModeLabel">
+          <property name="text">
+           <string>圆弧</string>
+          </property>
+         </widget>
+        </item>
+        <item row="6" column="1">
+         <widget class="QComboBox" name="arcModeCombo" />
+        </item>
+        <item row="7" column="0" colspan="2">
+         <widget class="QWidget" name="arcAngleRow">
+          <property name="visible">
+           <bool>false</bool>
+          </property>
+          <layout class="QHBoxLayout" name="arcAngleLayout">
+           <property name="leftMargin">
+            <number>0</number>
+           </property>
+           <property name="topMargin">
+            <number>0</number>
+           </property>
+           <property name="rightMargin">
+            <number>0</number>
+           </property>
+           <property name="bottomMargin">
+            <number>0</number>
+           </property>
+           <property name="spacing">
+            <number>6</number>
+           </property>
+           <item>
+            <widget class="QLabel" name="arcAngleLabel">
+             <property name="text">
+              <string>角度</string>
+             </property>
+            </widget>
+           </item>
+           <item>
+            <widget class="QDoubleSpinBox" name="arcAngleSpin">
+             <property name="decimals">
+              <number>2</number>
+             </property>
+             <property name="minimum">
+              <double>-360.0</double>
+             </property>
+             <property name="maximum">
+              <double>360.0</double>
+             </property>
+             <property name="singleStep">
+              <double>5.0</double>
+             </property>
+             <property name="suffix">
+              <string>°</string>
+             </property>
+             <property name="keyboardTracking">
+              <bool>true</bool>
+             </property>
+             <property name="toolTip">
+              <string>中心角弧扫角。正值逆时针，负值顺时针。</string>
+             </property>
+            </widget>
+           </item>
+           <item>
+            <widget class="QPushButton" name="arcAngleApplyButton">
+             <property name="minimumHeight">
+              <number>28</number>
+             </property>
+             <property name="text">
+              <string>确定</string>
+             </property>
+            </widget>
+           </item>
+          </layout>
+         </widget>
+        </item>
+       </layout>
+      </widget>
+     </item>
+     <item>
+      <spacer name="verticalSpacer">
+       <property name="orientation">
+        <enum>Qt::Vertical</enum>
+       </property>
+       <property name="sizeHint" stdset="0">
+        <size>
+         <width>20</width>
+         <height>30</height>
+        </size>
+       </property>
+      </spacer>
+     </item>
+    </layout>
+   </item>
+  </layout>
+ </widget>
+ <resources />
+ <connections />
+</ui>

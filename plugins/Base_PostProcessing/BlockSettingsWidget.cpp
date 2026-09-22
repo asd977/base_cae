@@ -609,7 +609,7 @@ void BlockSettingsWidget::updateColoringFromUI()
         scalarBar->SetLookupTable(newLut);
         lut = newLut;
     }
-    applyStandardPostLookupTable(lut, range[0], range[1]);
+    applyPostFieldLookupTable(lut, field.name, range[0], range[1]);
 
     m_mapper->SetLookupTable(lut);
     if (field.association == vtkDataObject::FIELD_ASSOCIATION_CELLS)

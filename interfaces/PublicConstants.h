@@ -100,6 +100,9 @@ constexpr char kActionGeomCommon[] = "geom_boolean_common";
 // --- 特征 Feature（菜单 actExtrude/Revolve/Thicken/Shell 用的） ---
 constexpr char kActionGeomAddExtrude[] = "geom_feature_extrude";
 constexpr char kActionGeomAddRevolve[] = "geom_feature_revolve";
+constexpr char kActionGeomAddLoft[] = "geom_feature_loft";
+constexpr char kActionGeomAddSweep[] = "geom_feature_sweep";
+constexpr char kActionGeomAddCutExtrude[] = "geom_feature_cut_extrude";
 constexpr char kActionGeomAddThicken[] = "geom_feature_thicken";
 constexpr char kActionGeomAddShell[] = "geom_feature_shell";
 
@@ -107,11 +110,36 @@ constexpr char kActionGeomAddShell[] = "geom_feature_shell";
 constexpr char kActionGeomAddEdgeBlend[] = "geom_modify_edgeblend";
 constexpr char kActionGeomAddOffset[] = "geom_modify_offset";
 constexpr char kActionGeomAddSplit[] = "geom_modify_split";
+constexpr char kActionGeomAddChamfer[] = "geom_modify_chamfer";
+constexpr char kActionGeomAddFillet[] = "geom_modify_fillet";
 
 // --- 变换 Transform（菜单 actTransform/Mirror/Pattern 用的） ---
 constexpr char kActionGeomAddTransform[] = "geom_transform";
 constexpr char kActionGeomAddMirror[] = "geom_mirror";
 constexpr char kActionGeomAddPattern[] = "geom_pattern";
+constexpr char kActionGeomUndo[] = "geom_undo";
+constexpr char kActionGeomRedo[] = "geom_redo";
+constexpr char kActionGeomCheckRepair[] = "geom_check_repair";
+constexpr char kActionGeomMeasure[] = "geom_measure";
+
+// --- 草图 Sketch ---
+constexpr char kActionGeomSketch2D[] = "geom_sketch_2d";
+constexpr char kActionSketchEnterEdit[] = "sketch_enter_edit";
+constexpr char kActionSketchExitEdit[] = "sketch_exit_edit";
+constexpr char kActionSketchToolLine[] = "sketch_tool_line";
+constexpr char kActionSketchToolPolygon[] = "sketch_tool_polygon";
+constexpr char kActionSketchToolPoint[] = "sketch_tool_point";
+constexpr char kActionSketchToolRectangle[] = "sketch_tool_rectangle";
+constexpr char kActionSketchToolCircle[] = "sketch_tool_circle";
+constexpr char kActionSketchToolArc[] = "sketch_tool_arc";
+constexpr char kActionSketchToolSpline[] = "sketch_tool_spline";
+constexpr char kActionSketchConstraintCoincident[] = "sketch_constraint_coincident";
+constexpr char kActionSketchConstraintHorizontal[] = "sketch_constraint_horizontal";
+constexpr char kActionSketchConstraintVertical[] = "sketch_constraint_vertical";
+constexpr char kActionSketchConstraintFixed[] = "sketch_constraint_fixed";
+constexpr char kActionSketchConstraintEqual[] = "sketch_constraint_equal";
+constexpr char kActionSketchSolve[] = "sketch_solve";
+constexpr char kActionSketchGenerate[] = "sketch_generate";
 
 // ---- Project / 文件 ----
 // constexpr char kActionProjectOpen[]            = "proj_open";
@@ -217,6 +245,18 @@ constexpr char kPagePreprocessEarthRockfillDam[] = "earthrockfill_dam";
 constexpr char kPagePreprocessSlopeTemplate[] = "slope_template";
 constexpr char kPagePreprocessCavernTemplate[] = "cavern_template";
 constexpr char kPagePreprocessHelix[] = "helix";
+
+constexpr char kPageGeomExtrude[] = "extrude";
+constexpr char kPageGeomRevolve[] = "revolve";
+constexpr char kPageGeomLoft[] = "loft";
+constexpr char kPageGeomSweep[] = "sweep";
+constexpr char kPageGeomPattern[] = "pattern";
+constexpr char kPageGeomTransform[] = "transform";
+constexpr char kPageGeomMirror[] = "mirror";
+constexpr char kPageGeomSplit[] = "split";
+constexpr char kPageGeomChamfer[] = "chamfer";
+constexpr char kPageGeomFillet[] = "fillet";
+constexpr char kPageGeomSketch2D[] = "sketch2d";
 
 constexpr char kPagePreprocessMesh2d[] = "mesh2d";
 constexpr char kPagePreprocessMesh3d[] = "mesh3d";

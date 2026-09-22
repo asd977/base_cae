@@ -147,6 +147,11 @@ class CORE_EXPORT PickManager : public QObject
     void setSelectedFaceKeys(const QString& domain, const QString& uuid, GridKind kind,
                              const QVector<vtkIdType>& faceKeys, bool replace = true);
 
+    // 从当前“可见网格表面”中，以 seedFaceKey 为起点扩展同一连续共面区域。
+    // 主要给需要“点一个小网格面 -> 选整面”的页面使用；筛选后暴露出的内部面也按当前可见表面参与。
+    QVector<vtkIdType> connectedVisibleFacePatch(vtkIdType seedFaceKey,
+                                                 double angleToleranceDeg = 5.0) const;
+
     void setPreviewPointIds(const QString& domain, const QString& uuid, GridKind kind,
                            const QVector<vtkIdType>& pointIds);
     void setPreviewEdgeKeys(const QString& domain, const QString& uuid, GridKind kind,
@@ -421,10 +426,8 @@ class CORE_EXPORT PickManager : public QObject
   signals:
     void nodePicked(const QString& domain, const QString& activeUuid, GridKind kind, vtkIdType pid,
                     int nodeId, double x, double y, double z, const QString& prevUuid);
-    // 单击面时直接返回最终映射后的 faceKey。区域布置只需要一个“种子面”，
-    // 不再依赖 selectionChanged 后再从选择集合反查，避免页面状态/高亮重建造成漏响应。
     void facePicked(const QString& domain, const QString& activeUuid, GridKind kind,
-                    vtkIdType faceKey);
+                    vtkIdType faceKey, bool selected);
 };
 
 #endif // PICKMANAGER_H

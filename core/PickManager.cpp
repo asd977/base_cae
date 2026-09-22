@@ -6,6 +6,7 @@
 #include <services/VisualWidgetService.h>
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <cstring>
 #include <limits>
@@ -239,8 +240,8 @@ constexpr double kPickSelectedB = 50.0 / 255.0;
 
 struct ScalarHighlightState
 {
-    vtkDataSet* ds = nullptr;
-    vtkProp* prop = nullptr;
+    vtkWeakPointer<vtkDataSet> ds;
+    vtkWeakPointer<vtkProp> prop;
     vtkSmartPointer<vtkDataArray> savedScalars;
     vtkSmartPointer<vtkUnsignedCharArray> colors;
     QSet<vtkIdType> previousLocalIds;
@@ -351,14 +352,14 @@ static void restoreScalarHighlight(const QString& stateKey)
     if (it == s_scalarHighlightStates.end() || !it->active)
         return;
 
-    vtkDataSet* ds = it->ds;
+    vtkDataSet* ds = it->ds.GetPointer();
     if (ds && ds->GetCellData())
     {
         ds->GetCellData()->SetScalars(it->savedScalars);
         ds->Modified();
     }
 
-    auto* actor = vtkActor::SafeDownCast(it->prop);
+    auto* actor = vtkActor::SafeDownCast(it->prop.GetPointer());
     auto* mapper = actor ? actor->GetMapper() : nullptr;
     if (mapper)
     {
@@ -390,7 +391,7 @@ static bool ensureScalarHighlight(const QString& stateKey,
         return false;
 
     ScalarHighlightState& state = s_scalarHighlightStates[stateKey];
-    if (state.active && state.ds != ds)
+    if (state.active && state.ds.GetPointer() != ds)
         restoreScalarHighlight(stateKey);
 
     if (state.active && state.colors && state.colors->GetNumberOfTuples() == ds->GetNumberOfCells())
@@ -839,6 +840,36 @@ void PickManager::updateStructure()
 
     if (m_gridLine)
         rebuildLineNodeOverlayAll();
+
+    // 显示筛选会替换 mesh.imported.surface 的 mapper 输入。此时页面可能仍停留在
+    // Face/Edge/Node 模式，不能要求用户“切一次边再切回面”才能重新拾取。
+    // 这里在结构刷新完成后，按当前激活模式同步重建对应索引/高亮。
+    const bool hasActivePickContext = !m_currentDomain.isEmpty() && !m_currentUUid.isEmpty();
+    if (hasActivePickContext)
+    {
+        if (m_pickMode == PickMode::Node)
+        {
+            markDirty(DirtyNode);
+        }
+        else if (m_pickMode == PickMode::Edge)
+        {
+            rebuildEdgeCanonicalCache();
+            markDirty(DirtyEdge);
+        }
+        else if (m_pickMode == PickMode::Face)
+        {
+            rebuildBoundaryFaceCellIndex();
+            markDirty(DirtyFace);
+        }
+        else if (m_pickMode == PickMode::Domain)
+        {
+            rebuildDomainHighlightActors();
+        }
+
+        // 某些页面/显示切换会拆掉交互观察器；结构更新时顺手保证当前拾取链仍有效。
+        if (!m_leftPressTag || !m_leftReleaseTag || !m_mouseMoveTag)
+            setupPicking();
+    }
 }
 
 QSet<DomainKey> PickManager::appliedDomains(const QString& domain, const QString& uuid)
@@ -1720,9 +1751,7 @@ bool PickManager::pickAt(int x, int y)
             {
                 if (!computePickedFace(ug, cellId, pickPos, faceLocalId, facePids))
                     return false;
-                const vtkIdType faceKey = packFaceKey(cellId, faceLocalId);
-                toggleSelectFace(kind, faceKey);
-                emit facePicked(m_currentDomain, m_currentUUid, kind, faceKey);
+                toggleSelectFace(kind, packFaceKey(cellId, faceLocalId));
                 return true;
             }
         }
@@ -1734,9 +1763,7 @@ bool PickManager::pickAt(int x, int y)
         // computePickedFaceFromBoundary 已经返回与 MeshTagSet.faceKeys 一致的 localId。
         // 2D 面单元统一使用 localId=15，不能再改成 0，否则点选/框选生成的 faceKey
         // 会和下拉框中的 MeshTagSet.faceKeys 不一致，表现为高亮乱跳。
-        const vtkIdType faceKey = packFaceKey(origCellId, origFaceLocalId);
-        toggleSelectFace(kind, faceKey);
-        emit facePicked(m_currentDomain, m_currentUUid, kind, faceKey);
+        toggleSelectFace(kind, packFaceKey(origCellId, origFaceLocalId));
         return true;
     }
 
@@ -2805,7 +2832,9 @@ void PickManager::toggleSelectFace(GridKind kind, vtkIdType faceKey)
         mySet.insert(faceKey);
     }
 
+    const bool selectedNow = mySet.contains(faceKey);
     emit selectionChanged(dom, uid, PickMode::Face, kind);
+    emit facePicked(dom, uid, kind, faceKey, selectedNow);
 
     markDirty(DirtyFace);
 }
@@ -2845,6 +2874,175 @@ void PickManager::rebuildBoundaryFaceCellIndex()
     };
 
     buildOne(m_solidPickDataSet, m_gridSolid, m_solidBoundaryCellsByFaceKey);
+}
+
+QVector<vtkIdType> PickManager::connectedVisibleFacePatch(vtkIdType seedFaceKey,
+                                                           double angleToleranceDeg) const
+{
+    QVector<vtkIdType> result;
+    if (!m_gridSolid || m_solidBoundaryCellsByFaceKey.isEmpty()
+        || !m_solidBoundaryCellsByFaceKey.contains(seedFaceKey))
+    {
+        if (seedFaceKey >= 0)
+            result.push_back(seedFaceKey);
+        return result;
+    }
+
+    struct VisibleFaceInfo
+    {
+        vtkIdType key = -1;
+        double normal[3] = {0.0, 0.0, 0.0};
+        double centroid[3] = {0.0, 0.0, 0.0};
+        QVector<quint64> edges;
+    };
+
+    auto normalize = [](double v[3]) -> bool
+    {
+        const double n = vtkMath::Norm(v);
+        if (n <= 1.0e-15)
+            return false;
+        v[0] /= n;
+        v[1] /= n;
+        v[2] /= n;
+        return true;
+    };
+
+    auto faceCellForKey = [this](vtkIdType faceKey) -> vtkCell*
+    {
+        const vtkIdType cellId = unpackFaceCellId(faceKey);
+        const int localFaceId = unpackFaceLocalId(faceKey);
+        if (cellId < 0 || cellId >= m_gridSolid->GetNumberOfCells())
+            return nullptr;
+        vtkCell* cell = m_gridSolid->GetCell(cellId);
+        if (!cell)
+            return nullptr;
+        if (cell->GetCellDimension() == 2 || localFaceId == 15)
+            return cell;
+        if (localFaceId < 0 || localFaceId >= cell->GetNumberOfFaces())
+            return nullptr;
+        return cell->GetFace(localFaceId);
+    };
+
+    QHash<vtkIdType, VisibleFaceInfo> infos;
+    infos.reserve(m_solidBoundaryCellsByFaceKey.size());
+    QHash<quint64, QVector<vtkIdType>> edgeOwners;
+
+    const QList<vtkIdType> visibleKeys = m_solidBoundaryCellsByFaceKey.keys();
+    for (vtkIdType faceKey : visibleKeys)
+    {
+        vtkCell* face = faceCellForKey(faceKey);
+        vtkIdList* ids = face ? face->GetPointIds() : nullptr;
+        if (!ids || ids->GetNumberOfIds() < 3)
+            continue;
+
+        VisibleFaceInfo info;
+        info.key = faceKey;
+
+        // Newell 法计算多边形法向，同时求中心。使用完整体网格点 ID，
+        // 因而筛选后暴露出的内部面也能和相邻可见面稳定建立共享边关系。
+        const vtkIdType npts = ids->GetNumberOfIds();
+        QVector<std::array<double, 3>> pts;
+        pts.reserve(int(npts));
+        for (vtkIdType i = 0; i < npts; ++i)
+        {
+            double p[3] = {0.0, 0.0, 0.0};
+            m_gridSolid->GetPoint(ids->GetId(i), p);
+            pts.push_back({p[0], p[1], p[2]});
+            info.centroid[0] += p[0];
+            info.centroid[1] += p[1];
+            info.centroid[2] += p[2];
+        }
+        const double inv = 1.0 / double(npts);
+        info.centroid[0] *= inv;
+        info.centroid[1] *= inv;
+        info.centroid[2] *= inv;
+        for (int i = 0; i < pts.size(); ++i)
+        {
+            const auto& a = pts[i];
+            const auto& b = pts[(i + 1) % pts.size()];
+            info.normal[0] += (a[1] - b[1]) * (a[2] + b[2]);
+            info.normal[1] += (a[2] - b[2]) * (a[0] + b[0]);
+            info.normal[2] += (a[0] - b[0]) * (a[1] + b[1]);
+        }
+        if (!normalize(info.normal))
+            continue;
+
+        const int edgeCount = face->GetNumberOfEdges();
+        if (edgeCount > 0)
+        {
+            info.edges.reserve(edgeCount);
+            for (int ei = 0; ei < edgeCount; ++ei)
+            {
+                vtkCell* edge = face->GetEdge(ei);
+                vtkIdList* eids = edge ? edge->GetPointIds() : nullptr;
+                if (!eids || eids->GetNumberOfIds() < 2)
+                    continue;
+                const quint64 edgeKey =
+                    makeEdgePairKey(eids->GetId(0), eids->GetId(eids->GetNumberOfIds() - 1));
+                info.edges.push_back(edgeKey);
+                edgeOwners[edgeKey].push_back(faceKey);
+            }
+        }
+        else
+        {
+            info.edges.reserve(int(npts));
+            for (vtkIdType i = 0; i < npts; ++i)
+            {
+                const quint64 edgeKey =
+                    makeEdgePairKey(ids->GetId(i), ids->GetId((i + 1) % npts));
+                info.edges.push_back(edgeKey);
+                edgeOwners[edgeKey].push_back(faceKey);
+            }
+        }
+        infos.insert(faceKey, info);
+    }
+
+    if (!infos.contains(seedFaceKey))
+        return {seedFaceKey};
+
+    const VisibleFaceInfo seed = infos.value(seedFaceKey);
+    double bounds[6] = {0, 0, 0, 0, 0, 0};
+    m_gridSolid->GetBounds(bounds);
+    const double span = std::max({bounds[1] - bounds[0], bounds[3] - bounds[2],
+                                  bounds[5] - bounds[4]});
+    const double planeTol = std::max(1.0e-9, span * 1.0e-7);
+    const double clampedAngle = std::max(0.1, std::min(45.0, angleToleranceDeg));
+    const double cosTol = std::cos(vtkMath::RadiansFromDegrees(clampedAngle));
+
+    QSet<vtkIdType> visited;
+    QVector<vtkIdType> queue{seedFaceKey};
+    while (!queue.isEmpty())
+    {
+        const vtkIdType key = queue.takeLast();
+        if (visited.contains(key) || !infos.contains(key))
+            continue;
+        const VisibleFaceInfo& info = infos[key];
+
+        if (std::abs(vtkMath::Dot(seed.normal, info.normal)) < cosTol)
+            continue;
+        const double dc[3] = {info.centroid[0] - seed.centroid[0],
+                              info.centroid[1] - seed.centroid[1],
+                              info.centroid[2] - seed.centroid[2]};
+        if (std::abs(vtkMath::Dot(seed.normal, dc)) > planeTol)
+            continue;
+
+        visited.insert(key);
+        for (quint64 edgeKey : info.edges)
+        {
+            const QVector<vtkIdType> neighbours = edgeOwners.value(edgeKey);
+            for (vtkIdType next : neighbours)
+                if (!visited.contains(next))
+                    queue.push_back(next);
+        }
+    }
+
+    result.reserve(visited.size());
+    for (vtkIdType key : visited)
+        result.push_back(key);
+    std::sort(result.begin(), result.end());
+    if (result.isEmpty())
+        result.push_back(seedFaceKey);
+    return result;
 }
 
 void PickManager::rebuildFaceColorForActive()

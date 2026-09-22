@@ -1,4 +1,4 @@
-#ifndef SOLVER_H
+﻿#ifndef SOLVER_H
 #define SOLVER_H
 
 #include <ProjectNode.h>
@@ -91,6 +91,8 @@ class Solver : public QObject, public SolverService
     void addDamDynamicAnalysisNode(ProjectNode* analysisNode, bool setCurrent,
                                    const QJsonObject& initialState = {}) const;
     void addSeepageNaturalBoundaryNode(ProjectNode* analysisNode, bool setCurrent) const;
+    void addSlopeLimitSectionNode(ProjectNode* analysisNode, bool setCurrent) const;
+    void duplicateSlopeLimitAnalysisNode(ProjectNode* analysisNode);
     void addGeoStressRegressionNode(ProjectNode* analysisNode, bool setCurrent);
     void addCaveSupportComputationNode(ProjectNode* analysisNode, bool setCurrent);
     void addCaveLiningBoundaryNode(ProjectNode* supportNode, bool innerBoundary,

@@ -381,6 +381,7 @@ struct ViewFaceRef
     int originalFaceId = 15;        // 3D 单元局部面 id；2D 单元整体面固定为 15
     int matype = 0;
     int layer = 0;
+    int vtkCellType = VTK_EMPTY_CELL;
     QVector<vtkIdType> pointIds;    // surfaceSource 的本地点 id，用于 polydata 组面
 };
 
@@ -394,6 +395,71 @@ static bool differentVisibleDomain(const ViewFaceRef& a, const ViewFaceRef& b,
     return false;
 }
 
+static QVector<QVector<vtkIdType>> viewFaceDisplayPolys(const ViewFaceRef& face)
+{
+    QVector<QVector<vtkIdType>> polys;
+    const QVector<vtkIdType>& p = face.pointIds;
+    const int n = p.size();
+
+    if (n < 3)
+        return polys;
+
+    auto addTri = [&](int a, int b, int c)
+    {
+        if (a < n && b < n && c < n)
+            polys.push_back(QVector<vtkIdType>{p[a], p[b], p[c]});
+    };
+
+    auto addQuad = [&](int a, int b, int c, int d)
+    {
+        if (a < n && b < n && c < n && d < n)
+            polys.push_back(QVector<vtkIdType>{p[a], p[b], p[c], p[d]});
+    };
+
+    if (face.vtkCellType == VTK_QUADRATIC_TRIANGLE ||
+        face.vtkCellType == VTK_BIQUADRATIC_TRIANGLE ||
+        n == 6)
+    {
+        addTri(0, 3, 5);
+        addTri(3, 1, 4);
+        addTri(5, 4, 2);
+        addTri(3, 4, 5);
+        return polys;
+    }
+
+    if (face.vtkCellType == VTK_QUADRATIC_QUAD || n == 8)
+    {
+        addTri(0, 4, 7);
+        addTri(4, 1, 5);
+        addTri(5, 2, 6);
+        addTri(7, 6, 3);
+        addQuad(4, 5, 6, 7);
+        return polys;
+    }
+
+    if (face.vtkCellType == VTK_BIQUADRATIC_QUAD || n == 9)
+    {
+        addQuad(0, 4, 8, 7);
+        addQuad(4, 1, 5, 8);
+        addQuad(8, 5, 2, 6);
+        addQuad(7, 8, 6, 3);
+        return polys;
+    }
+
+    if (face.vtkCellType == VTK_QUADRATIC_LINEAR_QUAD && n >= 4)
+    {
+        addQuad(0, 1, 2, 3);
+        return polys;
+    }
+
+    if (n == 3)
+        polys.push_back(p);
+    else if (n >= 4)
+        addQuad(0, 1, 2, 3);
+
+    return polys;
+}
+
 static void addViewSurfaceFace(vtkPolyData* out,
                                vtkCellArray* polys,
                                vtkIdTypeArray* originalCellIds,
@@ -404,19 +470,23 @@ static void addViewSurfaceFace(vtkPolyData* out,
     if (!out || !polys || !originalCellIds || !originalFaceIds || face.pointIds.size() < 3)
         return;
 
-    auto ids = vtkSmartPointer<vtkIdList>::New();
-    ids->SetNumberOfIds(face.pointIds.size());
-    for (int i = 0; i < face.pointIds.size(); ++i)
-        ids->SetId(i, face.pointIds[i]);
+    const QVector<QVector<vtkIdType>> displayPolys = viewFaceDisplayPolys(face);
+    for (const QVector<vtkIdType>& polyPts : displayPolys)
+    {
+        if (polyPts.size() < 3)
+            continue;
 
-    const vtkIdType newCellId = polys->GetNumberOfCells();
-    polys->InsertNextCell(ids);
+        const vtkIdType newCellId = polys->GetNumberOfCells();
+        polys->InsertNextCell(static_cast<vtkIdType>(polyPts.size()));
+        for (vtkIdType pointId : polyPts)
+            polys->InsertCellPoint(pointId);
 
-    if (sourceCellData && out->GetCellData())
-        out->GetCellData()->CopyData(sourceCellData, face.cellId, newCellId);
+        if (sourceCellData && out->GetCellData())
+            out->GetCellData()->CopyData(sourceCellData, face.cellId, newCellId);
 
-    originalCellIds->InsertNextValue(face.originalCellId);
-    originalFaceIds->InsertNextValue(face.originalFaceId);
+        originalCellIds->InsertNextValue(face.originalCellId);
+        originalFaceIds->InsertNextValue(face.originalFaceId);
+    }
 }
 
 static vtkSmartPointer<vtkPolyData> buildMappedViewSurface(vtkUnstructuredGrid* grid)
@@ -472,6 +542,7 @@ static vtkSmartPointer<vtkPolyData> buildMappedViewSurface(vtkUnstructuredGrid* 
         if (dim == 2)
         {
             ref.originalFaceId = 15;
+            ref.vtkCellType = cell->GetCellType();
             vtkIdList* pids = cell->GetPointIds();
             if (!pids || pids->GetNumberOfIds() < 3)
                 continue;
@@ -500,6 +571,7 @@ static vtkSmartPointer<vtkPolyData> buildMappedViewSurface(vtkUnstructuredGrid* 
 
             ViewFaceRef one = ref;
             one.originalFaceId = fi;
+            one.vtkCellType = face->GetCellType();
             one.pointIds.reserve(static_cast<int>(pids->GetNumberOfIds()));
             for (vtkIdType i = 0; i < pids->GetNumberOfIds(); ++i)
                 one.pointIds.push_back(pids->GetId(i));

@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ui version="4.0">
+ <class>StepImportPartDialog</class>
+ <widget class="QWidget" name="StepImportPartDialog">
+  <layout class="QVBoxLayout" name="mainLayout">
+   <property name="leftMargin"><number>12</number></property>
+   <property name="topMargin"><number>12</number></property>
+   <property name="rightMargin"><number>12</number></property>
+   <property name="bottomMargin"><number>12</number></property>
+   <property name="spacing"><number>8</number></property>
+   <item>
+    <widget class="QLabel" name="pageNameLabel">
+     <property name="text"><string>导入几何对象</string></property>
+    </widget>
+   </item>
+   <item>
+    <layout class="QFormLayout" name="formLayout">
+     <property name="horizontalSpacing"><number>10</number></property>
+     <property name="verticalSpacing"><number>6</number></property>
+     <item row="0" column="0"><widget class="QLabel" name="typeLabel"><property name="text"><string>对象类型</string></property></widget></item>
+     <item row="0" column="1"><widget class="QLabel" name="typeValueLabel"><property name="text"><string>STEP 导入零件</string></property></widget></item>
+     <item row="1" column="0"><widget class="QLabel" name="nameLabel"><property name="text"><string>源对象名称</string></property></widget></item>
+     <item row="1" column="1"><widget class="QLabel" name="nameValueLabel"><property name="text"><string>-</string></property><property name="wordWrap"><bool>true</bool></property><property name="textInteractionFlags"><set>Qt::TextSelectableByMouse</set></property></widget></item>
+     <item row="2" column="0"><widget class="QLabel" name="pathLabel"><property name="text"><string>装配路径</string></property></widget></item>
+     <item row="2" column="1"><widget class="QLabel" name="pathValueLabel"><property name="text"><string>-</string></property><property name="wordWrap"><bool>true</bool></property><property name="textInteractionFlags"><set>Qt::TextSelectableByMouse</set></property></widget></item>
+     <item row="3" column="0"><widget class="QLabel" name="colorLabel"><property name="text"><string>导入颜色</string></property></widget></item>
+     <item row="3" column="1"><widget class="QLabel" name="colorValueLabel"><property name="text"><string>默认</string></property><property name="textInteractionFlags"><set>Qt::TextSelectableByMouse</set></property></widget></item>
+     <item row="4" column="0"><widget class="QLabel" name="partIndexLabel"><property name="text"><string>对象序号</string></property></widget></item>
+     <item row="4" column="1"><widget class="QLabel" name="partIndexValueLabel"><property name="text"><string>-</string></property><property name="textInteractionFlags"><set>Qt::TextSelectableByMouse</set></property></widget></item>
+    </layout>
+   </item>
+   <item>
+    <widget class="QLabel" name="infoLabel">
+     <property name="text"><string>该对象由 STEP 文件识别，可单独控制显隐，并作为后续布尔、变换和特征操作的输入。</string></property>
+     <property name="wordWrap"><bool>true</bool></property>
+    </widget>
+   </item>
+   <item><spacer name="verticalSpacer"><property name="orientation"><enum>Qt::Vertical</enum></property><property name="sizeHint" stdset="0"><size><width>20</width><height>40</height></size></property></spacer></item>
+  </layout>
+ </widget>
+ <resources/>
+ <connections/>
+</ui>

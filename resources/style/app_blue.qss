@@ -481,22 +481,31 @@ QMenu {
     color: #1a3a52;
     background: #ffffff;
     border: 1px solid #a8bfce;
-    padding: 3px 0px;
+    padding: 5px;
 }
 
 QMenu::item {
-    padding: 6px 28px 6px 12px;
+    min-height: 20px;
+    padding: 5px 30px 5px 25px;
     background: transparent;
+    border: none;
+    border-left: 3px solid transparent;
+    border-radius: 3px;
 }
 
 QMenu::item:selected {
     color: #1b3d53;
     background: #d9e9f3;
+    border-left-color: #2878b0;
+}
+
+QMenu::item:disabled {
+    color: #8799a8;
 }
 
 QMenu::separator {
     height: 1px;
-    margin: 4px 9px;
+    margin: 5px 8px;
     background: #c7d5de;
 }
 

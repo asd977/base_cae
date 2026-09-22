@@ -1,0 +1,21 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<ui version="4.0">
+ <class>MirrorDialog</class>
+ <widget class="QWidget" name="MirrorDialog">
+  <layout class="QVBoxLayout" name="mainLayout">
+   <property name="leftMargin"><number>12</number></property><property name="topMargin"><number>12</number></property><property name="rightMargin"><number>12</number></property><property name="bottomMargin"><number>12</number></property>
+   <item><layout class="QFormLayout" name="formLayout">
+    <item row="0" column="0"><widget class="QLabel" name="sourceLabel"><property name="text"><string>源对象</string></property></widget></item>
+    <item row="1" column="0"><widget class="QLabel" name="planeLabel"><property name="text"><string>镜像平面</string></property></widget></item>
+    <item row="2" column="0"><widget class="QLabel" name="offsetLabel"><property name="text"><string>平面偏移</string></property></widget></item>
+    <item row="2" column="1"><widget class="QDoubleSpinBox" name="offsetSpin"><property name="suffix"><string> mm</string></property><property name="decimals"><number>4</number></property><property name="minimum"><double>-1000000.000000000000000</double></property><property name="maximum"><double>1000000.000000000000000</double></property></widget></item>
+   <item row="0" column="1"><widget class="QWidget" name="sourceRow"><layout class="QHBoxLayout" name="sourceRowLayout"><property name="leftMargin"><number>0</number></property><property name="topMargin"><number>0</number></property><property name="rightMargin"><number>0</number></property><property name="bottomMargin"><number>0</number></property><property name="spacing"><number>6</number></property><item><widget class="QComboBox" name="sourceCombo"/></item><item><widget class="QPushButton" name="pickSourceButton"><property name="text"><string>选择对象</string></property></widget></item></layout></widget></item><item row="1" column="1"><widget class="QWidget" name="planeRow"><layout class="QHBoxLayout" name="planeRowLayout"><property name="leftMargin"><number>0</number></property><property name="topMargin"><number>0</number></property><property name="rightMargin"><number>0</number></property><property name="bottomMargin"><number>0</number></property><property name="spacing"><number>6</number></property><item><widget class="QComboBox" name="planeCombo"/></item><item><widget class="QPushButton" name="pickPlaneFaceButton"><property name="text"><string>选择基准面</string></property></widget></item></layout></widget></item></layout></item>
+   <item><widget class="QCheckBox" name="previewCheck"><property name="text"><string>显示结果预览</string></property><property name="toolTip"><string>默认关闭。镜像基准面参考线仍会显示，结果实体仅在勾选后预览。</string></property></widget></item>
+   <item><layout class="QHBoxLayout" name="buttonLayout"><item><spacer name="buttonSpacer"><property name="orientation"><enum>Qt::Horizontal</enum></property><property name="sizeHint" stdset="0"><size><width>20</width><height>20</height></size></property></spacer></item><item><widget class="QPushButton" name="applyButton"><property name="text"><string>应用</string></property></widget></item></layout></item>
+   <item><widget class="QLabel" name="statusLabel"><property name="text"><string>按基准平面生成镜像副本。</string></property><property name="wordWrap"><bool>true</bool></property></widget></item>
+   <item><spacer name="verticalSpacer"><property name="orientation"><enum>Qt::Vertical</enum></property><property name="sizeHint" stdset="0"><size><width>20</width><height>40</height></size></property></spacer></item>
+  </layout>
+ </widget>
+ <resources/>
+ <connections/>
+</ui>

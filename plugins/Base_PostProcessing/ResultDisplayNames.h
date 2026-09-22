@@ -116,9 +116,8 @@ inline QString displayName(const QString& rawName)
             {QStringLiteral("PE3"), QStringLiteral("最小主塑性应变 εp_3")},
             {QStringLiteral("PEMAX"), QStringLiteral("最大塑性剪应变")},
             {QStringLiteral("PEEQ"), QStringLiteral("等效塑性应变")},
-            {QStringLiteral("FAILURE_ZONE"), QStringLiteral("全部破坏区（0未破坏，1破坏）")},
-            {QStringLiteral("SHEAR_FAILURE"), QStringLiteral("剪切破坏区（0否，1是）")},
-            {QStringLiteral("TENSILE_FAILURE"), QStringLiteral("拉伸破坏区（0否，1是）")},
+            {QStringLiteral("PLASTIC_ZONE_PRS1"), QStringLiteral("最大塑性应力")},
+            {QStringLiteral("FAILURE_ZONE"), QStringLiteral("塑性破坏类型（0未破坏，1剪破坏，2拉破坏）")},
 
             {QStringLiteral("HEAD"), QStringLiteral("水头 H")},
             {QStringLiteral("HP"), QStringLiteral("水头 H")},
@@ -219,9 +218,8 @@ inline QString scalarBarName(const QString& rawName)
             {QStringLiteral("PE3"), QStringLiteral("εp_3")},
             {QStringLiteral("PEMAX"), QStringLiteral("γp_max")},
             {QStringLiteral("PEEQ"), QStringLiteral("εp_eq")},
-            {QStringLiteral("FAILURE_ZONE"), QStringLiteral("破坏区")},
-            {QStringLiteral("SHEAR_FAILURE"), QStringLiteral("剪切破坏区")},
-            {QStringLiteral("TENSILE_FAILURE"), QStringLiteral("拉伸破坏区")},
+            {QStringLiteral("PLASTIC_ZONE_PRS1"), QStringLiteral("σ1")},
+            {QStringLiteral("FAILURE_ZONE"), QStringLiteral("塑性破坏")},
 
             {QStringLiteral("HEAD"), QStringLiteral("H")},
             {QStringLiteral("HP"), QStringLiteral("H")},

@@ -5,6 +5,9 @@
 #include "BasePage.h"
 #include "PickManager.h"
 
+class QCheckBox;
+class QLabel;
+
 namespace Ui
 {
 class GeoStressFitFacePage;
@@ -38,13 +41,18 @@ class GeoStressFitFacePage : public BasePage
     void onDimComboChanged(int idx);
   private slots:
     void onPickTargetChanged();
+    void onFacePicked(const QString& domain, const QString& activeUuid, GridKind kind,
+                      vtkIdType faceKey, bool selected);
 
   private:
     Ui::GeoStressFitFacePage* ui = nullptr;
     PickMode m_activeMode = PickMode::Edge; // 记录 unload 时用哪个 mode deactivate
+    QCheckBox* m_wholeFaceCheckBox = nullptr;
+    QLabel* m_selectionStatusLabel = nullptr;
 
     PickMode decidePickMode() const;
     void ensureDefaultPickTarget();
     QString fnameForExport() const;
     void refreshGroupCombo();
+    void refreshSelectionSummary();
 };

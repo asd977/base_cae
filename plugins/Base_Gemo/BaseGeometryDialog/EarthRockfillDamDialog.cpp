@@ -6,6 +6,7 @@
 #include <BRep_Builder.hxx>
 #include <GeomManagerInstance.h>
 #include <GeometryCleanup.h>
+#include <GeometryServiceAccess.h>
 #include <PublicConstants.h>
 #include <QDoubleValidator>
 #include <QFormLayout>
@@ -411,11 +412,22 @@ void EarthRockfillDamDialog::buildLayeredDam(double H, double Bt, double Wu, dou
 void EarthRockfillDamDialog::onGenerateClicked()
 {
     updateDiagram();
-    GeometryCleanup::removeExistingGeometry(m_uuid);
-    buildLayeredDam(hEdit->text().toDouble(),
-                    crestEdit->text().toDouble(),
-                    upEdit->text().toDouble(),
-                    downEdit->text().toDouble(),
-                    lenEdit->text().toDouble(),
-                    layerEdit->text().toInt());
+    IGeometryService* service = requireGeometryService(this);
+    if (!service)
+        return;
+
+    const bool ok = service->recreateEarthRockfillDam(
+        m_uuid, getDisplayName(),
+        hEdit->text().toDouble(),
+        crestEdit->text().toDouble(),
+        upEdit->text().toDouble(),
+        downEdit->text().toDouble(),
+        lenEdit->text().toDouble(),
+        layerEdit->text().toInt(),
+        coreWidthEdit->text().toDouble(),
+        readEdit(this, "coreBottomEdit", 22.0),
+        readEdit(this, "filterWidthEdit", 4.0),
+        readEdit(this, "coreOffsetEdit", 0.0));
+    if (!ok)
+        QMessageBox::warning(this, tr("生成失败"), tr("土石坝参数无效，无法生成三维实体。"));
 }

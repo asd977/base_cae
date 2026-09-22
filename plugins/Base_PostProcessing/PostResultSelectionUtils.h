@@ -6,6 +6,7 @@
 #include <QDir>
 #include <QHash>
 #include <QJsonObject>
+#include <QLabel>
 #include <QSet>
 #include <QSignalBlocker>
 #include <QString>
@@ -267,8 +268,30 @@ inline void populateTimeCombo(QComboBox* combo, const QString& projectDir,
     const bool hasSequence =
         frames.size() > 1 || (!frames.isEmpty() && !frames.constFirst().key.isEmpty());
     combo->setEnabled(hasSequence);
-    combo->setToolTip(hasSequence ? QString()
-                                  : QStringLiteral("当前结果仅包含一个时刻"));
+
+    bool strengthReductionSelector = false;
+    for (const auto& frame : frames)
+    {
+        if (frame.key.startsWith(QStringLiteral("condition:strength:")))
+        {
+            strengthReductionSelector = true;
+            break;
+        }
+    }
+
+    // 复用现有第三层选择器，不额外增加一排控件：
+    // 普通瞬态结果仍叫“结果时刻”，强度折减结果动态显示为“折减系数”。
+    if (QWidget* parent = combo->parentWidget())
+    {
+        if (QLabel* label = parent->findChild<QLabel*>(QStringLiteral("resultTimeLabel")))
+            label->setText(strengthReductionSelector
+                               ? QStringLiteral("折减系数")
+                               : QStringLiteral("结果时刻"));
+    }
+    combo->setToolTip(
+        strengthReductionSelector
+            ? QStringLiteral("选择强度折减系数")
+            : (hasSequence ? QString() : QStringLiteral("当前结果仅包含一个时刻")));
 }
 
 inline void populateResultCombo(QComboBox* combo, const QString& projectDir,

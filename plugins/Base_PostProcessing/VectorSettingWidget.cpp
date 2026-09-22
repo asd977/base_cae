@@ -858,7 +858,7 @@ void VectorSettingWidget::rebuildPipeline()
             lut = l;
             scalarBar->SetLookupTable(lut);
         }
-        applyStandardPostLookupTable(lut, displayMin, displayMax);
+        applyPostFieldLookupTable(lut, QStringLiteral("VectorMag"), displayMin, displayMax);
         mapper->SetLookupTable(lut);
         mapper->UseLookupTableScalarRangeOn();
 

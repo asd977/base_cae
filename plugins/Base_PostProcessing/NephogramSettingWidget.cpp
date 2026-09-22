@@ -1,4 +1,4 @@
-﻿#include "NephogramSettingWidget.h"
+#include "NephogramSettingWidget.h"
 #include "PostComboBoxPerformance.h"
 
 #include <PublicConstants.h>
@@ -333,6 +333,7 @@ void NephogramSettingWidget::syncScalarBarFromCurrent()
     // 材料或分层被隐藏后，vtkDataSetMapper 会自然显示剩余体单元的新外边界，
     // 不需要 domains.vtp，也不需要每次先把体网格转换成 PolyData。
     vtkSmartPointer<vtkUnstructuredGrid> displayGrid = postFilteredResultGrid(m_grid);
+    displayGrid = postApplyZeroHideFilter(displayGrid, m_currentArrayName);
     if (!displayGrid || displayGrid->GetNumberOfCells() <= 0)
     {
         clearPostDisplayContext();
@@ -850,6 +851,7 @@ void NephogramSettingWidget::updateNephogram(const QString& selectedScalarName,
     }
 
     vtkSmartPointer<vtkUnstructuredGrid> displayGrid = postFilteredResultGrid(m_grid);
+    displayGrid = postApplyZeroHideFilter(displayGrid, selectedScalarName);
     if (!displayGrid || displayGrid->GetNumberOfCells() <= 0)
     {
         clearPostDisplayContext();
@@ -927,6 +929,17 @@ void NephogramSettingWidget::updateNephogram(const QString& selectedScalarName,
                         m_visualService->scalarBarActor()->GetLookupTable()));
     m_actor->SetMapper(m_mapper);
     auto* surfaceProperty = m_actor->GetProperty();
+    const bool monochromeContours = postContourStyle().enabled && postContourStyle().monochrome;
+    if (monochromeContours)
+    {
+        m_mapper->ScalarVisibilityOff();
+        surfaceProperty->SetColor(0.97, 0.97, 0.97);
+    }
+    else
+    {
+        m_mapper->ScalarVisibilityOn();
+        surfaceProperty->SetColor(1.0, 1.0, 1.0);
+    }
     applyPostActorRepresentation(m_actor);
     surfaceProperty->SetInterpolationToFlat();
     surfaceProperty->LightingOff();
@@ -1104,7 +1117,7 @@ vtkDataArray* NephogramSettingWidget::findScalarArray(vtkUnstructuredGrid* grid,
 void NephogramSettingWidget::updateLookupTableRange(vtkLookupTable* lut, double minV,
                                                     double maxV) const
 {
-    applyStandardPostLookupTable(lut, minV, maxV);
+    applyPostFieldLookupTable(lut, m_currentArrayName, minV, maxV);
 }
 
 bool NephogramSettingWidget::prepareDisplaySurface(vtkUnstructuredGrid* sourceGrid,
@@ -1425,6 +1438,7 @@ void NephogramSettingWidget::updateContourOverlay(const QString& scalarName,
     if (m_grid)
     {
         vtkSmartPointer<vtkUnstructuredGrid> displayGrid = postFilteredResultGrid(m_grid);
+        displayGrid = postApplyZeroHideFilter(displayGrid, scalarName);
         prepareDisplaySurface(displayGrid, scalarName, usePointData, mapperUsePointData);
     }
     vtkPolyData* surface = m_displaySurface;

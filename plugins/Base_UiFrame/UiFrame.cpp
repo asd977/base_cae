@@ -1055,11 +1055,15 @@ void UiFrame::applyThemeToUi()
                 padding: 0px;
             }
 
-            SARibbonBar#geoCaeRibbonBar SARibbonPannel,
-            SARibbonBar#geoCaeRibbonBar SARibbonPannel > QWidget {
-                background: @panel@;
+            SARibbonBar#geoCaeRibbonBar SARibbonPannel {
+                background: @surface@;
                 border: none;
                 border-right: 1px solid @border@;
+            }
+
+            SARibbonBar#geoCaeRibbonBar SARibbonPannel > QWidget {
+                background: transparent;
+                border: none;
             }
 
             SARibbonBar#geoCaeRibbonBar SARibbonCategoryScrollButton,
@@ -1072,22 +1076,32 @@ void UiFrame::applyThemeToUi()
             SARibbonBar#geoCaeRibbonBar QToolButton {
                 color: @text@;
                 background: transparent;
-                border: 1px solid transparent;
-                border-radius: 2px;
+                border: none;
+                border-radius: 4px;
                 padding: 3px 6px;
+                margin: 1px;
             }
 
             SARibbonBar#geoCaeRibbonBar QToolButton:hover {
                 color: @accent@;
                 background: @hover@;
-                border-color: @border@;
             }
 
             SARibbonBar#geoCaeRibbonBar QToolButton:pressed,
             SARibbonBar#geoCaeRibbonBar QToolButton:checked {
                 color: @accent@;
                 background: @pressed@;
-                border-color: @borderStrong@;
+            }
+
+            SARibbonBar#geoCaeRibbonBar QToolButton::menu-button {
+                width: 13px;
+                background: transparent;
+                border: none;
+                border-left: 1px solid transparent;
+            }
+
+            SARibbonBar#geoCaeRibbonBar QToolButton:hover::menu-button {
+                border-left-color: @border@;
             }
         )"), c));
 
@@ -1125,17 +1139,13 @@ void UiFrame::applyThemeToUi()
 
                 SARibbonBar#geoCaeRibbonBar QToolButton:hover {
                     color: #005fa8;
-                    background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
-                                                stop:0 #fbfeff, stop:1 #cfeafd);
-                    border-color: #6ea8d2;
+                    background: #d9eefb;
                 }
 
                 SARibbonBar#geoCaeRibbonBar QToolButton:pressed,
                 SARibbonBar#geoCaeRibbonBar QToolButton:checked {
                     color: #005fa8;
-                    background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
-                                                stop:0 #a9d4ef, stop:1 #d9effb);
-                    border-color: #2f80bb;
+                    background: #bcdff4;
                 }
             )"));
         }
@@ -1247,17 +1257,22 @@ void UiFrame::applyThemeToUi()
             color: @text@;
             background: @surface@;
             border: 1px solid @border@;
-            padding: 3px 0px;
+            padding: 5px;
         }
 
         QMenu::item {
-            padding: 6px 28px 6px 12px;
+            min-height: 20px;
+            padding: 5px 30px 5px 25px;
             background: transparent;
+            border: none;
+            border-left: 3px solid transparent;
+            border-radius: 3px;
         }
 
         QMenu::item:selected {
             color: @text@;
             background: @hover@;
+            border-left-color: @accent@;
         }
 
         QMenu::item:disabled {
@@ -1266,7 +1281,7 @@ void UiFrame::applyThemeToUi()
 
         QMenu::separator {
             height: 1px;
-            margin: 4px 9px;
+            margin: 5px 8px;
             background: @border@;
         }
     )"), c);
@@ -1569,7 +1584,8 @@ void UiFrame::buildRibbonTabs()
                    // 1) 三维实体
                    // =========================
             auto* actSolidMain =
-                makeAction(this, ":/resources/menu/minimal/cuboid.svg", "&三维实体");
+                makeAction(this, ":/resources/menu/minimal/cuboid.svg", "实体");
+            actSolidMain->setToolTip("创建长方体、圆柱体、球体、圆锥体或圆环");
 
             auto* solidMenu = new SARibbonMenu(this);
 
@@ -1603,19 +1619,24 @@ void UiFrame::buildRibbonTabs()
                    // 2) 二维轮廓
                    // =========================
             auto* actProfileMain =
-                makeAction(this, ":/resources/menu/minimal/profile.svg", "&二维轮廓");
+                makeAction(this, ":/resources/menu/geometry/sketch.svg", "草图");
+            actProfileMain->setToolTip("创建二维草图、矩形、圆、椭圆或多边形");
 
             auto* profileMenu = new SARibbonMenu(this);
 
+            auto* actSketch =
+                makeAction(this, ":/resources/menu/geometry/sketch.svg", "&二维草图");
             auto* actProfileRect =
                 makeAction(this, ":/resources/menu/minimal/rectangle.svg", "&矩形");
             auto* actProfileCircle =
                 makeAction(this, ":/resources/menu/minimal/circle.svg", "&圆");
             auto* actProfileRing =
-                makeAction(this, ":/resources/menu/minimal/ring.svg", "&环");
+                makeAction(this, ":/resources/menu/minimal/ring.svg", "&椭圆");
             auto* actProfilePolygon =
                 makeAction(this, ":/resources/menu/minimal/polygon.svg", "&多边形");
 
+            profileMenu->addAction(actSketch);
+            profileMenu->addSeparator();
             profileMenu->addAction(actProfileRect);
             profileMenu->addAction(actProfileCircle);
             profileMenu->addAction(actProfileRing);
@@ -1624,15 +1645,16 @@ void UiFrame::buildRibbonTabs()
             actProfileMain->setMenu(profileMenu);
             addActionToPanel(panel, actProfileMain, 3);
 
+            bindEvent(this, actSketch, PublicConstants::kActionGeomSketch2D);
             bindEvent(this, actProfileRect, PublicConstants::kActionGeomCreatePlanarRect);
             bindEvent(this, actProfileCircle, PublicConstants::kActionGeomCreatePlanarCircle);
             bindEvent(this, actProfileRing, PublicConstants::kActionGeomCreateEllipse);
             bindEvent(this, actProfilePolygon, PublicConstants::kActionGeomCreatePlanarPolygon);
-        }
 
-               // ---------- 工程模板 ----------
-        {
-            auto* panel = cate->addPannel("工程模板");
+            auto* actTemplateMain =
+                makeAction(this, ":/resources/menu/minimal/analysis-slope.svg", "模板");
+            actTemplateMain->setToolTip("创建重力坝、土石坝、边坡或洞室模板");
+            auto* templateMenu = new SARibbonMenu(this);
 
             auto* actGravityDam =
                 makeAction(this, ":/resources/menu/minimal/analysis-dam.svg", "&重力坝");
@@ -1643,10 +1665,12 @@ void UiFrame::buildRibbonTabs()
             auto* actCavernTemplate =
                 makeAction(this, ":/resources/menu/minimal/analysis-cave.svg", "&洞室");
 
-            addActionToPanel(panel, actGravityDam, 3);
-            addActionToPanel(panel, actEarthRockfillDam, 3);
-            addActionToPanel(panel, actSlopeTemplate, 3);
-            addActionToPanel(panel, actCavernTemplate, 3);
+            templateMenu->addAction(actGravityDam);
+            templateMenu->addAction(actEarthRockfillDam);
+            templateMenu->addAction(actSlopeTemplate);
+            templateMenu->addAction(actCavernTemplate);
+            actTemplateMain->setMenu(templateMenu);
+            addActionToPanel(panel, actTemplateMain, 3);
 
             bindEvent(this, actGravityDam, PublicConstants::kActionPreprocessGravityDam);
             bindEvent(this, actEarthRockfillDam, PublicConstants::kActionPreprocessEarthRockfillDam);
@@ -1655,22 +1679,96 @@ void UiFrame::buildRibbonTabs()
         }
 
 
-               // ---------- 布尔 ----------
+        // ---------- 参数化特征 ----------
         {
-            auto* panel = cate->addPannel("布尔");
+            auto* panel = cate->addPannel("特征");
+            auto* actBuildMain = makeAction(this, ":/resources/menu/geometry/extrude.svg", "成形");
+            actBuildMain->setToolTip("拉伸、旋转、扫掠、放样及拉伸切除");
+            auto* buildMenu = new SARibbonMenu(this);
+            auto* actExtrude = makeAction(this, ":/resources/menu/geometry/extrude.svg", "&拉伸");
+            auto* actRevolve = makeAction(this, ":/resources/menu/geometry/revolve.svg", "&旋转生成");
+            auto* actSweep = makeAction(this, ":/resources/menu/geometry/sweep.svg", "&扫掠");
+            auto* actLoft = makeAction(this, ":/resources/menu/geometry/loft.svg", "&放样");
+            auto* actCutExtrude = makeAction(this, ":/resources/menu/geometry/cut-extrude.svg", "&拉伸切除");
+            buildMenu->addAction(actExtrude);
+            buildMenu->addAction(actRevolve);
+            buildMenu->addAction(actSweep);
+            buildMenu->addAction(actLoft);
+            buildMenu->addAction(actCutExtrude);
+            actBuildMain->setMenu(buildMenu);
+            addActionToPanel(panel, actBuildMain, 3);
 
+            auto* actModifyMain = makeAction(this, ":/resources/menu/geometry/fillet.svg", "修饰");
+            actModifyMain->setToolTip("圆角、倒角及分割");
+            auto* modifyMenu = new SARibbonMenu(this);
+            auto* actFillet = makeAction(this, ":/resources/menu/geometry/fillet.svg", "&圆角");
+            auto* actChamfer = makeAction(this, ":/resources/menu/geometry/chamfer.svg", "&倒角");
+            auto* actSplit = makeAction(this, ":/resources/menu/geometry/split.svg", "&分割");
+            modifyMenu->addAction(actFillet);
+            modifyMenu->addAction(actChamfer);
+            modifyMenu->addAction(actSplit);
+            actModifyMain->setMenu(modifyMenu);
+            addActionToPanel(panel, actModifyMain, 3);
+
+            auto* actBooleanMain = makeAction(this, ":/resources/menu/minimal/boolean-fuse.svg", "布尔");
+            actBooleanMain->setToolTip("实体并集、差集及交集运算");
+            auto* booleanMenu = new SARibbonMenu(this);
             auto* actFuse = makeAction(this, ":/resources/menu/minimal/boolean-fuse.svg", "&并集");
             auto* actCut = makeAction(this, ":/resources/menu/minimal/boolean-cut.svg", "&差集");
-            auto* actCommon =
-                makeAction(this, ":/resources/menu/minimal/boolean-common.svg", "&交集");
+            auto* actCommon = makeAction(this, ":/resources/menu/minimal/boolean-common.svg", "&交集");
+            booleanMenu->addAction(actFuse);
+            booleanMenu->addAction(actCut);
+            booleanMenu->addAction(actCommon);
+            actBooleanMain->setMenu(booleanMenu);
+            addActionToPanel(panel, actBooleanMain, 3);
 
-            addActionToPanel(panel, actFuse, 3);
-            addActionToPanel(panel, actCut, 3);
-            addActionToPanel(panel, actCommon, 3);
-
+            bindEvent(this, actExtrude, PublicConstants::kActionGeomAddExtrude);
+            bindEvent(this, actRevolve, PublicConstants::kActionGeomAddRevolve);
+            bindEvent(this, actSweep, PublicConstants::kActionGeomAddSweep);
+            bindEvent(this, actLoft, PublicConstants::kActionGeomAddLoft);
+            bindEvent(this, actCutExtrude, PublicConstants::kActionGeomAddCutExtrude);
+            bindEvent(this, actChamfer, PublicConstants::kActionGeomAddChamfer);
+            bindEvent(this, actFillet, PublicConstants::kActionGeomAddFillet);
+            bindEvent(this, actSplit, PublicConstants::kActionGeomAddSplit);
             bindEvent(this, actFuse, PublicConstants::kActionGeomFuse);
             bindEvent(this, actCut, PublicConstants::kActionGeomCut);
             bindEvent(this, actCommon, PublicConstants::kActionGeomCommon);
+        }
+
+        // ---------- 变换与分割 ----------
+        {
+            auto* panel = cate->addPannel("变换");
+            auto* actTransform = makeAction(this, ":/resources/menu/geometry/transform.svg", "&对象变换");
+            auto* actMirror = makeAction(this, ":/resources/menu/geometry/mirror.svg", "&镜像");
+            auto* actPattern = makeAction(this, ":/resources/menu/geometry/pattern.svg", "&阵列");
+            addActionToPanel(panel, actTransform, 2);
+            addActionToPanel(panel, actMirror, 2);
+            addActionToPanel(panel, actPattern, 2);
+            bindEvent(this, actTransform, PublicConstants::kActionGeomAddTransform);
+            bindEvent(this, actMirror, PublicConstants::kActionGeomAddMirror);
+            bindEvent(this, actPattern, PublicConstants::kActionGeomAddPattern);
+        }
+
+        // ---------- 编辑历史 ----------
+        {
+            auto* panel = cate->addPannel("编辑");
+            auto* actUndo = makeAction(this, ":/resources/menu/geometry/undo.svg", "&撤销");
+            auto* actRedo = makeAction(this, ":/resources/menu/geometry/redo.svg", "&重做");
+            addActionToPanel(panel, actUndo, 2);
+            addActionToPanel(panel, actRedo, 2);
+            bindEvent(this, actUndo, PublicConstants::kActionGeomUndo);
+            bindEvent(this, actRedo, PublicConstants::kActionGeomRedo);
+        }
+
+        // ---------- 检查与测量 ----------
+        {
+            auto* panel = cate->addPannel("检查");
+            auto* actCheck = makeAction(this, ":/resources/menu/geometry/check-repair.svg", "&检查修复");
+            auto* actMeasure = makeAction(this, ":/resources/menu/geometry/measure.svg", "&测量");
+            addActionToPanel(panel, actCheck, 2);
+            addActionToPanel(panel, actMeasure, 2);
+            bindEvent(this, actCheck, PublicConstants::kActionGeomCheckRepair);
+            bindEvent(this, actMeasure, PublicConstants::kActionGeomMeasure);
         }
     }
 
@@ -1983,9 +2081,9 @@ void UiFrame::buildRibbonTabs()
 
 
 
-        // bindEvent(this,
-        //           actSpecification,
-        //           PublicConstants::kActionSpecificationCheckKey);
+        bindEvent(this,
+                  actSpecification,
+                  PublicConstants::kActionSpecificationCheckKey);
     }
 
            // =========================

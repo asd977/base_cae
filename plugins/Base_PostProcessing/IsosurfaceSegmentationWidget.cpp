@@ -750,7 +750,7 @@ void IsosurfaceSegmentationWidget::updateColoringFromUI()
         scalarBar->SetLookupTable(newLut);
         lut = newLut;
     }
-    applyStandardPostLookupTable(lut, range[0], range[1]);
+    applyPostFieldLookupTable(lut, field.name, range[0], range[1]);
 
     // 低值侧
     m_mapperLow->SetLookupTable(lut);

@@ -6,6 +6,7 @@
 #include <BRep_Builder.hxx>
 #include <GeomManagerInstance.h>
 #include <GeometryCleanup.h>
+#include <GeometryServiceAccess.h>
 #include <PublicConstants.h>
 #include <QDoubleValidator>
 #include <QFormLayout>
@@ -377,10 +378,20 @@ void CavernTemplateDialog::buildLayeredCavern(double span, double wallH, double 
 void CavernTemplateDialog::onGenerateClicked()
 {
     updateDiagram();
-    GeometryCleanup::removeExistingGeometry(m_uuid);
-    buildLayeredCavern(spanEdit->text().toDouble(),
-                       wallHEdit->text().toDouble(),
-                       archHEdit->text().toDouble(),
-                       lenEdit->text().toDouble(),
-                       liningEdit->text().toDouble());
+    IGeometryService* service = requireGeometryService(this);
+    if (!service)
+        return;
+
+    const bool ok = service->recreateCavernTemplate(
+        m_uuid, getDisplayName(),
+        spanEdit->text().toDouble(),
+        wallHEdit->text().toDouble(),
+        archHEdit->text().toDouble(),
+        lenEdit->text().toDouble(),
+        liningEdit->text().toDouble(),
+        readEdit(this, "sideRockEdit", 18.0),
+        readEdit(this, "topRockEdit", 16.0),
+        readEdit(this, "bottomRockEdit", 8.0));
+    if (!ok)
+        QMessageBox::warning(this, tr("生成失败"), tr("洞室参数无效，无法生成三维实体。"));
 }

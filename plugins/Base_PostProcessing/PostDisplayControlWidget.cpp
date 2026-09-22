@@ -18,6 +18,8 @@
 #include <QComboBox>
 #include <QDoubleSpinBox>
 #include <QLineEdit>
+#include <QHBoxLayout>
+#include <QLabel>
 #include <QPushButton>
 #include <QScopedValueRollback>
 #include <QSignalBlocker>
@@ -34,6 +36,23 @@ PostDisplayControlWidget::PostDisplayControlWidget(VisualWidgetService* visualSe
     ui->displayModeComboBox->addItem(QStringLiteral("表面"), 0);
     ui->displayModeComboBox->addItem(QStringLiteral("表面 + 单元边线"), 1);
     ui->displayModeComboBox->addItem(QStringLiteral("线框"), 2);
+
+    m_gridLineStrengthSpinBox = new QSpinBox(ui->visibilityGroupBox);
+    m_gridLineStrengthSpinBox->setRange(0, 100);
+    m_gridLineStrengthSpinBox->setSuffix(QStringLiteral(" %"));
+    auto* gridLineRow = new QHBoxLayout;
+    gridLineRow->setContentsMargins(0, 0, 0, 0);
+    gridLineRow->addWidget(new QLabel(QStringLiteral("网格线强度"), ui->visibilityGroupBox));
+    gridLineRow->addWidget(m_gridLineStrengthSpinBox, 1);
+    ui->visibilityLayout->insertLayout(2, gridLineRow);
+
+    m_reverseColorsCheckBox = new QCheckBox(QStringLiteral("反转颜色"), ui->scalarBarGroupBox);
+    ui->scalarBarFormLayout->insertRow(1, m_reverseColorsCheckBox);
+
+    m_contourModeComboBox = new QComboBox(ui->contourGroupBox);
+    m_contourModeComboBox->addItem(QStringLiteral("叠加云图"), 0);
+    m_contourModeComboBox->addItem(QStringLiteral("黑白等值线"), 1);
+    ui->contourFormLayout->insertRow(1, QStringLiteral("显示方式"), m_contourModeComboBox);
 
     m_scalarBarDragCallback = vtkSmartPointer<vtkCallbackCommand>::New();
     m_scalarBarDragCallback->SetClientData(this);
@@ -77,6 +96,35 @@ PostDisplayControlWidget::PostDisplayControlWidget(VisualWidgetService* visualSe
                 notifyRefresh(QStringLiteral("representation"));
                 if (m_visualService)
                     m_visualService->render();
+            });
+
+    connect(m_gridLineStrengthSpinBox, QOverload<int>::of(&QSpinBox::valueChanged),
+            this, [this](int value)
+            {
+                if (m_syncing)
+                    return;
+                postSceneStyle().gridLineStrength = value;
+                applyPostSceneRepresentation(m_visualService, false);
+                if (m_visualService)
+                    m_visualService->render();
+            });
+
+    connect(m_reverseColorsCheckBox, &QCheckBox::toggled, this, [this](bool checked)
+    {
+        if (m_syncing)
+            return;
+        postScalarBarStyle().reverseColors = checked;
+        notifyRefresh(QStringLiteral("color-map"));
+    });
+
+    connect(m_contourModeComboBox, QOverload<int>::of(&QComboBox::currentIndexChanged),
+            this, [this](int index)
+            {
+                if (m_syncing || index < 0)
+                    return;
+                postContourStyle().monochrome =
+                    m_contourModeComboBox->itemData(index).toInt() == 1;
+                notifyRefresh(QStringLiteral("contour"));
             });
 
     connect(ui->followMeshFilterCheckBox, &QCheckBox::toggled, this, [this](bool checked)
@@ -250,7 +298,11 @@ void PostDisplayControlWidget::syncFromState()
     ui->followMeshFilterCheckBox->setChecked(postSceneStyle().followMeshFilter);
     ui->showScalarBarCheckBox->setChecked(bar.visible);
     ui->scalarBarTitleEdit->setText(bar.customTitle);
+    m_reverseColorsCheckBox->setChecked(bar.reverseColors);
+    m_gridLineStrengthSpinBox->setValue(postSceneStyle().gridLineStrength);
     ui->showContourCheckBox->setChecked(contour.enabled);
+    const int contourModeIndex = m_contourModeComboBox->findData(contour.monochrome ? 1 : 0);
+    m_contourModeComboBox->setCurrentIndex(contourModeIndex >= 0 ? contourModeIndex : 0);
 
     ui->titleFontSpinBox->setValue(bar.titleFont);
     ui->labelFontSpinBox->setValue(bar.labelFont);
@@ -283,6 +335,7 @@ void PostDisplayControlWidget::syncRangeControls()
     ui->showScalarBarCheckBox->setEnabled(context.valid && context.supportsScalarBar);
     ui->contourGroupBox->setEnabled(context.valid && context.supportsContours);
     ui->showContourCheckBox->setEnabled(context.valid && context.supportsContours);
+    m_contourModeComboBox->setEnabled(context.valid && context.supportsContours);
 
     const PostMeshFilterReport& filterReport = postMeshFilterReport();
     const bool showFilterStatus = postSceneStyle().followMeshFilter &&

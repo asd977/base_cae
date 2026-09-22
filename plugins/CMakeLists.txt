@@ -94,6 +94,10 @@ function(cae_add_base_plugin plugin_dir)
         ${_all_sources}
     )
 
+    if(plugin_dir STREQUAL "Base_Gemo")
+        target_compile_definitions(${plugin_dir} PRIVATE GEOMETRY_LIBRARY)
+    endif()
+
     set(_include_dirs
         ${_dir}
         ${CMAKE_SOURCE_DIR}/core

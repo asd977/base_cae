@@ -633,7 +633,7 @@ void IsosurfaceSettingsWidget::updateOverallColoring()
     auto* lut = ensureLUT();
     if (!lut)
         return;
-    applyStandardPostLookupTable(lut, range[0], range[1]);
+    applyPostFieldLookupTable(lut, field.name, range[0], range[1]);
 
     vtkSmartPointer<vtkDataSetSurfaceFilter> surfaceFilter =
         vtkSmartPointer<vtkDataSetSurfaceFilter>::New();
@@ -766,7 +766,7 @@ bool IsosurfaceSettingsWidget::ensureSinglePipeline()
     auto* lut = ensureLUT();
     if (!lut)
         return false;
-    applyStandardPostLookupTable(lut, range[0], range[1]);
+    applyPostFieldLookupTable(lut, field.name, range[0], range[1]);
 
     m_mapperSingle->SetLookupTable(lut);
     m_mapperSingle->SetScalarModeToUsePointFieldData();
@@ -842,7 +842,7 @@ void IsosurfaceSettingsWidget::buildMultiIsoResult()
     auto* lut = ensureLUT();
     if (!lut)
         return;
-    applyStandardPostLookupTable(lut, range[0], range[1]);
+    applyPostFieldLookupTable(lut, field.name, range[0], range[1]);
 
     const QVector<double> values = multiIsoValuesFromUI();
     auto contour = vtkSmartPointer<vtkContourFilter>::New();

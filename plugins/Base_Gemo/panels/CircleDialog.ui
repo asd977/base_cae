@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ui version="4.0">
+ <class>CircleDialog</class>
+ <widget class="QWidget" name="CircleDialog">
+  <layout class="QVBoxLayout" name="mainLayout">
+   <property name="leftMargin"><number>0</number></property><property name="topMargin"><number>0</number></property><property name="rightMargin"><number>0</number></property><property name="bottomMargin"><number>0</number></property><property name="spacing"><number>6</number></property>
+   <item><widget class="QLabel" name="pageHeaderLabel"><property name="text"><string>圆</string></property></widget></item>
+   <item>
+    <widget class="QGroupBox" name="parameterGroup">
+     <property name="title"><string>参数</string></property>
+     <layout class="QFormLayout" name="parameterForm">
+      <property name="leftMargin"><number>9</number></property><property name="topMargin"><number>9</number></property><property name="rightMargin"><number>9</number></property><property name="bottomMargin"><number>9</number></property>
+      <property name="horizontalSpacing"><number>8</number></property><property name="verticalSpacing"><number>6</number></property>
+      <item row="0" column="0"><widget class="QLabel" name="radiusEditLabel"><property name="text"><string>半径</string></property></widget></item><item row="0" column="1"><widget class="QLineEdit" name="radiusEdit"><property name="minimumHeight"><number>30</number></property><property name="text"><string>1.0</string></property></widget></item><item row="1" column="0"><widget class="QLabel" name="centerXLabel"><property name="text"><string>中心 X</string></property></widget></item><item row="1" column="1"><widget class="QLineEdit" name="centerXEdit"><property name="minimumHeight"><number>30</number></property><property name="text"><string>0</string></property></widget></item><item row="2" column="0"><widget class="QLabel" name="centerYLabel"><property name="text"><string>中心 Y</string></property></widget></item><item row="2" column="1"><widget class="QLineEdit" name="centerYEdit"><property name="minimumHeight"><number>30</number></property><property name="text"><string>0</string></property></widget></item><item row="3" column="0"><widget class="QLabel" name="centerZLabel"><property name="text"><string>中心 Z</string></property></widget></item><item row="3" column="1"><widget class="QLineEdit" name="centerZEdit"><property name="minimumHeight"><number>30</number></property><property name="text"><string>0</string></property></widget></item><item row="4" column="0"><widget class="QLabel" name="planeLabel"><property name="text"><string>平面</string></property></widget></item><item row="4" column="1"><widget class="QComboBox" name="planeCombo"><property name="minimumHeight"><number>30</number></property><item><property name="text"><string>XY 平面</string></property></item><item><property name="text"><string>XZ 平面</string></property></item><item><property name="text"><string>YZ 平面</string></property></item></widget></item>
+     </layout>
+    </widget>
+   </item>
+   <item><layout class="QHBoxLayout" name="buttonLayout"><item><spacer name="buttonSpacer"><property name="orientation"><enum>Qt::Horizontal</enum></property><property name="sizeHint" stdset="0"><size><width>40</width><height>20</height></size></property></spacer></item><item><widget class="QPushButton" name="generateButton"><property name="minimumHeight"><number>34</number></property><property name="text"><string>生成</string></property></widget></item></layout></item>
+   
+   <item><spacer name="verticalSpacer"><property name="orientation"><enum>Qt::Vertical</enum></property><property name="sizeHint" stdset="0"><size><width>20</width><height>40</height></size></property></spacer></item>
+  </layout>
+ </widget>
+ <resources/>
+ <connections/>
+</ui>

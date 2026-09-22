@@ -737,7 +737,7 @@ void AnimationAviWidget::applyScalar(vtkUnstructuredGrid* grid,
             scalarBar->SetLookupTable(lookupTable);
     }
 
-    applyStandardPostLookupTable(lookupTable, displayMin, displayMax);
+    applyPostFieldLookupTable(lookupTable, scalarName, displayMin, displayMax);
 
     m_mapper->SetInputData(displayGrid);
     m_mapper->SetLookupTable(lookupTable);

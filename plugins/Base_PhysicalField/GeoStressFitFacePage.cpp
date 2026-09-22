@@ -9,11 +9,13 @@
 #include <struct/MeshMap.h>
 
 #include <QComboBox>
+#include <QCheckBox>
 #include <QDebug>
 #include <QDir>
 #include <QDoubleSpinBox>
 #include <QFile>
 #include <QLineEdit>
+#include <QLabel>
 #include <QMessageBox>
 #include <QPushButton>
 #include <QSpinBox>
@@ -96,6 +98,22 @@ GeoStressFitFacePage::GeoStressFitFacePage(QWidget* parent)
 {
     ui->setupUi(this);
 
+    // 梯形边界最常见的是对一个完整平面施加荷载。复用 PickManager 的面拾取，
+    // 单击一个小网格面后自动扩展为当前可见表面中的同一连续共面区域；
+    // 框选仍保持普通批量面选择，不强制扩展。
+    m_wholeFaceCheckBox = new QCheckBox(QStringLiteral("点选整面"), this);
+    m_wholeFaceCheckBox->setChecked(true);
+    m_wholeFaceCheckBox->setToolTip(
+        QStringLiteral("单击任意一个网格面时，自动选择与它连续且共面的整片表面；框选仍按框内网格面选择。"));
+    m_selectionStatusLabel = new QLabel(this);
+    m_selectionStatusLabel->setWordWrap(true);
+    m_selectionStatusLabel->setText(QStringLiteral("尚未选择边界。"));
+    if (ui->contentLayout)
+    {
+        ui->contentLayout->insertWidget(0, m_selectionStatusLabel);
+        ui->contentLayout->insertWidget(0, m_wholeFaceCheckBox);
+    }
+
     // 默认值：2D 默认选边，3D 默认选面（用户仍可改）
     ensureDefaultPickTarget();
 
@@ -103,6 +121,15 @@ GeoStressFitFacePage::GeoStressFitFacePage(QWidget* parent)
             &GeoStressFitFacePage::onPickTargetChanged);
     connect(ui->radionButtonFace, &QRadioButton::toggled, this,
             &GeoStressFitFacePage::onPickTargetChanged);
+
+    PickManager& pm = PickManager::instance();
+    connect(&pm, &PickManager::facePicked, this, &GeoStressFitFacePage::onFacePicked);
+    connect(&pm, &PickManager::selectionChanged, this,
+            [this](const QString& domain, const QString& uuid, PickMode mode, GridKind)
+            {
+                if (domain == getPageType() && uuid == m_uuid && mode == m_activeMode)
+                    refreshSelectionSummary();
+            });
 }
 
 GeoStressFitFacePage::~GeoStressFitFacePage()
@@ -134,7 +161,18 @@ void GeoStressFitFacePage::beforeLoad()
 {
     ensureDefaultPickTarget();
     m_activeMode = decidePickMode();
-    PickManager::instance().activate(getPageType(), m_uuid, m_activeMode);
+
+    PickManager& pm = PickManager::instance();
+    // 显示筛选可能刚刚替换过 mesh.imported.surface。先同步当前可见网格，
+    // 再激活 Face/Edge 模式，避免必须“切一次边再切回面”才有响应。
+    pm.updateStructure();
+    pm.activate(getPageType(), m_uuid, m_activeMode);
+    pm.setClickPickEnabled(getPageType(), m_uuid, true);
+    pm.setBoxSelectEnabled(getPageType(), m_uuid, true);
+
+    if (m_wholeFaceCheckBox)
+        m_wholeFaceCheckBox->setVisible(pickFace());
+    refreshSelectionSummary();
 
     // 1) 先刷新下拉框内容（按当前模式：Edge / Face）
     refreshGroupCombo();
@@ -187,7 +225,9 @@ void GeoStressFitFacePage::refreshGroupCombo()
 {
     auto* meshSvc = ServiceRegistry::instance().getService<MeshModuleControllerService>();
     if (!meshSvc) return;
-    const int wantDim = ui->comboBoxDim->currentData().toInt() >= 0 ? ui->comboBoxDim->currentData().toInt() : (pickEdge() ? 1 : 2);
+    // “网格边/网格面”是实际拾取模式；分组维度与它保持一致，避免出现
+    // 选了“网格面”却从“线边界”分组中添加数据的双重状态。
+    const int wantDim = pickEdge() ? 1 : 2;
     ui->comboBoxDim->blockSignals(true);
     ui->comboBoxDim->clear();
     ui->comboBoxDim->addItem(QStringLiteral("线边界"), 1);
@@ -218,8 +258,22 @@ static inline QVector<vtkIdType> toVtkIds(const QVector<qint64>& in)
 
 void GeoStressFitFacePage::onDimComboChanged(int)
 {
+    // 分组维度和实际拾取模式保持同步；切换这里只切模式，不自动把第一组加入选择。
+    const int dim = ui->comboBoxDim->currentData().toInt();
+    if (dim == 1 && !pickEdge())
+    {
+        ui->radionButtonEdge->setChecked(true);
+        return;
+    }
+    if (dim == 2 && !pickFace())
+    {
+        ui->radionButtonFace->setChecked(true);
+        return;
+    }
+
     refreshGroupCombo();
-    onGroupComboChanged(ui->comboBoxGroup->currentIndex());
+    PickManager::instance().clearPreviewSelection(getPageType(), m_uuid,
+                                                  pickEdge() ? PickMode::Edge : PickMode::Face);
 }
 
 
@@ -257,14 +311,88 @@ void GeoStressFitFacePage::onPickTargetChanged()
     if (newMode == m_activeMode)
         return;
 
-    PickManager::instance().clearSelection(getPageType(), m_uuid, m_activeMode);
+    PickManager& pm = PickManager::instance();
+    pm.clearSelection(getPageType(), m_uuid, m_activeMode);
+    pm.deactivate(getPageType(), m_uuid, m_activeMode);
 
-    PickManager::instance().deactivate(getPageType(), m_uuid, m_activeMode);
+    // 模式切换前重新同步当前筛选后的显示网格。这里只刷新结构，
+    // 不再借“切边/切面”去间接修复拾取状态。
+    pm.updateStructure();
     m_activeMode = newMode;
-    PickManager::instance().activate(getPageType(), m_uuid, m_activeMode);
+    pm.activate(getPageType(), m_uuid, m_activeMode);
+    pm.setClickPickEnabled(getPageType(), m_uuid, true);
+    pm.setBoxSelectEnabled(getPageType(), m_uuid, true);
+
+    if (m_wholeFaceCheckBox)
+        m_wholeFaceCheckBox->setVisible(pickFace());
 
     refreshGroupCombo();
-    onGroupComboChanged(ui->comboBoxGroup->currentIndex());
+    refreshSelectionSummary();
+}
+
+void GeoStressFitFacePage::onFacePicked(const QString& domain, const QString& activeUuid,
+                                             GridKind kind, vtkIdType faceKey, bool selected)
+{
+    if (domain != getPageType() || activeUuid != m_uuid || kind != GridKind::Solid
+        || !pickFace() || !m_wholeFaceCheckBox || !m_wholeFaceCheckBox->isChecked())
+        return;
+
+    PickManager& pm = PickManager::instance();
+    const QVector<vtkIdType> patch = pm.connectedVisibleFacePatch(faceKey, 5.0);
+    if (patch.size() <= 1)
+    {
+        refreshSelectionSummary();
+        return;
+    }
+
+    QSet<vtkIdType> selectedKeys;
+    const QVector<vtkIdType> current =
+        pm.getIdList(getPageType(), m_uuid, PickMode::Face, GridKind::Solid);
+    for (vtkIdType key : current)
+        selectedKeys.insert(key);
+
+    for (vtkIdType key : patch)
+    {
+        if (selected)
+            selectedKeys.insert(key);
+        else
+            selectedKeys.remove(key);
+    }
+
+    QVector<vtkIdType> keys;
+    keys.reserve(selectedKeys.size());
+    for (vtkIdType key : selectedKeys)
+        keys.push_back(key);
+    std::sort(keys.begin(), keys.end());
+    pm.setSelectedFaceKeys(getPageType(), m_uuid, GridKind::Solid, keys, true);
+    refreshSelectionSummary();
+}
+
+void GeoStressFitFacePage::refreshSelectionSummary()
+{
+    if (!m_selectionStatusLabel)
+        return;
+
+    PickManager& pm = PickManager::instance();
+    const PickMode mode = decidePickMode();
+    const int solidCount =
+        pm.getIdList(getPageType(), m_uuid, mode, GridKind::Solid).size();
+    const int lineCount =
+        pm.getIdList(getPageType(), m_uuid, mode, GridKind::Line).size();
+    const int total = solidCount + lineCount;
+
+    if (mode == PickMode::Face)
+    {
+        m_selectionStatusLabel->setText( total > 0
+            ? QStringLiteral("已选择 %1 个网格面。可继续单击、框选或取消选择。").arg(total)
+            : QStringLiteral("请选择荷载作用面；勾选“点选整面”后，单击一个小面即可选择整片共面区域。"));
+    }
+    else
+    {
+        m_selectionStatusLabel->setText(total > 0
+            ? QStringLiteral("已选择 %1 条网格边。可继续单击、框选或取消选择。").arg(total)
+            : QStringLiteral("请选择荷载作用边。"));
+    }
 }
 
 QString GeoStressFitFacePage::fname() const

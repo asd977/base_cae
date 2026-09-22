@@ -2,6 +2,7 @@
 
 #include <GeomManagerInstance.h>
 #include <GeometryCleanup.h>
+#include <GeometryServiceAccess.h>
 #include <PublicConstants.h>
 #include <ServiceRegistry.h>
 #include <services/ProjectManagerService.h>
@@ -306,7 +307,14 @@ void GravityDamDialog::onGenerate3DClicked()
     }
 
     updateIllustration(H, Bt, mu, md, N, type);
-    buildDamBody(H, Bt, mu, md, L, N, x, y, z, type);
+    IGeometryService* service = requireGeometryService(this);
+    if (!service)
+        return;
+    if (!service->recreateGravityDam(m_uuid, getDisplayName(), H, Bt, mu, md,
+                                     L, N, x, y, z))
+    {
+        QMessageBox::warning(this, tr("生成失败"), tr("重力坝参数无效，无法生成三维实体。"));
+    }
 }
 
 void GravityDamDialog::buildDamBody(double damHeight, double crestWidth, double upSlope,

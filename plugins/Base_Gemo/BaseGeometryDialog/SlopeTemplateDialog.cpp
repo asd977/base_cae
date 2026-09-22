@@ -5,6 +5,7 @@
 #include <BRepPrimAPI_MakePrism.hxx>
 #include <GeomManagerInstance.h>
 #include <GeometryCleanup.h>
+#include <GeometryServiceAccess.h>
 #include <PublicConstants.h>
 #include <QDoubleValidator>
 #include <QFormLayout>
@@ -348,10 +349,20 @@ void SlopeTemplateDialog::buildLayeredSlope(double H, double Bmid, double Ws, do
 void SlopeTemplateDialog::onGenerateClicked()
 {
     updateDiagram();
-    GeometryCleanup::removeExistingGeometry(m_uuid);
-    buildLayeredSlope(hEdit->text().toDouble(),
-                      benchWidthEdit->text().toDouble(),
-                      slopeEdit->text().toDouble(),
-                      lenEdit->text().toDouble(),
-                      benchCountEdit->text().toInt());
+    IGeometryService* service = requireGeometryService(this);
+    if (!service)
+        return;
+
+    const bool ok = service->recreateSlopeTemplate(
+        m_uuid, getDisplayName(),
+        hEdit->text().toDouble(),
+        benchWidthEdit->text().toDouble(),
+        slopeEdit->text().toDouble(),
+        lenEdit->text().toDouble(),
+        benchCountEdit->text().toInt(),
+        readEdit(this, "topPlatformEdit", 20.0),
+        readEdit(this, "toeExtensionEdit", 30.0),
+        readEdit(this, "baseHeightEdit", 15.0));
+    if (!ok)
+        QMessageBox::warning(this, tr("生成失败"), tr("边坡参数无效，无法生成三维实体。"));
 }

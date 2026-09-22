@@ -33,6 +33,7 @@
 
 #include <QByteArray>
 #include <QCheckBox>
+#include <QComboBox>
 #include <QDialog>
 #include <QDebug>
 #include <QDialogButtonBox>
@@ -42,6 +43,7 @@
 #include <QHash>
 #include <QJsonObject>
 #include <QMap>
+#include <QRegularExpression>
 #include <QSet>
 #include <QVector>
 #include <QStringList>
@@ -58,6 +60,7 @@
 struct PostScalarBarStyle
 {
     bool visible{true};
+    bool reverseColors{false};
     QString customTitle;
     int titleFont{14};
     int labelFont{11};
@@ -73,9 +76,17 @@ struct PostScalarBarStyle
 struct PostContourStyle
 {
     bool enabled{false};
+    // 黑白等值线模式下隐藏云图着色，只保留浅色表面、黑色等值线和数值。
+    bool monochrome{false};
     int levels{10};
     bool labels{false};
     int labelFont{10};
+};
+
+struct PostFieldDisplayStyle
+{
+    // 仅用于有明确离散语义的结果：0=正常显示，2=隐藏零值区域。
+    int zeroDisplayMode{0};
 };
 
 struct PostFieldRangeStyle
@@ -92,6 +103,8 @@ struct PostSceneStyle
     bool followMeshFilter{true};
     // 0=表面，1=表面+单元边线，2=线框。
     int representationMode{0};
+    // 网格线强度百分比；越小越接近背景色。
+    int gridLineStrength{35};
 };
 
 struct PostDisplayFieldContext
@@ -128,6 +141,49 @@ inline PostContourStyle& postContourStyle()
     return style;
 }
 
+inline QString postNormalizedFieldKey(const QString& fieldName)
+{
+    QString key = fieldName.trimmed().toUpper();
+    key.remove(QRegularExpression(QStringLiteral("(?:\\([^()]*\\)|\\[[^\\[\\]]*\\])\\s*$")));
+    key.remove(QRegularExpression(QStringLiteral("\\s+")));
+    return key;
+}
+
+inline bool postIsFailureTypeField(const QString& fieldName)
+{
+    const QString key = postNormalizedFieldKey(fieldName);
+    return key == QStringLiteral("FAILURE_ZONE") ||
+           key == QStringLiteral("FAILURE_TYPE");
+}
+
+inline bool postIsPlasticZoneStressField(const QString& fieldName)
+{
+    const QString key = postNormalizedFieldKey(fieldName);
+    return key == QStringLiteral("PLASTIC_ZONE_PRS1") ||
+           key == QStringLiteral("MAX_PLASTIC_STRESS");
+}
+
+inline QHash<QString, PostFieldDisplayStyle>& postFieldDisplayStyles()
+{
+    static QHash<QString, PostFieldDisplayStyle> styles;
+    return styles;
+}
+
+inline PostFieldDisplayStyle& postFieldDisplayStyle(const QString& fieldName)
+{
+    const QString key = fieldName.trimmed();
+    auto& styles = postFieldDisplayStyles();
+    if (!styles.contains(key))
+    {
+        PostFieldDisplayStyle style;
+        // 结果范围只控制颜色映射，不自动裁剪几何。
+        // 破坏类型也完整显示 0/1/2 三类区域。
+        style.zeroDisplayMode = 0;
+        styles.insert(key, style);
+    }
+    return styles[key];
+}
+
 inline PostSceneStyle& postSceneStyle()
 {
     static PostSceneStyle style;
@@ -150,7 +206,8 @@ inline bool postScalarBarShouldBeVisible()
 {
     const PostDisplayFieldContext& context = postDisplayFieldContext();
     return postSceneStyle().visible && postScalarBarStyle().visible &&
-           context.valid && context.supportsScalarBar;
+           context.valid && context.supportsScalarBar &&
+           !(postContourStyle().enabled && postContourStyle().monochrome);
 }
 
 inline bool& postDisplaySettingsAuthoritative()
@@ -409,7 +466,9 @@ inline QJsonObject savePostDisplaySettings()
     obj[QStringLiteral("postVisible")] = scene.visible;
     obj[QStringLiteral("followMeshFilter")] = scene.followMeshFilter;
     obj[QStringLiteral("representationMode")] = scene.representationMode;
+    obj[QStringLiteral("gridLineStrength")] = scene.gridLineStrength;
     obj[QStringLiteral("scalarBarVisible")] = bar.visible;
+    obj[QStringLiteral("scalarBarReverseColors")] = bar.reverseColors;
     obj[QStringLiteral("scalarBarCustomTitle")] = bar.customTitle;
     obj[QStringLiteral("scalarBarTitleFont")] = bar.titleFont;
     obj[QStringLiteral("scalarBarLabelFont")] = bar.labelFont;
@@ -421,9 +480,20 @@ inline QJsonObject savePostDisplaySettings()
     obj[QStringLiteral("scalarBarPositionX")] = bar.positionX;
     obj[QStringLiteral("scalarBarPositionY")] = bar.positionY;
     obj[QStringLiteral("contourEnabled")] = contour.enabled;
+    obj[QStringLiteral("contourMonochrome")] = contour.monochrome;
     obj[QStringLiteral("contourLevels")] = contour.levels;
     obj[QStringLiteral("contourLabels")] = contour.labels;
     obj[QStringLiteral("contourLabelFont")] = contour.labelFont;
+    QJsonObject fieldDisplay;
+    const auto& displayStyles = postFieldDisplayStyles();
+    for (auto it = displayStyles.constBegin(); it != displayStyles.constEnd(); ++it)
+    {
+        QJsonObject display;
+        display[QStringLiteral("zeroDisplayMode")] = it.value().zeroDisplayMode;
+        fieldDisplay[it.key()] = display;
+    }
+    obj[QStringLiteral("fieldDisplay")] = fieldDisplay;
+
     QJsonObject ranges;
     const auto& rangeStyles = postFieldRangeStyles();
     for (auto it = rangeStyles.constBegin(); it != rangeStyles.constEnd(); ++it)
@@ -447,7 +517,9 @@ inline void loadPostDisplaySettings(const QJsonObject& obj)
     scene.visible = obj.value(QStringLiteral("postVisible")).toBool(scene.visible);
     scene.followMeshFilter = obj.value(QStringLiteral("followMeshFilter")).toBool(scene.followMeshFilter);
     scene.representationMode = qBound(0, obj.value(QStringLiteral("representationMode")).toInt(scene.representationMode), 2);
+    scene.gridLineStrength = qBound(0, obj.value(QStringLiteral("gridLineStrength")).toInt(scene.gridLineStrength), 100);
     bar.visible = obj.value(QStringLiteral("scalarBarVisible")).toBool(bar.visible);
+    bar.reverseColors = obj.value(QStringLiteral("scalarBarReverseColors")).toBool(bar.reverseColors);
     bar.customTitle = obj.value(QStringLiteral("scalarBarCustomTitle")).toString(bar.customTitle);
     bar.titleFont = qBound(8, obj.value(QStringLiteral("scalarBarTitleFont")).toInt(bar.titleFont), 36);
     bar.labelFont = qBound(8, obj.value(QStringLiteral("scalarBarLabelFont")).toInt(bar.labelFont), 32);
@@ -459,9 +531,21 @@ inline void loadPostDisplaySettings(const QJsonObject& obj)
     bar.positionX = obj.value(QStringLiteral("scalarBarPositionX")).toDouble(bar.positionX);
     bar.positionY = obj.value(QStringLiteral("scalarBarPositionY")).toDouble(bar.positionY);
     contour.enabled = obj.value(QStringLiteral("contourEnabled")).toBool(contour.enabled);
+    contour.monochrome = obj.value(QStringLiteral("contourMonochrome")).toBool(contour.monochrome);
     contour.levels = qBound(2, obj.value(QStringLiteral("contourLevels")).toInt(contour.levels), 30);
     contour.labels = obj.value(QStringLiteral("contourLabels")).toBool(contour.labels);
     contour.labelFont = qBound(8, obj.value(QStringLiteral("contourLabelFont")).toInt(contour.labelFont), 28);
+    postFieldDisplayStyles().clear();
+    const QJsonObject fieldDisplay = obj.value(QStringLiteral("fieldDisplay")).toObject();
+    for (auto it = fieldDisplay.constBegin(); it != fieldDisplay.constEnd(); ++it)
+    {
+        PostFieldDisplayStyle style;
+        // 不再提供“隐藏未破坏区域”或通用 0 值隐藏功能。
+        // 兼容旧工程时也强制恢复完整几何显示。
+        style.zeroDisplayMode = 0;
+        postFieldDisplayStyles().insert(it.key(), style);
+    }
+
     postFieldRangeStyles().clear();
     const QJsonObject ranges = obj.value(QStringLiteral("fieldRanges")).toObject();
     for (auto it = ranges.constBegin(); it != ranges.constEnd(); ++it)
@@ -903,6 +987,73 @@ inline vtkSmartPointer<vtkUnstructuredGrid> postFilteredResultGrid(vtkUnstructur
     return result;
 }
 
+inline vtkSmartPointer<vtkUnstructuredGrid> postApplyZeroHideFilter(
+    vtkUnstructuredGrid* source, const QString& fieldName)
+{
+    if (!source || fieldName.isEmpty() ||
+        postFieldDisplayStyle(fieldName).zeroDisplayMode != 2)
+        return postShallowGrid(source);
+
+    const QByteArray encoded = fieldName.toUtf8();
+    vtkDataArray* cellArray = source->GetCellData()
+                                  ? source->GetCellData()->GetArray(encoded.constData())
+                                  : nullptr;
+    vtkDataArray* pointArray = source->GetPointData()
+                                   ? source->GetPointData()->GetArray(encoded.constData())
+                                   : nullptr;
+    if ((!cellArray || cellArray->GetNumberOfTuples() < source->GetNumberOfCells()) &&
+        (!pointArray || pointArray->GetNumberOfTuples() < source->GetNumberOfPoints()))
+        return postShallowGrid(source);
+
+    double range[2]{0.0, 0.0};
+    if (cellArray)
+        cellArray->GetRange(range);
+    else
+        pointArray->GetRange(range);
+    const double tolerance = std::max({std::abs(range[0]), std::abs(range[1]), 1.0}) * 1.0e-12;
+
+    auto ids = vtkSmartPointer<vtkIdList>::New();
+    ids->Allocate(source->GetNumberOfCells());
+    for (vtkIdType cellId = 0; cellId < source->GetNumberOfCells(); ++cellId)
+    {
+        bool keep = false;
+        if (cellArray && cellId < cellArray->GetNumberOfTuples())
+        {
+            keep = std::abs(cellArray->GetTuple1(cellId)) > tolerance;
+        }
+        else if (pointArray)
+        {
+            vtkCell* cell = source->GetCell(cellId);
+            vtkIdList* pointIds = cell ? cell->GetPointIds() : nullptr;
+            if (pointIds)
+            {
+                for (vtkIdType i = 0; i < pointIds->GetNumberOfIds(); ++i)
+                {
+                    const vtkIdType pointId = pointIds->GetId(i);
+                    if (pointId >= 0 && pointId < pointArray->GetNumberOfTuples() &&
+                        std::abs(pointArray->GetTuple1(pointId)) > tolerance)
+                    {
+                        keep = true;
+                        break;
+                    }
+                }
+            }
+        }
+        if (keep)
+            ids->InsertNextId(cellId);
+    }
+
+    auto extractor = vtkSmartPointer<vtkExtractCells>::New();
+    extractor->SetInputData(source);
+    extractor->SetCellList(ids);
+    extractor->Update();
+
+    auto result = vtkSmartPointer<vtkUnstructuredGrid>::New();
+    if (extractor->GetOutput())
+        result->ShallowCopy(extractor->GetOutput());
+    return result;
+}
+
 inline void applyStandardPostLookupTable(vtkLookupTable* lut, double minV, double maxV)
 {
     if (!lut)
@@ -946,7 +1097,8 @@ inline void applyStandardPostLookupTable(vtkLookupTable* lut, double minV, doubl
     lut->SetTableRange(minV, maxV);
     for (int i = 0; i < tableSize; ++i)
     {
-        const double t = double(i) / double(tableSize - 1);
+        const double tableT = double(i) / double(tableSize - 1);
+        const double t = postScalarBarStyle().reverseColors ? 1.0 - tableT : tableT;
         int hi = 1;
         while (hi < stopCount && t > kStops[hi].t)
             ++hi;
@@ -963,6 +1115,65 @@ inline void applyStandardPostLookupTable(vtkLookupTable* lut, double minV, doubl
     }
     lut->SetNanColor(0.55, 0.55, 0.55, 1.0);
     lut->Build();
+}
+
+inline void applyPostZeroDisplayToLookupTable(vtkLookupTable* lut,
+                                              const QString& fieldName,
+                                              double minV, double maxV)
+{
+    if (!lut || fieldName.isEmpty())
+        return;
+    const int zeroMode = postFieldDisplayStyle(fieldName).zeroDisplayMode;
+    if (zeroMode <= 0 || minV > 0.0 || maxV < 0.0)
+        return;
+
+    const vtkIdType count = lut->GetNumberOfTableValues();
+    if (count <= 0)
+        return;
+    if (!(maxV > minV))
+    {
+        if (std::abs(minV) <= 1.0e-14 && std::abs(maxV) <= 1.0e-14)
+        {
+            for (vtkIdType i = 0; i < count; ++i)
+            {
+                double rgba[4]{0.0, 0.0, 0.0, 1.0};
+                lut->GetTableValue(i, rgba);
+                lut->SetTableValue(i, rgba[0], rgba[1], rgba[2], 0.0);
+            }
+            lut->Build();
+        }
+        return;
+    }
+    const double t = std::clamp((0.0 - minV) / (maxV - minV), 0.0, 1.0);
+    const vtkIdType index = static_cast<vtkIdType>(std::llround(t * double(count - 1)));
+    double rgba[4]{0.0, 0.0, 0.0, 1.0};
+    lut->GetTableValue(index, rgba);
+    lut->SetTableValue(index, rgba[0], rgba[1], rgba[2], 0.0);
+    lut->Build();
+}
+
+inline void applyPostFieldLookupTable(vtkLookupTable* lut, const QString& fieldName,
+                                      double minV, double maxV)
+{
+    if (!lut)
+        return;
+
+    if (postIsFailureTypeField(fieldName))
+    {
+        // 破坏类型属于离散结果，只允许三种颜色：0未破坏、1剪切破坏、2拉伸破坏。
+        lut->SetNumberOfTableValues(3);
+        lut->SetTableRange(-0.5, 2.5);
+        lut->SetTableValue(0, 0.78, 0.78, 0.78, 1.0);
+        lut->SetTableValue(1, 0.96, 0.58, 0.10, 1.0);
+        lut->SetTableValue(2, 0.86, 0.12, 0.12, 1.0);
+        lut->SetNanColor(0.55, 0.55, 0.55, 1.0);
+        if (postFieldDisplayStyle(fieldName).zeroDisplayMode == 2)
+            lut->SetTableValue(0, 0.78, 0.78, 0.78, 0.0);
+        lut->Build();
+        return;
+    }
+
+    applyStandardPostLookupTable(lut, minV, maxV);
 }
 
 inline QString resolvedPostScalarBarTitle(const QString& automaticTitle)
@@ -988,18 +1199,21 @@ inline void applyPostActorRepresentation(vtkActor* actor)
         return;
 
     vtkProperty* property = actor->GetProperty();
+    const double lineStrength = qBound(0, postSceneStyle().gridLineStrength, 100) / 100.0;
+    const double lineGray = 1.0 - 0.88 * lineStrength;
     switch (qBound(0, postSceneStyle().representationMode, 2))
     {
     case 1:
         property->SetRepresentationToSurface();
         property->EdgeVisibilityOn();
-        property->SetEdgeColor(0.12, 0.12, 0.12);
-        property->SetLineWidth(0.8);
+        property->SetEdgeColor(lineGray, lineGray, lineGray);
+        property->SetLineWidth(0.5 + 0.7 * lineStrength);
         break;
     case 2:
         property->SetRepresentationToWireframe();
         property->EdgeVisibilityOff();
-        property->SetLineWidth(1.0);
+        property->SetColor(lineGray, lineGray, lineGray);
+        property->SetLineWidth(0.6 + 0.8 * lineStrength);
         break;
     default:
         property->SetRepresentationToSurface();
@@ -1049,8 +1263,12 @@ inline void applyStandardPostScalarBar(vtkScalarBarActor* scalarBar)
     scalarBar->SetMaximumHeightInPixels(2000);
     scalarBar->UseCustomLabelsOff();
     scalarBar->SetCustomLabels(nullptr);
-    scalarBar->SetNumberOfLabels(style.tickCount);
-    const QByteArray labelFormat = QStringLiteral("%.%1g").arg(style.precision).toLatin1();
+    const bool failureType = postDisplayFieldContext().valid &&
+                             postIsFailureTypeField(postDisplayFieldContext().fieldName);
+    scalarBar->SetNumberOfLabels(failureType ? 3 : style.tickCount);
+    const QByteArray labelFormat = failureType
+                                       ? QByteArray("%.0f")
+                                       : QStringLiteral("%.%1g").arg(style.precision).toLatin1();
     scalarBar->SetLabelFormat(labelFormat.constData());
     scalarBar->DrawBackgroundOff();
     scalarBar->DrawFrameOff();
@@ -1136,6 +1354,10 @@ inline bool editPostDisplaySettings(QWidget* parent, VisualWidgetService* servic
         return spin;
     };
 
+    auto* reverseColors = new QCheckBox(QStringLiteral("反转颜色"), scalarBarGroup);
+    reverseColors->setChecked(bar.reverseColors);
+    scalarBarForm->addRow(reverseColors);
+
     QSpinBox* titleFont = makeSpin(8, 36, bar.titleFont);
     QSpinBox* labelFont = makeSpin(8, 32, bar.labelFont);
     QSpinBox* precision = makeSpin(1, 10, bar.precision);
@@ -1164,8 +1386,14 @@ inline bool editPostDisplaySettings(QWidget* parent, VisualWidgetService* servic
         PostContourStyle& contour = postContourStyle();
         contourEnabled = new QCheckBox(QStringLiteral("显示等值线"), contourGroup);
         contourEnabled->setChecked(contour.enabled);
+        auto* contourMode = new QComboBox(contourGroup);
+        contourMode->addItem(QStringLiteral("叠加云图"), 0);
+        contourMode->addItem(QStringLiteral("黑白等值线"), 1);
+        contourMode->setCurrentIndex(contourMode->findData(contour.monochrome ? 1 : 0));
+        contourMode->setObjectName(QStringLiteral("postContourModeCombo"));
         contourLevels = makeSpin(2, 30, contour.levels);
         contourForm->addRow(contourEnabled);
+        contourForm->addRow(QStringLiteral("显示方式"), contourMode);
         contourForm->addRow(QStringLiteral("等值线数量"), contourLevels);
         if (supportsContourLabels)
         {
@@ -1204,6 +1432,7 @@ inline bool editPostDisplaySettings(QWidget* parent, VisualWidgetService* servic
         }
     }
 
+    bar.reverseColors = reverseColors->isChecked();
     bar.titleFont = titleFont->value();
     bar.labelFont = labelFont->value();
     bar.precision = precision->value();
@@ -1215,6 +1444,8 @@ inline bool editPostDisplaySettings(QWidget* parent, VisualWidgetService* servic
     {
         PostContourStyle& contour = postContourStyle();
         contour.enabled = contourEnabled && contourEnabled->isChecked();
+        if (auto* contourMode = dialog.findChild<QComboBox*>(QStringLiteral("postContourModeCombo")))
+            contour.monochrome = contourMode->currentData().toInt() == 1;
         contour.levels = contourLevels ? contourLevels->value() : contour.levels;
         if (supportsContourLabels)
         {

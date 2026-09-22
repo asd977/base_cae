@@ -27,9 +27,9 @@ namespace
 constexpr char kLegacyPostResultRoot[] = "post";
 constexpr char kManifestName[] = "manifest.json";
 constexpr char kLegacyAnalysisManifestFileName[] = "analysis.json";
-// v24: 自动准备结果改为原生 VTM；每个 MATYPE 是一个权威 Block，LAYER
-// 保持 CellData。旧的单 VTU/拆节点缓存必须重建。
-constexpr int kManifestVersion = 24;
+// v26: 强度折减结果把折减系数从“结果文件”提升到第三层结果选择器；
+// 同时继续沿用原生 VTM/MATYPE Block 缓存。旧 manifest 需要重建。
+constexpr int kManifestVersion = 26;
 
 bool resultPackageExists(const QFileInfo& info)
 {
@@ -45,6 +45,9 @@ struct GeneratedFileInfo
     QString displayName;
     QString kind;
     QString frameKey;
+    QString frameLabel;
+    double frameValue = 0.0;
+    QString frameUnit;
     int frameOrder = -1;
 };
 
@@ -476,6 +479,8 @@ QString baseDisplayName(const QString& kind)
         return QStringLiteral("位移");
     if (normalized == QStringLiteral("principal_stress"))
         return QStringLiteral("主应力");
+    if (normalized == QStringLiteral("plastic_zone_stress"))
+        return QStringLiteral("最大塑性应力");
     if (normalized == QStringLiteral("plastic_strain"))
         return QStringLiteral("塑性应变");
     if (normalized == QStringLiteral("principal_plastic_strain"))
@@ -707,6 +712,7 @@ GeneratedFileInfo generatedFileInfo(const QString& fileName, bool strengthReduct
         {"principal_plastic_strain", "principal_plastic_strain"},
         {"plastic_strain", "plastic_strain"},
         {"principal_stress", "principal_stress"},
+        {"plastic_zone_stress", "plastic_zone_stress"},
         {"head_pressure", "head_pressure"},
         {"stress_level", "stress_level"},
         {"failure_zone", "failure_zone"},
@@ -718,6 +724,7 @@ GeneratedFileInfo generatedFileInfo(const QString& fileName, bool strengthReduct
         {"tec_velo", "velocity"},
         {"tec_disp", "displacement"},
         {"tec_prs", "principal_stress"},
+        {"tec_pls_stress", "plastic_zone_stress"},
         {"tec_cmm", "stress_level"},
         {"tec_sl", "stress_level"},
         {"tec_hp", "head_pressure"},
@@ -759,16 +766,41 @@ GeneratedFileInfo generatedFileInfo(const QString& fileName, bool strengthReduct
         const QString kind = QString::fromLatin1(alias.canonicalKind);
         const QString condition = suffixDisplayName(suffix, strengthReduction);
         QString displayName = baseDisplayName(kind);
-        if (!condition.isEmpty())
+
+        GeneratedFileInfo info;
+        info.kind = kind;
+        info.frameKey = frameKey;
+        info.frameOrder = frameOrder;
+
+        // 强度折减属于同一计算阶段下的多个结果工况，不应该把“强度储备 1.00”
+        // 重复塞进“结果文件”名称。静态强度折减结果借用第三层选择器承载折减系数，
+        // UI 会把“结果时刻”动态改成“折减系数”。真正的时序结果仍保持原逻辑。
+        if (strengthReduction && info.frameKey.isEmpty() && !condition.isEmpty())
+        {
+            static const QRegularExpression strengthConditionExpression(
+                QStringLiteral("^强度储备\\s+([-+]?\\d+(?:\\.\\d+)?)$"));
+            const QRegularExpressionMatch strengthMatch =
+                strengthConditionExpression.match(condition);
+            if (strengthMatch.hasMatch())
+            {
+                const double factor = strengthMatch.captured(1).toDouble();
+                info.frameKey = QStringLiteral("condition:strength:%1")
+                                    .arg(QString::number(factor, 'f', 6));
+                info.frameLabel = QString::number(factor, 'f', 2);
+                info.frameValue = factor;
+                info.frameUnit = QStringLiteral("strength_reduction");
+                info.frameOrder = qRound(factor * 10000.0);
+            }
+        }
+
+        // 非强度折减派生工况仍沿用旧的“工况 - 结果类型”命名；
+        // 强度折减已经被提到折减系数选择器后，结果文件只显示“位移/主应力/…” 。
+        if (!condition.isEmpty() && info.frameKey.isEmpty())
             displayName = QStringLiteral("%1 - %2").arg(condition, displayName);
         if (includesExcavated)
             displayName += QStringLiteral("（含已开挖体）");
 
-        GeneratedFileInfo info;
         info.displayName = displayName;
-        info.kind = kind;
-        info.frameKey = frameKey;
-        info.frameOrder = frameOrder;
         return info;
     }
 
@@ -854,22 +886,33 @@ bool writeManifest(const QDir& projectDir, const QDir& sourceDir, const QDir& pr
                                  : QStringLiteral("tecplot")));
         if (!metadata.frameKey.isEmpty())
         {
-            const double frameValue = timeInfo.valid
-                ? timeInfo.start + timeInfo.increment * metadata.frameOrder
-                : static_cast<double>(metadata.frameOrder);
+            const bool conditionFrame =
+                metadata.frameKey.startsWith(QStringLiteral("condition:"));
+            const double frameValue = conditionFrame
+                ? metadata.frameValue
+                : (timeInfo.valid
+                       ? timeInfo.start + timeInfo.increment * metadata.frameOrder
+                       : static_cast<double>(metadata.frameOrder));
             object.insert(QStringLiteral("frameKey"), metadata.frameKey);
             object.insert(QStringLiteral("frameLabel"),
-                          sequenceFrameLabel(metadata.frameOrder, timeInfo,
-                                             upstream, downstream));
+                          conditionFrame
+                              ? metadata.frameLabel
+                              : sequenceFrameLabel(metadata.frameOrder, timeInfo,
+                                                   upstream, downstream));
             object.insert(QStringLiteral("frameValue"), frameValue);
             object.insert(QStringLiteral("frameUnit"),
-                          timeInfo.valid ? timeInfo.unit : QString());
+                          conditionFrame
+                              ? metadata.frameUnit
+                              : (timeInfo.valid ? timeInfo.unit : QString()));
             object.insert(QStringLiteral("frameOrder"), metadata.frameOrder);
-            double waterLevel = 0.0;
-            if (waterLevelAt(upstream, frameValue, &waterLevel))
-                object.insert(QStringLiteral("upstreamWaterLevel"), waterLevel);
-            if (waterLevelAt(downstream, frameValue, &waterLevel))
-                object.insert(QStringLiteral("downstreamWaterLevel"), waterLevel);
+            if (!conditionFrame)
+            {
+                double waterLevel = 0.0;
+                if (waterLevelAt(upstream, frameValue, &waterLevel))
+                    object.insert(QStringLiteral("upstreamWaterLevel"), waterLevel);
+                if (waterLevelAt(downstream, frameValue, &waterLevel))
+                    object.insert(QStringLiteral("downstreamWaterLevel"), waterLevel);
+            }
         }
         object.insert(QStringLiteral("size"), static_cast<qint64>(info.size()));
         object.insert(QStringLiteral("modified"),
@@ -977,14 +1020,23 @@ QVector<PostResultAutoPrepare::ResultFile> fallbackSourceFiles(const QDir& proje
             entry.format = QStringLiteral("tecplot");
             entry.frameKey = metadata.frameKey;
             entry.frameOrder = metadata.frameOrder;
-            if (entry.frameOrder >= 0)
+            if (!entry.frameKey.isEmpty())
             {
-                entry.frameLabel = sequenceFrameLabel(entry.frameOrder, timeInfo,
-                                                      upstream, downstream);
-                if (timeInfo.valid)
+                if (entry.frameKey.startsWith(QStringLiteral("condition:")))
                 {
-                    entry.frameValue = timeInfo.start + timeInfo.increment * entry.frameOrder;
-                    entry.frameUnit = timeInfo.unit;
+                    entry.frameLabel = metadata.frameLabel;
+                    entry.frameValue = metadata.frameValue;
+                    entry.frameUnit = metadata.frameUnit;
+                }
+                else if (entry.frameOrder >= 0)
+                {
+                    entry.frameLabel = sequenceFrameLabel(entry.frameOrder, timeInfo,
+                                                          upstream, downstream);
+                    if (timeInfo.valid)
+                    {
+                        entry.frameValue = timeInfo.start + timeInfo.increment * entry.frameOrder;
+                        entry.frameUnit = timeInfo.unit;
+                    }
                 }
             }
             result.push_back(entry);
@@ -1017,7 +1069,7 @@ int resultTypeOrder(const QString& displayName)
     const QStringList orderedTypes = {
         QStringLiteral("水头渗压"), QStringLiteral("渗流速度"),
         QStringLiteral("位移"), QStringLiteral("主应力"),
-        QStringLiteral("塑性应变"), QStringLiteral("主塑性应变"),
+        QStringLiteral("最大塑性应力"), QStringLiteral("塑性应变"), QStringLiteral("主塑性应变"),
         QStringLiteral("应力水平"), QStringLiteral("破坏区"),
         QStringLiteral("网格结果"), QStringLiteral("其他结果")};
     for (int index = 0; index < orderedTypes.size(); ++index)
@@ -1872,8 +1924,20 @@ QVector<ResultFrame> resultFrames(const QString& projectDir, const QString& sour
 
     if (hasStatic || frames.isEmpty())
     {
+        bool hasStrengthReductionFrames = false;
+        for (const ResultFrame& frame : frames)
+        {
+            if (frame.key.startsWith(QStringLiteral("condition:strength:")))
+            {
+                hasStrengthReductionFrames = true;
+                break;
+            }
+        }
+
         ResultFrame current;
-        current.displayName = QStringLiteral("当前状态");
+        current.displayName = hasStrengthReductionFrames
+                                  ? QStringLiteral("基准状态")
+                                  : QStringLiteral("当前状态");
         current.order = -1;
         frames.prepend(current);
     }

@@ -64,6 +64,9 @@ class MaterialEntryWidget : public BasePage
     void rebuildSeepageFields(MaterialEntry* entry);
     void rebuildCreepFields(MaterialEntry* entry);
     void clearForm();
+    void refreshFrictionAngleFields(const MaterialEntry* entry);
+    void refreshFrictionCoefficientFields(const MaterialModel* model,
+                                          const MaterialEntry* entry);
     MaterialEntry* lookupEntry(MaterialModel** model = nullptr) const;
 
     void updateAppliedListColors(); // ★ list 里“预删除/选中”两色
@@ -85,6 +88,11 @@ class MaterialEntryWidget : public BasePage
     QFormLayout* m_advancedLayout = nullptr;
     QComboBox* m_modelCombo = nullptr;
     QMap<QString, QLineEdit*> m_valueEdits;
+    // 仍以原有内摩擦系数 f 保存；这里只记录界面上的 φ(°) 联动输入框，
+    // 不改变工程文件结构和求解器参数接口。
+    QMap<QString, QLineEdit*> m_frictionAngleEdits;
+    // 对原本直接保存 φ 的模型，仅在界面上增加 f=tan(φ) 联动框。
+    QMap<QString, QLineEdit*> m_frictionCoefficientEdits;
     CustomComboBox* m_seepageCombo = nullptr;
     QWidget* m_seepageFieldsWidget = nullptr;
     QFormLayout* m_seepageFieldsLayout = nullptr;

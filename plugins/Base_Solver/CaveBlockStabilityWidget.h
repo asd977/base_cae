@@ -4,6 +4,8 @@
 
 class CaveBlockPlanePage;
 class QLineEdit;
+class QDoubleSpinBox;
+class QLabel;
 
 namespace Ui
 {
@@ -25,6 +27,7 @@ class CaveBlockStabilityWidget : public BasePage
 
     bool exportDatFiles(QVector<CaveBlockPlanePage*>& planePages);
     bool validateInputs(QString* errorMessage) const;
+    void setBlockGroupId(const QString& groupId);
   signals:
     void computeRequested();
     void stopRequested();
@@ -35,7 +38,17 @@ class CaveBlockStabilityWidget : public BasePage
   private:
     QString quoteValue(QString value);
     QString valueOrDefault(QLineEdit* edit, QString def);
+    QString valueOrDefault(QDoubleSpinBox* edit, QString def);
+    int spatialDimension() const;
+    void refreshDimensionUi();
+    void updateDirectionEditors();
+    void updateRangeSummary();
+    void syncPreviewSearchBounds();
 
   private:
     Ui::CaveBlockStabilityWidget* ui = nullptr;
+    QString m_blockGroupId;
+    bool m_pageActive = false;
+    QLabel* m_rangeSummaryLabel = nullptr;
+    QLabel* m_forceInfoLabel = nullptr;
 };

@@ -1,6 +1,7 @@
 ﻿#include "MeshModuleController.h"
 
 #include <EventManager.h>
+#include <ContextMenuHub.h>
 #include <BarElementPlacementWidget.h>
 #include <GridEditingWidget.h>
 #include <MeshEdgeControlWidget.h>
@@ -69,6 +70,7 @@
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
+#include <QMenu>
 #include <QMessageBox>
 #include <QProcess>
 #include <QProcessEnvironment>
@@ -2617,7 +2619,105 @@ MeshModuleController::MeshModuleController(QObject* parent) : QObject(parent)
     ServiceRegistry::instance().registerService<MeshModuleControllerService>(this);
     m_visualWidgetService = ServiceRegistry::instance().getService<VisualWidgetService>();
     initAction();
+    initTreeMenu();
     ensureGridDisplayControlPanel();
+}
+
+void MeshModuleController::initTreeMenu()
+{
+    ContextMenuHub::instance().registerProvider(
+        QStringLiteral("project_tree.node"), this,
+        [this](QMenu* menu, const QVariantMap& ctx)
+        {
+            if (ctx.value(QStringLiteral("module")).toString() != QStringLiteral("Mesh") ||
+                ctx.value(QStringLiteral("kind")).toString() != QStringLiteral("BarElementPlacement"))
+            {
+                return;
+            }
+
+            const QString uuid = ctx.value(QStringLiteral("uuid")).toString();
+            if (uuid.isEmpty())
+                return;
+
+            if (!menu->isEmpty())
+                ContextMenuHub::addSeparator(menu);
+            ContextMenuHub::addAction(menu, this, QStringLiteral("删除"),
+                                      [this, uuid]() { removeBarPlacementNode(uuid); });
+        },
+        0,
+        [](const QVariantMap& ctx) -> bool
+        {
+            return ctx.value(QStringLiteral("module")).toString() == QStringLiteral("Mesh");
+        });
+}
+
+void MeshModuleController::removeBarPlacementNode(const QString& uuid)
+{
+    if (uuid.trimmed().isEmpty() || !m_gridNode)
+        return;
+
+    auto* pm = ServiceRegistry::instance().getService<ProjectManagerService>();
+    auto* node = pm ? pm->findNodeByUuid(uuid) : nullptr;
+    if (!node || node == m_gridNode ||
+        node->data(0, ProjectNode::RoleModule).toString() != QStringLiteral("Mesh") ||
+        node->data(0, ProjectNode::RoleKind).toString() != QStringLiteral("BarElementPlacement"))
+    {
+        return;
+    }
+
+    QVector<int> recordIds;
+    const auto records = barElementRecords();
+    for (const BarElementRecordInfo& record : records)
+    {
+        if (record.placementUuid == uuid)
+            recordIds.push_back(record.id);
+    }
+
+    const QString question = recordIds.isEmpty()
+                                 ? QStringLiteral("确定删除“%1”吗？").arg(node->text(0))
+                                 : QStringLiteral("“%1”中已生成锚杆。删除该节点将同时删除这些锚杆，是否继续？")
+                                       .arg(node->text(0));
+    if (QMessageBox::question(nullptr, QStringLiteral("删除锚杆布置"), question,
+                              QMessageBox::Yes | QMessageBox::No,
+                              QMessageBox::No) != QMessageBox::Yes)
+    {
+        return;
+    }
+
+    // 先删除该布置节点实际生成的杆单元，确认网格修改成功后再删工程树节点。
+    for (int recordId : recordIds)
+    {
+        QString error;
+        if (!removeBarElementRecord(recordId, &error))
+        {
+            QMessageBox::warning(nullptr, QStringLiteral("删除锚杆布置"),
+                                 error.isEmpty() ? QStringLiteral("删除已生成锚杆失败，节点未删除。")
+                                                 : error);
+            return;
+        }
+    }
+
+    PickManager::instance().clearSelection(QStringLiteral("BarElementPlacement"), uuid, PickMode::Node);
+    PickManager::instance().clearSelection(QStringLiteral("BarElementPlacement"), uuid, PickMode::Face);
+
+    auto* parent = dynamic_cast<ProjectNode*>(node->parent());
+    if (!parent)
+        return;
+
+    // 切回父节点后再销毁页面，避免设置区继续持有已删除页面。
+    if (pm)
+        pm->setCurrentItem(parent);
+    parent->removeChild(node);
+
+    if (BasePage* page = node->getPage())
+    {
+        page->beforeUnload();
+        if (page == m_barElementWidget)
+            m_barElementWidget = nullptr;
+        node->setPage(nullptr);
+        delete page;
+    }
+    delete node;
 }
 
 void MeshModuleController::newProject()
@@ -4932,8 +5032,10 @@ void MeshModuleController::onBarElements()
 
     auto* page = new BarElementPlacementWidget();
     m_barElementWidget = page;
+    const QString uuid = QUuid::createUuid().toString();
     auto* node = new ProjectNode(QStringLiteral("锚杆布置 %1").arg(placementIndex),
-                                 QUuid::createUuid().toString(), page);
+                                 uuid, page);
+    node->setData(0, ProjectNode::RoleUuid, uuid);
     node->setData(0, ProjectNode::RoleModule, QStringLiteral("Mesh"));
     node->setData(0, ProjectNode::RoleKind, QStringLiteral("BarElementPlacement"));
     m_gridNode->addChild(node);
@@ -6667,8 +6769,8 @@ bool MeshModuleController::appendBarElementsBatch(
     for (int i = 0; i < placements.size(); ++i)
     {
         const BarElementPlacement& placement = placements.at(i);
-        if (placement.segmentCount != 1 || placement.arrayCount != 1)
-            return fail(QStringLiteral("批量半自动布置只接受单段、单根锚杆。"));
+        if (placement.segmentCount <= 0 || placement.arrayCount != 1)
+            return fail(QStringLiteral("区域布置要求每根锚杆至少 1 段，且单条记录不再额外做阵列复制。"));
         if (placement.matype != firstPlacement.matype ||
             placement.installationLayer != firstPlacement.installationLayer ||
             placement.placementUuid != firstPlacement.placementUuid)
@@ -6684,7 +6786,9 @@ bool MeshModuleController::appendBarElementsBatch(
 
     const vtkIdType oldPointCount = m_importedGrid->GetNumberOfPoints();
     const vtkIdType oldCellCount = m_importedGrid->GetNumberOfCells();
-    const vtkIdType addedCellCount = placements.size();
+    vtkIdType addedCellCount = 0;
+    for (const BarElementPlacement& placement : placements)
+        addedCellCount += placement.segmentCount;
 
     int rodMatype = firstPlacement.matype;
     if (rodMatype != 0 &&
@@ -6920,13 +7024,17 @@ bool MeshModuleController::appendBarElementsBatch(
     for (int barIndex = 0; barIndex < placements.size(); ++barIndex)
     {
         const BarElementPlacement& placement = placements.at(barIndex);
-        vtkIdType endpointIds[2] = {-1, -1};
-        const std::array<double, 3> endpointCoordinates[2] = {placement.start, placement.end};
-        for (int endpoint = 0; endpoint < 2; ++endpoint)
+        QVector<vtkIdType> rodPointIds;
+        rodPointIds.reserve(placement.segmentCount + 1);
+
+        for (int nodeIndex = 0; nodeIndex <= placement.segmentCount; ++nodeIndex)
         {
-            const double xyz[3] = {endpointCoordinates[endpoint][0],
-                                   endpointCoordinates[endpoint][1],
-                                   endpointCoordinates[endpoint][2]};
+            const double ratio = static_cast<double>(nodeIndex) / placement.segmentCount;
+            const double xyz[3] = {
+                placement.start[0] + (placement.end[0] - placement.start[0]) * ratio,
+                placement.start[1] + (placement.end[1] - placement.start[1]) * ratio,
+                placement.start[2] + (placement.end[2] - placement.start[2]) * ratio};
+
             vtkIdType pointId = findOldPoint(xyz);
             if (pointId < 0)
                 pointId = findCreatedPoint(xyz);
@@ -6934,11 +7042,10 @@ bool MeshModuleController::appendBarElementsBatch(
             if (!isCommonHostPoint(pointId) && !canUseInouseEmbedding(xyz))
             {
                 return fail(QStringLiteral(
-                    "第 %1 根锚杆的%2 (%3, %4, %5) 不在可由 INOUSE 耦合的%6内。"
-                    "请检查所选表面、锚杆长度或实体网格。")
+                    "第 %1 根锚杆的第 %2 个分段节点 (%3, %4, %5) 不在可由 INOUSE 耦合的%6内。"
+                    "请检查所选表面、锚杆长度、分段数或实体网格。")
                                 .arg(barIndex + 1)
-                                .arg(endpoint == 0 ? QStringLiteral("锚头")
-                                                   : QStringLiteral("锚固端"))
+                                .arg(nodeIndex + 1)
                                 .arg(xyz[0], 0, 'g', 10)
                                 .arg(xyz[1], 0, 'g', 10)
                                 .arg(xyz[2], 0, 'g', 10)
@@ -6950,22 +7057,33 @@ bool MeshModuleController::appendBarElementsBatch(
                 pointId = points->InsertNextPoint(xyz);
                 registerCreatedPoint(pointId, xyz);
             }
-            endpointIds[endpoint] = pointId;
+            rodPointIds.push_back(pointId);
         }
 
-        if (endpointIds[0] == endpointIds[1])
-            return fail(QStringLiteral("第 %1 根锚杆退化为零长度单元。").arg(barIndex + 1));
+        for (int segment = 0; segment < placement.segmentCount; ++segment)
+        {
+            const vtkIdType firstId = rodPointIds.at(segment);
+            const vtkIdType secondId = rodPointIds.at(segment + 1);
+            if (firstId == secondId)
+            {
+                return fail(QStringLiteral("第 %1 根锚杆的第 %2 段退化为零长度单元。")
+                                .arg(barIndex + 1).arg(segment + 1));
+            }
 
-        double first[3]{};
-        double second[3]{};
-        points->GetPoint(endpointIds[0], first);
-        points->GetPoint(endpointIds[1], second);
-        const QString currentEdgeKey = edgeKey(first, second);
-        if (occupiedEdges.contains(currentEdgeKey))
-            return fail(QStringLiteral("第 %1 根锚杆与已有杆单元重合，已取消本次生成。")
-                            .arg(barIndex + 1));
-        occupiedEdges.insert(currentEdgeKey);
-        result->InsertNextCell(VTK_LINE, 2, endpointIds);
+            double first[3]{};
+            double second[3]{};
+            points->GetPoint(firstId, first);
+            points->GetPoint(secondId, second);
+            const QString currentEdgeKey = edgeKey(first, second);
+            if (occupiedEdges.contains(currentEdgeKey))
+            {
+                return fail(QStringLiteral("第 %1 根锚杆的第 %2 段与已有杆单元重合，已取消本次生成。")
+                                .arg(barIndex + 1).arg(segment + 1));
+            }
+            occupiedEdges.insert(currentEdgeKey);
+            vtkIdType endpoints[2] = {firstId, secondId};
+            result->InsertNextCell(VTK_LINE, 2, endpoints);
+        }
     }
 
     const vtkIdType finalPointCount = points->GetNumberOfPoints();
@@ -7348,16 +7466,9 @@ void MeshModuleController::setBarPlacementDisplayMode(bool active)
     if (m_previewSurfaceActor)
     {
         auto* prop = m_previewSurfaceActor->GetProperty();
-        // 锚杆布置时仍保持实体半透明，但把网格边显示出来。区域布置的
-        // 交互对象本来就是一个边界网格面，完全隐藏网格线会让用户不知道
-        // 当前可以点哪里，也很难判断是否真的选中了一个面。
-        prop->SetRepresentationToSurface();
-        prop->SetOpacity(0.30);
+        prop->SetOpacity(0.18);
         prop->SetColor(0.72, 0.75, 0.78);
-        prop->EdgeVisibilityOn();
-        prop->SetEdgeColor(0.22, 0.25, 0.28);
-        prop->SetLineWidth(1.0);
-        m_previewSurfaceActor->PickableOn();
+        prop->EdgeVisibilityOff();
         if (m_previewSurfaceMapper)
             m_previewSurfaceMapper->ScalarVisibilityOff();
     }

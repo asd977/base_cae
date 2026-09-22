@@ -24,7 +24,6 @@
 #include "ui_SlopeStabilityWidget.h"
 
 #include "SolverUiLayoutHelper.h"
-#include "SlopeStandardMethodDialog.h"
 namespace
 {
 QStringList splitGravityComponents(const QString& value)
@@ -87,11 +86,11 @@ SlopeStabilityWidget::SlopeStabilityWidget(QWidget* parent)
     if (auto* standardButton =
             findChild<QPushButton*>(QStringLiteral("btnStandardCompute")))
     {
-        // setupComputeControls 为所有分析页提供统一占位按钮。边坡页在这里接管该按钮，
-        // 数值法仍沿用原 PCCAE 流程，规范法使用独立的 SlopeEngine 文件协议。
+        // 极限平衡是独立分析节点，不再嵌入数值边坡分析页面。
         QObject::disconnect(standardButton, nullptr, this, nullptr);
+        standardButton->setText(QStringLiteral("新建极限平衡分析"));
         standardButton->setToolTip(
-            QStringLiteral("打开瑞典圆弧法、毕肖普法和 Sarma 法规范验算。"));
+            QStringLiteral("新建独立的边坡极限平衡分析节点，不会覆盖当前数值法边坡分析。"));
         connect(standardButton, &QPushButton::clicked,
                 this, &SlopeStabilityWidget::onStandardComputeClicked);
     }
@@ -638,9 +637,15 @@ QJsonObject SlopeStabilityWidget::saveJson()
     QJsonArray reserve;
     for (int row = 0; row < ui->strengthReserveTable->rowCount(); ++row)
     {
-        QJsonObject one;
         const auto* factorItem = ui->strengthReserveTable->item(row, 0);
-        one["factor"] = factorItem ? factorItem->text().trimmed() : "";
+        const QString factor = factorItem ? factorItem->text().trimmed() : QString();
+        // 空白行不是有效的强度储备系数，不写入工程文件。
+        // 这样既避免用户删除后的尾部空行再次出现，也能清理旧工程中已保存的空行。
+        if (factor.isEmpty())
+            continue;
+
+        QJsonObject one;
+        one["factor"] = factor;
         one["ifpr"] = strengthReserveOutputValue(row);
         reserve.append(one);
     }
@@ -653,9 +658,6 @@ QJsonObject SlopeStabilityWidget::saveJson()
     obj["acc_x"] = QString::fromLatin1(kAccXFileName);
     obj["acc_y"] = QString::fromLatin1(kAccYFileName);
     obj["acc_z"] = QString::fromLatin1(kAccZFileName);
-    obj["standard_method_dat"] =
-        m_standardDialog ? m_standardDialog->datText() : m_standardDatText;
-    obj["standard_method_last_job"] = m_standardLastJobDirectory;
     return obj;
 }
 
@@ -671,22 +673,34 @@ void SlopeStabilityWidget::loadJson(const QJsonObject& obj)
         setLineValue(lineNo, value);
     }
 
-    const QJsonArray reserve = obj.value("strength_reserve").toArray();
-    const int rowCount = qMax(ui->strengthReserveTable->rowCount(), reserve.size());
-    ui->strengthReserveTable->setRowCount(rowCount);
-    for (int row = 0; row < rowCount; ++row)
+    if (obj.contains("strength_reserve"))
     {
-        QString factor;
-        QString ifpr;
-        if (row < reserve.size())
+        const QJsonArray savedReserve = obj.value("strength_reserve").toArray();
+
+        // 旧版本在加载时会把初始化的 12 行与工程中已保存的行数取最大值，
+        // 因此被删除的行会重新以空行出现。这里仅恢复真正保存的有效系数。
+        QList<QJsonObject> reserveRows;
+        reserveRows.reserve(savedReserve.size());
+        for (const QJsonValue& value : savedReserve)
         {
-            const QJsonObject one = reserve.at(row).toObject();
-            factor = one.value("factor").toString();
-            ifpr = one.value("ifpr").toString();
+            const QJsonObject one = value.toObject();
+            if (!one.value("factor").toString().trimmed().isEmpty())
+                reserveRows.append(one);
         }
-        ui->strengthReserveTable->setItem(
-            row, 0, new QTableWidgetItem(factor.isEmpty() ? QString() : factor));
-        setStrengthReserveOutputCombo(row, ifpr.isEmpty() ? QStringLiteral("1.0000") : ifpr);
+
+        ui->strengthReserveTable->clearContents();
+        ui->strengthReserveTable->setRowCount(reserveRows.size());
+        for (int row = 0; row < reserveRows.size(); ++row)
+        {
+            const QJsonObject& one = reserveRows.at(row);
+            const QString factor = one.value("factor").toString().trimmed();
+            const QString ifpr = one.value("ifpr").toString();
+            ui->strengthReserveTable->setItem(row, 0, new QTableWidgetItem(factor));
+            setStrengthReserveOutputCombo(
+                row, ifpr.isEmpty() ? QStringLiteral("1.0000") : ifpr);
+        }
+        SolverUiLayoutHelper::fitTableToRows(
+            ui->strengthReserveTable, ui->strengthReserveTable->rowCount(), 5, 7);
     }
 
     ui->dtEdit->setText(obj.value("dt").toString(ui->dtEdit->text()));
@@ -698,8 +712,6 @@ void SlopeStabilityWidget::loadJson(const QJsonObject& obj)
     const int ifWaveIndex = ui->ifWaveCombo->findData(ifWave);
     ui->ifModeCombo->setCurrentIndex(ifModeIndex >= 0 ? ifModeIndex : 0);
     ui->ifWaveCombo->setCurrentIndex(ifWaveIndex >= 0 ? ifWaveIndex : 0);
-    m_standardDatText = obj.value("standard_method_dat").toString();
-    m_standardLastJobDirectory = obj.value("standard_method_last_job").toString();
     updateAnalysisModeVisibility();
 }
 
@@ -722,37 +734,13 @@ void SlopeStabilityWidget::onComputeClicked()
 
 void SlopeStabilityWidget::onStandardComputeClicked()
 {
-    if (m_standardDialog)
-    {
-        m_standardDialog->show();
-        m_standardDialog->raise();
-        m_standardDialog->activateWindow();
-        return;
-    }
-
-    m_standardDialog = new SlopeStandardMethodDialog(
-        getUuid(), m_standardDatText, m_standardLastJobDirectory, this);
-    m_standardDialog->setAttribute(Qt::WA_DeleteOnClose);
-    connect(m_standardDialog, &SlopeStandardMethodDialog::datTextChanged,
-            this, [this](const QString& text) { m_standardDatText = text; });
-    connect(m_standardDialog, &SlopeStandardMethodDialog::lastJobDirectoryChanged,
-            this, [this](const QString& directory) {
-                m_standardLastJobDirectory = directory;
-            });
-    connect(m_standardDialog, &SlopeStandardMethodDialog::runningChanged,
-            this, [this](bool running) {
-                ui->btnCompute->setEnabled(!running);
-                if (auto* standardButton =
-                        findChild<QPushButton*>(QStringLiteral("btnStandardCompute")))
-                    standardButton->setText(running ? QStringLiteral("规范法计算中")
-                                                    : QStringLiteral("规范法计算"));
-            });
-    m_standardDialog->show();
+    emit limitEquilibriumRequested();
 }
 
 void SlopeStabilityWidget::openStandardMethodDialog()
 {
-    onStandardComputeClicked();
+    // 兼容旧调用入口：现在不再打开/嵌入弹窗，而是请求 Solver 新建独立分析节点。
+    emit limitEquilibriumRequested();
 }
 
 void SlopeStabilityWidget::setComputing(bool computing)

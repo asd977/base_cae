@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ui version="4.0">
+ <class>GeometryMeasureDialog</class>
+ <widget class="QWidget" name="GeometryMeasureDialog">
+  <property name="windowTitle"><string>几何测量</string></property>
+  <property name="minimumSize"><size><width>500</width><height>440</height></size></property>
+  <layout class="QVBoxLayout" name="mainLayout">
+   <property name="leftMargin"><number>12</number></property><property name="topMargin"><number>10</number></property><property name="rightMargin"><number>12</number></property><property name="bottomMargin"><number>10</number></property><property name="spacing"><number>10</number></property>
+   <item><widget class="QTabWidget" name="tabWidget">
+    <widget class="QWidget" name="singleTab"><attribute name="title"><string>属性</string></attribute>
+     <layout class="QVBoxLayout" name="singleLayout">
+      <item><widget class="QGroupBox" name="singleGroup"><property name="title"><string>测量对象</string></property>
+       <layout class="QGridLayout" name="singleGrid">
+        <item row="0" column="0"><widget class="QLabel" name="singleObjectLabel"><property name="text"><string>对象</string></property></widget></item>
+        <item row="0" column="1" colspan="5"><widget class="QComboBox" name="singleObjectCombo"/></item>
+        <item row="1" column="0"><widget class="QLabel" name="singleTypeLabel"><property name="text"><string>类型</string></property></widget></item>
+        <item row="1" column="1"><widget class="QComboBox" name="singleTypeCombo"/></item>
+        <item row="1" column="2"><widget class="QLabel" name="singleIdLabel"><property name="text"><string>编号</string></property></widget></item>
+        <item row="1" column="3"><widget class="QComboBox" name="singleIdCombo"/></item>
+        <item row="1" column="4"><widget class="QPushButton" name="focusButton"><property name="text"><string>定位</string></property></widget></item>
+        <item row="1" column="5"><widget class="QPushButton" name="singleMeasureButton"><property name="text"><string>测量</string></property></widget></item>
+       </layout>
+      </widget></item>
+      <item><widget class="QTableWidget" name="singleTable"/></item>
+     </layout>
+    </widget>
+    <widget class="QWidget" name="pairTab"><attribute name="title"><string>距离与夹角</string></attribute>
+     <layout class="QVBoxLayout" name="pairLayout">
+      <item><layout class="QHBoxLayout" name="objectsLayout">
+       <item><widget class="QGroupBox" name="groupA"><property name="title"><string>对象 A</string></property><layout class="QFormLayout" name="formA">
+        <item row="0" column="0"><widget class="QLabel" name="objectALabel"><property name="text"><string>对象</string></property></widget></item><item row="0" column="1"><widget class="QComboBox" name="objectACombo"/></item>
+        <item row="1" column="0"><widget class="QLabel" name="typeALabel"><property name="text"><string>类型</string></property></widget></item><item row="1" column="1"><widget class="QComboBox" name="typeACombo"/></item>
+        <item row="2" column="0"><widget class="QLabel" name="idALabel"><property name="text"><string>编号</string></property></widget></item><item row="2" column="1"><widget class="QComboBox" name="idACombo"/></item>
+       </layout></widget></item>
+       <item><widget class="QGroupBox" name="groupB"><property name="title"><string>对象 B</string></property><layout class="QFormLayout" name="formB">
+        <item row="0" column="0"><widget class="QLabel" name="objectBLabel"><property name="text"><string>对象</string></property></widget></item><item row="0" column="1"><widget class="QComboBox" name="objectBCombo"/></item>
+        <item row="1" column="0"><widget class="QLabel" name="typeBLabel"><property name="text"><string>类型</string></property></widget></item><item row="1" column="1"><widget class="QComboBox" name="typeBCombo"/></item>
+        <item row="2" column="0"><widget class="QLabel" name="idBLabel"><property name="text"><string>编号</string></property></widget></item><item row="2" column="1"><widget class="QComboBox" name="idBCombo"/></item>
+       </layout></widget></item>
+      </layout></item>
+      <item><layout class="QHBoxLayout" name="pairButtonLayout"><item><spacer name="pairSpacer"><property name="orientation"><enum>Qt::Horizontal</enum></property><property name="sizeHint" stdset="0"><size><width>40</width><height>20</height></size></property></spacer></item><item><widget class="QPushButton" name="calculateButton"><property name="text"><string>测量</string></property></widget></item></layout></item>
+      <item><widget class="QTableWidget" name="pairTable"/></item>
+     </layout>
+    </widget>
+   </widget></item>
+  </layout>
+ </widget><resources/><connections/>
+</ui>

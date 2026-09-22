@@ -1,4 +1,4 @@
-﻿#include "SliceSettingsWidget.h"
+#include "SliceSettingsWidget.h"
 #include "PostComboBoxPerformance.h"
 
 #include <PublicConstants.h>
@@ -741,6 +741,9 @@ void SliceSettingsWidget::on_scalarComboBox_currentIndexChanged(int)
         return;
     }
     const PostFieldUtils::Field field = PostFieldUtils::selectedField(ui->scalarComboBox);
+    displayGrid = postApplyZeroHideFilter(displayGrid, field.name);
+    if (!displayGrid || displayGrid->GetNumberOfCells() <= 0)
+        return;
     vtkDataArray* arr = PostFieldUtils::array(displayGrid, field);
     if (!arr || arr->GetNumberOfTuples() <= 0)
     {
@@ -770,7 +773,7 @@ void SliceSettingsWidget::on_scalarComboBox_currentIndexChanged(int)
         scalarBar->SetLookupTable(newLut);
         lut = newLut;
     }
-    applyStandardPostLookupTable(lut, range[0], range[1]);
+    applyPostFieldLookupTable(lut, field.name, range[0], range[1]);
 
     // 整体结果直接显示当前材料/分层筛选后的体网格。
     // 切面页的“整体云图”不展开内部域界面，避免筛选后出现碎片薄面；
@@ -788,6 +791,17 @@ void SliceSettingsWidget::on_scalarComboBox_currentIndexChanged(int)
     if (!m_actor)
         m_actor = vtkSmartPointer<vtkActor>::New();
     m_actor->SetMapper(mapper);
+    const bool monochromeContours = postContourStyle().enabled && postContourStyle().monochrome;
+    if (monochromeContours)
+    {
+        mapper->ScalarVisibilityOff();
+        m_actor->GetProperty()->SetColor(0.97, 0.97, 0.97);
+    }
+    else
+    {
+        mapper->ScalarVisibilityOn();
+        m_actor->GetProperty()->SetColor(1.0, 1.0, 1.0);
+    }
     applyPostActorRepresentation(m_actor);
     applyStandardPostScalarBar(m_visualService, ResultDisplayNames::scalarBarName(field.name));
     m_visualService->showScalarBar(postScalarBarShouldBeVisible(), false);
@@ -993,6 +1007,9 @@ void SliceSettingsWidget::buildSingleSliceResult()
     if (!displayGrid || displayGrid->GetNumberOfCells() <= 0)
         return;
     const PostFieldUtils::Field field = PostFieldUtils::selectedField(ui->scalarComboBox);
+    displayGrid = postApplyZeroHideFilter(displayGrid, field.name);
+    if (!displayGrid || displayGrid->GetNumberOfCells() <= 0)
+        return;
     vtkDataArray* arr = PostFieldUtils::array(displayGrid, field);
     if (!arr || arr->GetNumberOfTuples() <= 0)
         return;
@@ -1010,7 +1027,7 @@ void SliceSettingsWidget::buildSingleSliceResult()
     arr->GetRange(dataRange);
     double range[2]{dataRange[0], dataRange[1]};
     resolvePostDisplayRange(field.name, dataRange[0], dataRange[1], range[0], range[1]);
-    applyStandardPostLookupTable(lut, range[0], range[1]);
+    applyPostFieldLookupTable(lut, field.name, range[0], range[1]);
 
     auto cutter = vtkSmartPointer<vtkCutter>::New();
     cutter->SetCutFunction(m_plane);
@@ -1058,6 +1075,16 @@ void SliceSettingsWidget::buildSingleSliceResult()
 
     m_sliceActor = vtkSmartPointer<vtkActor>::New();
     m_sliceActor->SetMapper(mapper);
+    if (postContourStyle().enabled && postContourStyle().monochrome)
+    {
+        mapper->ScalarVisibilityOff();
+        m_sliceActor->GetProperty()->SetColor(0.97, 0.97, 0.97);
+    }
+    else
+    {
+        mapper->ScalarVisibilityOn();
+        m_sliceActor->GetProperty()->SetColor(1.0, 1.0, 1.0);
+    }
     applyPostActorRepresentation(m_sliceActor);
 
     addActorByService(m_visualService, postActorId(getUuid(), QStringLiteral("slice")),
@@ -1098,6 +1125,9 @@ void SliceSettingsWidget::buildMultiSliceResult()
     if (!displayGrid || displayGrid->GetNumberOfCells() <= 0)
         return;
     const PostFieldUtils::Field field = PostFieldUtils::selectedField(ui->scalarComboBox);
+    displayGrid = postApplyZeroHideFilter(displayGrid, field.name);
+    if (!displayGrid || displayGrid->GetNumberOfCells() <= 0)
+        return;
     vtkDataArray* arr = PostFieldUtils::array(displayGrid, field);
     if (!arr || arr->GetNumberOfTuples() <= 0)
         return;
@@ -1114,7 +1144,7 @@ void SliceSettingsWidget::buildMultiSliceResult()
     arr->GetRange(dataRange);
     double range[2]{dataRange[0], dataRange[1]};
     resolvePostDisplayRange(field.name, dataRange[0], dataRange[1], range[0], range[1]);
-    applyStandardPostLookupTable(lut, range[0], range[1]);
+    applyPostFieldLookupTable(lut, field.name, range[0], range[1]);
 
     if (field.association == vtkDataObject::FIELD_ASSOCIATION_CELLS)
     {
@@ -1178,6 +1208,16 @@ void SliceSettingsWidget::buildMultiSliceResult()
 
         auto actor = vtkSmartPointer<vtkActor>::New();
         actor->SetMapper(mapper);
+        if (postContourStyle().enabled && postContourStyle().monochrome)
+        {
+            mapper->ScalarVisibilityOff();
+            actor->GetProperty()->SetColor(0.97, 0.97, 0.97);
+        }
+        else
+        {
+            mapper->ScalarVisibilityOn();
+            actor->GetProperty()->SetColor(1.0, 1.0, 1.0);
+        }
         const int sliceIndex = m_multiActors.size();
         addActorByService(m_visualService,
                           postActorId(getUuid(), QStringLiteral("slice-%1").arg(sliceIndex)),

@@ -86,6 +86,8 @@ class MeshModuleController : public QObject, public MeshModuleControllerService
 
   private:
     void initAction();
+    void initTreeMenu();
+    void removeBarPlacementNode(const QString& uuid);
 
     void onImportGrid();
     void onImportGridFileDialog();

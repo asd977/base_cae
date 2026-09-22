@@ -7,6 +7,9 @@
 class VisualWidgetService;
 class vtkCallbackCommand;
 class vtkObject;
+class QCheckBox;
+class QComboBox;
+class QSpinBox;
 
 namespace Ui
 {
@@ -45,4 +48,8 @@ class PostDisplayControlWidget : public QWidget
     bool m_draggingScalarBar{false};
     double m_dragOffsetX{0.0};
     double m_dragOffsetY{0.0};
+
+    QSpinBox* m_gridLineStrengthSpinBox{nullptr};
+    QCheckBox* m_reverseColorsCheckBox{nullptr};
+    QComboBox* m_contourModeComboBox{nullptr};
 };
