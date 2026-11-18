@@ -1,6 +1,7 @@
 #include "MeshGlobalMeshingWidget.h"
 
-#include "NetgenMeshGenerator.h"
+#include "SmeshMeshGenerator.h"
+#include "MeshModuleController.h"
 #include "ui_MeshGlobalMeshingWidget.h"
 
 #include <PublicConstants.h>
@@ -17,6 +18,19 @@
 
 #include <QCoreApplication>
 #include <QComboBox>
+#include <QCheckBox>
+#include <QDoubleSpinBox>
+#include <QGridLayout>
+#include <QVBoxLayout>
+#include <QHBoxLayout>
+#include <QGroupBox>
+#include <QListWidget>
+#include <QLabel>
+#include <QPushButton>
+#include <QJsonArray>
+#include <QEvent>
+#include <QSignalBlocker>
+#include "MeshCompactDoubleSpinBox.h"
 #include <QDesktopServices>
 #include <QDir>
 #include <QFile>
@@ -91,9 +105,12 @@ MeshGlobalWorker::MeshGlobalWorker(Params p, QObject* parent)
 
 void MeshGlobalWorker::run()
 {
-    NetgenMeshingRequest request;
-    request.inputGeometryPath = m_p.inputStepPath;
-    request.volPath = m_tempVolPath;
+    SmeshMeshingRequest request;
+    request.inputGeometryPath = m_p.inputGeometryPath;
+    request.workflow = m_p.workflow;
+    request.allGeometry = m_p.allGeometry;
+    request.geometryScope = m_p.geometryScope;
+    request.conformalizeRegions = m_p.autoPartition;
     request.vtkPath = m_tempVtkPath;
     request.nasPath = m_tempNasPath;
     request.dimension = m_p.dimension;
@@ -101,24 +118,22 @@ void MeshGlobalWorker::run()
     request.lenMin = m_p.lenMin;
     request.lenMax = m_p.lenMax;
     request.fineness = m_p.fineness;
+    request.nativeFineness = m_p.nativeFineness;
+    request.growthRate = m_p.growthRate;
+    request.segmentsPerEdge = m_p.segmentsPerEdge;
+    request.segmentsPerRadius = m_p.segmentsPerRadius;
     request.elementOrder = m_p.elementOrder;
-    request.smoothing = m_p.smoothing;
+    request.optimize = m_p.optimize;
     request.localSizeControls = m_p.localSizeControls;
-    request.fixShape = m_p.fixShape;
+    request.surfaceCurvature = m_p.surfaceCurvature;
+    request.progress = [this](const QString& message) { emit log(message); };
     request.tolerance = m_p.tolerance;
-    request.exportVol = m_p.exportVol && m_p.elemType != kElemTypeHex8FromTet;
     request.exportVtk = m_p.exportVtk;
     request.exportNas = m_p.exportNas;
 
     if (!m_p.localSizeControls.isEmpty())
     {
         emit log(QStringLiteral("应用局部加密：%1 个几何实体").arg(m_p.localSizeControls.size()));
-        if (m_p.legacyRuleCount > 0)
-        {
-            emit log(QStringLiteral(
-                "其中 %1 条旧版 Gmsh 规则已自动换算为 Netgen 局部最大尺寸。")
-                         .arg(m_p.legacyRuleCount));
-        }
     }
     if (m_p.skippedLocalControlCount > 0)
     {
@@ -139,8 +154,8 @@ void MeshGlobalWorker::run()
         emit log(QStringLiteral("开始生成网格..."));
 
     QString err;
-    NetgenMeshingResult result;
-    if (!NetgenMeshGenerator::generate(request, &result, &err))
+    SmeshMeshingResult result;
+    if (!SmeshMeshGenerator::generate(request, &result, &err))
     {
         emit finishedFail(err.isEmpty() ? QStringLiteral("网格生成失败") : err);
         return;
@@ -148,15 +163,15 @@ void MeshGlobalWorker::run()
 
     if (result.appliedLocalControlCount > 0)
     {
-        emit log(QStringLiteral("局部尺寸已应用：%1 个实体，写入 %2 个 Netgen 尺寸约束点")
+        emit log(QStringLiteral("局部尺寸已应用：%1 个实体，建立 %2 个局部网格设置")
                      .arg(result.appliedLocalControlCount)
-                     .arg(result.localRestrictionPointCount));
+                     .arg(result.nativeSubmeshCount));
     }
 
     if (result.conformalized)
     {
         emit log(QStringLiteral(
-                     "材料分区共形处理完成：原始区域 %1，处理后区域 %2，共享界面 %3；相邻区域共用节点。")
+                     "几何分域共形处理完成：原始面域 %1，处理后面域 %2，共享界面 %3；相邻面域共用节点。")
                      .arg(result.sourceRegionCount)
                      .arg(result.conformalRegionCount)
                      .arg(result.sharedInterfaceCount));
@@ -180,7 +195,7 @@ void MeshGlobalWorker::run()
                      .arg(result.volumeElementCount)
                      .arg(result.regionCount));
     }
-    emit finishedOK(m_tempVolPath, m_tempVtkPath, m_tempNasPath);
+    emit finishedOK(m_tempVtkPath, m_tempNasPath);
 }
 
 MeshGlobalMeshingWidget::MeshGlobalMeshingWidget(QWidget* parent)
@@ -188,23 +203,57 @@ MeshGlobalMeshingWidget::MeshGlobalMeshingWidget(QWidget* parent)
 {
     Q_UNUSED(parent);
     ui->setupUi(this);
+    setupGeometryScope();
 
-    // Use Netgen's own global controls. The previous "size factor" was a
-    // Gmsh-style multiplier and made local rules difficult to predict.
-    ui->labelFactor->setText(tr("细化程度"));
-    ui->labelFactor->setToolTip(tr("Netgen fineness：0 表示偏粗，1 表示偏细。"));
+    ui->labelFactor->setText(tr("精细度"));
+    // Only one meshing algorithm is currently exposed; do not occupy a row with a fixed option.
+    ui->labelAlgo->hide();
+    ui->cmbAlgo->hide();
+    ui->dsMin->setSpecialValueText(tr("自动"));
     ui->dsFactor->setDecimals(2);
     ui->dsFactor->setRange(0.0, 1.0);
-    ui->dsFactor->setSingleStep(0.05);
+    ui->dsFactor->setSingleStep(0.25);
     ui->dsFactor->setValue(0.5);
-    ui->dsFactor->setToolTip(ui->labelFactor->toolTip());
-    ui->labelMin->setToolTip(
-        tr("Netgen 的全局尺寸下限；局部最大尺寸小于该值时会按此值处理。"));
-    ui->dsMin->setToolTip(ui->labelMin->toolTip());
-    ui->labelMax->setToolTip(tr("未设置局部控制区域所使用的全局最大尺寸。"));
-    ui->dsMax->setToolTip(ui->labelMax->toolTip());
 
     initCombos();
+
+    // Keep existing designer fields/IDs, and arrange the complete SMESH sizing
+    // settings together. The hidden factor remains readable by older projects.
+    ui->dsFactor->hide();
+    m_fineness=new QComboBox(this);m_fineness->setObjectName("smeshFineness");
+    const QStringList levels{tr("很粗"),tr("粗"),tr("标准"),tr("细"),tr("很细"),tr("自定义")};
+    for(int i=0;i<levels.size();++i)m_fineness->addItem(levels[i],i);
+    m_fineness->setCurrentIndex(2);
+    m_automaticMin=new QCheckBox(tr("自动确定最小尺寸"),this);
+    m_automaticMin->setObjectName("smeshAutomaticMinSize");m_automaticMin->setChecked(true);
+    auto spin=[this](const char* name,double minimum,double maximum,int decimals,double step,double value){
+        auto* field=new MeshCompactDoubleSpinBox(this);field->setObjectName(name);
+        field->setDecimals(decimals);field->setRange(minimum,maximum);field->setSingleStep(step);field->setValue(value);
+        return field;
+    };
+    m_growthRate=spin("smeshGrowthRate",0.01,1.0,3,0.05,0.3);
+    m_segmentsPerEdge=spin("smeshSegmentsPerEdge",0.05,20,2,0.25,1);
+    m_segmentsPerRadius=spin("smeshSegmentsPerRadius",0.1,50,2,0.5,2);
+    auto* grid=ui->gridLayout;
+    for(QWidget* field:QList<QWidget*>{ui->labelMin,ui->dsMin,ui->labelMax,ui->dsMax,
+        ui->labelFactor,ui->dsFactor,ui->labelOrder,ui->spOrder,ui->labelSmooth,ui->chkOptimize,
+        ui->labelTol,ui->dsTol,ui->labelCurvature,ui->chkCurvature,ui->labelAlgo,ui->cmbAlgo})grid->removeWidget(field);
+    auto row=[&](QWidget* label,QWidget* field,int index){grid->addWidget(label,index,0);grid->addWidget(field,index,1);};
+    row(ui->labelMax,ui->dsMax,2);
+    grid->addWidget(m_automaticMin,3,1);
+    ui->labelMin->setText(tr("手动最小尺寸"));row(ui->labelMin,ui->dsMin,4);
+    row(ui->labelFactor,m_fineness,5);
+    row(ui->labelCurvature,ui->chkCurvature,6);row(ui->labelSmooth,ui->chkOptimize,7);
+    row(new QLabel(tr("尺寸增长率"),this),m_growthRate,8);
+    row(new QLabel(tr("每边分段密度"),this),m_segmentsPerEdge,9);
+    row(new QLabel(tr("每曲率半径分段"),this),m_segmentsPerRadius,10);
+    row(ui->labelOrder,ui->spOrder,11);row(ui->labelTol,ui->dsTol,12);
+    connect(m_automaticMin,&QCheckBox::toggled,ui->dsMin,&QWidget::setDisabled);
+    ui->dsMin->setDisabled(true);
+    connect(m_fineness,QOverload<int>::of(&QComboBox::currentIndexChanged),this,&MeshGlobalMeshingWidget::updateFinenessControls);
+    for(auto* field:{m_growthRate,m_segmentsPerEdge,m_segmentsPerRadius})
+        connect(field,QOverload<double>::of(&QDoubleSpinBox::valueChanged),this,[this]{m_fineness->setCurrentIndex(5);});
+    updateFinenessControls();
 
     connect(ui->cmbDim, QOverload<int>::of(&QComboBox::currentIndexChanged), this,
             &MeshGlobalMeshingWidget::onDimChanged);
@@ -216,6 +265,8 @@ MeshGlobalMeshingWidget::MeshGlobalMeshingWidget(QWidget* parent)
 
 MeshGlobalMeshingWidget::~MeshGlobalMeshingWidget()
 {
+    stopGeometryPick();
+    m_selectionPresentation.leave();
     if (m_thread)
     {
         m_thread->quit();
@@ -228,15 +279,152 @@ MeshGlobalMeshingWidget::~MeshGlobalMeshingWidget()
 
 void MeshGlobalMeshingWidget::beforeLoad()
 {
+    m_selectionPresentation.enter();
+    refreshGeometryScope();
 }
 
 void MeshGlobalMeshingWidget::beforeUnload()
 {
+    stopGeometryPick();
+    m_selectionPresentation.leave();
+}
+
+void MeshGlobalMeshingWidget::setupGeometryScope()
+{
+    auto* layout = qobject_cast<QVBoxLayout*>(this->layout());
+    if (!layout) return;
+    layout->insertWidget(0, m_selectionPresentation.createViewSelector(this));
+    auto* group = new QGroupBox(tr("几何范围"), this);
+    auto* content = new QVBoxLayout(group);
+    m_scopeMode = new QComboBox(group);
+    m_scopeMode->setObjectName("globalGeometryScopeMode");
+    m_scopeMode->addItems({tr("全部几何"), tr("指定几何")});
+    content->addWidget(m_scopeMode);
+    m_geometryList = new QListWidget(group);
+    m_geometryList->setObjectName("globalGeometryList");
+    m_geometryList->setMaximumHeight(150);
+    content->addWidget(m_geometryList);
+    auto* actions = new QHBoxLayout;
+    m_pickGeometry = new QPushButton(tr("选取几何"), group);
+    m_pickGeometry->setObjectName("pickGlobalGeometry");
+    auto* refresh = new QPushButton(tr("刷新"), group);
+    auto* all = new QPushButton(tr("全选"), group);
+    auto* clear = new QPushButton(tr("清空"), group);
+    for (auto* button : {m_pickGeometry, refresh, all, clear}) actions->addWidget(button);
+    content->addLayout(actions);
+    m_geometryStatus = new QLabel(group);
+    content->addWidget(m_geometryStatus);
+    m_autoPartition = new QCheckBox(tr("统一共享拓扑（Partition）"), group);
+    m_autoPartition->setObjectName("globalAutoPartition");
+    m_autoPartition->setChecked(true);
+    m_autoPartition->setToolTip(tr("剖分前对本次所选几何建立共享边界，使相邻区域共用网格节点；关闭时使用源几何已有拓扑。"));
+    content->addWidget(m_autoPartition);
+    layout->insertWidget(1, group);
+    connect(refresh, &QPushButton::clicked, this, &MeshGlobalMeshingWidget::refreshGeometryScope);
+    connect(m_scopeMode, qOverload<int>(&QComboBox::currentIndexChanged), this, [this] { updateGeometryScope(); });
+    connect(m_geometryList, &QListWidget::itemChanged, this, [this] {
+        if (m_refreshingGeometry) return;
+        const int dimension = meshingDimension();
+        m_geometryIds[dimension].clear();
+        for (int i = 0; i < m_geometryList->count(); ++i) {
+            const auto* item = m_geometryList->item(i);
+            if (item->checkState() == Qt::Checked) m_geometryIds[dimension].append(item->data(Qt::UserRole).toInt());
+        }
+        updateGeometryScope();
+    });
+    auto setAll = [this](Qt::CheckState state) {
+        m_scopeMode->setCurrentIndex(1);
+        const QSignalBlocker block(m_geometryList);
+        auto& ids = m_geometryIds[meshingDimension()];
+        ids.clear();
+        for (int i = 0; i < m_geometryList->count(); ++i) {
+            auto* item = m_geometryList->item(i);
+            item->setCheckState(state);
+            if (state == Qt::Checked) ids.append(item->data(Qt::UserRole).toInt());
+        }
+        updateGeometryScope();
+    };
+    connect(all, &QPushButton::clicked, this, [setAll] { setAll(Qt::Checked); });
+    connect(clear, &QPushButton::clicked, this, [setAll] { setAll(Qt::Unchecked); });
+    connect(m_pickGeometry, &QPushButton::clicked, this, [this] {
+        if (m_pickingGeometry) { stopGeometryPick(); return; }
+        m_scopeMode->setCurrentIndex(1);
+        auto* bridge = dynamic_cast<QObject*>(ServiceRegistry::instance().getService<PreProcessingService>());
+        bool ok = false;
+        if (bridge) QMetaObject::invokeMethod(bridge, "beginExternalEntityPick", Qt::DirectConnection,
+            Q_RETURN_ARG(bool, ok), Q_ARG(QObject*, this), Q_ARG(int, meshingDimension()));
+        m_pickingGeometry = ok;
+        if (ok) m_pickGeometry->setText(tr("取消选取"));
+        else m_geometryStatus->setText(tr("请先创建或导入几何，再选取。"));
+    });
+}
+
+void MeshGlobalMeshingWidget::refreshGeometryScope()
+{
+    if (!m_geometryList) return;
+    m_refreshingGeometry = true;
+    m_geometryList->clear();
+    const int dimension = meshingDimension();
+    QList<int> ids;
+    if (auto* geometry = ServiceRegistry::instance().getService<PreProcessingService>())
+        for (const auto& text : geometry->listEntityIds(dimension)) {
+            bool ok = false; const int id = text.toInt(&ok);
+            if (ok && id > 0 && !ids.contains(id)) ids.append(id);
+        }
+    for (int id : m_geometryIds[dimension]) if (!ids.contains(id)) ids.append(id);
+    std::sort(ids.begin(), ids.end());
+    for (int id : ids) {
+        auto* item = new QListWidgetItem(dimension == 3 ? tr("体 %1").arg(id) : tr("面 %1").arg(id), m_geometryList);
+        item->setData(Qt::UserRole, id);
+        item->setFlags(item->flags() | Qt::ItemIsUserCheckable);
+        item->setCheckState(m_geometryIds[dimension].contains(id) ? Qt::Checked : Qt::Unchecked);
+    }
+    m_refreshingGeometry = false;
+    updateGeometryScope();
+}
+
+void MeshGlobalMeshingWidget::updateGeometryScope()
+{
+    if (!m_scopeMode) return;
+    const bool all = m_scopeMode->currentIndex() == 0;
+    m_geometryList->setEnabled(!all);
+    m_geometryStatus->setText(all ? tr("全部几何：%1 项").arg(m_geometryList->count())
+        : tr("已选 %1 / %2 项").arg(m_geometryIds[meshingDimension()].size()).arg(m_geometryList->count()));
+    QList<int> ids = m_geometryIds[meshingDimension()];
+    if (all) { ids.clear(); for (int i = 0; i < m_geometryList->count(); ++i) ids.append(m_geometryList->item(i)->data(Qt::UserRole).toInt()); }
+    m_selectionPresentation.setSelectedEntities(meshingDimension(), ids);
+}
+
+void MeshGlobalMeshingWidget::stopGeometryPick()
+{
+    if (m_pickingGeometry)
+        if (auto* bridge = dynamic_cast<QObject*>(ServiceRegistry::instance().getService<PreProcessingService>()))
+            QMetaObject::invokeMethod(bridge, "stopExternalEntityPick", Qt::DirectConnection, Q_ARG(QObject*, this));
+    m_pickingGeometry = false;
+    if (m_pickGeometry) m_pickGeometry->setText(tr("选取几何"));
+}
+
+bool MeshGlobalMeshingWidget::event(QEvent* event)
+{
+    if (event->type() == static_cast<QEvent::Type>(QEvent::User + 421) && m_pickingGeometry) {
+        const int dimension = property("_geometryExternalPickDim").toInt();
+        const int id = property("_geometryExternalPickId").toInt();
+        if (dimension == meshingDimension() && id > 0) {
+            if (!m_geometryIds[dimension].contains(id)) m_geometryIds[dimension].append(id);
+            refreshGeometryScope();
+        }
+        stopGeometryPick();
+        return true;
+    }
+    return BasePage::event(event);
 }
 
 void MeshGlobalMeshingWidget::appendLog(const QString& s)
 {
-    emit logMessage(s);
+    // Backend names are implementation details; keep user-facing logs concise.
+    QString message=s;
+    message.replace(QStringLiteral("SMESH"), QStringLiteral("网格"), Qt::CaseInsensitive);
+    emit logMessage(message);
 }
 
 void MeshGlobalMeshingWidget::initCombos()
@@ -250,8 +438,8 @@ void MeshGlobalMeshingWidget::initCombos()
     ui->dsMax->setValue(5.0);
     ui->dsFactor->setValue(0.5);
     ui->spOrder->setValue(1);
-    ui->spSmooth->setValue(5);
-    ui->chkFix->setChecked(true);
+    ui->chkOptimize->setChecked(true);
+    ui->chkCurvature->setChecked(true);
     ui->dsTol->setValue(1e-6);
 }
 
@@ -277,9 +465,9 @@ void MeshGlobalMeshingWidget::refreshAlgoCombo(int dim)
 {
     ui->cmbAlgo->clear();
     if (dim == 2)
-        ui->cmbAlgo->addItem(QStringLiteral("表面网格算法"), 1);
+        ui->cmbAlgo->addItem(QStringLiteral("自动表面网格"), 1);
     else
-        ui->cmbAlgo->addItem(QStringLiteral("体网格算法"), 1);
+        ui->cmbAlgo->addItem(QStringLiteral("自动四面体网格"), 1);
     ui->cmbAlgo->setCurrentIndex(0);
 }
 
@@ -288,6 +476,8 @@ void MeshGlobalMeshingWidget::onDimChanged(int)
     const int dim = ui->cmbDim->currentData().toInt();
     refreshElemCombo(dim);
     refreshAlgoCombo(dim);
+    stopGeometryPick();
+    refreshGeometryScope();
 }
 
 void MeshGlobalMeshingWidget::onElemTypeChanged(int)
@@ -303,30 +493,34 @@ Params MeshGlobalMeshingWidget::collectParams() const
     Params p;
     p.dimension = ui->cmbDim->currentData().toInt();
     p.elemType = ui->cmbElemType->currentData().toInt();
-    p.lenMin = ui->dsMin->value();
+    p.lenMin = m_automaticMin->isChecked()?0.0:ui->dsMin->value();
     p.lenMax = ui->dsMax->value();
-    p.fineness = ui->dsFactor->value();
+    p.nativeFineness = m_fineness->currentData().toInt();
+    p.fineness = p.nativeFineness<=4?p.nativeFineness/4.0:0.5;
+    p.growthRate=m_growthRate->value();p.segmentsPerEdge=m_segmentsPerEdge->value();p.segmentsPerRadius=m_segmentsPerRadius->value();
     p.elementOrder = ui->spOrder->value();
-    p.algorithm = ui->cmbAlgo->currentData().toInt();
-    p.smoothing = ui->spSmooth->value();
-    p.fixShape = ui->chkFix->isChecked();
+    p.optimize = ui->chkOptimize->isChecked();
+    p.surfaceCurvature = ui->chkCurvature->isChecked();
     p.tolerance = ui->dsTol->value();
     return p;
+}
+
+void MeshGlobalMeshingWidget::updateFinenessControls()
+{
+    const int level=m_fineness->currentData().toInt();
+    if(level>=0&&level<5) {
+        static const double growth[]{.7,.5,.3,.2,.1},edge[]{.3,.5,1.,2.,3.},radius[]{1.,1.5,2.,3.,5.};
+        const QSignalBlocker a(m_growthRate),b(m_segmentsPerEdge),c(m_segmentsPerRadius);
+        m_growthRate->setValue(growth[level]);m_segmentsPerEdge->setValue(edge[level]);m_segmentsPerRadius->setValue(radius[level]);
+    }
+    m_growthRate->setEnabled(level==5);m_segmentsPerEdge->setEnabled(level==5);
+    // Radius can be adjusted directly and promotes the preset to Custom.
+    m_segmentsPerRadius->setEnabled(true);
 }
 
 QString MeshGlobalMeshingWidget::tempDirPath() const
 {
     return QCoreApplication::applicationDirPath();
-}
-
-QString MeshGlobalMeshingWidget::tempStepPath() const
-{
-    return QDir(tempDirPath()).filePath(QStringLiteral("geom.step"));
-}
-
-QString MeshGlobalMeshingWidget::tempVolPath() const
-{
-    return QDir(tempDirPath()).filePath(QStringLiteral("mesh.vol"));
 }
 
 QString MeshGlobalMeshingWidget::tempVtkPath() const
@@ -341,6 +535,7 @@ QString MeshGlobalMeshingWidget::tempNasPath() const
 
 void MeshGlobalMeshingWidget::onGenerate()
 {
+    if(m_thread&&m_thread->isRunning())return;
     auto* preService = ServiceRegistry::instance().getService<PreProcessingService>();
     if (!preService)
     {
@@ -349,15 +544,38 @@ void MeshGlobalMeshingWidget::onGenerate()
         return;
     }
 
-    preService->generateStepFile();
-
-    const QString filePath =
-        QDir(QDir(QCoreApplication::applicationDirPath()).filePath(QStringLiteral("data")))
-            .filePath(QStringLiteral("ExportedModel.step"));
-
     Params p = collectParams();
+    p.allGeometry = m_scopeMode->currentIndex() == 0;
+    p.autoPartition = m_autoPartition->isChecked();
+    if (!p.allGeometry) {
+        for (int id : m_geometryIds[p.dimension]) {
+            SmeshEntityReference ref; ref.dimension = p.dimension; ref.entityId = id;
+            if (!preService->entityCenter(p.dimension, id, ref.center) ||
+                !preService->entityMeasure(p.dimension, id, ref.measure) || ref.measure <= 0) {
+                QMessageBox::warning(this, tr("几何范围"), tr("所选几何 %1 已失效，请刷新后重新选择。").arg(id)); return;
+            }
+            p.geometryScope.append(ref);
+        }
+        if (p.geometryScope.isEmpty()) { QMessageBox::warning(this, tr("几何范围"), tr("请至少选择一个几何对象。")); return; }
+    }
+    stopGeometryPick();
+    QString geometryPath;
+    QString geometryDiagnostic;
+    if (!preService->prepareMeshingGeometry(p.dimension, geometryPath, geometryDiagnostic))
+    {
+        appendLog(QStringLiteral("网格几何准备失败：%1").arg(geometryDiagnostic));
+        QMessageBox::warning(this, tr("网格几何检查"), geometryDiagnostic);
+        return;
+    }
+    if (!QFileInfo::exists(geometryPath) || QFileInfo(geometryPath).size() <= 0)
+    {
+        appendLog(QStringLiteral("网格几何文件不存在：%1").arg(geometryPath));
+        QMessageBox::warning(this, tr("网格几何检查"), tr("网格几何导出文件不存在或为空。"));
+        return;
+    }
+    appendLog(geometryDiagnostic);
     PublicVariables::instance().set(PublicConstants::kMeshDimension, p.dimension, "mesh");
-    p.inputStepPath = filePath;
+    p.inputGeometryPath = geometryPath;
 
     if (auto* meshService = ServiceRegistry::instance().getService<MeshModuleControllerService>())
     {
@@ -383,7 +601,7 @@ void MeshGlobalMeshingWidget::onGenerate()
                 return;
             }
 
-            NetgenLocalSizeControl control;
+            SmeshLocalSizeControl control;
             control.dimension = dimension;
             control.entityId = entityId;
             control.center = center;
@@ -406,11 +624,6 @@ void MeshGlobalMeshingWidget::onGenerate()
                 }
 
                 double target = rule.maxSize;
-                if (target <= 0.0)
-                {
-                    target = length / std::max(1, rule.divisions);
-                    ++p.legacyRuleCount;
-                }
                 appendControl(1, entityId, length, target);
             }
         }
@@ -427,11 +640,6 @@ void MeshGlobalMeshingWidget::onGenerate()
                 }
 
                 double target = rule.maxSize;
-                if (target <= 0.0)
-                {
-                    target = p.lenMax * rule.localSizeFactor;
-                    ++p.legacyRuleCount;
-                }
                 appendControl(2, entityId, area, target);
             }
         }
@@ -448,11 +656,6 @@ void MeshGlobalMeshingWidget::onGenerate()
                 }
 
                 double target = rule.maxSize;
-                if (target <= 0.0)
-                {
-                    target = p.lenMax * rule.localSizeFactor;
-                    ++p.legacyRuleCount;
-                }
                 appendControl(3, entityId, volume, target);
             }
         }
@@ -460,7 +663,7 @@ void MeshGlobalMeshingWidget::onGenerate()
         const int configuredRules = edgeRules.size() + faceRules.size() + volumeRules.size();
         if (configuredRules > 0)
         {
-            appendLog(QStringLiteral("读取 Netgen 局部尺寸：边 %1，面 %2，体 %3；有效实体 %4")
+            appendLog(QStringLiteral("局部尺寸：边 %1，面 %2，体 %3；有效实体 %4")
                           .arg(edgeRules.size())
                           .arg(faceRules.size())
                           .arg(volumeRules.size())
@@ -482,18 +685,26 @@ void MeshGlobalMeshingWidget::onGenerate()
         return;
     }
 
-    if (p.inputStepPath.isEmpty() || !QFileInfo::exists(p.inputStepPath))
+    if (p.inputGeometryPath.isEmpty() || !QFileInfo::exists(p.inputGeometryPath))
     {
         QMessageBox::warning(this, QStringLiteral("网格划分"),
                              QStringLiteral("几何模型文件不存在，请先完成几何建模。"));
         return;
     }
 
-    m_lastGeneratedHex8 = p.elemType == kElemTypeHex8FromTet;
+
+    if(auto* controller=dynamic_cast<MeshModuleController*>(ServiceRegistry::instance().getService<MeshModuleControllerService>())) {
+        QString error;
+        if(!controller->collectSmeshWorkflow(getUuid(),p.workflow,error)) {
+            appendLog(error);QMessageBox::warning(this,tr("网格设置"),error);return;
+        }
+        if(!m_computeSubmeshUuid.isEmpty()&&!p.workflow.sweeps.isEmpty())
+            appendLog(tr("当前包含扫掠区域，将应用体网格设置并生成全部网格，以保持共享界面连接。"));
+        else p.workflow.computeSubmeshUuid=m_computeSubmeshUuid;
+    }
 
     QDir dir(tempDirPath());
     dir.mkpath(tempDirPath());
-    QFile::remove(tempVolPath());
     QFile::remove(tempVtkPath());
     QFile::remove(tempNasPath());
 
@@ -507,9 +718,6 @@ void MeshGlobalMeshingWidget::onGenerate()
 
     m_thread = new QThread(this);
     auto* worker = new MeshGlobalWorker(p);
-    worker->m_tempDirPath = tempDirPath();
-    worker->m_tempStepPath = tempStepPath();
-    worker->m_tempVolPath = tempVolPath();
     worker->m_tempVtkPath = tempVtkPath();
     worker->m_tempNasPath = tempNasPath();
     worker->moveToThread(m_thread);
@@ -522,17 +730,17 @@ void MeshGlobalMeshingWidget::onGenerate()
             });
 
     connect(worker, &MeshGlobalWorker::finishedOK, this,
-            [this](const QString& vol, const QString& vtk, const QString& nas)
+            [this](const QString& vtk, const QString& nas)
             {
                 appendLog(QStringLiteral("网格生成完成。"));
-                emit meshGenerated(vol, vtk, nas);
+                emit meshGenerated(vtk, nas);
 
                 auto* service =
                     ServiceRegistry::instance().getService<MeshModuleControllerService>();
                 if (service)
                 {
                     QString err;
-                    if (!service->importGeneratedNetgenMesh(vtk, &err))
+                    if (!service->importGeneratedSmeshMesh(vtk, &err))
                     {
                         appendLog(QStringLiteral("生成的网格导入失败：%1").arg(err));
                         QMessageBox::warning(
@@ -549,7 +757,9 @@ void MeshGlobalMeshingWidget::onGenerate()
             [this](const QString& err)
             {
                 appendLog(QStringLiteral("网格生成失败：%1").arg(err));
-                QMessageBox::critical(this, QStringLiteral("网格生成失败"), err);
+                QString message=err;
+                message.replace(QStringLiteral("SMESH"), QStringLiteral("网格"), Qt::CaseInsensitive);
+                QMessageBox::critical(this, QStringLiteral("网格生成失败"), message);
                 if (m_thread)
                     m_thread->quit();
             });
@@ -560,10 +770,7 @@ void MeshGlobalMeshingWidget::onGenerate()
 
 void MeshGlobalMeshingWidget::onExportAs()
 {
-    const QString filters =
-        m_lastGeneratedHex8
-            ? QStringLiteral("VTK 网格文件 (*.vtk);;Nastran 网格文件 (*.nas);;所有文件 (*.*)")
-            : QStringLiteral("Netgen 网格文件 (*.vol);;VTK 网格文件 (*.vtk);;Nastran 网格文件 (*.nas);;所有文件 (*.*)");
+    const QString filters = QStringLiteral("VTK 网格文件 (*.vtk);;Nastran 网格文件 (*.nas)");
 
     QString selectedFilter;
     QString savePath = QFileDialog::getSaveFileName(
@@ -575,8 +782,6 @@ void MeshGlobalMeshingWidget::onExportAs()
     {
         if (selectedFilter.contains(QStringLiteral("*.nas")))
             savePath += QStringLiteral(".nas");
-        else if (!m_lastGeneratedHex8 && selectedFilter.contains(QStringLiteral("*.vol")))
-            savePath += QStringLiteral(".vol");
         else
             savePath += QStringLiteral(".vtk");
     }
@@ -590,24 +795,11 @@ void MeshGlobalMeshingWidget::onExportAs()
     {
         src = tempNasPath();
     }
-    else if (savePath.endsWith(QStringLiteral(".vol"), Qt::CaseInsensitive))
-    {
-        if (m_lastGeneratedHex8)
-        {
-            QMessageBox::warning(
-                this, QStringLiteral("导出网格"),
-                QStringLiteral("八节点六面体转换结果不能保存为 Netgen 网格格式，"
-                               "请选择 VTK 或 Nastran 网格格式。"));
-            return;
-        }
-        src = tempVolPath();
-    }
     else
     {
         QMessageBox::warning(
             this, QStringLiteral("导出网格"),
-            QStringLiteral("请选择支持的网格文件扩展名：.vtk、.nas%1")
-                .arg(m_lastGeneratedHex8 ? QString() : QStringLiteral(" 或 .vol")));
+            QStringLiteral("请选择支持的网格文件扩展名：.vtk、.nas"));
         return;
     }
 
@@ -676,9 +868,64 @@ void MeshGlobalMeshingWidget::showMeshVtk(const QString& vtkPath)
     visual->removeProp("mesh.imported.surface", false);
     visual->removeProp("mesh.imported.line", false);
 
-    visual->addProp("mesh.global.surf", actorSurf, QStringLiteral("{mesh} Netgen surface"));
-    visual->addProp("mesh.global.wire", actorWire, QStringLiteral("{mesh} Netgen wire"));
+    visual->addProp("mesh.global.surf", actorSurf, QStringLiteral("{mesh} 表面网格"));
+    visual->addProp("mesh.global.wire", actorWire, QStringLiteral("{mesh} 网格线"));
     visual->setGroupVisible("Geometry", false, false);
     visual->resetCamera();
     visual->render();
+}
+
+int MeshGlobalMeshingWidget::meshingDimension() const { return ui->cmbDim->currentData().toInt(); }
+bool MeshGlobalMeshingWidget::usesAllGeometry() const { return m_scopeMode->currentIndex()==0; }
+QList<int> MeshGlobalMeshingWidget::selectedGeometryIds() const { return m_geometryIds[meshingDimension()]; }
+void MeshGlobalMeshingWidget::generateSubmesh(const QString& uuid)
+{
+    if(m_thread&&m_thread->isRunning())return;
+    m_computeSubmeshUuid=uuid;onGenerate();m_computeSubmeshUuid.clear();
+}
+QJsonObject MeshGlobalMeshingWidget::saveJson()
+{
+    const auto p=collectParams();
+    QJsonArray faces, solids;
+    for (int id : m_geometryIds[2]) faces.append(id);
+    for (int id : m_geometryIds[3]) solids.append(id);
+    return {{"dimension",p.dimension},{"element_type",p.elemType},{"min_size",p.lenMin},{"max_size",p.lenMax},
+        {"all_geometry",m_scopeMode->currentIndex()==0},{"geometry_faces",faces},{"geometry_solids",solids},
+        {"auto_partition",m_autoPartition->isChecked()},
+        {"fineness",p.fineness},{"element_order",p.elementOrder},{"optimize",p.optimize},
+        {"curvature",p.surfaceCurvature},{"tolerance",p.tolerance},
+        {"automatic_min_size",m_automaticMin->isChecked()},{"manual_min_size",ui->dsMin->value()},
+        {"smesh_fineness",p.nativeFineness},{"growth_rate",p.growthRate},
+        {"segments_per_edge",p.segmentsPerEdge},{"segments_per_radius",p.segmentsPerRadius}};
+}
+void MeshGlobalMeshingWidget::loadJson(const QJsonObject& o)
+{
+    if(o.isEmpty())return;
+    for (int dimension : {2,3}) {
+        m_geometryIds[dimension].clear();
+        for (const auto& value : o.value(dimension==3?"geometry_solids":"geometry_faces").toArray())
+            if (value.toInt()>0 && !m_geometryIds[dimension].contains(value.toInt())) m_geometryIds[dimension].append(value.toInt());
+    }
+    m_scopeMode->setCurrentIndex(o.value("all_geometry").toBool(true)?0:1);
+    m_autoPartition->setChecked(o.value("auto_partition").toBool(true));
+    ui->cmbDim->setCurrentIndex(qMax(0,ui->cmbDim->findData(o.value("dimension").toInt(3))));
+    ui->cmbElemType->setCurrentIndex(qMax(0,ui->cmbElemType->findData(o.value("element_type").toInt(3))));
+    ui->dsMin->setValue(o.value("min_size").toDouble(.5));ui->dsMax->setValue(o.value("max_size").toDouble(5));
+    ui->dsFactor->setValue(o.value("fineness").toDouble(.5));ui->spOrder->setValue(o.value("element_order").toInt(1));
+    ui->chkOptimize->setChecked(o.value("optimize").toBool(true));ui->chkCurvature->setChecked(o.value("curvature").toBool(true));
+    ui->dsTol->setValue(o.value("tolerance").toDouble(1.e-6));
+    const double legacyMin=o.value("min_size").toDouble(.5);
+    ui->dsMin->setValue(o.value("manual_min_size").toDouble(legacyMin>0?legacyMin:.5));
+    m_automaticMin->setChecked(o.value("automatic_min_size").toBool(legacyMin==0));
+    const int legacyFineness=std::clamp(int(std::lround(o.value("fineness").toDouble(.5)*4)),0,4);
+    const int level=std::clamp(o.value("smesh_fineness").toInt(legacyFineness),0,5);
+    {
+        const QSignalBlocker a(m_fineness),b(m_growthRate),c(m_segmentsPerEdge),d(m_segmentsPerRadius);
+        m_fineness->setCurrentIndex(level);
+        m_growthRate->setValue(o.value("growth_rate").toDouble(.3));
+        m_segmentsPerEdge->setValue(o.value("segments_per_edge").toDouble(1.));
+        m_segmentsPerRadius->setValue(o.value("segments_per_radius").toDouble(2.));
+    }
+    updateFinenessControls();
+    refreshGeometryScope();
 }

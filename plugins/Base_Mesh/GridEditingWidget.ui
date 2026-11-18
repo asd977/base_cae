@@ -41,7 +41,7 @@
       </sizepolicy>
      </property>
      <property name="text">
-      <string>网格显示与筛选</string>
+      <string>显示控制</string>
      </property>
     </widget>
    </item>
@@ -170,6 +170,16 @@
             <string>数量</string>
            </property>
           </column>
+         </widget>
+        </item>
+        <item>
+         <widget class="QCheckBox" name="checkBoxShowBranding">
+          <property name="text">
+           <string>显示标识</string>
+          </property>
+          <property name="checked">
+           <bool>true</bool>
+          </property>
          </widget>
         </item>
         <item>

@@ -18,7 +18,8 @@ public:
         Circle = 2,
         PointsOnly = 3,
         Arc = 4,
-        Curve = 5
+        Curve = 5,
+        NativeCurve = 6
     };
 
     enum class ProfileSegmentKind
@@ -43,6 +44,8 @@ public:
     };
 
     void clear();
+    const QString& nativeBrep() const {return m_nativeBrep;}
+    void setNativeCurve(const std::vector<Point2D>& sampledPoints, const QString& brep, bool closed=false);
 
     Kind kind() const { return m_kind; }
     bool isClosed() const { return m_closed; }
@@ -99,6 +102,7 @@ public:
 
 private:
     Kind m_kind = Kind::Empty;
+    QString m_nativeBrep;
     std::vector<Point2D> m_points;
     // Optional editing/key points shown in the UI. Geometry may contain sampled points
     // for arcs/curves, but users should only see meaningful construction points.

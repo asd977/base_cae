@@ -65,6 +65,7 @@
         <file>resources/images/dock-menu-light.svg</file>
         <file>resources/images/dock-detach-light.svg</file>
         <file>resources/icon.ico</file>
+        <file alias="resources/powerchina.png">plugins/Base_Visualization/resources/powerchina_official.png</file>
         <file>resources/rotate.png</file>
         <file>resources/scale.png</file>
         <file>resources/translation.png</file>

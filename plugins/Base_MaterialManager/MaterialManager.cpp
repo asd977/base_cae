@@ -48,6 +48,7 @@
 #include "MaterialEntryWidget.h"
 #include "MaterialModelWidget.h"
 #include "MaterialTransitionPage.h"
+#include "MaterialStrengthConversion.h"
 
 namespace
 {
@@ -767,8 +768,6 @@ bool MaterialManager::loadProject()
             const QJsonObject modelObj = modelValue.toObject();
             const QString key = modelObj.value(QStringLiteral("key")).toString();
             const QString displayName = modelObj.value(QStringLiteral("display_name")).toString();
-            if (key == QStringLiteral("hoek_brown_rock"))
-                continue;
 
             int modelIndex = findModelIndex(key);
             if (modelIndex < 0)
@@ -806,6 +805,26 @@ bool MaterialManager::loadProject()
                     }
                 }
                 migrateLegacyMaterialProperties(key, &entry.properties);
+                // 旧工程没有残余强度继承标志：旧格式残余值>0为独立设置，
+                // 0代表沿用峰值。只对缺失标志迁移，不改变新版工程的真实零值。
+                if (key == QStringLiteral("dagangshan_isotropic"))
+                {
+                    const auto migrateResidualFlag = [&entry](const QString& flag,
+                                                               const QString& valueColumn)
+                    {
+                        if (entry.properties.contains(flag))
+                            return;
+                        bool ok = false;
+                        const double value = entry.properties.value(valueColumn).toDouble(&ok);
+                        entry.properties.insert(flag, (ok && value > 0.0)
+                                                           ? QStringLiteral("0")
+                                                           : QStringLiteral("1"));
+                    };
+                    migrateResidualFlag(QStringLiteral("残余摩擦系数沿用峰值"),
+                                        QStringLiteral("残余抗剪断强度内摩擦系数"));
+                    migrateResidualFlag(QStringLiteral("残余凝聚力沿用峰值"),
+                                        QStringLiteral("残余凝聚力C‘（MPa）"));
+                }
                 for (const QString& column : m_models[modelIndex].columns)
                 {
                     if (!entry.properties.contains(column))
@@ -838,9 +857,10 @@ bool MaterialManager::loadProject()
 
                 const QString legacySupplementalKey =
                     entryObj.value(QStringLiteral("seepage_model_key")).toString();
-                if (legacySupplementalKey == QStringLiteral("jk_corewall_steady_seepage"))
+                if (legacySupplementalKey == QStringLiteral("jk_corewall_steady_seepage") ||
+                    legacySupplementalKey == QStringLiteral("jk_corewall_anisotropic_seepage"))
                     entry.seepageModelKey = legacySupplementalKey;
-                else
+                else if (!legacySupplementalKey.isEmpty())
                     entry.creepModelKey = legacySupplementalKey;
                 const QString storedCreepKey =
                     entryObj.value(QStringLiteral("creep_model_key")).toString();
@@ -1507,8 +1527,6 @@ void MaterialManager::setValueStrings(QVector<QStringList> values)
         const QString displayName = list.at(1);
         const QString name = list.at(2);
         const QString encoded = list.at(3);
-        if (key == QStringLiteral("hoek_brown_rock"))
-            continue;
         const QString appliedMatypes = (list.size() > 4) ? list.at(4) : QString();
         const int transitionMatypeRaw = (list.size() > 6) ? list.at(6).toInt() : -1;
         const int transitionMatype =
@@ -2613,6 +2631,114 @@ bool MaterialManager::generateCaculateFile(
             }
         }
 
+        // Semantic validation at export time, including values imported from older projects.
+        // Do not silently repair physically invalid model parameters.
+        const QString modelKey = info.model->key;
+        auto number = [&](const QString& name) {
+            return info.entry->properties.value(name).toDouble();
+        };
+        auto invalid = [&](const QString& message) {
+            QMessageBox::warning(nullptr, QStringLiteral("材料参数无效"),
+                                 QStringLiteral("材料“%1”（编号%2）：%3")
+                                     .arg(info.entry->name).arg(it.key()).arg(message));
+            return false;
+        };
+        const bool elasticSolid = modelKey == QStringLiteral("hoek_brown_rock") ||
+                                  modelKey == QStringLiteral("drucker_prager_rock") ||
+                                  modelKey == QStringLiteral("dagangshan_isotropic") ||
+                                  modelKey == QStringLiteral("huangjinping_underground_plant");
+        if(modelKey==QStringLiteral("planar_elastic_beam") &&
+            (number(QStringLiteral("弹性模量E（GPa）"))<=0 || number(QStringLiteral("截面积A（m2）"))<=0 ||
+             number(QStringLiteral("截面惯性矩Iz（m4）"))<=0 || number(QStringLiteral("容重t/m3"))<0))
+            return invalid(QStringLiteral("梁的弹性模量、截面积和惯性矩必须大于0，密度不能为负。"));
+        if (elasticSolid)
+        {
+            const double young = number(QStringLiteral("变形模量E（GPa）"));
+            const double nu = number(QStringLiteral("泊松比μ"));
+            const double density = number(QStringLiteral("容重t/m3"));
+            if (young <= 0.0 || density <= 0.0 || nu <= -1.0 || nu >= 0.5)
+                return invalid(QStringLiteral("E、容重必须大于0，泊松比必须在(-1, 0.5)内。"));
+        }
+        if (modelKey == QStringLiteral("huangjinping_underground_plant") &&
+            number(QStringLiteral("岩类分区")) == -1.0)
+        {
+            const double release = number(QStringLiteral("半开挖区荷载释放系数"));
+            if (release < 0.0 || release > 1.0)
+                return invalid(QStringLiteral("荷载释放系数必须在0～1之间，全释放取1。"));
+        }
+        if (modelKey == QStringLiteral("hoek_brown_rock"))
+        {
+            if (number(QStringLiteral("岩体常数mb")) <= 0.0 ||
+                number(QStringLiteral("岩体常数s")) <= 0.0 ||
+                number(QStringLiteral("岩体常数a")) <= 0.0 ||
+                number(QStringLiteral("岩体常数a")) > 1.0 ||
+                number(QStringLiteral("完整岩石单轴抗压强度σci（MPa）")) <= 0.0)
+                return invalid(QStringLiteral("Hoek–Brown要求mb、s、σci大于0，且0<a<=1。"));
+        }
+        if (modelKey == QStringLiteral("drucker_prager_rock"))
+        {
+            const double dpType = number(QStringLiteral("DP子类型"));
+            const double friction = number(QStringLiteral("内摩擦角φ（°）"));
+            if (dpType < 1 || dpType > 6 || std::floor(dpType) != dpType ||
+                friction < 0 || friction >= 90 ||
+                number(QStringLiteral("凝聚力C‘（MPa）")) < 0 ||
+                number(QStringLiteral("剪胀角(°)")) < 0 ||
+                number(QStringLiteral("剪胀角(°)")) >= 90 ||
+                number(QStringLiteral("抗压强度Rc（MPa）")) < 0 ||
+                number(QStringLiteral("抗拉强度Rt（MPa）")) < 0)
+                return invalid(QStringLiteral("D-P子类型须为1～6，角度须在[0,90)内，强度不可为负。"));
+        }
+        if (modelKey == QStringLiteral("dagangshan_isotropic") ||
+            modelKey == QStringLiteral("huangjinping_underground_plant"))
+        {
+            if (number(QStringLiteral("抗剪断强度内摩擦系数")) < 0 ||
+                number(QStringLiteral("凝聚力C‘（MPa）")) < 0 ||
+                number(QStringLiteral("剪胀角(°)")) < 0 ||
+                number(QStringLiteral("剪胀角(°)")) >= 90)
+                return invalid(QStringLiteral("摩擦系数、凝聚力和剪胀角不能为负，剪胀角须小于90°。"));
+        }
+        if (modelKey == QStringLiteral("dagangshan_isotropic"))
+        {
+            if (number(QStringLiteral("残余抗剪断强度内摩擦系数")) < 0 ||
+                number(QStringLiteral("残余凝聚力C‘（MPa）")) < 0 ||
+                number(QStringLiteral("抗压强度Rc（MPa）")) < 0 ||
+                number(QStringLiteral("抗拉强度Rt（MPa）")) < 0)
+                return invalid(QStringLiteral("残余强度及抗拉、抗压强度不能为负。"));
+            const QString frictionFlag = info.entry->properties.value(
+                QStringLiteral("残余摩擦系数沿用峰值"), QStringLiteral("1"));
+            const QString cohesionFlag = info.entry->properties.value(
+                QStringLiteral("残余凝聚力沿用峰值"), QStringLiteral("1"));
+            if ((frictionFlag != QStringLiteral("0") && frictionFlag != QStringLiteral("1")) ||
+                (cohesionFlag != QStringLiteral("0") && cohesionFlag != QStringLiteral("1")))
+                return invalid(QStringLiteral("残余强度继承选项必须为0或1。"));
+            const double residualFriction = frictionFlag == QStringLiteral("0")
+                                                ? number(QStringLiteral("残余抗剪断强度内摩擦系数"))
+                                                : number(QStringLiteral("抗剪断强度内摩擦系数"));
+            const double residualCohesion = cohesionFlag == QStringLiteral("0")
+                                                ? number(QStringLiteral("残余凝聚力C‘（MPa）"))
+                                                : number(QStringLiteral("凝聚力C‘（MPa）"));
+            // The solver rejects both residual friction and cohesion approaching zero.
+            if (residualFriction <= 1.0e-5 && residualCohesion <= 1.0e-9)
+                return invalid(QStringLiteral("残余摩擦系数和残余凝聚力不能同时为0。"));
+        }
+        if (isDamStaticModel(modelKey))
+        {
+            if (number(QStringLiteral("干容重(t/m3)")) <= 0.0 ||
+                number(QStringLiteral("天然容重(t/m3)")) <= 0.0 ||
+                number(QStringLiteral("饱和容重(t/m3)")) <= 0.0)
+                return invalid(QStringLiteral("干、天然、饱和容重均须大于0。"));
+        }
+
+        // SOLVER 的 CONMAT(14..22) 被渗流方向矩阵与前三类流变参数复用。
+        // 同时导出会覆盖参数，禁止这种无法无损表达的组合。
+        const bool hasSeepage = !info.entry->seepageModelKey.isEmpty();
+        const QString creepKey = info.entry->creepModelKey;
+        if (hasSeepage && !creepKey.isEmpty() &&
+            creepKey != QStringLiteral("xiyuan_creep"))
+            return invalid(QStringLiteral(
+                "渗流与当前流变模型共用求解器参数位置，不能同时设置在同一种材料上。"
+                "请拆分计算工况或取消其中一个附加模型。"));
+
         const QStringList supplementalKeys = {info.entry->seepageModelKey,
                                               info.entry->creepModelKey};
         for (const QString& supplementalKey : supplementalKeys)
@@ -2746,14 +2872,12 @@ bool MaterialManager::generateCaculateFile(
     // CONMAT(:,14)=1.0   !! Q(1,1)
     // CONMAT(:,18)=1.0   !! Q(2,2)
     // CONMAT(:,22)=1.0   !! Q(3,3)
-    // CONMAT(:,89)=1.0   !! ALFA_FBAR
     setAllMatRow(65, 1.3);
     setAllMatRow(66, 1.0);
     setAllMatRow(75, 1.0);
     setAllMatRow(14, 1.0);
     setAllMatRow(18, 1.0);
     setAllMatRow(22, 1.0);
-    setAllMatRow(89, 1.0);
 
     // ===== 4.2) 对应 Fortran 里的材料1默认值（VOID M1）=====
     // 注意：这里是 IMAT=1，对应 matIndex=0
@@ -2842,8 +2966,8 @@ bool MaterialManager::generateCaculateFile(
             setRow(22, 1.0);
             if (values[7 - 1][matIndex] < tol)
                 setRow(7, 2.0e3);
-            if (values[89 - 1][matIndex] < tol)
-                setRow(89, 2.0e3);
+            if (values[89 - 1][matIndex] < 100.0)
+                setRow(89, qMax(1.0e3, values[7 - 1][matIndex]));
             if (values[90 - 1][matIndex] < tol)
                 setRow(90, 2.0e3);
             return;
@@ -2873,8 +2997,8 @@ bool MaterialManager::generateCaculateFile(
             setRow(22, 1.0);
             if (values[7 - 1][matIndex] < tol)
                 setRow(7, 2.0e3);
-            if (values[89 - 1][matIndex] < tol)
-                setRow(89, 2.0e3);
+            if (values[89 - 1][matIndex] < 100.0)
+                setRow(89, qMax(1.0e3, values[7 - 1][matIndex]));
             if (values[90 - 1][matIndex] < tol)
                 setRow(90, 2.0e3);
             return;
@@ -2945,6 +3069,113 @@ bool MaterialManager::generateCaculateFile(
             continue;
 
         const int matIndex = matype - 1;
+
+        if (info.model->key == QStringLiteral("hoek_brown_rock"))
+        {
+            const double ee = valueOf(info.entry, QStringLiteral("变形模量E（GPa）")) * 1.0e9;
+            const double pu = valueOf(info.entry, QStringLiteral("泊松比μ"));
+            const double rou = valueOf(info.entry, QStringLiteral("容重t/m3")) * 1.0e3;
+            const double fmb = valueOf(info.entry, QStringLiteral("岩体常数mb"));
+            const double fa = valueOf(info.entry, QStringLiteral("岩体常数a"));
+            const double fs = valueOf(info.entry, QStringLiteral("岩体常数s"));
+            const double sgci =
+                valueOf(info.entry, QStringLiteral("完整岩石单轴抗压强度σci（MPa）")) *
+                1.0e6;
+
+            auto setRow = [&](int row, double value)
+            {
+                if (row >= 1 && row <= ncon)
+                    values[row - 1][matIndex] = value;
+            };
+            setRow(1, 11.0);
+            setRow(2, ee);
+            setRow(3, ee);
+            setRow(4, pu);
+            setRow(5, pu);
+            setRow(6, std::fabs(1.0 + pu) > 1.0e-12 ? ee / 2.0 / (1.0 + pu) : 0.0);
+            setRow(7, rou);
+            setRow(8, 1.0);
+            setRow(13, 0.0);
+            setRow(14, 1.0);
+            setRow(15, 0.0);
+            setRow(16, 0.0);
+            setRow(17, 0.0);
+            setRow(18, 1.0);
+            setRow(19, 0.0);
+            setRow(20, 0.0);
+            setRow(21, 0.0);
+            setRow(22, 1.0);
+            setRow(23, 0.0);
+            setRow(35, 0.0);
+            setRow(64, 0.0);
+            setRow(65, 1.0);
+            setRow(66, 1.0);
+            setRow(70, fa);
+            setRow(75, fmb);
+            setRow(76, fs);
+            setRow(84, static_cast<double>(matype));
+            setRow(115, sgci);
+            MaterialStrengthConversion::HoekBrownEquivalent equivalent;
+            if (!MaterialStrengthConversion::hoekBrown(fmb, fs, fa, sgci / 1.0e6,
+                                                        &equivalent))
+            {
+                QMessageBox::warning(nullptr, QStringLiteral("材料参数无效"),
+                                     QStringLiteral("霍克-布朗材料“%1”无法生成强度参数。")
+                                         .arg(info.entry->name));
+                return false;
+            }
+            setRow(9, equivalent.uniaxialCompressivePa);
+            setRow(10, equivalent.tensilePa);
+            setRow(11, equivalent.frictionAnglesDeg[0]);
+            setRow(12, equivalent.cohesionPa);
+            setRow(91, equivalent.uniaxialCompressivePa);
+            setRow(92, equivalent.tensilePa);
+            setRow(94, equivalent.frictionAnglesDeg[0]);
+            setRow(95, equivalent.cohesionPa);
+            setRow(99, equivalent.frictionAnglesDeg[0]);
+            for (int i = 0; i < 10; ++i)
+                setRow(116 + i, equivalent.frictionAnglesDeg[i]);
+            applySupplementalModels(info.entry, matIndex);
+            continue;
+        }
+
+        if (info.model->key == QStringLiteral("drucker_prager_rock"))
+        {
+            const double ee = valueOf(info.entry, QStringLiteral("变形模量E（GPa）")) * 1.0e9;
+            const double nu = valueOf(info.entry, QStringLiteral("泊松比μ"));
+            const double rho = valueOf(info.entry, QStringLiteral("容重t/m3")) * 1.0e3;
+            const double phi = valueOf(info.entry, QStringLiteral("内摩擦角φ（°）"));
+            const double cohesion = valueOf(info.entry, QStringLiteral("凝聚力C‘（MPa）")) * 1.0e6;
+            const double psi = valueOf(info.entry, QStringLiteral("剪胀角(°)"));
+            const double dpType = valueOf(info.entry, QStringLiteral("DP子类型"));
+            double rc = valueOf(info.entry, QStringLiteral("抗压强度Rc（MPa）")) * 1.0e6;
+            double rt = valueOf(info.entry, QStringLiteral("抗拉强度Rt（MPa）")) * 1.0e6;
+            // The same legacy Rc/Rt auto approximation used by Mohr-Coulomb.
+            const double angle = phi * 3.14159265358979323846 / 180.0;
+            const double cosPhi = std::cos(angle), sinPhi = std::sin(angle);
+            if (rc <= 0.0)
+                rc = cohesion > CO_THRESHOLD ? 2.0 * cohesion * cosPhi / (1.0 - sinPhi) : 2.0;
+            if (rt <= 0.0)
+                rt = cohesion > CO_THRESHOLD ?
+                    qMax(cohesion, 2.0 * cohesion * cosPhi / (1.0 + sinPhi)) : 1.0;
+            auto setRow = [&](int row, double value) { values[row - 1][matIndex] = value; };
+            setRow(1, 3.0);
+            setRow(2, ee); setRow(3, ee);
+            setRow(4, nu); setRow(5, nu);
+            setRow(6, ee / (2.0 * (1.0 + nu)));
+            setRow(7, rho); setRow(8, 1.0);
+            setRow(9, rc); setRow(10, rt);
+            setRow(11, phi); setRow(12, cohesion);
+            setRow(13, 0.0); setRow(14, 1.0); setRow(18, 1.0); setRow(22, 1.0);
+            setRow(65, 1.0); setRow(66, 1.0);
+            setRow(84, static_cast<double>(matype));
+            setRow(91, rc); setRow(92, rt);
+            setRow(94, phi); setRow(95, cohesion);
+            setRow(99, psi);
+            setRow(126, dpType);
+            applySupplementalModels(info.entry, matIndex);
+            continue;
+        }
 
         if (info.model->key == QStringLiteral("huangjinping_underground_plant")) // 黄金坪厂房(样表1 2)
         {
@@ -3113,11 +3344,15 @@ bool MaterialManager::generateCaculateFile(
                     rc = autoRc;
             }
 
-            const double faiResidual =
-                residualFf > 0.0
-                    ? std::atan(residualFf) * 180.0 / 3.141592653589793
-                    : fai;
-            const double coResidual = residualCoMpa > 0.0 ? residualCoMpa * 1.0e6 : co;
+            const bool inheritResidualFriction =
+                info.entry->properties.value(QStringLiteral("残余摩擦系数沿用峰值"),
+                                              QStringLiteral("1")) != QStringLiteral("0");
+            const bool inheritResidualCohesion =
+                info.entry->properties.value(QStringLiteral("残余凝聚力沿用峰值"),
+                                              QStringLiteral("1")) != QStringLiteral("0");
+            const double faiResidual = inheritResidualFriction
+                ? fai : std::atan(residualFf) * 180.0 / 3.141592653589793;
+            const double coResidual = inheritResidualCohesion ? co : residualCoMpa * 1.0e6;
 
             auto setRow = [&](int row, double value)
             {
@@ -3663,8 +3898,8 @@ bool MaterialManager::generateCaculateFile(
 
             if (values[7 - 1][matIndex] < tol)
                 setRow(7, 2.0e3);
-            if (values[89 - 1][matIndex] < tol)
-                setRow(89, 2.0e3);
+            if (values[89 - 1][matIndex] < 100.0)
+                setRow(89, qMax(1.0e3, values[7 - 1][matIndex]));
             if (values[90 - 1][matIndex] < tol)
                 setRow(90, 2.0e3);
             continue;
@@ -3702,13 +3937,22 @@ bool MaterialManager::generateCaculateFile(
 
             if (values[7 - 1][matIndex] < tol)
                 setRow(7, 2.0e3);
-            if (values[89 - 1][matIndex] < tol)
-                setRow(89, 2.0e3);
+            if (values[89 - 1][matIndex] < 100.0)
+                setRow(89, qMax(1.0e3, values[7 - 1][matIndex]));
             if (values[90 - 1][matIndex] < tol)
                 setRow(90, 2.0e3);
             continue;
         }
 
+        if(info.model->key==QStringLiteral("planar_elastic_beam"))
+        {
+            const double young=valueOf(info.entry,QStringLiteral("弹性模量E（GPa）"))*1.e9;
+            values[0][matIndex]=1.;values[1][matIndex]=young;values[2][matIndex]=young;
+            values[5][matIndex]=young/2;values[6][matIndex]=valueOf(info.entry,QStringLiteral("容重t/m3"))*1.e3;
+            values[7][matIndex]=valueOf(info.entry,QStringLiteral("截面积A（m2）"));
+            values[45][matIndex]=valueOf(info.entry,QStringLiteral("截面惯性矩Iz（m4）"));
+            continue;
+        }
         if (info.model->key == QStringLiteral("huangjinping_bar_element")) // 黄金坪杆单元
         {
             const double ee1 = valueOf(info.entry, QStringLiteral("变模E1,E2（GPa）"));
@@ -3790,7 +4034,18 @@ bool MaterialManager::generateCaculateFile(
         const int matIndex = it.key() - 1;
         const auto mappingIt = damDynamicSourceMappings.constFind(it.key());
         if (mappingIt == damDynamicSourceMappings.constEnd())
-            continue; // 本次计算没有使用该动力材料，不建立静力继承关系。
+        {
+            // If this is a dam dynamic calculation, a stage material without a
+            // static source must not silently inherit zero-valued elastic data.
+            if (!damDynamicSourceMappings.isEmpty() && info.entry->transitionOnly)
+            {
+                QMessageBox::warning(nullptr, QStringLiteral("缺少动力材料映射"),
+                                     QStringLiteral("动力材料“%1”未指定对应静力材料。")
+                                         .arg(info.entry->name));
+                return false;
+            }
+            continue;
+        }
         const int sourceMatype = mappingIt.value();
         const int sourceIndex = sourceMatype - 1;
         if (sourceIndex < 0 || sourceIndex >= nmat)
@@ -4122,7 +4377,7 @@ bool MaterialManager::importIMATFile(const QString& filePath, int* importedCount
     {
         const int ib = static_cast<int>(std::llround(rowValue(matIndex, 1)));
         if (ib == -1 || ib == -2 || ib == -3 || ib == -4 || ib == -5 || ib == -6 || ib == 1 ||
-            ib == 2)
+            ib == 2 || ib == 3 || ib == 4 || ib == 5 || ib == 6 || ib == 7 || ib == 10 || ib == 11)
         {
             return true;
         }
@@ -4194,6 +4449,11 @@ bool MaterialManager::importIMATFile(const QString& filePath, int* importedCount
             return findModel(QStringLiteral("soil_nanshui"));
         if (ib == -6)
             return findModel(QStringLiteral("soil_emu_crush"));
+        if (ib == 11)
+            return findModel(QStringLiteral("hoek_brown_rock"));
+        // Compatibility with the old solver: IBUCK=4..7,10 were D-P subtypes.
+        if (ib == 3 || ib == 4 || ib == 5 || ib == 6 || ib == 7 || ib == 10)
+            return findModel(QStringLiteral("drucker_prager_rock"));
         if (ib == 1 && (nearlyEqual(rowValue(matIndex, 13), 2.0) || isNonZero(matIndex, 38) ||
                         isNonZero(matIndex, 93)))
             return findModel(QStringLiteral("huangjinping_bar_element"));
@@ -4320,7 +4580,39 @@ bool MaterialManager::importIMATFile(const QString& filePath, int* importedCount
         }
 
         const int ib = static_cast<int>(std::llround(rowValue(matIndex, 1)));
-        if (model->key == QStringLiteral("huangjinping_underground_plant"))
+        if (model->key == QStringLiteral("hoek_brown_rock"))
+        {
+            setProperty(entry, QStringLiteral("序号"), matype);
+            setProperty(entry, QStringLiteral("变形模量E（GPa）"), rowValue(matIndex, 2) / 1.0e9);
+            setProperty(entry, QStringLiteral("泊松比μ"), rowValue(matIndex, 4));
+            setProperty(entry, QStringLiteral("容重t/m3"), rowValue(matIndex, 7) / 1.0e3);
+            setProperty(entry, QStringLiteral("岩体常数mb"), rowValue(matIndex, 75));
+            setProperty(entry, QStringLiteral("岩体常数a"), rowValue(matIndex, 70));
+            setProperty(entry, QStringLiteral("岩体常数s"), rowValue(matIndex, 76));
+            setProperty(entry, QStringLiteral("完整岩石单轴抗压强度σci（MPa）"),
+                        rowValue(matIndex, 115) / 1.0e6);
+        }
+        else if (model->key == QStringLiteral("drucker_prager_rock"))
+        {
+            setProperty(entry, QStringLiteral("序号"), matype);
+            setProperty(entry, QStringLiteral("变形模量E（GPa）"), rowValue(matIndex, 2) / 1.0e9);
+            setProperty(entry, QStringLiteral("泊松比μ"), rowValue(matIndex, 4));
+            setProperty(entry, QStringLiteral("容重t/m3"), rowValue(matIndex, 7) / 1.0e3);
+            setProperty(entry, QStringLiteral("内摩擦角φ（°）"), rowValue(matIndex, 11));
+            setProperty(entry, QStringLiteral("凝聚力C‘（MPa）"), rowValue(matIndex, 12) / 1.0e6);
+            setProperty(entry, QStringLiteral("剪胀角(°)"), rowValue(matIndex, 99));
+            int dpType = static_cast<int>(std::llround(rowValue(matIndex, 126)));
+            if (ib == 4) dpType = 2;
+            else if (ib == 5) dpType = 3;
+            else if (ib == 6) dpType = 4;
+            else if (ib == 7) dpType = 5;
+            else if (ib == 10) dpType = 6;
+            else if (ib == 3 && (dpType < 1 || dpType > 6)) dpType = 1;
+            setProperty(entry, QStringLiteral("DP子类型"), dpType);
+            setProperty(entry, QStringLiteral("抗压强度Rc（MPa）"), rowValue(matIndex, 9) / 1.0e6);
+            setProperty(entry, QStringLiteral("抗拉强度Rt（MPa）"), rowValue(matIndex, 10) / 1.0e6);
+        }
+        else if (model->key == QStringLiteral("huangjinping_underground_plant"))
         {
             setProperty(entry, QStringLiteral("编号"), matype);
             setProperty(entry, QStringLiteral("母岩材料编号"), rowValue(matIndex, 84));
@@ -4352,6 +4644,13 @@ bool MaterialManager::importIMATFile(const QString& filePath, int* importedCount
                         std::tan(rowValue(matIndex, 94) * 3.141592653589793 / 180.0));
             setProperty(entry, QStringLiteral("残余凝聚力C‘（MPa）"),
                         rowValue(matIndex, 95) / 1.0e6);
+            // Preserve old IMAT semantics: zero residual row meant inherit peak.
+            setProperty(entry, QStringLiteral("残余摩擦系数沿用峰值"),
+                        (std::fabs(rowValue(matIndex, 94)) < 1.0e-12 &&
+                         std::fabs(rowValue(matIndex, 11)) > 1.0e-12) ? 1 : 0);
+            setProperty(entry, QStringLiteral("残余凝聚力沿用峰值"),
+                        (std::fabs(rowValue(matIndex, 95)) < 1.0e-12 &&
+                         std::fabs(rowValue(matIndex, 12)) > 1.0e-12) ? 1 : 0);
             setProperty(entry, QStringLiteral("剪胀角(°)"), rowValue(matIndex, 99));
         }
         else if (model->key == QStringLiteral("huangjinping_bar_element"))

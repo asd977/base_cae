@@ -3,6 +3,7 @@
 #include <QVector>
 
 #include "BasePage.h"
+#include "LoadPageState.h"
 
 class QDoubleSpinBox;
 class QSpinBox;
@@ -15,6 +16,7 @@ class BodyForcePage : public BasePage
 {
     Q_OBJECT
   public:
+    CAE_LOAD_PAGE_STATE("spinFbx","spinFby","spinFbz","spinII")
     explicit BodyForcePage(QWidget* parent = nullptr);
     ~BodyForcePage() override;
 

@@ -166,14 +166,14 @@ QString VectorSettingWidget::vectorLegendTitle() const
                               unit.contains(QLatin1Char('s'), Qt::CaseInsensitive);
     if (key == QStringLiteral("UX") || key == QStringLiteral("U1") ||
         key == QStringLiteral("DX"))
-        title = velocityUnit ? QStringLiteral("|v|") : QStringLiteral("|u|");
+        title = velocityUnit ? QStringLiteral("|V|") : QStringLiteral("|U|");
     else if (key == QStringLiteral("VX") || key == QStringLiteral("V1") ||
              key == QStringLiteral("V") || key == QStringLiteral("VEL") ||
              key == QStringLiteral("VELOCITY") || key == QStringLiteral("VMAG"))
-        title = QStringLiteral("|v|");
+        title = QStringLiteral("|V|");
     else if (key == QStringLiteral("U") || key == QStringLiteral("DISP") ||
              key == QStringLiteral("DISPLACEMENT") || key == QStringLiteral("UMAG"))
-        title = QStringLiteral("|u|");
+        title = QStringLiteral("|U|");
     else if (xName == ui->yComboBox->currentData().toString() &&
              (ui->zComboBox->currentData().toString().isEmpty() ||
               xName == ui->zComboBox->currentData().toString()))
@@ -864,7 +864,7 @@ void VectorSettingWidget::rebuildPipeline()
 
         applyStandardPostScalarBar(scalarBar);
         const QString legendTitle = resolvedPostScalarBarTitle(vectorLegendTitle());
-        scalarBar->SetTitle(legendTitle.toUtf8().constData());
+        m_visualService->setScalarBarTitle(legendTitle, false);
         scalarBar->Modified();
         m_visualService->showScalarBar(postScalarBarShouldBeVisible(), false);
     }

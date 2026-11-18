@@ -65,7 +65,7 @@
         <item>
          <widget class="QGroupBox" name="groupParams">
           <property name="title">
-           <string>整体剖分参数</string>
+           <string>网格参数</string>
           </property>
           <layout class="QGridLayout" name="gridLayout">
            <item row="1" column="0">
@@ -214,7 +214,7 @@
             </widget>
            </item>
            <item row="9" column="0">
-            <widget class="QLabel" name="labelFix">
+            <widget class="QLabel" name="labelCurvature">
  <property name="sizePolicy">
   <sizepolicy hsizetype="Fixed" vsizetype="Preferred">
    <horstretch>0</horstretch>
@@ -222,7 +222,7 @@
   </sizepolicy>
  </property>
              <property name="text">
-              <string>几何修复</string>
+              <string>曲率细化</string>
              </property>
              <property name="wordWrap">
   <bool>false</bool>
@@ -262,23 +262,10 @@
 </widget>
            </item>
            <item row="6" column="1">
-            <widget class="QSpinBox" name="spSmooth">
-             <property name="minimum">
-              <number>0</number>
-             </property>
-             <property name="maximum">
-              <number>200</number>
-             </property>
-             <property name="minimumSize">
-              <size>
-               <width>10</width>
-               <height>0</height>
-              </size>
-             </property>
-            </widget>
+            <widget class="QCheckBox" name="chkOptimize"><property name="text"><string>启用</string></property><property name="checked"><bool>true</bool></property></widget>
            </item>
            <item row="9" column="1">
-            <widget class="QCheckBox" name="chkFix">
+            <widget class="QCheckBox" name="chkCurvature">
              <property name="text">
               <string>启用</string>
              </property>
@@ -341,7 +328,7 @@
   </sizepolicy>
  </property>
              <property name="text">
-              <string>光顺迭代</string>
+              <string>网格优化</string>
              </property>
              <property name="wordWrap">
   <bool>false</bool>
@@ -397,7 +384,7 @@
           <item>
            <widget class="QPushButton" name="generateButton">
             <property name="text">
-             <string>运行</string>
+             <string>生成全部网格</string>
             </property>
            </widget>
           </item>

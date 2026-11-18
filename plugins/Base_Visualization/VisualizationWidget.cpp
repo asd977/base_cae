@@ -1,22 +1,31 @@
-﻿#include "VisualizationWidget.h"
+#include "VisualizationWidget.h"
 
 #include <ServiceRegistry.h>
 #include <EventManager.h>
 #include <PublicConstants.h>
 #include <StyleManager.h>
+#include <ScientificText.h>
 #include <services/UiFrameService.h>
 
 #include <QAction>
 #include <QApplication>
+#include <QByteArray>
 #include <QColor>
+#include <QCoreApplication>
 #include <QDir>
 #include <QFrame>
 #include <QHBoxLayout>
+#include <QEvent>
+#include <QImage>
+#include <QFont>
 #include <QLabel>
 #include <QMenu>
 #include <QPainter>
 #include <QPixmap>
+#include <QRegularExpression>
+#include <QFontMetrics>
 #include <QSet>
+#include <QSettings>
 #include <QSizePolicy>
 #include <QSlider>
 #include <QStackedWidget>
@@ -49,12 +58,21 @@
 #include <vtkRenderWindowInteractor.h>
 #include <vtkRenderer.h>
 #include <vtkScalarBarActor.h>
+#include <vtkTextActor.h>
 #include <vtkTextProperty.h>
 #include <vtkTransform.h>
 #include <vtkProperty2D.h>
 
 namespace
 {
+const QString kBrandingVisibleSetting = QStringLiteral("Visualization/showBranding");
+
+QString visualizationSettingsPath()
+{
+    return QDir(QCoreApplication::applicationDirPath())
+        .filePath(QStringLiteral("config/file.ini"));
+}
+
 QString findMicrosoftYaHeiFontFile()
 {
 #ifdef Q_OS_WIN
@@ -77,6 +95,14 @@ QString findMicrosoftYaHeiFontFile()
     }
 #endif
     return QString();
+}
+
+// The VTK 9.2 Matplotlib MathText backend is optional. Qt rich text is
+// guaranteed to support <sub>/<sup> (including letters like z, for which no
+// Unicode subscript character exists). No external font/backend needed.
+QString scalarBarTitleHtml(const QString& text)
+{
+    return PostScientificText::hasSubscript(text) ? PostScientificText::toHtml(text) : QString();
 }
 
 void applyYaHeiTextStyle(vtkTextProperty* prop, int fontSize, bool bold = false)
@@ -197,6 +223,10 @@ void VisualizationWidget::initVtk()
     m_renderer->SetGradientBackground(true);
     m_renderWindow->AddRenderer(m_renderer);
 
+    // 使用 Qt 透明叠加层而非 VTK TextActor：中文字体在高 DPI 下更清晰；
+    // 标志不会受到模型相机、景深、透明度和重置视图影响。
+    initBrandingOverlay();
+
     // ---------- LUT ----------
     m_lut = vtkSmartPointer<vtkLookupTable>::New();
     m_lut->SetNumberOfTableValues(256);
@@ -233,6 +263,15 @@ void VisualizationWidget::initVtk()
     m_scalarBar->DrawFrameOff();
 
     m_renderer->AddActor2D(m_scalarBar);
+
+    // Rich-text title is a transparent mouse-pass-through overlay on the VTK view.
+    // The actual color bar / tick labels remain VTK actors.
+    m_scalarBarRichTitle = new QLabel(m_vtkWidget);
+    m_scalarBarRichTitle->setObjectName(QStringLiteral("scalarBarRichTitle"));
+    m_scalarBarRichTitle->setAttribute(Qt::WA_TransparentForMouseEvents);
+    m_scalarBarRichTitle->setTextFormat(Qt::RichText);
+    m_scalarBarRichTitle->setStyleSheet(QStringLiteral("background: transparent; border: 0;"));
+    m_scalarBarRichTitle->hide();
 
     // ---------- Cube axes (scale ruler around content) ----------
     m_cubeAxesActor = vtkSmartPointer<vtkCubeAxesActor>::New();
@@ -272,6 +311,147 @@ void VisualizationWidget::initVtk()
 
     resetCamera(false);
     render();
+}
+
+void VisualizationWidget::initBrandingOverlay()
+{
+    // Floating view branding stays in the VTK canvas, outside all toolbars.
+    m_brandingBadge = new QFrame(m_vtkWidget);
+    m_brandingBadge->setObjectName(QStringLiteral("powerChinaBrandingBadge"));
+    m_brandingBadge->setAttribute(Qt::WA_TransparentForMouseEvents);
+    m_brandingBadge->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
+    auto* layout = new QHBoxLayout(m_brandingBadge);
+    layout->setContentsMargins(4, 0, 2, 0);
+    layout->setSpacing(5);
+    m_brandingLogo = new QLabel(m_brandingBadge);
+    m_brandingLogo->setObjectName(QStringLiteral("powerChinaBrandingLogo"));
+    m_brandingLogo->setFixedSize(32, 30);
+    m_brandingLogo->setAlignment(Qt::AlignCenter);
+    layout->addWidget(m_brandingLogo);
+    auto* names = new QWidget(m_brandingBadge);
+    names->setObjectName(QStringLiteral("powerChinaBrandingNames"));
+    auto* labels = new QVBoxLayout(names);
+    labels->setContentsMargins(0, 0, 0, 0);
+    labels->setSpacing(0);
+    m_brandingChineseName = new QLabel(QStringLiteral("中国电建"), names);
+    m_brandingChineseName->setObjectName(QStringLiteral("powerChinaBrandingChinese"));
+    m_brandingEnglishName = new QLabel(QStringLiteral("POWERCHINA"), names);
+    m_brandingEnglishName->setObjectName(QStringLiteral("powerChinaBrandingEnglish"));
+    labels->addWidget(m_brandingChineseName);
+    labels->addWidget(m_brandingEnglishName);
+    layout->addWidget(names);
+    if (m_vtkWidget) m_vtkWidget->installEventFilter(this);
+    const QSettings settings(visualizationSettingsPath(), QSettings::IniFormat);
+    m_brandingDesiredVisible = settings.value(kBrandingVisibleSetting, true).toBool();
+    loadBrandingLogo(QStringLiteral(":/branding/powerchina.png"));
+    updateBrandingPlacement();
+}
+
+bool VisualizationWidget::loadBrandingLogo(const QString& path)
+{
+    if (!m_brandingLogo)
+        return false;
+    QImage image(path);
+    if (image.isNull() || image.width() > 4096 || image.height() > 4096)
+        return false;
+    const QPixmap pixmap = QPixmap::fromImage(image);
+    m_brandingLogo->setPixmap(pixmap.scaled(m_brandingLogo->size(),
+                                            Qt::KeepAspectRatio,
+                                            Qt::SmoothTransformation));
+    m_brandingLogo->show();
+    updateBrandingPlacement();
+    return true;
+}
+
+bool VisualizationWidget::eventFilter(QObject* watched, QEvent* event)
+{
+    if (watched == m_vtkWidget && event->type() == QEvent::Resize)
+    {
+        updateBrandingPlacement();
+        updateScalarBarTitlePlacement();
+    }
+    return QWidget::eventFilter(watched, event);
+}
+
+void VisualizationWidget::updateBrandingPlacement()
+{
+    if (!m_brandingBadge || !m_vtkWidget) return;
+    m_brandingBadge->adjustSize();
+    const int margin = 12;
+    const bool fits = m_vtkWidget->width() >= m_brandingBadge->width()+2*margin &&
+                      m_vtkWidget->height() >= m_brandingBadge->height()+2*margin;
+    m_brandingBadge->setVisible(m_brandingDesiredVisible && fits);
+    if (fits)
+    {
+        m_brandingBadge->move(m_vtkWidget->width()-m_brandingBadge->width()-margin, margin);
+        m_brandingBadge->raise();
+    }
+}
+
+void VisualizationWidget::updateScalarBarTitlePlacement()
+{
+    if (!m_scalarBarRichTitle || !m_scalarBar || !m_vtkWidget)
+        return;
+
+    // Hide with the scalar bar, and if another module takes over the title.
+    // The space title is the sentinel only for our custom rich-text title.
+    const bool on = m_scalarBar->GetVisibility() != 0 &&
+                    !m_scalarBarTitleMarkup.isEmpty() &&
+                    QString::fromUtf8(m_scalarBar->GetTitle()) == QStringLiteral(" ");
+    if (!on || m_vtkWidget->width() <= 0 || m_vtkWidget->height() <= 0)
+    {
+        m_scalarBarRichTitle->hide();
+        return;
+    }
+
+    bool needsResize = false;
+    if (vtkTextProperty* prop = m_scalarBar->GetTitleTextProperty())
+    {
+        QFont font = m_vtkWidget->font();
+        font.setPixelSize(qBound(8, prop->GetFontSize(), 72));
+        font.setBold(prop->GetBold() != 0);
+        if (m_scalarBarRichTitle->font() != font)
+        {
+            m_scalarBarRichTitle->setFont(font);
+            needsResize = true;
+        }
+        const double* rgb = prop->GetColor();
+        const QColor color = QColor::fromRgbF(qBound(0.0, rgb[0], 1.0),
+                                              qBound(0.0, rgb[1], 1.0),
+                                              qBound(0.0, rgb[2], 1.0));
+        const QString sheet = QStringLiteral("background: transparent; border: 0; color: %1;")
+                                  .arg(color.name());
+        if (m_scalarBarRichTitle->styleSheet() != sheet)
+            m_scalarBarRichTitle->setStyleSheet(sheet);
+    }
+
+    if (m_scalarBarRichTitle->text() != m_scalarBarTitleMarkup)
+    {
+        m_scalarBarRichTitle->setText(m_scalarBarTitleMarkup);
+        needsResize = true;
+    }
+    if (needsResize)
+        m_scalarBarRichTitle->adjustSize();
+    const int viewWidth = m_vtkWidget->width();
+    const int viewHeight = m_vtkWidget->height();
+    const double* pos = m_scalarBar->GetPosition();
+    const double top = 1.0 - pos[1] - m_scalarBar->GetHeight();
+    // On vertical scalar bars, the native VTK title is above the color ramp.
+    // Both the Qt overlay and the VTK actor use the normalized viewport.
+    // Center above the scalar bar's *whole footprint* (ramp + numeric labels),
+    // and keep the title fully inside the view after a middle-mouse drag.
+    const double centerX = (pos[0] + m_scalarBar->GetWidth() * 0.5) * viewWidth;
+    const int titleX = qRound(centerX - m_scalarBarRichTitle->width() * 0.5);
+    const int x = qBound(0, titleX, qMax(0, viewWidth - m_scalarBarRichTitle->width() - 2));
+    const int y = qBound(0, qRound(top * viewHeight) - 2,
+                         qMax(0, viewHeight - m_scalarBarRichTitle->height()));
+    if (m_scalarBarRichTitle->pos() != QPoint(x, y))
+        m_scalarBarRichTitle->move(x, y);
+    if (!m_scalarBarRichTitle->isVisible())
+    {
+        m_scalarBarRichTitle->show();
+        m_scalarBarRichTitle->raise();
+    }
 }
 
 void VisualizationWidget::initViewToolbar()
@@ -457,6 +637,7 @@ void VisualizationWidget::render()
 {
     if (m_renderWindow)
         m_renderWindow->Render();
+    updateScalarBarTitlePlacement();
 }
 
 void VisualizationWidget::resetCamera(bool renderNow)
@@ -797,6 +978,7 @@ void VisualizationWidget::showScalarBar(bool on, bool renderNow)
 {
     if (m_scalarBar)
         m_scalarBar->SetVisibility(on ? 1 : 0);
+    updateScalarBarTitlePlacement();
     if (renderNow)
         render();
 }
@@ -810,12 +992,17 @@ void VisualizationWidget::setScalarBarTitle(const QString& title, bool renderNow
 {
     if (m_scalarBar)
     {
-        m_scalarBar->SetTitle(title.toUtf8().constData());
+        m_scalarBarTitleMarkup = scalarBarTitleHtml(title);
+        // Keep the title line allocated by VTK, but render the mathematical
+        // indices with Qt instead of relying on optional VTK MathText modules.
+        const QString vtkTitle = m_scalarBarTitleMarkup.isEmpty()
+                                     ? title : QStringLiteral(" ");
+        m_scalarBar->SetTitle(vtkTitle.toUtf8().constData());
         m_scalarBar->UnconstrainedFontSizeOn();
-        // 字号和图例尺寸可能由后处理页面自定义，这里只更新标题，不能重置用户设置。
+        // 字号和图例尺寸由后处理设置控制，不能在更新标题时重置。
         m_scalarBar->Modified();
     }
-
+    updateScalarBarTitlePlacement();
     if (renderNow)
         render();
 }
@@ -925,6 +1112,31 @@ void VisualizationWidget::setViewToolbarVisible(bool visible)
         return;
 
     m_toolbar->setVisible(visible);
+}
+
+void VisualizationWidget::setBrandingVisible(bool visible, bool renderNow)
+{
+    if (!m_brandingBadge)
+        return;
+
+    m_brandingDesiredVisible = visible;
+    updateBrandingPlacement();
+
+    QSettings settings(visualizationSettingsPath(), QSettings::IniFormat);
+    settings.setValue(kBrandingVisibleSetting, visible);
+
+    QVariantMap eventData;
+    eventData.insert(QStringLiteral("visible"), visible);
+    EventManager::instance().sendEvent(
+        PublicConstants::kEventBrandingVisibilityChanged, eventData);
+
+    if (renderNow)
+        render();
+}
+
+bool VisualizationWidget::isBrandingVisible() const
+{
+    return m_brandingBadge && m_brandingDesiredVisible;
 }
 
 // ---------------- Orientation marker ----------------
@@ -1066,14 +1278,11 @@ void VisualizationWidget::applyUiTheme(const QString& themeName)
         textColor[1] = 229.0 / 255.0;
         textColor[2] = 236.0 / 255.0;
     }
-    else if (theme == QStringLiteral("blue"))
+
+    if (theme == QStringLiteral("blue"))
     {
-        background[0] = 223.0 / 255.0;
-        background[1] = 241.0 / 255.0;
-        background[2] = 251.0 / 255.0;
-        background2[0] = 246.0 / 255.0;
-        background2[1] = 251.0 / 255.0;
-        background2[2] = 255.0 / 255.0;
+        background[0] = 232.0 / 255.0; background[1] = 241.0 / 255.0; background[2] = 248.0 / 255.0;
+        background2[0] = 248.0 / 255.0; background2[1] = 251.0 / 255.0; background2[2] = 253.0 / 255.0;
     }
 
     if (m_renderer)
@@ -1089,6 +1298,20 @@ void VisualizationWidget::applyUiTheme(const QString& themeName)
         if (auto* label = m_scalarBar->GetLabelTextProperty())
             label->SetColor(textColor);
         m_scalarBar->Modified();
+    }
+
+    if (m_brandingBadge && m_brandingChineseName && m_brandingEnglishName)
+    {
+        m_brandingBadge->setStyleSheet(QStringLiteral(
+            "QFrame#powerChinaBrandingBadge, QWidget#powerChinaBrandingNames { background: transparent; border: none; }"
+            "QLabel { background: transparent; border: none; }"));
+        m_brandingChineseName->setStyleSheet(dark
+            ? QStringLiteral("color: #eef4fb; font: 600 10pt 'Microsoft YaHei UI'; background: transparent;")
+            : QStringLiteral("color: #07559d; font: 600 10pt 'Microsoft YaHei UI'; background: transparent;"));
+        m_brandingEnglishName->setStyleSheet(dark
+            ? QStringLiteral("color: #b6cadb; font-size: 7pt; background: transparent;")
+            : QStringLiteral("color: #47738f; font-size: 7pt; background: transparent;"));
+        updateBrandingPlacement();
     }
 
     if (m_cubeAxesActor)

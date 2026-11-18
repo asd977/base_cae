@@ -1,4 +1,4 @@
-﻿#include "StyleManager.h"
+#include "StyleManager.h"
 
 #include <QApplication>
 #include <QColor>
@@ -70,22 +70,12 @@ QPalette paletteForTheme(const QString& themeName, const QStyle* style)
     }
     else if (themeName == QStringLiteral("blue"))
     {
-        // Classic engineering-blue: stronger blue chrome with pale blue work surfaces.
         setPaletteColors(palette,
-                         QColor(QStringLiteral("#c4e1f5")),
-                         QColor(QStringLiteral("#073760")),
-                         QColor(QStringLiteral("#f2f9ff")),
-                         QColor(QStringLiteral("#dff1fb")),
-                         QColor(QStringLiteral("#d9edf9")),
-                         QColor(QStringLiteral("#fbfdfe")),
-                         QColor(QStringLiteral("#8fb8d5")),
-                         QColor(QStringLiteral("#2778b2")),
-                         QColor(QStringLiteral("#006ec2")),
-                         QColor(QStringLiteral("#ffffff")),
-                         QColor(QStringLiteral("#7a94aa")),
-                         QColor(QStringLiteral("#6689a4")),
-                         QColor(QStringLiteral("#e9f6ff")),
-                         QColor(QStringLiteral("#073760")));
+                         QColor("#c4d9eb"), QColor("#173c5b"), QColor("#ffffff"),
+                         QColor("#e8f1f8"), QColor("#dceaf5"), QColor("#f4f9fd"),
+                         QColor("#9bbbd4"), QColor("#5e8fb5"), QColor("#245d89"),
+                         QColor("#ffffff"), QColor("#879eaf"), QColor("#6e8ca3"),
+                         QColor("#edf5fb"), QColor("#173c5b"));
     }
     else
     {
@@ -155,7 +145,7 @@ QString StyleManager::themeDisplayName(const QString& themeName)
     if (normalized == QStringLiteral("dark"))
         return QStringLiteral("暗色");
     if (normalized == QStringLiteral("blue"))
-        return QStringLiteral("工程蓝");
+        return QStringLiteral("深蓝");
     return QStringLiteral("浅灰");
 }
 

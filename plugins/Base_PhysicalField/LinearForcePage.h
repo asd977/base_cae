@@ -2,6 +2,7 @@
 #define LINEARFORCEPAGE_H
 
 #include <BasePage.h>
+#include "LoadPageState.h"
 
 #include <QWidget>
 class QComboBox;
@@ -16,6 +17,7 @@ class LinearForcePage : public BasePage
     Q_OBJECT
 
   public:
+    CAE_LOAD_PAGE_STATE("lineEditX","lineEditY","lineEditZ")
     explicit LinearForcePage(QWidget* parent = nullptr);
     ~LinearForcePage();
 

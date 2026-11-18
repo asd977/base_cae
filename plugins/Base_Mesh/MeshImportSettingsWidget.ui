@@ -38,14 +38,15 @@
       </font>
      </property>
      <property name="text">
-      <string>网格导入与计算轴向</string>
+      <string>网格导入</string>
      </property>
     </widget>
    </item>
    <item>
     <widget class="QLabel" name="labelHint">
+     <property name="visible"><bool>false</bool></property>
      <property name="text">
-      <string>请选择网格文件，并设置 IIIN.DAT 中用于计算的竖向轴。</string>
+      <string></string>
      </property>
      <property name="wordWrap">
       <bool>true</bool>
@@ -71,7 +72,7 @@
       <item>
        <widget class="QPushButton" name="buttonImport">
         <property name="text">
-         <string>选择网格文件</string>
+         <string>浏览…</string>
         </property>
        </widget>
       </item>

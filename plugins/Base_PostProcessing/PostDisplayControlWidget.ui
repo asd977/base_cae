@@ -78,7 +78,7 @@
   <bool>false</bool>
  </property>
 </widget></item>
-      <item row="2" column="1"><widget class="QDoubleSpinBox" name="rangeMinSpinBox"><property name="sizePolicy"><sizepolicy hsizetype="Ignored" vsizetype="Fixed"><horstretch>1</horstretch><verstretch>0</verstretch></sizepolicy></property><property name="minimumSize"><size><width>100</width><height>0</height></size></property></widget></item>
+      <item row="2" column="1"><widget class="CompactPostDoubleSpinBox" name="rangeMinSpinBox"><property name="sizePolicy"><sizepolicy hsizetype="Ignored" vsizetype="Fixed"><horstretch>1</horstretch><verstretch>0</verstretch></sizepolicy></property><property name="minimumSize"><size><width>100</width><height>0</height></size></property></widget></item>
       <item row="3" column="0"><widget class="QLabel" name="rangeMaxLabel">
  <property name="sizePolicy">
   <sizepolicy hsizetype="Fixed" vsizetype="Preferred">
@@ -89,7 +89,20 @@
   <bool>false</bool>
  </property>
 </widget></item>
-      <item row="3" column="1"><widget class="QDoubleSpinBox" name="rangeMaxSpinBox"><property name="sizePolicy"><sizepolicy hsizetype="Ignored" vsizetype="Fixed"><horstretch>1</horstretch><verstretch>0</verstretch></sizepolicy></property><property name="minimumSize"><size><width>100</width><height>0</height></size></property></widget></item>
+      <item row="3" column="1"><widget class="CompactPostDoubleSpinBox" name="rangeMaxSpinBox"><property name="sizePolicy"><sizepolicy hsizetype="Ignored" vsizetype="Fixed"><horstretch>1</horstretch><verstretch>0</verstretch></sizepolicy></property><property name="minimumSize"><size><width>100</width><height>0</height></size></property></widget></item>
+     </layout>
+    </widget>
+   </item>
+   <item>
+    <widget class="QGroupBox" name="brandingGroupBox">
+     <property name="postControlSection" stdset="0"><bool>true</bool></property>
+     <property name="title"><string>视图标识</string></property>
+     <layout class="QVBoxLayout" name="brandingLayout">
+      <property name="leftMargin"><number>8</number></property>
+      <property name="topMargin"><number>7</number></property>
+      <property name="rightMargin"><number>8</number></property>
+      <property name="bottomMargin"><number>8</number></property>
+      <item><widget class="QCheckBox" name="showBrandingCheckBox"><property name="text"><string>显示标识</string></property><property name="checked"><bool>true</bool></property></widget></item>
      </layout>
     </widget>
    </item>
@@ -235,6 +248,13 @@
    <item><spacer name="verticalSpacer"><property name="orientation"><enum>Qt::Vertical</enum></property><property name="sizeHint" stdset="0"><size><width>20</width><height>12</height></size></property></spacer></item>
   </layout>
  </widget>
+ <customwidgets>
+  <customwidget>
+   <class>CompactPostDoubleSpinBox</class>
+   <extends>QDoubleSpinBox</extends>
+   <header>CompactPostDoubleSpinBox.h</header>
+  </customwidget>
+ </customwidgets>
  <resources/>
  <connections/>
 </ui>

@@ -1,12 +1,15 @@
 #include "MeshGroupingWidget.h"
 
 #include <ServiceRegistry.h>
+#include <PickManager.h>
 #include <services/MeshModuleControllerService.h>
 #include <services/VisualWidgetService.h>
 #include <struct/MeshMap.h>
 #include <vtkActor.h>
+#include <vtkExtractCells.h>
 #include <vtkCell.h>
 #include <vtkCellData.h>
+#include <vtkDataArray.h>
 #include <vtkConnectivityFilter.h>
 #include <vtkCubeSource.h>
 #include <vtkDataSetSurfaceFilter.h>
@@ -18,12 +21,26 @@
 #include <vtkPointData.h>
 #include <vtkPolyData.h>
 #include <vtkPolyDataMapper.h>
+#include <vtkMapper.h>
 #include <vtkPolyDataNormals.h>
 #include <vtkProperty.h>
 #include <vtkStringArray.h>
 #include <vtkUnstructuredGrid.h>
 
 #include <QMap>
+#include <QComboBox>
+#include <QSpinBox>
+#include <QLineEdit>
+#include <QPushButton>
+#include <QGroupBox>
+#include <QCheckBox>
+#include <QAbstractItemView>
+#include <QItemSelectionModel>
+#include <QModelIndex>
+#include <QHBoxLayout>
+#include <QVBoxLayout>
+#include <QHeaderView>
+#include <QSignalBlocker>
 #include <QLabel>
 #include <QMessageBox>
 #include <QSet>
@@ -37,6 +54,10 @@
 namespace
 {
 const QString kRangePreviewPropId = "mesh.grouping.range.preview";
+const QString kManualPreviewPropId = "mesh.grouping.selection.preview";
+const QString kPickDomain = "MeshGroupingManual";
+const QString kPickUuid = "cells";
+constexpr int kMaxPreviewCells = 100000;
 constexpr int FIRST_AUTO_MATYPE = 3;
 constexpr int MAX_SOLVER_MATYPE = 300;
 
@@ -120,16 +141,6 @@ MeshGroupingWidget::MeshGroupingWidget(QWidget* parent)
     ui->cmbRangeTargetArray->addItem("材料分组", "MATYPE");
     ui->cmbRangeTargetArray->addItem("填筑层分组", "LAYER");
 
-    auto* matypeHint = new QLabel(
-        QStringLiteral("材料编号 1 不参加计算；编号 2 仅兼容旧数据且固定按线弹性处理；新建材料分组从 3 开始。"),
-        this);
-    matypeHint->setObjectName(QStringLiteral("matypeNumberingHint"));
-    matypeHint->setWordWrap(true);
-    ui->contentLayout->insertWidget(2, matypeHint);
-    ui->spStartValue->setToolTip(
-        QStringLiteral("自动材料分组从 3 开始，避免误用求解器保留的编号 2。"));
-    ui->spTargetValue->setToolTip(
-        QStringLiteral("新建材料分组使用 3 至 300；编号 2 仅兼容旧数据。"));
 
     auto syncMatypeNumberBounds = [this]()
     {
@@ -183,9 +194,18 @@ MeshGroupingWidget::MeshGroupingWidget(QWidget* parent)
     bindRangeChanged(ui->dsZMin);
     bindRangeChanged(ui->dsZMax);
 
+    buildManualGroupingControls();
+    connect(&PickManager::instance(), &PickManager::selectionChanged, this,
+            [this](const QString& domain, const QString& uuid, PickMode mode, GridKind kind) {
+                if (m_activeManualPicking && !m_ignoreFaceSignal &&
+                    domain == kPickDomain && uuid == kPickUuid &&
+                    mode == PickMode::Face && kind == GridKind::Solid)
+                    onPickedFacesChanged();
+            });
     initializeRangeByGridBounds(false);
     refreshGroupList();
     refreshBoundaryGroupList();
+    refreshSelectionSets();
 }
 
 MeshGroupingWidget::~MeshGroupingWidget()
@@ -198,9 +218,21 @@ void MeshGroupingWidget::beforeLoad()
 {
     m_hasAutoBoundaryGroups = false;
     m_autoBoundaryPickMap = MshPickMap();
+    m_manualCellIds.clear();
+    m_lastFaceKeys.clear();
+    refreshSelectionSets();
     initializeRangeByGridBounds(false);
     refreshGroupList();
     refreshBoundaryGroupList();
+    PickManager::instance().updateStructure();
+    m_ignoreFaceSignal = true;
+    PickManager::instance().activate(kPickDomain, kPickUuid, PickMode::Face);
+    PickManager::instance().setBoxSelectEnabled(kPickDomain, kPickUuid, true);
+    PickManager::instance().setClickPickEnabled(kPickDomain, kPickUuid, true);
+    PickManager::instance().clearSelection(kPickDomain, kPickUuid, PickMode::Face);
+    m_ignoreFaceSignal = false;
+    m_activeManualPicking = true;
+    syncGroupTab();
     if (ui->chkShowRangeBox->isChecked())
     {
         updateRangePreview(true);
@@ -209,6 +241,13 @@ void MeshGroupingWidget::beforeLoad()
 
 void MeshGroupingWidget::beforeUnload()
 {
+    m_activeManualPicking = false;
+    m_ignoreFaceSignal = true;
+    PickManager::instance().deactivate(kPickDomain, kPickUuid, PickMode::Face);
+    m_ignoreFaceSignal = false;
+    if (auto* visual = ServiceRegistry::instance().getService<VisualWidgetService>())
+        visual->removeProp(kManualPreviewPropId, false);
+    m_manualPreviewActor = nullptr;
     clearRangePreview();
 }
 
@@ -276,6 +315,7 @@ void MeshGroupingWidget::onRefreshGroups()
     initializeRangeByGridBounds(true);
     refreshGroupList();
     refreshBoundaryGroupList();
+    refreshSelectionSets();
 }
 
 void MeshGroupingWidget::onAutoDetectBoundaries()
@@ -709,80 +749,70 @@ void MeshGroupingWidget::onRangeValueChanged()
 
 void MeshGroupingWidget::refreshGroupList()
 {
-    auto* meshService = ServiceRegistry::instance().getService<MeshModuleControllerService>();
-    if (!meshService)
+    auto selectedIds = [](QTableWidget* table) {
+        QSet<int> ids;
+        if (table && table->selectionModel())
+            for (const QModelIndex& index : table->selectionModel()->selectedRows())
+                if (auto* item = table->item(index.row(), 0)) ids.insert(item->text().toInt());
+        return ids;
+    };
+    const QSet<int> matPrior = selectedIds(ui->tblMatypeGroups);
+    const QSet<int> layPrior = selectedIds(ui->tblLayerGroups);
+    m_rebuildingGroups = true;
+    QSignalBlocker matBlock(ui->tblMatypeGroups);
+    QSignalBlocker layBlock(ui->tblLayerGroups);
+    auto* svc = ServiceRegistry::instance().getService<MeshModuleControllerService>();
+    ui->tblMatypeGroups->clearContents();
+    ui->tblLayerGroups->clearContents();
+    ui->tblMatypeGroups->setRowCount(0);
+    ui->tblLayerGroups->setRowCount(0);
+    if (!svc)
     {
-        ui->tblMatypeGroups->setRowCount(0);
-        ui->tblLayerGroups->setRowCount(0);
+        m_rebuildingGroups = false;
         return;
     }
-
-    const MshPickMap pick = meshService->mshPickMapSolid();
-
-    auto fillTableByMap = [&](QTableWidget* table, const QHash<int, QVector<qint64>>& valueToCells,
-                              const QHash<qint64, QString>& cellToGroupName)
+    const MshPickMap map = svc->mshPickMapSolid();
+    struct Row { int id = 0; QString name; qsizetype count = 0; };
+    for (const QString& field : {QStringLiteral("MATYPE"), QStringLiteral("LAYER")})
     {
-        table->clearContents();
-        table->setRowCount(0);
-
-        QMap<QString, int> counter;
-        for (auto it = valueToCells.begin(); it != valueToCells.end(); ++it)
+        QMap<int, Row> groups;
+        for (auto it = map.tagSets.constBegin(); it != map.tagSets.constEnd(); ++it)
         {
-            const int value = it.key();
-            for (qint64 cid : it.value())
-            {
-                const QString g = cellToGroupName.value(cid).trimmed();
-                const QString key = QString("%1|%2").arg(value).arg(g.isEmpty() ? "(未命名)" : g);
-                counter[key] += 1;
-            }
+            const MeshTagSet& set = it.value();
+            if (set.key.category.compare(field, Qt::CaseInsensitive) != 0 || set.key.dim < 2)
+                continue;
+            Row& row = groups[set.key.id];
+            row.id = set.key.id;
+            row.count += set.cellIds.size();
+            const QString label = map.groupDisplayNames.value(
+                QStringLiteral("%1/%2/%3").arg(field).arg(set.key.dim).arg(set.key.id));
+            if (!label.trimmed().isEmpty()) row.name = label.trimmed();
         }
-
-        table->setRowCount(counter.size());
-        int row = 0;
-        for (auto it = counter.begin(); it != counter.end(); ++it, ++row)
+        QTableWidget* table = field == QStringLiteral("MATYPE")
+            ? ui->tblMatypeGroups : ui->tblLayerGroups;
+        table->setRowCount(groups.size());
+        int rowNumber = 0;
+        for (auto it = groups.begin(); it != groups.end(); ++it, ++rowNumber)
         {
-            const QStringList parts = it.key().split('|');
-            auto* itemVal = new QTableWidgetItem(parts.value(0));
-            auto* itemName = new QTableWidgetItem(parts.value(1));
-            auto* itemCount = new QTableWidgetItem(QString::number(it.value()));
-            itemVal->setTextAlignment(Qt::AlignCenter);
-            itemCount->setTextAlignment(Qt::AlignCenter);
-            table->setItem(row, 0, itemVal);
-            table->setItem(row, 1, itemName);
-            table->setItem(row, 2, itemCount);
+            auto* id = new QTableWidgetItem(QString::number(it->id));
+            auto* name = new QTableWidgetItem(it->name.isEmpty()
+                ? QStringLiteral("%1=%2").arg(field).arg(it->id) : it->name);
+            auto* count = new QTableWidgetItem(QString::number(it->count));
+            id->setTextAlignment(Qt::AlignCenter);
+            count->setTextAlignment(Qt::AlignCenter);
+            table->setItem(rowNumber, 0, id);
+            table->setItem(rowNumber, 1, name);
+            table->setItem(rowNumber, 2, count);
         }
         table->resizeColumnsToContents();
-    };
-
-    QHash<int, QVector<qint64>> matypeToCells;
-    QHash<int, QVector<qint64>> layerToCells;
-    QHash<qint64, QString> matypeNameByCell;
-    QHash<qint64, QString> layerNameByCell;
-    for (auto it = pick.tagSets.constBegin(); it != pick.tagSets.constEnd(); ++it)
-    {
-        const MeshTagSet& set = it.value();
-        if (set.key.category.compare("MATYPE", Qt::CaseInsensitive) == 0)
-        {
-            auto& cells = matypeToCells[set.key.id];
-            for (MeshIdType cid : set.cellIds)
-            {
-                cells.push_back(static_cast<qint64>(cid));
-                matypeNameByCell[static_cast<qint64>(cid)] = set.name;
-            }
-        }
-        else if (set.key.category.compare("LAYER", Qt::CaseInsensitive) == 0)
-        {
-            auto& cells = layerToCells[set.key.id];
-            for (MeshIdType cid : set.cellIds)
-            {
-                cells.push_back(static_cast<qint64>(cid));
-                layerNameByCell[static_cast<qint64>(cid)] = set.name;
-            }
-        }
+        const QSet<int>& prior = field == QStringLiteral("MATYPE") ? matPrior : layPrior;
+        for (int row = 0; row < table->rowCount(); ++row)
+            if (auto* item = table->item(row, 0); item && prior.contains(item->text().toInt()))
+                table->selectionModel()->select(table->model()->index(row, 0),
+                    QItemSelectionModel::Select | QItemSelectionModel::Rows);
     }
-
-    fillTableByMap(ui->tblMatypeGroups, matypeToCells, matypeNameByCell);
-    fillTableByMap(ui->tblLayerGroups, layerToCells, layerNameByCell);
+    m_rebuildingGroups = false;
+    updateGroupActionState();
 }
 
 void MeshGroupingWidget::refreshBoundaryGroupList()
@@ -840,6 +870,568 @@ void MeshGroupingWidget::refreshBoundaryGroupList()
 
     ui->tblBoundaryGroups->setRowCount(row);
     ui->tblBoundaryGroups->resizeColumnsToContents();
+}
+
+void MeshGroupingWidget::buildManualGroupingControls()
+{
+    // Group and local-cell editing share ONE target and ONE apply action.
+    // Only the source of the selected cell IDs is different.
+    m_groupActions = new QGroupBox(QStringLiteral("调整分组"), this);
+    auto* layout = new QVBoxLayout(m_groupActions);
+
+    auto* modeRow = new QHBoxLayout();
+    m_modeLabel = new QLabel(QStringLiteral("选择范围"), m_groupActions);
+    m_selectMode = new QComboBox(m_groupActions);
+    m_selectMode->addItem(QStringLiteral("整组选择"));
+    m_selectMode->addItem(QStringLiteral("局部单元选择"));
+    modeRow->addWidget(m_modeLabel);
+    modeRow->addWidget(m_selectMode, 1);
+    layout->addLayout(modeRow);
+
+
+    auto* selectedRow = new QHBoxLayout();
+    m_manualStatus = new QLabel(QStringLiteral("当前选择：0 个单元"), m_groupActions);
+    m_clearButton = new QPushButton(QStringLiteral("清空选择"), m_groupActions);
+    selectedRow->addWidget(m_manualStatus, 1);
+    selectedRow->addWidget(m_clearButton);
+    layout->addLayout(selectedRow);
+
+    auto* targetRow = new QHBoxLayout();
+    m_targetLabel = new QLabel(QStringLiteral("目标编号"), m_groupActions);
+    m_mergeTargetId = new QSpinBox(m_groupActions);
+    m_mergeTargetId->setRange(3, MAX_SOLVER_MATYPE);
+    m_mergeTargetId->setValue(3);
+    m_mergeTargetId->setToolTip(QStringLiteral("目标编号可选择现有组或尚未使用的编号。"));
+    m_mergeTargetName = new QLineEdit(m_groupActions);
+    m_mergeTargetName->setPlaceholderText(QStringLiteral("目标组名（选填）"));
+    targetRow->addWidget(m_targetLabel);
+    targetRow->addWidget(m_mergeTargetId);
+    targetRow->addWidget(m_mergeTargetName, 1);
+    layout->addLayout(targetRow);
+
+    m_mergeButton = new QPushButton(QStringLiteral("应用分组"), m_groupActions);
+    layout->addWidget(m_mergeButton);
+    ui->contentLayout->insertWidget(1, m_groupActions);
+
+    // Selection sets remain separate data; they do NOT write MATYPE/LAYER.
+    auto* setsPage = new QWidget(this);
+    auto* setsLayout = new QVBoxLayout(setsPage);
+    m_selectionSetsTable = new QTableWidget(setsPage);
+    m_selectionSetsTable->setColumnCount(3);
+    m_selectionSetsTable->setHorizontalHeaderLabels(
+        {QStringLiteral("编号"), QStringLiteral("名称"), QStringLiteral("单元数")});
+    m_selectionSetsTable->setSelectionBehavior(QAbstractItemView::SelectRows);
+    m_selectionSetsTable->setSelectionMode(QAbstractItemView::SingleSelection);
+    m_selectionSetsTable->horizontalHeader()->setStretchLastSection(true);
+    setsLayout->addWidget(m_selectionSetsTable);
+    auto* buttons = new QHBoxLayout();
+    auto* save = new QPushButton(QStringLiteral("新建选择集"), setsPage);
+    auto* add = new QPushButton(QStringLiteral("加入所选"), setsPage);
+    auto* remove = new QPushButton(QStringLiteral("移出所选"), setsPage);
+    auto* del = new QPushButton(QStringLiteral("删除选择集"), setsPage);
+    buttons->addWidget(save); buttons->addWidget(add);
+    buttons->addWidget(remove); buttons->addWidget(del);
+    setsLayout->addLayout(buttons);
+    ui->tabGroupingInfo->addTab(setsPage, QStringLiteral("选择集"));
+
+    for (QTableWidget* table : {ui->tblMatypeGroups, ui->tblLayerGroups})
+    {
+        table->setSelectionBehavior(QAbstractItemView::SelectRows);
+        table->setSelectionMode(QAbstractItemView::ExtendedSelection);
+        connect(table, &QTableWidget::itemSelectionChanged, this,
+                [this]() { if (!m_rebuildingGroups) selectGroupsFromTable(); });
+    }
+
+    connect(m_selectMode, QOverload<int>::of(&QComboBox::currentIndexChanged), this,
+            [this](int) { syncGroupTab(); });
+    connect(m_clearButton, &QPushButton::clicked, this, [this]() {
+        if (!m_advancedCellMode)
+        {
+            if (QTableWidget* table = currentGroupTable())
+                table->clearSelection();
+        }
+        clearManualSelection();
+    });
+    connect(m_mergeButton, &QPushButton::clicked, this, [this]() {
+        if (m_advancedCellMode) applyManualGrouping();
+        else mergeSelectedGroups();
+    });
+    connect(save, &QPushButton::clicked, this, [this]() { writeSelectionSet("create"); });
+    connect(add, &QPushButton::clicked, this, [this]() { writeSelectionSet("add"); });
+    connect(remove, &QPushButton::clicked, this, [this]() { writeSelectionSet("remove"); });
+    connect(del, &QPushButton::clicked, this, &MeshGroupingWidget::deleteSelectionSet);
+    connect(ui->tabGroupingInfo, &QTabWidget::currentChanged, this,
+            [this](int) {
+                if (m_mergeTargetName) m_mergeTargetName->clear();
+                syncGroupTab();
+            });
+    updateGroupActionState();
+}
+
+void MeshGroupingWidget::syncGroupTab()
+{
+    const int tab = ui->tabGroupingInfo->currentIndex();
+    // Selection-set creation needs individual members. For material and layer
+    // tabs, the user explicitly chooses whole groups or local cells.
+    m_advancedCellMode = tab == 3 || (tab < 2 && m_selectMode->currentIndex() == 1);
+    if (m_advancedCellMode && tab < 2)
+    {
+        // In local mode the group-list highlight is not the editable cell selection.
+        // Drop it so the user does not mistake a whole group for selected cells.
+        if (QTableWidget* table = currentGroupTable())
+        {
+            QSignalBlocker block(table);
+            table->clearSelection();
+        }
+    }
+    clearManualSelection();
+    if (!m_advancedCellMode && tab < 2)
+        selectGroupsFromTable();
+    updateGroupActionState();
+}
+
+void MeshGroupingWidget::updateGroupActionState()
+{
+    const int tab = ui->tabGroupingInfo->currentIndex();
+    const bool groupTab = tab == 0 || tab == 1;
+    const bool selectionTab = tab == 3;
+    if (m_groupActions) m_groupActions->setVisible(groupTab || selectionTab);
+    if (m_modeLabel) m_modeLabel->setVisible(groupTab);
+    if (m_selectMode) m_selectMode->setVisible(groupTab);
+    if (m_modeHint)
+    {
+        m_modeHint->setText(selectionTab
+            ? QStringLiteral("点选或框选网格单元后，可创建选择集或调整选择集成员。")
+            : m_advancedCellMode
+                ? QStringLiteral("点击网格选择单元；Shift 框选添加、Ctrl 框选移除。内部单元需先隔离或剖切。")
+                : QStringLiteral("点击上方组名或视图中的区域选择整组；Ctrl/Shift 可多选组。"));
+    }
+    if (m_mergeTargetId)
+    {
+        m_mergeTargetId->setRange(tab == 1 ? 1 : 3, tab == 1 ? 1000000 : MAX_SOLVER_MATYPE);
+        m_mergeTargetId->setVisible(groupTab);
+    }
+    if (m_targetLabel) m_targetLabel->setVisible(groupTab);
+    if (m_mergeTargetName)
+        m_mergeTargetName->setPlaceholderText(selectionTab
+            ? QStringLiteral("选择集名称（选填）") : QStringLiteral("目标组名（选填）"));
+    if (m_mergeButton)
+    {
+        m_mergeButton->setVisible(groupTab);
+        QTableWidget* table = currentGroupTable();
+        const bool hasGroups = table && table->selectionModel()
+            && !table->selectionModel()->selectedRows().isEmpty();
+        m_mergeButton->setEnabled(m_advancedCellMode
+            ? !m_manualCellIds.isEmpty() : hasGroups);
+    }
+}
+
+void MeshGroupingWidget::selectGroupsFromTable()
+{
+    updateGroupActionState();
+    if (m_advancedCellMode) return;
+    const int tab = ui->tabGroupingInfo->currentIndex();
+    if (tab != 0 && tab != 1) return;
+    QTableWidget* table = currentGroupTable();
+    if (!table || !table->selectionModel()) return;
+    auto* svc = ServiceRegistry::instance().getService<MeshModuleControllerService>();
+    if (!svc) return;
+    const MshPickMap map = svc->mshPickMapSolid();
+    const QString field = tab == 0 ? QStringLiteral("MATYPE") : QStringLiteral("LAYER");
+    QSet<int> selected;
+    for (const QModelIndex& index : table->selectionModel()->selectedRows())
+        if (const auto* item = table->item(index.row(), 0))
+            selected.insert(item->text().toInt());
+    m_manualCellIds.clear();
+    for (auto it = map.tagSets.constBegin(); it != map.tagSets.constEnd(); ++it)
+    {
+        const MeshTagSet& set = it.value();
+        if (set.key.category == field && set.key.dim == map.meshDim
+            && selected.contains(set.key.id))
+            for (MeshIdType cid : set.cellIds) m_manualCellIds.insert(cid);
+    }
+    // Stop the old Face selection from affecting subsequent group clicks.
+    m_ignoreFaceSignal = true;
+    PickManager::instance().clearSelection(kPickDomain, kPickUuid, PickMode::Face);
+    m_ignoreFaceSignal = false;
+    m_lastFaceKeys.clear();
+    updateManualSelectionPreview();
+}
+
+void MeshGroupingWidget::mergeSelectedGroups()
+{
+    const int tab = ui->tabGroupingInfo->currentIndex();
+    if (tab != 0 && tab != 1) return;
+    QTableWidget* table = currentGroupTable();
+    if (!table || !table->selectionModel()) return;
+    auto* svc = ServiceRegistry::instance().getService<MeshModuleControllerService>();
+    if (!svc) return;
+    const QString field = tab == 0 ? QStringLiteral("MATYPE") : QStringLiteral("LAYER");
+    const int target = m_mergeTargetId->value();
+    QSet<int> sources;
+    for (const QModelIndex& index : table->selectionModel()->selectedRows())
+        if (const auto* item = table->item(index.row(), 0))
+            sources.insert(item->text().toInt());
+    sources.remove(target); // Selecting the target is harmless.
+    for (int source : sources)
+    {
+        if ((field == QStringLiteral("MATYPE") && source < 3) ||
+            (field == QStringLiteral("LAYER") && source <= 0))
+        {
+            QMessageBox::warning(this, QStringLiteral("合并分组"),
+                QStringLiteral("所选组包含求解器保留材料编号或杆单元安装层号，不能直接合并。"));
+            return;
+        }
+    }
+    if (sources.isEmpty())
+    {
+        QMessageBox::information(this, QStringLiteral("合并分组"),
+            QStringLiteral("请在列表中选择一个或多个需要合并的来源组，并填写不同的目标组编号。"));
+        return;
+    }
+    const MshPickMap map = svc->mshPickMapSolid();
+    QVector<MeshIdType> ids;
+    for (auto it = map.tagSets.constBegin(); it != map.tagSets.constEnd(); ++it)
+    {
+        const MeshTagSet& set = it.value();
+        if (set.key.category != field || !sources.contains(set.key.id)) continue;
+        if (set.key.dim != map.meshDim && !set.cellIds.isEmpty())
+        {
+            QMessageBox::warning(this, QStringLiteral("合并分组"),
+                QStringLiteral("所选组同时包含杆单元或其他维度单元。为避免只合并部分成员，"
+                               "请在相应单元类型的专用页面处理，当前未执行修改。"));
+            return;
+        }
+        ids += set.cellIds;
+    }
+    if (ids.isEmpty())
+    {
+        QMessageBox::warning(this, QStringLiteral("合并分组"),
+            QStringLiteral("所选分组中没有可修改的二维/三维实体单元。"));
+        return;
+    }
+    QStringList sourceNames;
+    for (int id : sources) sourceNames.append(QString::number(id));
+    sourceNames.sort();
+    const QString warning = field == QStringLiteral("LAYER")
+        ? QStringLiteral("施工层合并可能改变开挖/填筑阶段的作用范围，原工况中引用的旧层号不会自动替换。")
+        : QStringLiteral("材料组合并会改变单元材料编号；请确认目标组已配置正确的材料参数，旧材料关联不会自动迁移。");
+    const QString details = QStringLiteral("将 %1 组 [%2] 的 %3 个单元合并到 %4=%5？\n\n%6\n\n另一套 MATYPE/LAYER 属性保持不变。")
+        .arg(field, sourceNames.join(QStringLiteral(", "))).arg(ids.size())
+        .arg(field).arg(target).arg(warning);
+    if (QMessageBox::question(this, QStringLiteral("确认合并分组"), details,
+         QMessageBox::Yes | QMessageBox::No, QMessageBox::No) != QMessageBox::Yes) return;
+    QString error;
+    if (!svc->assignSelectedCellsToGroup(ids, field, target,
+                                          m_mergeTargetName->text().trimmed(), &error))
+    {
+        QMessageBox::warning(this, QStringLiteral("合并失败"), error);
+        return;
+    }
+    // Group names are metadata. Once a source id has no remaining members,
+    // remove its old name, otherwise re-using the id later displays stale text.
+    MshPickMap resultMap = svc->mshPickMapSolid();
+    bool namesChanged = false;
+    for (int source : sources)
+    {
+        bool stillExists = false;
+        for (auto it = resultMap.tagSets.constBegin(); it != resultMap.tagSets.constEnd(); ++it)
+            if (it.key().category == field && it.key().id == source && !it.value().cellIds.isEmpty())
+            {
+                stillExists = true;
+                break;
+            }
+        if (!stillExists)
+        {
+            const QString nameKey = QStringLiteral("%1/%2/%3").arg(field).arg(map.meshDim).arg(source);
+            namesChanged = resultMap.groupDisplayNames.remove(nameKey) > 0 || namesChanged;
+        }
+    }
+    if (namesChanged) svc->setMshPickMapSolid(resultMap);
+    clearManualSelection();
+    refreshGroupList();
+    table->clearSelection();
+    for (int row = 0; row < table->rowCount(); ++row)
+    {
+        const auto* item = table->item(row, 0);
+        if (item && item->text().toInt() == target)
+        {
+            table->selectRow(row);
+            break;
+        }
+    }
+}
+
+QTableWidget* MeshGroupingWidget::currentGroupTable() const
+{
+    const int tab = ui->tabGroupingInfo->currentIndex();
+    if (tab == 0) return ui->tblMatypeGroups;
+    if (tab == 1) return ui->tblLayerGroups;
+    if (tab == 3) return m_selectionSetsTable;
+    return nullptr;
+}
+
+int MeshGroupingWidget::selectedGroupId() const
+{
+    QTableWidget* table = currentGroupTable();
+    if (!table || table->currentRow() < 0)
+        return 0;
+    const auto* item = table->item(table->currentRow(), 0);
+    return item ? item->text().toInt() : 0;
+}
+
+void MeshGroupingWidget::updateManualCount()
+{
+    if (m_manualStatus)
+        m_manualStatus->setText(QStringLiteral("当前选择：%1 个单元%2")
+            .arg(m_manualCellIds.size())
+            .arg(m_manualCellIds.size() > kMaxPreviewCells
+                     ? QStringLiteral("（仅高亮预览前 %1 个）").arg(kMaxPreviewCells)
+                     : QString()));
+    updateGroupActionState();
+}
+
+void MeshGroupingWidget::onPickedFacesChanged()
+{
+    auto* svc = ServiceRegistry::instance().getService<MeshModuleControllerService>();
+    vtkUnstructuredGrid* full = svc ? svc->getVtkUnstructuredGrid() : nullptr;
+    if (!full) return;
+    const auto keys = PickManager::instance().getIdList(kPickDomain, kPickUuid, PickMode::Face);
+    int meshDim = 0;
+    for (vtkIdType cid = 0; cid < full->GetNumberOfCells(); ++cid)
+        if (vtkCell* cell = full->GetCell(cid)) meshDim = qMax(meshDim, cell->GetCellDimension());
+    QSet<qint64> now;
+    for (vtkIdType k : keys) now.insert(static_cast<qint64>(k));
+
+    const int tab = ui->tabGroupingInfo->currentIndex();
+    if (tab == 2) return; // No mesh cell editing on the boundary-group tab.
+    if (!m_advancedCellMode && (tab == 0 || tab == 1))
+    {
+        const QString field = tab == 0 ? QStringLiteral("MATYPE") : QStringLiteral("LAYER");
+        vtkDataArray* values = full->GetCellData() ?
+            full->GetCellData()->GetArray(field.toUtf8().constData()) : nullptr;
+        QTableWidget* table = tab == 0 ? ui->tblMatypeGroups : ui->tblLayerGroups;
+        // Only act on NEW picks; clearing old picks must not randomly change the group.
+        for (vtkIdType key : keys)
+        {
+            if (m_lastFaceKeys.contains(static_cast<qint64>(key))) continue;
+            const vtkIdType cid = key >> 4;
+            if (!values || cid < 0 || cid >= full->GetNumberOfCells()
+                || cid >= values->GetNumberOfTuples()) continue;
+            vtkCell* cell = full->GetCell(cid);
+            if (!cell || cell->GetCellDimension() != meshDim || meshDim < 2) continue;
+            const int groupId = static_cast<int>(values->GetTuple1(cid));
+            for (int row = 0; row < table->rowCount(); ++row)
+            {
+                const auto* item = table->item(row, 0);
+                if (item && item->text().toInt() == groupId)
+                {
+                    // A click selects the complete material/layer group, not one face.
+                    table->selectRow(row);
+                    // Even when the same row was already selected, drop the raw face pick:
+                    // the next click must be treated as a fresh group selection.
+                    m_ignoreFaceSignal = true;
+                    PickManager::instance().clearSelection(kPickDomain, kPickUuid, PickMode::Face);
+                    m_ignoreFaceSignal = false;
+                    m_lastFaceKeys.clear();
+                    return;
+                }
+            }
+        }
+        m_lastFaceKeys = now;
+        return;
+    }
+    // Face IDs are packed as (full-grid cell id << 4) | face local id.
+    // Compare with the PREVIOUS face selection instead of rebuilding the
+    // selected cell set, so a group selection can be edited with more clicks.
+    const QSet<qint64> additions = now - m_lastFaceKeys;
+    const QSet<qint64> removals = m_lastFaceKeys - now;
+    for (qint64 key : additions)
+    {
+        const vtkIdType cid = static_cast<vtkIdType>(key >> 4);
+        vtkCell* c = cid >= 0 && cid < full->GetNumberOfCells() ? full->GetCell(cid) : nullptr;
+        if (c && c->GetCellDimension() == meshDim && meshDim >= 2)
+            m_manualCellIds.insert(cid);
+    }
+    for (qint64 key : removals)
+    {
+        const vtkIdType cid = static_cast<vtkIdType>(key >> 4);
+        m_manualCellIds.remove(cid);
+    }
+    m_lastFaceKeys = now;
+    updateManualSelectionPreview();
+}
+
+void MeshGroupingWidget::clearManualSelection()
+{
+    m_manualCellIds.clear();
+    m_lastFaceKeys.clear();
+    m_ignoreFaceSignal = true;
+    PickManager::instance().clearSelection(kPickDomain, kPickUuid, PickMode::Face);
+    m_ignoreFaceSignal = false;
+    updateManualSelectionPreview();
+}
+
+void MeshGroupingWidget::applyManualGrouping()
+{
+    const int tab = ui->tabGroupingInfo->currentIndex();
+    if ((tab != 0 && tab != 1) || !m_advancedCellMode)
+        return;
+    auto* svc = ServiceRegistry::instance().getService<MeshModuleControllerService>();
+    if (!svc || m_manualCellIds.isEmpty())
+    {
+        QMessageBox::information(this, QStringLiteral("网格分组"), QStringLiteral("请先选择网格单元。"));
+        return;
+    }
+    QVector<MeshIdType> ids;
+    ids.reserve(m_manualCellIds.size());
+    for (MeshIdType id : m_manualCellIds) ids.push_back(id);
+    const QString field = tab == 0 ? QStringLiteral("MATYPE") : QStringLiteral("LAYER");
+    const int target = m_mergeTargetId->value();
+    const QString consequence = tab == 0
+        ? QStringLiteral("这会修改所选单元的材料编号，请核对相应材料参数关联。")
+        : QStringLiteral("这会修改所选单元的施工层号，请核对已有开挖/填筑工况。 ");
+    if (QMessageBox::question(this, QStringLiteral("确认调整分组"),
+          QStringLiteral("将 %1 个单元设为 %2=%3？\n\n%4\n另一套 MATYPE/LAYER 属性保持不变。")
+              .arg(ids.size()).arg(field).arg(target).arg(consequence),
+          QMessageBox::Yes | QMessageBox::No, QMessageBox::No) != QMessageBox::Yes)
+        return;
+    QString error;
+    if (!svc->assignSelectedCellsToGroup(ids, field, target,
+                                          m_mergeTargetName->text().trimmed(), &error))
+    {
+        QMessageBox::warning(this, QStringLiteral("重新分组失败"), error);
+        return;
+    }
+    clearManualSelection();
+    refreshGroupList();
+}
+
+void MeshGroupingWidget::refreshSelectionSets()
+{
+    if (!m_selectionSetsTable) return;
+    m_selectionSetsTable->setRowCount(0);
+    auto* svc = ServiceRegistry::instance().getService<MeshModuleControllerService>();
+    if (!svc) return;
+    const MshPickMap map = svc->mshPickMapSolid();
+    QList<MeshTagSet> sets;
+    for (auto it = map.tagSets.constBegin(); it != map.tagSets.constEnd(); ++it)
+        if (it.key().category == QStringLiteral("Selection") && it.key().dim >= 2)
+            sets.push_back(it.value());
+    std::sort(sets.begin(), sets.end(), [](const MeshTagSet& a, const MeshTagSet& b) {
+        return a.key.id < b.key.id;
+    });
+    m_selectionSetsTable->setRowCount(sets.size());
+    for (int i=0; i<sets.size(); ++i)
+    {
+        m_selectionSetsTable->setItem(i,0,new QTableWidgetItem(QString::number(sets[i].key.id)));
+        m_selectionSetsTable->setItem(i,1,new QTableWidgetItem(sets[i].name));
+        m_selectionSetsTable->setItem(i,2,new QTableWidgetItem(QString::number(sets[i].cellIds.size())));
+    }
+}
+
+void MeshGroupingWidget::writeSelectionSet(const QString& action)
+{
+    auto* svc = ServiceRegistry::instance().getService<MeshModuleControllerService>();
+    vtkUnstructuredGrid* grid = svc ? svc->getVtkUnstructuredGrid() : nullptr;
+    if (!svc || !grid || m_manualCellIds.isEmpty())
+    {
+        QMessageBox::information(this, QStringLiteral("选择集"), QStringLiteral("请先选择网格单元。"));
+        return;
+    }
+    MshPickMap map = svc->mshPickMapSolid();
+    int dim = qMax(2, map.meshDim);
+    int id = selectedGroupId();
+    if (action == "create")
+    {
+        id = 1;
+        while (map.tagSets.contains({QStringLiteral("Selection"), dim, id})) ++id;
+    }
+    if (id <= 0) return;
+    MeshTagKey key{QStringLiteral("Selection"), dim, id};
+    if (action != "create" && !map.tagSets.contains(key))
+    {
+        QMessageBox::warning(this, QStringLiteral("选择集"), QStringLiteral("请先选择已有选择集。"));
+        return;
+    }
+    MeshTagSet set = map.tagSets.value(key);
+    if (action == "create")
+    {
+        set.key = key;
+        set.source = QStringLiteral("Manual");
+        set.name = m_mergeTargetName ? m_mergeTargetName->text().trimmed() : QString();
+        if (set.name.isEmpty()) set.name = QStringLiteral("选择集%1").arg(id);
+    }
+    QSet<MeshIdType> members;
+    for (MeshIdType cid : set.cellIds) members.insert(cid);
+    for (MeshIdType cid : m_manualCellIds)
+    {
+        if (cid < 0 || cid >= grid->GetNumberOfCells()) continue;
+        vtkCell* cell = grid->GetCell(static_cast<vtkIdType>(cid));
+        if (!cell || cell->GetCellDimension() != dim) continue;
+        if (action == "remove") members.remove(cid);
+        else members.insert(cid);
+    }
+    set.cellIds.clear();
+    set.cellIds.reserve(members.size());
+    for (MeshIdType cid : members) set.cellIds.push_back(cid);
+    std::sort(set.cellIds.begin(), set.cellIds.end());
+    map.tagSets.insert(key, set);
+    svc->setMshPickMapSolid(map);
+    refreshSelectionSets();
+}
+
+void MeshGroupingWidget::deleteSelectionSet()
+{
+    if (ui->tabGroupingInfo->currentIndex() != 3 || selectedGroupId() <= 0) return;
+    auto* svc = ServiceRegistry::instance().getService<MeshModuleControllerService>();
+    if (!svc) return;
+    MshPickMap map = svc->mshPickMapSolid();
+    map.tagSets.remove({QStringLiteral("Selection"), qMax(2,map.meshDim), selectedGroupId()});
+    svc->setMshPickMapSolid(map);
+    refreshSelectionSets();
+}
+
+void MeshGroupingWidget::updateManualSelectionPreview()
+{
+    updateManualCount();
+    auto* visual = ServiceRegistry::instance().getService<VisualWidgetService>();
+    if (!visual) return;
+    visual->removeProp(kManualPreviewPropId, false);
+    m_manualPreviewActor = nullptr;
+    auto* svc = ServiceRegistry::instance().getService<MeshModuleControllerService>();
+    vtkUnstructuredGrid* grid = svc ? svc->getVtkUnstructuredGrid() : nullptr;
+    if (!grid || m_manualCellIds.isEmpty()) { visual->render(); return; }
+    vtkNew<vtkIdList> ids;
+    int shown = 0;
+    for (MeshIdType cid : m_manualCellIds)
+    {
+        if (cid >= 0 && cid < grid->GetNumberOfCells()) ids->InsertNextId(cid);
+        if (++shown >= kMaxPreviewCells) break;
+    }
+    if (ids->GetNumberOfIds() == 0) { visual->render(); return; }
+    vtkNew<vtkExtractCells> extract;
+    extract->SetInputData(grid);
+    extract->SetCellList(ids);
+    vtkNew<vtkDataSetSurfaceFilter> surface;
+    surface->SetInputConnection(extract->GetOutputPort());
+    vtkNew<vtkPolyDataMapper> mapper;
+    mapper->SetInputConnection(surface->GetOutputPort());
+    mapper->ScalarVisibilityOff();
+    // This actor overlaps the original mesh surface. Draw it slightly closer
+    // instead of producing z-fighting and a second dense orange wireframe.
+    vtkMapper::SetResolveCoincidentTopologyToPolygonOffset();
+    mapper->SetRelativeCoincidentTopologyPolygonOffsetParameters(-2.0, -2.0);
+    auto actor = vtkSmartPointer<vtkActor>::New();
+    actor->SetMapper(mapper);
+    actor->PickableOff(); // Preview should not intercept further mesh picking.
+    actor->GetProperty()->SetColor(1.0,0.56,0.13);
+    actor->GetProperty()->SetOpacity(0.26);
+    actor->GetProperty()->EdgeVisibilityOff();
+    actor->GetProperty()->SetLighting(false);
+    visual->addProp(kManualPreviewPropId, actor, "网格", "选择预览", false, false);
+    m_manualPreviewActor = actor;
+    visual->render();
 }
 
 void MeshGroupingWidget::updateRangePreview(bool forceOn)

@@ -17,6 +17,7 @@ class vtkGenericOpenGLRenderWindow;
 class vtkRenderer;
 class vtkLookupTable;
 class vtkScalarBarActor;
+class vtkTextActor;
 class vtkAxesActor;
 class vtkOrientationMarkerWidget;
 class vtkCubeAxesActor;
@@ -84,11 +85,18 @@ class VisualizationWidget : public QWidget, public VisualWidgetService
                                 QString* errMsg = nullptr) override;
     void showVisualizationView() override;
     void setViewToolbarVisible(bool visible) override;
+    void setBrandingVisible(bool visible, bool renderNow = true) override;
+    bool isBrandingVisible() const override;
 
     void showOrientationMarker(bool on);
 
   private:
     void initVtk();
+    void initBrandingOverlay();
+    void updateBrandingPlacement();
+    void updateScalarBarTitlePlacement();
+    bool eventFilter(QObject* watched, QEvent* event) override;
+    bool loadBrandingLogo(const QString& path);
     void initViewToolbar();
     void setCameraToAxis(double x, double y, double z);
     void rotateCamera(double azimuthDeg, double elevationDeg);
@@ -124,6 +132,13 @@ class VisualizationWidget : public QWidget, public VisualWidgetService
 
     vtkSmartPointer<vtkLookupTable> m_lut;
     vtkSmartPointer<vtkScalarBarActor> m_scalarBar;
+    QPointer<QLabel> m_scalarBarRichTitle;
+    QString m_scalarBarTitleMarkup;
+    QPointer<QFrame> m_brandingBadge;
+    QPointer<QLabel> m_brandingLogo;
+    QPointer<QLabel> m_brandingChineseName;
+    QPointer<QLabel> m_brandingEnglishName;
+    bool m_brandingDesiredVisible = true;
 
     vtkSmartPointer<vtkAxesActor> m_axes;
     vtkSmartPointer<vtkOrientationMarkerWidget> m_omw;

@@ -1,0 +1,44 @@
+{
+    "display_settings": {
+        "contourEnabled": false,
+        "contourLabelFont": 10,
+        "contourLabels": false,
+        "contourLevels": 10,
+        "contourMonochrome": false,
+        "fieldDisplay": {
+        },
+        "fieldRanges": {
+        },
+        "followMeshFilter": true,
+        "gridLineStrength": 35,
+        "postVisible": true,
+        "representationMode": 0,
+        "scalarBarCustomTitle": "",
+        "scalarBarHasPosition": false,
+        "scalarBarHeight": 62,
+        "scalarBarLabelFont": 11,
+        "scalarBarPositionX": 0,
+        "scalarBarPositionY": 0,
+        "scalarBarPrecision": 4,
+        "scalarBarReverseColors": false,
+        "scalarBarTickCount": 7,
+        "scalarBarTickMode": 0,
+        "scalarBarTickStep": 1,
+        "scalarBarTitleFont": 14,
+        "scalarBarVisible": true,
+        "scalarBarWidth": 8,
+        "showSurfaceOutline": true
+    },
+    "items": [
+    ],
+    "module": "PostProcessing",
+    "result_context": {
+        "analysisKey": "",
+        "fieldAssociation": -1,
+        "fieldName": "",
+        "resultDir": "",
+        "resultFile": "",
+        "timeKey": ""
+    },
+    "root_title": "后处理"
+}

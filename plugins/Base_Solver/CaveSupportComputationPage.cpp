@@ -1,4 +1,5 @@
 #include "CaveSupportComputationPage.h"
+#include "CaveExcavationProtocol.h"
 
 #include <PublicConstants.h>
 #include <PublicVariables.h>
@@ -51,6 +52,8 @@
 
 #include "CaveReinforcementFieldPage.h"
 #include "SolverUiLayoutHelper.h"
+#include "SolverQuietBoundary.h"
+#include "QuietBoundarySelector.h"
 #include "ui_CaveSupportComputationPage.h"
 
 CaveSupportComputationPage::CaveSupportComputationPage(QWidget* parent)
@@ -76,7 +79,7 @@ CaveSupportComputationPage::CaveSupportComputationPage(QWidget* parent)
     m_jaMethodCombo = ui->comboJaMethod;
     m_ifChenCombo = ui->comboIfChen;
     m_idayCaseEdit = ui->editIdayCase;
-    m_ifModeCombo = ui->comboIfMode;
+    m_modalCountSpin = ui->spinModalCount;
     m_ifWaveCombo = ui->comboIfWave;
     m_dtSpin = ui->spinDt;
     m_tstaSpin = ui->spinTsta;
@@ -154,9 +157,7 @@ CaveSupportComputationPage::CaveSupportComputationPage(QWidget* parent)
     m_jaMethodCombo->addItem(QStringLiteral("考虑再生区"), QStringLiteral("2"));
     m_idayCaseEdit->setText(QStringLiteral("0"));
 
-    m_ifModeCombo->clear();
-    m_ifModeCombo->addItem(QStringLiteral("不进行模态分析"), QStringLiteral("0"));
-    m_ifModeCombo->addItem(QStringLiteral("进行模态分析"), QStringLiteral("1"));
+    m_modalCountSpin->setToolTip(QStringLiteral("0 表示不进行模态分析；正整数表示计算的模态阶数。"));
     m_ifWaveCombo->clear();
     m_ifWaveCombo->addItem(QStringLiteral("不进行时程分析"), QStringLiteral("0"));
     m_ifWaveCombo->addItem(QStringLiteral("进行时程分析"), QStringLiteral("1"));
@@ -243,6 +244,19 @@ CaveSupportComputationPage::CaveSupportComputationPage(QWidget* parent)
 
 void CaveSupportComputationPage::setupBusinessUi()
 {
+    m_quietBoundaryCheck = new QCheckBox(QStringLiteral("考虑粘弹性边界"), ui->groupDyna);
+    m_quietBoundaryCheck->setObjectName(QStringLiteral("quietBoundaryCheck"));
+    m_quietBoundaryCheck->setToolTip(QStringLiteral("用于吸收人工截断边界的波动；启用后在模型中选择边界区域。"));
+    m_quietBoundarySelection = new QuietBoundarySelector(ui->groupDyna);
+    m_quietBoundaryStatus = m_quietBoundarySelection->statusLabel();
+    ui->formLayoutDyna->addRow(QString(),m_quietBoundaryCheck);
+    ui->formLayoutDyna->addRow(m_quietBoundarySelection);
+    m_quietBoundarySelection->setEnabled(false);
+    connect(m_quietBoundaryCheck,&QCheckBox::toggled,this,[this](bool enabled){
+        m_quietBoundarySelection->setEnabled(enabled);
+        if(!enabled)m_quietBoundarySelection->stop();
+    });
+
     m_liningGroundwaterGroup = new QGroupBox(QStringLiteral("衬砌与地下水"), this);
     auto* form = new QFormLayout(m_liningGroundwaterGroup);
     form->setFieldGrowthPolicy(QFormLayout::AllNonFixedFieldsGrow);
@@ -400,7 +414,8 @@ void CaveSupportComputationPage::beforeLoad()
 }
 
 
-void CaveSupportComputationPage::beforeUnload() {}
+void CaveSupportComputationPage::beforeUnload() {
+    if(m_quietBoundarySelection)m_quietBoundarySelection->stop();}
 
 void CaveSupportComputationPage::updateCraneBeamInstallStages()
 {
@@ -472,8 +487,12 @@ int CaveSupportComputationPage::excavationLoadMethodCode() const
 
 bool CaveSupportComputationPage::modalAnalysisEnabled() const
 {
-    return m_ifModeCombo &&
-           m_ifModeCombo->currentData().toString() == QStringLiteral("1");
+    return modalCount() > 0;
+}
+
+int CaveSupportComputationPage::modalCount() const
+{
+    return m_modalCountSpin ? m_modalCountSpin->value() : 0;
 }
 
 bool CaveSupportComputationPage::timeHistoryEnabled() const
@@ -942,6 +961,8 @@ void CaveSupportComputationPage::updateAnalysisModeUi()
         ui->groupDynamicControl->setVisible(showDynamic);
     if (ui->groupDyna)
         ui->groupDyna->setVisible(showDynamic);
+    if (m_quietBoundaryStatus)
+        m_quietBoundaryStatus->setText(m_quietBoundarySelection->summary());
 
     updateDynamicDetailsUi();
     updateStaticDependenciesUi();
@@ -1031,6 +1052,10 @@ bool CaveSupportComputationPage::validateInputs(QString* errorMessage) const
     };
 
     const int type = calculationTypeCode();
+    if (m_quietBoundaryCheck && m_quietBoundaryCheck->isChecked()
+        && (type == 2 || type == 3)
+        && !m_quietBoundarySelection->generate())
+        return fail(QStringLiteral("请在模型中选择粘弹性边界区域；当前支持线性边界面（二维选择边）。"));
     if (type == 1 || type == 3)
     {
         const bool hasTask =
@@ -1132,11 +1157,14 @@ QString CaveSupportComputationPage::sectionText()
     text += QString("%1    %2    IF_CHEN    IDAY_CASE\n").arg(c.ifChen, c.idayCase);
     const QString projectDir =
         PublicVariables::instance().get(PublicConstants::kProjectDirectoryKey).toString();
-    QString caseDir = QDir(SolverFilePaths::outputRoot(projectDir)).filePath("CASE01");
+    const QString stateSubdirectory=CaveExcavationProtocol::dynamicStateSubdirectory(
+        liningEnabled(),c.ifJ1toa==QStringLiteral("1"),c.ifE1toa==QStringLiteral("1"),
+        c.ifJall==QStringLiteral("1"),iexcaMax,craneBeamEnabled());
+    QString caseDir = QDir(SolverFilePaths::outputRoot(projectDir)).filePath(stateSubdirectory);
     caseDir = QDir::toNativeSeparators(caseDir) + QDir::separator();
     text += QString("'%1'     DIRDYNA\n").arg(caseDir);
     text += QString("%1     %2   IFMODE   IFWAVE\n")
-                .arg(m_ifModeCombo ? m_ifModeCombo->currentData().toString() : "0",
+                .arg(QString::number(modalCount()),
                      m_ifWaveCombo ? m_ifWaveCombo->currentData().toString() : "0");
     text += QString("%1    %2   %3    DT TSTA TEND\n")
                 .arg(m_dtSpin ? m_dtSpin->value() : 0.005, 0, 'f', 6)
@@ -1175,12 +1203,16 @@ bool CaveSupportComputationPage::exportICaveDatFile(
                  + QDir::separator()},
         {15, QStringLiteral("JDTRACE.DAT")},
         {16, QStringLiteral("KETRACE.DAT")},
-        {17, QStringLiteral("TDTRACE.DAT")}};
+        {17, QStringLiteral("TDTRACE.DAT")},
+        {27, QStringLiteral("FA_DYNA.DAT")},
+        {28, QStringLiteral("---")},
+        {29, QStringLiteral("---")},
+        {30, QStringLiteral("---")}};
 
     const QSet<int> quotedFields = {1, 2, 3, 4, 5, 6, 7, 8, 9, 13, 14,
                                     15, 16, 17, 18, 19, 20, 21, 22, 23,
-                                    24, 25};
-    for (int fieldNo = 1; fieldNo <= 25; ++fieldNo)
+                                    24, 25, 26, 27, 28, 29, 30};
+    for (int fieldNo = 1; fieldNo <= 30; ++fieldNo)
     {
         const QString value = fixedValues.contains(fieldNo)
             ? fixedValues.value(fieldNo) : controlFieldValue(fieldNo);
@@ -1200,6 +1232,9 @@ QJsonObject CaveSupportComputationPage::saveJson()
 {
     saveCurrentCase();
     QJsonObject obj;
+    obj["quiet_boundary_selection"]=m_quietBoundarySelection?m_quietBoundarySelection->save():QJsonObject();
+    obj[QStringLiteral("quiet_boundary_enabled")] =
+        m_quietBoundaryCheck && m_quietBoundaryCheck->isChecked();
     obj[QStringLiteral("ncase")] = 1;
     obj[QStringLiteral("current_case")] = 0;
     obj[QStringLiteral("iexca_max")] = excavationLevelCount();
@@ -1214,8 +1249,7 @@ QJsonObject CaveSupportComputationPage::saveJson()
         excavationDays.append(dayValue.isEmpty() ? QStringLiteral("0") : dayValue);
     }
     obj[QStringLiteral("excavation_days")] = excavationDays;
-    obj[QStringLiteral("ifmode")] =
-        m_ifModeCombo ? m_ifModeCombo->currentData().toString() : QStringLiteral("0");
+    obj[QStringLiteral("ifmode")] = QString::number(modalCount());
     obj[QStringLiteral("ifwave")] =
         m_ifWaveCombo ? m_ifWaveCombo->currentData().toString() : QStringLiteral("0");
     obj[QStringLiteral("dt")] = m_dtSpin ? m_dtSpin->value() : 0.005;
@@ -1242,7 +1276,7 @@ QJsonObject CaveSupportComputationPage::saveJson()
         QStringLiteral("9"), QStringLiteral("12"), QStringLiteral("13"),
         QStringLiteral("14"), QStringLiteral("15"), QStringLiteral("16"),
         QStringLiteral("17")};
-    for (int i = 1; i <= 25; ++i)
+    for (int i = 1; i <= 30; ++i)
     {
         if (!fixed.contains(QString::number(i)))
             obj[QStringLiteral("line_%1").arg(i)] = controlFieldValue(i);
@@ -1262,6 +1296,7 @@ QJsonObject CaveSupportComputationPage::saveJson()
 
 void CaveSupportComputationPage::loadJson(const QJsonObject& obj)
 {
+    m_quietBoundarySelection->load(obj.value("quiet_boundary_selection").toObject(),obj.value("quiet_boundary_enabled").toBool(false));
     m_isUpdatingUi = true;
     m_caseData = CaseData();
     if (m_excavationDaysTable)
@@ -1291,7 +1326,7 @@ void CaveSupportComputationPage::loadJson(const QJsonObject& obj)
         const int index = combo->findData(source.value(key).toString(fallback));
         combo->setCurrentIndex(index >= 0 ? index : 0);
     };
-    setCombo(m_ifModeCombo, obj, QStringLiteral("ifmode"), QStringLiteral("0"));
+    m_modalCountSpin->setValue(obj.value(QStringLiteral("ifmode")).toVariant().toInt());
     setCombo(m_ifWaveCombo, obj, QStringLiteral("ifwave"), QStringLiteral("0"));
     m_dtSpin->setValue(obj.value(QStringLiteral("dt")).toDouble(0.005));
     m_tstaSpin->setValue(obj.value(QStringLiteral("tsta")).toDouble(0.0));
@@ -1326,6 +1361,9 @@ void CaveSupportComputationPage::loadJson(const QJsonObject& obj)
     }
 
     loadLegacyCaveJson(obj);
+    if (obj.contains(QStringLiteral("quiet_boundary_enabled")) && m_quietBoundaryCheck)
+        m_quietBoundaryCheck->setChecked(
+            obj.value(QStringLiteral("quiet_boundary_enabled")).toBool(false));
 
     const bool legacyLining = m_caseData.ifChen == QStringLiteral("1");
     const QString legacySeepCode =
@@ -1405,7 +1443,7 @@ void CaveSupportComputationPage::loadJson(const QJsonObject& obj)
 void CaveSupportComputationPage::loadLegacyCaveJson(const QJsonObject& obj)
 {
     const QStringList fixed = {"1", "2", "4", "6", "8", "9", "12", "13", "14", "15", "16", "17"};
-    for (int i = 1; i <= 25; ++i)
+    for (int i = 1; i <= 30; ++i)
     {
         if (fixed.contains(QString::number(i)))
             continue;
@@ -1474,6 +1512,10 @@ QString CaveSupportComputationPage::controlFieldValue(int fieldNo) const
         return comboValue(m_calculationTypeCombo, QStringLiteral("1"));
     case 23:
         return comboValue(m_excavationLoadMethodCombo, QStringLiteral("2"));
+    case 26:
+        return m_quietBoundaryCheck && m_quietBoundaryCheck->isChecked()
+            && (calculationTypeCode() == 2 || calculationTypeCode() == 3)
+            ? QStringLiteral("1") : QStringLiteral("0");
     case 24:
         return QStringLiteral("%1 %2")
             .arg(comboValue(m_iterationMethodCombo, QStringLiteral("1")))
@@ -1513,6 +1555,10 @@ void CaveSupportComputationPage::setControlFieldValue(int fieldNo, const QString
         return;
     case 23:
         setCombo(m_excavationLoadMethodCombo, value);
+        return;
+    case 26:
+        if (m_quietBoundaryCheck)
+            m_quietBoundaryCheck->setChecked(value.trimmed() == QStringLiteral("1"));
         return;
     case 24:
     {

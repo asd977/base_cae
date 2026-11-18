@@ -166,7 +166,7 @@
      <item>
       <widget class="QGroupBox" name="dataGroup">
        <property name="title">
-        <string>实测地应力数据</string>
+        <string>实测地应力数据（MPa，压正拉负）</string>
        </property>
        <layout class="QVBoxLayout" name="dataLayout">
         <item>

@@ -40,9 +40,12 @@ class GeometryWorkbench : public QObject, public PreProcessingService
     void closeProject() override;
 
     void generateStepFile() override;
+    bool prepareMeshingGeometry(int dimension, QString& outputPath,
+                                QString& diagnostic) override;
     QStringList listEntityIds(int dim) override;
     bool entityCenter(int dim, int id, QVector3D& center) override;
     bool entityMeasure(int dim, int id, double& measure) override;
+    QStringList entitySubshapeIds(int parentDim, int parentId, int childDim) override;
     bool highlightEntity(int dim, int id) override;
     bool highlightEntities(int dim, const QList<int>& ids, bool hoverPreview) override;
     void clearEntityHoverHighlight() override;
@@ -74,7 +77,7 @@ class GeometryWorkbench : public QObject, public PreProcessingService
     // sweep bridge to map the previewed Region onto the partitioned working BREP.
     Q_INVOKABLE QVariantMap externalPartitionRegionInfo(const QVariantList& planes, int regionOrdinal);
     // 选中 Region 后，只显示并拾取该 Region 自己的边界面。返回的 Face ID 是
-    // Region 内稳定局部序号 1..M，不是原 CAD Face ID，也不是临时 Gmsh tag。
+    // Region 内稳定局部序号 1..M，不是原 CAD Face ID，也不是临时 SMESH tag。
     // 局部尺寸/边界层直接拾取：用户无需先选择 Region。内部仍保存 Region:Face，
     // Region 归属由临时 OCC Partition 自动解析；不改变正式 CAD/网格拓扑。
     Q_INVOKABLE bool beginExternalPartitionFaceScenePick(QObject* receiver,

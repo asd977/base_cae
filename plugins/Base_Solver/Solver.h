@@ -72,6 +72,7 @@ class Solver : public QObject, public SolverService
     void connectBoundaryStatus(ProjectNode* node) const;
     void syncSeepageConditionalNodes(ProjectNode* analysisNode) const;
     void syncDamConditionalNodes(ProjectNode* analysisNode) const;
+    void syncQuietBoundaryNode(ProjectNode* owner) const;
     QVector<QPair<QString, QString>> seepageAnalysisSources() const;
     ProjectNode* findAnalysisNodeByUuid(const QString& uuid) const;
     bool prepareDamSeepageFiles(FillStorageCyclePage* cyclePage, int cycleIndex,
@@ -82,6 +83,7 @@ class Solver : public QObject, public SolverService
     int countFillStorageCycles(ProjectNode* analysisNode) const;
     int countGeoStressChildren(ProjectNode* geostressNode, const QString& pageType) const;
     int minimumGeoStressSideFaceCount() const;
+    void syncGeoStressConditionalNodes(ProjectNode* geostressNode) const;
     void syncAnalysisNodeNames() const;
     void syncChildNodeNames(ProjectNode* parent) const;
     void renameNodeByUuid(const QString& uuid);
@@ -93,7 +95,8 @@ class Solver : public QObject, public SolverService
     void addSeepageNaturalBoundaryNode(ProjectNode* analysisNode, bool setCurrent) const;
     void addSlopeLimitSectionNode(ProjectNode* analysisNode, bool setCurrent) const;
     void duplicateSlopeLimitAnalysisNode(ProjectNode* analysisNode);
-    void addGeoStressRegressionNode(ProjectNode* analysisNode, bool setCurrent);
+    void addGeoStressRegressionNode(ProjectNode* analysisNode, bool setCurrent,
+                                    bool notifyExisting = true);
     void addCaveSupportComputationNode(ProjectNode* analysisNode, bool setCurrent);
     void addCaveLiningBoundaryNode(ProjectNode* supportNode, bool innerBoundary,
                                    bool setCurrent) const;
@@ -124,7 +127,7 @@ class Solver : public QObject, public SolverService
     void setComputeWidgetRunning(QWidget* widget, bool computing) const;
     void connectStopRequest(QObject* page) const;
     int solverModeFromAnalysisType(const QString& analysisType) const;
-    bool updateIiiDirDat(const QString& projectDir, int solverMode, int deviceCode) const;
+    bool updateIiiDirDat(const QString& projectDir, int solverMode, int deviceCode, QString* error = nullptr) const;
     bool updateCaveBlockIiiDirDat(const QString& sliderDir) const;
     bool updatePrepDatFiles(const QString& projectDir, int solverMode, int verticalAxis) const;
     bool normalizeGeoStressSolidLayers(QString* errorMessage) const;
@@ -139,7 +142,9 @@ class Solver : public QObject, public SolverService
     QPointer<QWidget> m_activeComputeWidget;
     bool m_solverFinishedNotified{false};
     QString m_solverFailureDetail;
+    bool m_solverErrorOutputSeen=false;
     qint64 m_solverStartedAtMs{0};
+    QString m_seepageContinuationUuid;
     QString m_activeProjectDir;
     QString m_activeAnalysisWorkspace;
     QString m_activeAnalysisUuid;

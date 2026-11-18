@@ -26,6 +26,7 @@
 #include <vtkRenderer.h>
 
 #include <BRep_Builder.hxx>
+#include <BRepCheck_Analyzer.hxx>
 #include <BRep_Tool.hxx>
 #include <BRepTools.hxx>
 #include <BRepGProp.hxx>
@@ -84,6 +85,8 @@
 #include <string>
 #include <utility>
 #include <SketchPanel.h>
+#include "../terrain/TerrainSurfaceBuilder.h"
+#include <SurfaceDomainData.h>
 
 #include "GeometryBuildUtils.h"
 #include "FeatureBuilder.h"
@@ -375,6 +378,15 @@ vtkSmartPointer<vtkActor> makePartitionCutPlanePreviewActor(const QVariantMap& p
 
 void clearGeometryNodeDecoration(QTreeWidgetItem* item);
 
+void removeGeometryContainerCheckBox(ProjectNode* node)
+{
+    if (!node)
+        return;
+    node->setFlags(node->flags() &
+                   ~(Qt::ItemIsUserCheckable | Qt::ItemIsAutoTristate | Qt::ItemIsUserTristate));
+    node->setData(0, Qt::CheckStateRole, QVariant());
+}
+
 void reparentProjectNode(ProjectNode* node, ProjectNode* newParent)
 {
     if (!node || !newParent || node == newParent)
@@ -663,6 +675,10 @@ void GeometryWorkbench::initTreeMenu()
                 addAction(menu, tr("二维草图"), [this]
                 {
                     newGeometryWidget("Sketch2D", PublicConstants::kPageGeomSketch2D, tr("二维草图"));
+                });
+                addAction(menu, tr("等高线地形"), [this]
+                {
+                    newGeometryWidget("TerrainSurface", PublicConstants::kPageGeomTerrainSurface, tr("等高线地形"));
                 });
                 addAction(menu, tr("导入几何"), [this]
                 {
@@ -1291,6 +1307,7 @@ void GeometryWorkbench::newProject()
     m_geomNode = new ProjectNode(tr("几何"));
     m_geomNode->setData(0, ProjectNode::RoleModule, "Geometry");
     m_geomNode->setData(0, ProjectNode::RoleKind, "GeometryRoot");
+    removeGeometryContainerCheckBox(m_geomNode);
     projectManagerService->addTreeItem(m_geomNode);
     installGeometryTreeHooks();
     resetGeometryHistory();
@@ -1664,6 +1681,7 @@ bool GeometryWorkbench::loadProject()
     m_geomNode = new ProjectNode(tr("几何"));
     m_geomNode->setData(0, ProjectNode::RoleModule, "Geometry");
     m_geomNode->setData(0, ProjectNode::RoleKind, "GeometryRoot");
+    removeGeometryContainerCheckBox(m_geomNode);
     projectManagerService->addTreeItem(m_geomNode);
     installGeometryTreeHooks();
 
@@ -1867,6 +1885,8 @@ bool GeometryWorkbench::loadGeometryItems(
         loaded.node = node;
 
         bool restoredFromCache = false;
+        if (type == PublicConstants::kPageGeomTerrainSurface)
+            GeometryDisplayManager::setTerrainPresentation(id);
         if (shapeSnapshots)
         {
             const auto snapshotIt = shapeSnapshots->constFind(id);
@@ -2378,7 +2398,15 @@ void GeometryWorkbench::collectGeometryLeafNodes(ProjectNode* root, QList<Projec
     if (!root)
         return;
 
-    if (root->getPage())
+    BasePage* page = root->getPage();
+    const QString kind = root->data(0, ProjectNode::RoleKind).toString();
+    // The project tree attaches DashboardPage to clicked containers. Having a
+    // page does not make the geometry root/assembly group a model feature.
+    const bool container = root == m_geomNode || root == m_gridNode ||
+        kind == QStringLiteral("GeometryRoot") || kind == QStringLiteral("GeometryGroup") ||
+        kind == QStringLiteral("StepAssemblyGroup") ||
+        (page && page->getPageType() == QStringLiteral("DashboardPage"));
+    if (page && !container)
     {
         out.push_back(root);
         return;
@@ -2430,7 +2458,7 @@ QJsonObject GeometryWorkbench::geometryNodeState(ProjectNode* node) const
         return {};
 
     if (BasePage* page = node->getPage())
-        return page->saveJson();
+        return page->saveJsonForPersistence();
     return {};
 }
 
@@ -2679,6 +2707,7 @@ void GeometryWorkbench::refreshGeometryNodePresentation()
     // 刷新树时阻断 itemChanged；逻辑可见状态由模型树保存，并在必要时重新应用到 Actor。
     QTreeWidget* treeWidget = m_geomNode->treeWidget();
     const bool oldTreeSignalsBlocked = treeWidget ? treeWidget->blockSignals(true) : false;
+    removeGeometryContainerCheckBox(m_geomNode);
 
     // 兼容旧版运行时树：如果根节点下还存在“草图/实体”分组，刷新时自动拍平。
     for (int i = m_geomNode->childCount() - 1; i >= 0; --i)
@@ -3702,6 +3731,333 @@ void GeometryWorkbench::closeProject()
     m_geometryGroups.clear();
 }
 
+
+// The normal "final model" exporter intentionally excludes sketches consumed
+// by extrusion. That is correct for 3D solids, but incorrect for an explicitly
+// approved DXF 2D region: the sketch face must be fed to the 2D mesher instead
+// of the solid's complete skin. Visibility check boxes are not mesh scopes.
+bool GeometryWorkbench::prepareMeshingGeometry(int dimension, QString& outputPath,
+                                                QString& diagnostic)
+{
+    outputPath.clear();
+    diagnostic.clear();
+    const QString dataDir = QDir(QCoreApplication::applicationDirPath()).filePath("data");
+    if (!QDir().mkpath(dataDir))
+    {
+        diagnostic = tr("无法创建网格几何目录：%1").arg(dataDir);
+        return false;
+    }
+    if (dimension == 3)
+    {
+        // Avoid taking a previous successful run's STEP after an export error.
+        const QString step = QDir(dataDir).filePath(QStringLiteral("ExportedModel.step"));
+        generateStepFile();
+        if (!QFileInfo::exists(step) || QFileInfo(step).size() <= 0)
+        {
+            diagnostic = tr("三维网格几何导出失败：没有生成有效的 STEP 文件。");
+            return false;
+        }
+        outputPath = step;
+        diagnostic = tr("三维网格：使用最终模型 STEP 几何。");
+        return true;
+    }
+    if (dimension != 2)
+    {
+        diagnostic = tr("不支持的网格维度：%1").arg(dimension);
+        return false;
+    }
+
+    const QString brep = QDir(dataDir).filePath(QStringLiteral("ExportedMesh2D.brep"));
+    const QString temporary = brep + QStringLiteral(".tmp");
+    QFile::remove(brep);
+    QFile::remove(temporary);
+    QFile::remove(SurfaceDomainData::fileName(brep));
+    try
+    {
+        auto* mgr = GeomManager::GeomManagerInstance::getInstance();
+        if (!mgr || !m_geomNode)
+        {
+            diagnostic = tr("尚未创建可用于二维网格的几何模型。");
+            return false;
+        }
+        QList<ProjectNode*> nodes;
+        collectGeometryLeafNodes(m_geomNode, nodes);
+        TopTools_IndexedMapOfShape explicitlyApprovedFaces;
+        TopTools_IndexedMapOfShape ordinaryFaces;
+        TopTools_IndexedMapOfShape ordinaryShells;
+        TopTools_IndexedMapOfShape consumedSketchFaces;
+        TopTools_IndexedMapOfShape solidSkinFaces;
+        int regionSketches = 0;
+        int terrainSurfaces = 0;
+        TopTools_IndexedMapOfShape terrainDomainFaces;
+        QVector<int> terrainFaceOwners;
+        SurfaceDomainData::Definition domainData;
+        int nextDomain=0,nextMaterialGroup=0;
+        QStringList pendingTerrains;
+        int skippedCurveObjects = 0;
+        QSet<QString> active;
+        for (const QString& uuid : activeGeometryUuids())
+            active.insert(uuid);
+        // Do not rely on the global final-model list for approved sketches:
+        // Extrude consumes a profile and deliberately hides it from that list.
+        for (ProjectNode* node : nodes)
+        {
+            if (!node)
+                continue;
+            const QString uuid = geometryNodeUuid(node);
+            const QJsonObject state = geometryNodeState(node);
+            const QString kind = node->data(0, ProjectNode::RoleKind).toString();
+            const bool isApproved = state.value(QStringLiteral("planarFaceMode")).toBool(false);
+
+            if (kind == QStringLiteral("TerrainSurface") &&
+                !node->data(0, kRoleGeometryConsumed).toBool())
+            {
+                if (!state.value(QStringLiteral("generated")).toBool())
+                {
+                    pendingTerrains.append(node->text(0));
+                    continue;
+                }
+                // Rendering actors and old BREP caches are not authoritative
+                // modelling data. Reconstruct the approved terrain surface from
+                // the saved inputs, just as approved sketch regions are rebuilt.
+                const auto terrain = GeometryTerrain::TerrainSurfaceBuilder::build(
+                    GeometryTerrain::TerrainSurfaceBuilder::sourcesFromState(state),
+                    state.value(QStringLiteral("spacing")).toDouble(5),
+                    GeometryTerrain::TerrainSurfaceBuilder::domainMode(state));
+                if (!terrain.ok())
+                {
+                    diagnostic = tr("地形 %1 无法准备为网格面：%2").arg(node->text(0), terrain.error);
+                    return false;
+                }
+                TopTools_IndexedMapOfShape faces, shells;
+                TopExp::MapShapes(terrain.shape, TopAbs_FACE, faces);
+                TopExp::MapShapes(terrain.shape, TopAbs_SHELL, shells);
+                if (faces.IsEmpty() || shells.IsEmpty())
+                {
+                    diagnostic = tr("地形 %1 的构建结果不含完整的 CAD 地形面，请重新构建地形面。")
+                                     .arg(node->text(0));
+                    return false;
+                }
+                for (int i = 1; i <= faces.Extent(); ++i) ordinaryFaces.Add(faces(i));
+                for (int i = 1; i <= shells.Extent(); ++i) ordinaryShells.Add(shells(i));
+                const int materialGroup=++nextMaterialGroup;
+                QMap<int,int> domainIds;
+                for(const auto& domain:terrain.domains)
+                {
+                    const int id=++nextDomain;domainIds[domain.id]=id;
+                    domainData.names[id]=node->text(0)+QStringLiteral(" / ")+domain.name;
+                    domainData.materialGroups[id]=materialGroup;
+                }
+                for(int i=1;i<=faces.Extent();++i)
+                {
+                    terrainDomainFaces.Add(faces(i));
+                    terrainFaceOwners.append(domainIds.value(terrain.faceDomains.value(i-1)));
+                }
+                ++terrainSurfaces;
+                continue;
+            }
+            // A confirmed sketch region is sourced from its saved selected
+            // documents, not solely from GeomManager's cached shape. Cache
+            // restoration can leave a wire-only runtime object even though
+            // the sketch's approval state and preview are already restored.
+            // Never silently fall back to unrelated faces in this case.
+            if (isApproved &&
+                node->data(0, ProjectNode::RoleKind).toString() == QStringLiteral("Sketch2D"))
+            {
+                auto* sketch = dynamic_cast<Sketch2DDialog*>(node->getPage());
+                if (!sketch)
+                {
+                    diagnostic = tr("已确认构面草图 %1 的编辑数据不可用。").arg(node->text(0));
+                    return false;
+                }
+                TopoDS_Shape approvedShape;
+                QString regionDiagnostic;
+                if (!sketch->buildApprovedMeshingFaces(approvedShape, regionDiagnostic))
+                {
+                    diagnostic = tr("草图 %1 的二维构面无法恢复：%2")
+                                     .arg(node->text(0), regionDiagnostic);
+                    return false;
+                }
+                TopTools_IndexedMapOfShape faces;
+                TopExp::MapShapes(approvedShape, TopAbs_FACE, faces);
+                if (faces.Extent() == 0)
+                {
+                    diagnostic = tr("草图 %1 已记录构面，但重建结果不含 OCC 二维面。")
+                                     .arg(node->text(0));
+                    return false;
+                }
+                for (int i = 1; i <= faces.Extent(); ++i)
+                    explicitlyApprovedFaces.Add(faces(i));
+                ++regionSketches;
+                continue;
+            }
+
+            auto* obj = mgr->getGeomShapeObject(uuid);
+            if (!obj || !obj->getShape() || obj->getShape()->IsNull())
+                continue;
+            const TopoDS_Shape& shape = *obj->getShape();
+            if (isApproved)
+            {
+                TopTools_IndexedMapOfShape faces;
+                TopExp::MapShapes(shape, TopAbs_FACE, faces);
+                for (int i = 1; i <= faces.Extent(); ++i)
+                    explicitlyApprovedFaces.Add(faces(i));
+                if (faces.Extent() > 0)
+                    ++regionSketches;
+                continue;
+            }
+            if (!active.contains(uuid))
+            {
+                // A normal completed sketch can also be a valid 2D mesh source,
+                // even when a later extrusion consumed it in the final 3D model.
+                if (node->data(0, ProjectNode::RoleKind).toString() ==
+                    QStringLiteral("Sketch2D"))
+                {
+                    TopTools_IndexedMapOfShape faces;
+                    TopExp::MapShapes(shape, TopAbs_FACE, faces);
+                    for (int i = 1; i <= faces.Extent(); ++i)
+                        consumedSketchFaces.Add(faces(i));
+                }
+                continue;
+            }
+            TopTools_IndexedMapOfShape solids;
+            TopExp::MapShapes(shape, TopAbs_SOLID, solids);
+            TopTools_IndexedMapOfShape faces;
+            TopExp::MapShapes(shape, TopAbs_FACE, faces);
+            if (solids.Extent() > 0)
+            {
+                for (int i = 1; i <= faces.Extent(); ++i)
+                    solidSkinFaces.Add(faces(i));
+            }
+            else if (faces.Extent() > 0)
+            {
+                for (int i = 1; i <= faces.Extent(); ++i)
+                    ordinaryFaces.Add(faces(i));
+                // A terrain shell is one surface domain. Keep that container
+                // in the BREP instead of flattening all its facets into regions.
+                TopTools_IndexedMapOfShape shells;
+                TopExp::MapShapes(shape, TopAbs_SHELL, shells);
+                for (int i = 1; i <= shells.Extent(); ++i)
+                    ordinaryShells.Add(shells(i));
+            }
+            else
+                ++skippedCurveObjects;
+        }
+
+        const TopTools_IndexedMapOfShape* selectedFaces = nullptr;
+        QString source;
+        if (explicitlyApprovedFaces.Extent() > 0)
+        {
+            selectedFaces = &explicitlyApprovedFaces;
+            source = tr("%1 个已确认构面草图").arg(regionSketches);
+        }
+        else if (ordinaryFaces.Extent() > 0)
+        {
+            selectedFaces = &ordinaryFaces;
+            source = terrainSurfaces > 0
+                ? tr("%1 个已构建地形面及独立二维面").arg(terrainSurfaces)
+                : tr("已有二维面（未发现已确认的线网构面）");
+        }
+        else if (consumedSketchFaces.Extent() > 0)
+        {
+            selectedFaces = &consumedSketchFaces;
+            source = tr("已被三维特征消耗的原始二维草图面");
+        }
+        else if (solidSkinFaces.Extent() > 0)
+        {
+            // Keep the existing "surface of a solid" workflow working.
+            selectedFaces = &solidSkinFaces;
+            source = tr("三维实体的外表面（未找到独立二维面）");
+        }
+        if (!selectedFaces)
+        {
+            diagnostic = pendingTerrains.isEmpty()
+                ? tr("没有可用于二维表面网格的面。请先生成草图二维面或构建地形面。")
+                : tr("地形 %1 尚未构建或输入已修改。请在等高线地形页面点击“构建地形面”，再划分二维表面网格。")
+                      .arg(pendingTerrains.join(QStringLiteral("、")));
+            return false;
+        }
+        TopoDS_Compound compound;
+        BRep_Builder builder;
+        builder.MakeCompound(compound);
+        TopTools_IndexedMapOfShape shellFaces;
+        if (selectedFaces == &ordinaryFaces)
+        {
+            for (int i = 1; i <= ordinaryShells.Extent(); ++i)
+            {
+                builder.Add(compound, ordinaryShells(i));
+                TopExp::MapShapes(ordinaryShells(i), TopAbs_FACE, shellFaces);
+            }
+        }
+        int badFaces = 0;
+        for (int i = 1; i <= selectedFaces->Extent(); ++i)
+        {
+            const TopoDS_Shape& face = (*selectedFaces)(i);
+            if (!BRepCheck_Analyzer(face, Standard_True).IsValid())
+            {
+                ++badFaces;
+                continue;
+            }
+            if (!shellFaces.Contains(face)) builder.Add(compound, face);
+        }
+        if (badFaces > 0)
+        {
+            diagnostic = tr("有 %1 个无效几何面，请检查交叉、重叠或微小区域。")
+                             .arg(badFaces);
+            return false;
+        }
+        if (!BRepTools::Write(compound, QFile::encodeName(temporary).constData()) ||
+            !QFileInfo::exists(temporary) || QFileInfo(temporary).size() <= 0 ||
+            !QFile::rename(temporary, brep))
+        {
+            QFile::remove(temporary);
+            diagnostic = tr("二维网格几何准备失败。");
+            return false;
+        }
+        outputPath = brep;
+        if(selectedFaces==&ordinaryFaces&&terrainSurfaces>0)
+        {
+            TopTools_IndexedMapOfShape exportedFaces;TopExp::MapShapes(compound,TopAbs_FACE,exportedFaces);
+            QHash<int,int> defaultShellOwners;
+            for(int i=1;i<=ordinaryShells.Extent();++i)
+            {
+                TopTools_IndexedMapOfShape faces;TopExp::MapShapes(ordinaryShells(i),TopAbs_FACE,faces);
+                int id=0;
+                for(int f=1;f<=faces.Extent();++f)if(!terrainDomainFaces.Contains(faces(f)))
+                {
+                    if(!id){id=++nextDomain;domainData.materialGroups[id]=++nextMaterialGroup;domainData.names[id]=tr("独立面域 %1").arg(id);}
+                    defaultShellOwners[exportedFaces.FindIndex(faces(f))]=id;
+                }
+            }
+            for(int i=1;i<=exportedFaces.Extent();++i)
+            {
+                const int terrainIndex=terrainDomainFaces.FindIndex(exportedFaces(i));
+                int id=terrainIndex?terrainFaceOwners[terrainIndex-1]:defaultShellOwners.value(i);
+                if(!id){id=++nextDomain;domainData.materialGroups[id]=++nextMaterialGroup;domainData.names[id]=tr("独立面域 %1").arg(id);}
+                domainData.faceDomains.append(id);
+            }
+            if(!SurfaceDomainData::write(brep,domainData,diagnostic))
+            {QFile::remove(brep);outputPath.clear();return false;}
+        }
+        diagnostic = tr("二维网格几何准备完成：%1，%2 个面。未选的草图线及无关实体未混入；另有 %3 个独立曲线对象未参与。采用 OCC BREP 传递面拓扑。")
+                         .arg(source).arg(selectedFaces->Extent()).arg(skippedCurveObjects);
+        return true;
+    }
+    catch (const Standard_Failure& e)
+    {
+        const char* msg = e.GetMessageString();
+        diagnostic = tr("二维网格几何导出失败：%1")
+                         .arg(msg ? QString::fromLocal8Bit(msg) : tr("OCC 异常"));
+    }
+    catch (const std::exception& e)
+    {
+        diagnostic = tr("二维网格几何导出失败：%1").arg(QString::fromLocal8Bit(e.what()));
+    }
+    QFile::remove(temporary);
+    QFile::remove(brep);
+    return false;
+}
+
 void GeometryWorkbench::generateStepFile()
 {
     const QString dataDir = QDir(QCoreApplication::applicationDirPath()).filePath("data");
@@ -3785,7 +4141,7 @@ void GeometryWorkbench::generateStepFile()
             qWarning() << "Failed to generate meshing BREP file:" << brepPath;
         }
 
-        // 普通整体网格继续使用 STEP，保持已经验证稳定的 OCC -> STEP -> Gmsh 路径。
+        // 普通整体网格继续使用 STEP，保持已经验证稳定的 OCC -> STEP -> SMESH 路径。
         STEPControl_Writer stepWriter;
         IFSelect_ReturnStatus transferStatus =
             stepWriter.Transfer(compound, STEPControl_ManifoldSolidBrep);
@@ -3934,6 +4290,8 @@ void GeometryWorkbench::initRibbonActionConn()
                                              QObject::tr("二维草图"),
                                              data.value(QStringLiteral("initialSketchTool")).toString());
                        });
+    reg(PublicConstants::kActionGeomTerrainSurface, [this]
+        { newGeometryWidget("TerrainSurface", PublicConstants::kPageGeomTerrainSurface, tr("等高线地形")); });
 
     reg(PublicConstants::kActionGeomCreatePlanarCircle,
         [this]
@@ -4592,6 +4950,22 @@ QStringList GeometryWorkbench::listEntityIds(int dim)
 bool GeometryWorkbench::entityCenter(int dim, int id, QVector3D& center)
 {
     return GeometryEntityTools::entityCenter(activeGeometryUuids(), dim, id, center);
+}
+
+QStringList GeometryWorkbench::entitySubshapeIds(int parentDim, int parentId, int childDim)
+{
+    QStringList ids;
+    if (parentDim <= childDim || childDim < 1 || parentDim > 3) return ids;
+    TopoDS_Shape parent;
+    const auto uuids = activeGeometryUuids();
+    if (!GeometryEntityTools::entityShape(uuids, parentDim, parentId, parent)) return ids;
+    TopTools_IndexedMapOfShape children;
+    TopExp::MapShapes(parent, childDim == 1 ? TopAbs_EDGE : TopAbs_FACE, children);
+    for (int i=1; i<=children.Extent(); ++i) {
+        const int id = GeometryEntityTools::globalEntityIdForShape(uuids, childDim, children(i));
+        if (id > 0) ids.push_back(QString::number(id));
+    }
+    return ids;
 }
 
 bool GeometryWorkbench::entityMeasure(int dim, int id, double& measure)

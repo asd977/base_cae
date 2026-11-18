@@ -2,6 +2,7 @@
 /build/
 /cmake-build-*/
 /out/
+/dist/
 /bin/
 /obj/
 /x64/
@@ -60,7 +61,8 @@ ui_*.h
 *.bak
 *.autosave
 *.stash
-netgen_smoke.*
+__pycache__/
+*.py[cod]
 /plugins/Base_Mesh.zip
 
 # IDE and OS files

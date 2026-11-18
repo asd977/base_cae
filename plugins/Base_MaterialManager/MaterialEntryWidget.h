@@ -103,6 +103,8 @@ class MaterialEntryWidget : public BasePage
     QMap<QString, QLineEdit*> m_creepValueEdits;
 
     CustomComboBox* m_matypeCombo = nullptr;
+    QCheckBox* m_viewPickCheck = nullptr;
+    bool m_viewPickEnabled = true;
     QPushButton* m_applyButton = nullptr;
 
     QListWidget* m_appliedMatypesList = nullptr;

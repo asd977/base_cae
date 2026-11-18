@@ -38,7 +38,7 @@
       </sizepolicy>
      </property>
      <property name="text">
-      <string>网格分组设置</string>
+      <string>网格分组</string>
      </property>
     </widget>
    </item>

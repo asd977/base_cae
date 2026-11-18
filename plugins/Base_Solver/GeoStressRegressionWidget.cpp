@@ -7,6 +7,7 @@
 #include <QDir>
 #include <QFile>
 #include <QJsonObject>
+#include <QLabel>
 #include <QStringConverter>
 #include <QTextStream>
 
@@ -38,7 +39,13 @@ GeoStressRegressionWidget::GeoStressRegressionWidget(QWidget* parent)
     ui->reservedEdit->setText("0");
     ui->reservedEdit->hide();
     ui->label8->hide();
-
+    m_modeHint = new QLabel(this);
+    m_modeHint->setObjectName(QStringLiteral("geoStressModeHint"));
+    m_modeHint->setWordWrap(true);
+    ui->contentLayout->insertWidget(1, m_modeHint);
+    connect(ui->calcModeCombo, qOverload<int>(&QComboBox::currentIndexChanged), this,
+            [this]{updateModeUi();emit calculationModeChanged();});
+    updateModeUi();
 
     connect(ui->btnCompute, &QPushButton::clicked, this, &GeoStressRegressionWidget::onComputeClicked);
 }
@@ -50,6 +57,19 @@ GeoStressRegressionWidget::~GeoStressRegressionWidget()
 
 void GeoStressRegressionWidget::beforeLoad()
 {
+    updateModeUi();
+}
+
+void GeoStressRegressionWidget::updateModeUi()
+{
+    const bool gravity = calculationModeCode() == 0;
+    ui->factorEdit->setEnabled(!gravity);
+    ui->label6->setEnabled(!gravity);
+    ui->lambdaEdit->setEnabled(gravity);
+    ui->label11->setEnabled(gravity);
+    m_modeHint->setText(gravity
+        ? QStringLiteral("侧立面、实测地应力点和附加外面力在此模式下不参与计算。侧压力系数可用于修正自重场的水平应力。")
+        : QStringLiteral("使用侧立面、地表边界和实测地应力点建立回归应力场。"));
 }
 
 void GeoStressRegressionWidget::beforeUnload()
@@ -100,7 +120,7 @@ bool GeoStressRegressionWidget::exportIGEOSDatFile(const ExportPayload& payload)
     os << "'" << payload.sideFaceFiles.value(1, "FA_SIDE2.DAT") << "'       4\n";
     os << "'" << payload.sideFaceFiles.value(2, "FA_SIDE3.DAT") << "'       5\n";
     os << "'" << payload.sideFaceFiles.value(3, "FA_SIDE4.DAT") << "'       6\n";
-    os << "'" << ui->factorEdit->text().trimmed() << "'       7\n";
+    os << "'" << (calculationModeCode() == 0 ? QStringLiteral("1") : ui->factorEdit->text().trimmed()) << "'       7\n";
     os << "'" << QString::number(ui->calcModeCombo->currentIndex()) << "'       8\n";
     os << "'" << ui->reservedEdit->text().trimmed() << "'       9\n";
     os << "'" << (payload.forceFile.isEmpty() ? kForceFileName : payload.forceFile) << "'      10\n";
@@ -164,6 +184,7 @@ void GeoStressRegressionWidget::loadJson(const QJsonObject& obj)
     ui->calcModeCombo->setCurrentIndex(obj.value("calc_mode").toInt(ui->calcModeCombo->currentIndex()));
     ui->reservedEdit->setText(obj.value("reserved").toString(ui->reservedEdit->text()));
     ui->lambdaEdit->setText(obj.value("lambda").toString(ui->lambdaEdit->text()));
+    updateModeUi();
 
     // 兼容旧工程：measure_rows/face_rows 由子节点替代，因此不再在主页面恢复。
 }

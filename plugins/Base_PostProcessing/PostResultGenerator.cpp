@@ -2318,6 +2318,23 @@ PostResultGenerator::Result PostResultGenerator::generate(const Options& options
                                  QStringLiteral("stress_level"), source.suffix),
                        QStringLiteral("STRESS LEVEL"), {QStringLiteral("SL")},
                        buildStressLevel(raw), result, optionalExpandedWithExcavated);
+
+        // NODCMM: PGEN/EG_UE, QGEN/EG_UT, GAMAMAX/EG_WP, SL, FUN, ...
+        // Preserve the solver's signed FUN values and native scale. Its physical
+        // meaning depends on the constitutive model; it is not a global FOS.
+        // Older four-column files still provide SL, but cannot provide FUN.
+        if (std::any_of(raw.cbegin(), raw.cend(),
+                        [](const QVector<double>& row) { return row.size() >= 5; }))
+        {
+            QVector<QVector<double>> functionValues(raw.size());
+            for (int i = 0; i < raw.size(); ++i)
+                functionValues[i] = {safeValue(raw.at(i), 4)};
+            generateField(outputDir, mesh, expanded, groups, stressMasks,
+                          outputName(external, QStringLiteral("TEC_FUN.DAT"),
+                                     QStringLiteral("material_function"), source.suffix),
+                          QStringLiteral("MATERIAL FUNCTION FUN"), {QStringLiteral("FUN")},
+                          functionValues, result, optionalExpandedWithExcavated);
+        }
     }
 
     const QVector<FieldSource> ruptureSources = fieldSources(resultDir, QStringLiteral("IIICMM"), false);

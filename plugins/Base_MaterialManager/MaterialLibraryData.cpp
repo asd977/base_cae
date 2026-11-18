@@ -2,6 +2,43 @@
 
 namespace
 {
+MaterialModel createHoekBrownModel()
+{
+    MaterialModel model;
+    model.key = QStringLiteral("hoek_brown_rock");
+    model.displayName = QStringLiteral("霍克-布朗本构");
+    model.ib = 11;
+
+    model.columns << QStringLiteral("序号") << QStringLiteral("变形模量E（GPa）")
+                  << QStringLiteral("泊松比μ") << QStringLiteral("容重t/m3")
+                  << QStringLiteral("岩体常数mb") << QStringLiteral("岩体常数a")
+                  << QStringLiteral("岩体常数s")
+                  << QStringLiteral("完整岩石单轴抗压强度σci（MPa）");
+    model.columnOutputRows = QVector<int>(model.columns.size(), -1);
+    return model;
+}
+
+MaterialModel createDruckerPragerModel()
+{
+    MaterialModel model;
+    model.key = QStringLiteral("drucker_prager_rock");
+    model.displayName = QStringLiteral("Drucker–Prager本构");
+    model.ib = 3;
+    model.columns << QStringLiteral("序号") << QStringLiteral("变形模量E（GPa）")
+                  << QStringLiteral("泊松比μ") << QStringLiteral("容重t/m3")
+                  << QStringLiteral("内摩擦角φ（°）") << QStringLiteral("凝聚力C‘（MPa）")
+                  << QStringLiteral("剪胀角(°)") << QStringLiteral("DP子类型")
+                  << QStringLiteral("抗压强度Rc（MPa）") << QStringLiteral("抗拉强度Rt（MPa）");
+    model.displayColumns << QStringLiteral("序号") << QStringLiteral("变形模量（GPa）")
+                         << QStringLiteral("泊松比") << QStringLiteral("容重（t/m³）")
+                         << QStringLiteral("内摩擦角（°）") << QStringLiteral("凝聚力（MPa）")
+                         << QStringLiteral("剪胀角（°）") << QStringLiteral("D-P 屈服面类型")
+                         << QStringLiteral("抗压强度Rc（MPa，0自动）")
+                         << QStringLiteral("抗拉强度Rt（MPa，0自动）");
+    model.columnOutputRows = QVector<int>(model.columns.size(), -1);
+    return model;
+}
+
 MaterialModel createHuangjinpingModel()
 {
     MaterialModel model;
@@ -153,6 +190,15 @@ MaterialModel createSoilEmuCrushModel()
 }
 
 
+MaterialModel createPlanarElasticBeamModel()
+{
+    MaterialModel model;model.key=QStringLiteral("planar_elastic_beam");model.displayName=QStringLiteral("平面弹性梁");model.ib=1;
+    model.columns << QStringLiteral("序号") << QStringLiteral("弹性模量E（GPa）") << QStringLiteral("截面积A（m2）")
+        << QStringLiteral("截面惯性矩Iz（m4）") << QStringLiteral("容重t/m3");
+    model.displayColumns=model.columns;model.columnOutputRows=QVector<int>(model.columns.size(),-1);
+    return model;
+}
+
 MaterialModel createHuangjinpingBarModel()
 {
     MaterialModel model;
@@ -200,14 +246,18 @@ MaterialModel createDagangshanIsotropicModel()
                   << QStringLiteral("抗拉强度Rt（MPa）")
                   << QStringLiteral("残余抗剪断强度内摩擦系数")
                   << QStringLiteral("残余凝聚力C‘（MPa）")
+                  << QStringLiteral("残余摩擦系数沿用峰值")
+                  << QStringLiteral("残余凝聚力沿用峰值")
                   << QStringLiteral("剪胀角(°)");
     model.displayColumns << QStringLiteral("序号") << QStringLiteral("变形模量（GPa）")
                          << QStringLiteral("泊松比") << QStringLiteral("容重（t/m³）")
                          << QStringLiteral("内摩擦系数 f") << QStringLiteral("凝聚力（MPa）")
                          << QStringLiteral("抗压强度 Rc（0=自动）")
                          << QStringLiteral("抗拉强度 Rt（0=自动）")
-                         << QStringLiteral("残余内摩擦系数 fr（0=沿用峰值）")
-                         << QStringLiteral("残余凝聚力（0=沿用峰值）")
+                         << QStringLiteral("残余内摩擦系数 fr")
+                         << QStringLiteral("残余凝聚力（MPa）")
+                         << QStringLiteral("残余摩擦系数沿用峰值")
+                         << QStringLiteral("残余凝聚力沿用峰值")
                          << QStringLiteral("剪胀角（°）");
 
     model.columnOutputRows = QVector<int>(model.columns.size(), -1);
@@ -386,6 +436,13 @@ MaterialModel createSoilEbModel()
 
 QString defaultMaterialPropertyValue(const QString& modelKey, const QString& column)
 {
+    if(modelKey==QStringLiteral("planar_elastic_beam"))
+    {
+        if(column==QStringLiteral("弹性模量E（GPa）"))return QStringLiteral("200");
+        if(column==QStringLiteral("截面积A（m2）"))return QStringLiteral("0.01");
+        if(column==QStringLiteral("截面惯性矩Iz（m4）"))return QStringLiteral("0.0001");
+        if(column==QStringLiteral("容重t/m3"))return QStringLiteral("7.85");
+    }
     const auto valueFrom = [&column](const QMap<QString, QString>& values) -> QString {
         const auto it = values.constFind(column);
         return it == values.constEnd() ? QStringLiteral("0") : it.value();
@@ -394,12 +451,43 @@ QString defaultMaterialPropertyValue(const QString& modelKey, const QString& col
     // 初值优先取自本模块已有材料/渗流/流变样表中的代表行。
     // 关联编号以及样表未单列、但程序已有明确中性语义的可选字段使用 0。
     // 只用于新建/缺失字段初始化，不覆盖工程中已有值。
+    if (modelKey == QStringLiteral("hoek_brown_rock"))
+    {
+        // Sample-only starting values; the user must calibrate actual material data.
+        static const QMap<QString, QString> values = {
+            {QStringLiteral("变形模量E（GPa）"), QStringLiteral("10")},
+            {QStringLiteral("泊松比μ"), QStringLiteral("0.25")},
+            {QStringLiteral("容重t/m3"), QStringLiteral("2.6")},
+            {QStringLiteral("岩体常数mb"), QStringLiteral("1.5")},
+            {QStringLiteral("岩体常数a"), QStringLiteral("0.5")},
+            {QStringLiteral("岩体常数s"), QStringLiteral("0.01")},
+            {QStringLiteral("完整岩石单轴抗压强度σci（MPa）"), QStringLiteral("100")},
+        };
+        return valueFrom(values);
+    }
+
+    if (modelKey == QStringLiteral("drucker_prager_rock"))
+    {
+        static const QMap<QString, QString> values = {
+            {QStringLiteral("变形模量E（GPa）"), QStringLiteral("10")},
+            {QStringLiteral("泊松比μ"), QStringLiteral("0.27")},
+            {QStringLiteral("容重t/m3"), QStringLiteral("2.62")},
+            {QStringLiteral("内摩擦角φ（°）"), QStringLiteral("35")},
+            {QStringLiteral("凝聚力C‘（MPa）"), QStringLiteral("1.5")},
+            {QStringLiteral("剪胀角(°)"), QStringLiteral("0")},
+            {QStringLiteral("DP子类型"), QStringLiteral("1")},
+            {QStringLiteral("抗压强度Rc（MPa）"), QStringLiteral("0")},
+            {QStringLiteral("抗拉强度Rt（MPa）"), QStringLiteral("0")},
+        };
+        return valueFrom(values);
+    }
+
     if (modelKey == QStringLiteral("huangjinping_underground_plant"))
     {
         static const QMap<QString, QString> values = {
             {QStringLiteral("母岩材料编号"), QStringLiteral("0")},
             {QStringLiteral("岩类分区"), QStringLiteral("0")},
-            {QStringLiteral("半开挖区荷载释放系数"), QStringLiteral("0")},
+            {QStringLiteral("半开挖区荷载释放系数"), QStringLiteral("1")},
             {QStringLiteral("再生时对应开挖级"), QStringLiteral("0")},
             {QStringLiteral("变形模量E（GPa）"), QStringLiteral("9.0")},
             {QStringLiteral("泊松比μ"), QStringLiteral("0.25")},
@@ -526,11 +614,13 @@ QString defaultMaterialPropertyValue(const QString& modelKey, const QString& col
             {QStringLiteral("容重t/m3"), QStringLiteral("2.62")},
             {QStringLiteral("抗剪断强度内摩擦系数"), QStringLiteral("1.2")},
             {QStringLiteral("凝聚力C‘（MPa）"), QStringLiteral("1.5")},
-            // 0 表示沿用旧版自动逻辑：Rc/Rt 由 c、φ 推导；残余强度沿用峰值。
+            // Rc/Rt 为0表示自动推导；两个独立标志控制残余强度是否沿用峰值。
             {QStringLiteral("抗压强度Rc（MPa）"), QStringLiteral("0")},
             {QStringLiteral("抗拉强度Rt（MPa）"), QStringLiteral("0")},
             {QStringLiteral("残余抗剪断强度内摩擦系数"), QStringLiteral("0")},
             {QStringLiteral("残余凝聚力C‘（MPa）"), QStringLiteral("0")},
+            {QStringLiteral("残余摩擦系数沿用峰值"), QStringLiteral("1")},
+            {QStringLiteral("残余凝聚力沿用峰值"), QStringLiteral("1")},
             {QStringLiteral("剪胀角(°)"), QStringLiteral("0")},
         };
         return valueFrom(values);
@@ -659,10 +749,10 @@ QString defaultMaterialPropertyValue(const QString& modelKey, const QString& col
 
 QVector<MaterialModel> createDefaultMaterialModels()
 {
-    return {createHuangjinpingModel(), createSoilEbModel(), createSoilEmuModel(),
+    return {createHoekBrownModel(), createDruckerPragerModel(), createHuangjinpingModel(), createSoilEbModel(), createSoilEmuModel(),
             createSoilEmuCrushModel(),
             createDamDynamicModel(), createHuangjinpingBarModel(), createDagangshanIsotropicModel(),
-            createNanshuiModel(), createSoilKgModel()};
+            createNanshuiModel(), createSoilKgModel(),createPlanarElasticBeamModel()};
 }
 
 QVector<MaterialModel> createSeepageSubModels()

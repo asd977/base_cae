@@ -32,6 +32,7 @@
 #include <limits>
 
 #include "ResultDisplayNames.h"
+#include "PostComboBoxPerformance.h"
 #include "ui_ProbeSettingsWidget.h"
 
 static inline QString sci(double v, int prec = 6)
@@ -397,6 +398,9 @@ void ProbeSettingsWidget::setupTableIfNeeded()
                             QStringLiteral("Z"), QStringLiteral("物理量"),
                             QStringLiteral("类型"), QStringLiteral("数值")};
         ui->probeTable->setHorizontalHeaderLabels(headers);
+        // Column 4 stores the original, searchable label text; only paint subscripts.
+        ui->probeTable->setItemDelegateForColumn(
+            4, new PostComboBoxPerformance::FixedHeightDelegate(ui->probeTable));
         ui->probeTable->horizontalHeader()->setSectionResizeMode(QHeaderView::Stretch);
         ui->probeTable->verticalHeader()->setVisible(false);
         ui->probeTable->setEditTriggers(QAbstractItemView::NoEditTriggers);

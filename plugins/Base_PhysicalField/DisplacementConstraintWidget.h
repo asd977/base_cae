@@ -18,6 +18,8 @@ class vtkPolyData;
 class vtkCellPicker;
 class vtkCallbackCommand;
 class vtkIntArray;
+class QDoubleSpinBox;
+class QComboBox;
 
 class vtkAssembly;
 class vtkOrientationMarkerWidget;
@@ -50,6 +52,10 @@ class DisplacementConstraintWidget : public BasePage
     int uxFlag();
     int uyFlag();
     int uzFlag();
+    int rotationFlag() const;
+    bool hasPrescribedDisplacement() const;
+    bool isPrescribed(int axis) const;
+    double prescribedValue(int axis) const;
 
     // 刷新当前位移约束节点的全局方向指示器。
     // 指示器固定在视口右下角，并随主视图相机旋转；约束方向通过轴端约束板表达。
@@ -78,6 +84,9 @@ class DisplacementConstraintWidget : public BasePage
 
   private:
     Ui::DisplacementConstraintWidget* ui = nullptr;
+    QDoubleSpinBox* m_prescribed[3] = {};
+    QComboBox* m_rotation=nullptr;
+    QDoubleSpinBox* m_rotationValue=nullptr;
     bool m_coordinateRangeLoaded = false;
     bool m_constraintPageActive = false;
     VisualWidgetService* m_visual = nullptr;

@@ -14,6 +14,8 @@
 #include <QComboBox>
 #include <QDoubleSpinBox>
 #include <QJsonObject>
+#include <QJsonArray>
+#include <QGridLayout>
 #include <QLabel>
 #include <QMessageBox>
 #include <QPushButton>
@@ -22,6 +24,7 @@
 #include <QSignalBlocker>
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <functional>
 #include <unordered_map>
@@ -102,6 +105,7 @@ static void initConstraintCombo(QComboBox* combo)
     combo->clear();
     combo->addItem(QStringLiteral("固定"), QStringLiteral("0"));
     combo->addItem(QStringLiteral("自由"), QStringLiteral("1"));
+    combo->addItem(QStringLiteral("指定位移"), QStringLiteral("2"));
     combo->addItem(QStringLiteral("悬空杆件节点（专用）"), QStringLiteral("-10000"));
     combo->setCurrentIndex(0);
 }
@@ -719,9 +723,29 @@ DisplacementConstraintWidget::DisplacementConstraintWidget(QWidget* parent)
     initConstraintCombo(ui->UXLineEdit);
     initConstraintCombo(ui->UYLineEdit);
     initConstraintCombo(ui->UZLineEdit);
+    const std::array<QComboBox*,3> directionCombos={ui->UXLineEdit,ui->UYLineEdit,ui->UZLineEdit};
+    for(int axis=0;axis<3;++axis)
+    {
+        auto* value=new QDoubleSpinBox(this);
+        value->setObjectName(QStringLiteral("prescribedValue%1").arg(axis));
+        value->setDecimals(10);value->setRange(-1.e6,1.e6);value->setSuffix(QStringLiteral(" m"));
+        value->setToolTip(QStringLiteral("施加给当前选区的位移，正负号按全局坐标方向；自定义荷载静力分析使用。"));
+        m_prescribed[axis]=value;ui->gridLayout->addWidget(value,axis,2);value->hide();
+        connect(directionCombos[axis],qOverload<int>(&QComboBox::currentIndexChanged),this,
+            [this,axis,directionCombos]{m_prescribed[axis]->setVisible(directionCombos[axis]->currentData().toString()==QStringLiteral("2"));});
+    }
 
     const int NDIM = PublicVariables::instance().get(PublicConstants::kMeshDimension).toInt();
     const bool is2D = (NDIM == 2);
+    auto* rotationLabel=new QLabel(QStringLiteral("绕 Z 转动（平面梁）"),this);
+    m_rotation=new QComboBox(this);initConstraintCombo(m_rotation);
+    const int prescribedIndex=m_rotation->findData(QStringLiteral("2"));m_rotation->setItemText(prescribedIndex,QStringLiteral("指定转角"));
+    m_rotation->removeItem(m_rotation->findData(QStringLiteral("-10000")));
+    setConstraintValue(m_rotation,QStringLiteral("1"));
+    m_rotationValue=new QDoubleSpinBox(this);m_rotationValue->setDecimals(10);m_rotationValue->setRange(-1.e6,1.e6);m_rotationValue->setSuffix(QStringLiteral(" rad"));
+    ui->gridLayout->addWidget(rotationLabel,4,0);ui->gridLayout->addWidget(m_rotation,4,1);ui->gridLayout->addWidget(m_rotationValue,4,2);
+    rotationLabel->setVisible(is2D);m_rotation->setVisible(is2D);m_rotationValue->hide();
+    connect(m_rotation,qOverload<int>(&QComboBox::currentIndexChanged),this,[this,is2D]{m_rotationValue->setVisible(is2D&&m_rotation->currentData().toString()==QStringLiteral("2"));});
     ui->UZLineEdit->setEnabled(!is2D);
     ui->UZLineEdit->setToolTip(is2D ? QStringLiteral("二维模型不使用 Z 方向") : QString());
 
@@ -1047,6 +1071,9 @@ QJsonObject DisplacementConstraintWidget::saveJson()
     obj["ux"] = ui->UXLineEdit->currentData().toString();
     obj["uy"] = ui->UYLineEdit->currentData().toString();
     obj["uz"] = ui->UZLineEdit->currentData().toString();
+    QJsonArray prescribed;for(auto* field:m_prescribed)prescribed.append(field->value());
+    obj["prescribed_values"] = prescribed;
+    obj["rz"]=m_rotation->currentData().toString();obj["prescribed_rz"]=m_rotationValue->value();
     obj["click_pick_enabled"] = ui->pickEnableCheckBox->isChecked();
     obj["whole_patch_on_click"] = ui->smartPatchCheckBox->isChecked();
 
@@ -1125,6 +1152,15 @@ void DisplacementConstraintWidget::loadJson(const QJsonObject& obj)
                        obj.value("uy").toString(ui->UYLineEdit->currentData().toString()));
     setConstraintValue(ui->UZLineEdit,
                        obj.value("uz").toString(ui->UZLineEdit->currentData().toString()));
+    const auto prescribed=obj.value("prescribed_values").toArray();
+    setConstraintValue(m_rotation,obj.value("rz").toString(QStringLiteral("1")));
+    m_rotationValue->setValue(obj.value("prescribed_rz").toDouble());
+    m_rotationValue->setVisible(PublicVariables::instance().get(PublicConstants::kMeshDimension).toInt()==2&&m_rotation->currentData().toString()==QStringLiteral("2"));
+    for(int axis=0;axis<3;++axis)
+    {
+        m_prescribed[axis]->setValue(prescribed.size()>axis?prescribed[axis].toDouble():0.0);
+        m_prescribed[axis]->setVisible(axis<PublicVariables::instance().get(PublicConstants::kMeshDimension).toInt()&&isPrescribed(axis));
+    }
 
     ui->pickEnableCheckBox->setChecked(obj.value("click_pick_enabled").toBool(true));
     ui->smartPatchCheckBox->setChecked(obj.value("whole_patch_on_click").toBool(true));
@@ -1590,18 +1626,46 @@ void DisplacementConstraintWidget::refreshConstraintVisualization(bool renderNow
 
 int DisplacementConstraintWidget::uxFlag()
 {
+    if(isPrescribed(0))return 0;
     return ui->UXLineEdit->currentData().toInt();
 }
 
 int DisplacementConstraintWidget::uyFlag()
 {
+    if(isPrescribed(1))return 0;
     return ui->UYLineEdit->currentData().toInt();
 }
 
 int DisplacementConstraintWidget::uzFlag()
 {
+    if(isPrescribed(2))return 0;
     return ui->UZLineEdit->currentData().toInt();
 }
+
+bool DisplacementConstraintWidget::isPrescribed(int axis) const
+{
+    if(axis==2&&PublicVariables::instance().get(PublicConstants::kMeshDimension).toInt()==2)
+        return m_rotation&&m_rotation->currentData().toString()==QStringLiteral("2");
+    const std::array<QComboBox*,3> combos={ui->UXLineEdit,ui->UYLineEdit,ui->UZLineEdit};
+    return axis>=0&&axis<3&&combos[axis]->currentData().toString()==QStringLiteral("2");
+}
+
+bool DisplacementConstraintWidget::hasPrescribedDisplacement() const
+{
+    const int dimension=PublicVariables::instance().get(PublicConstants::kMeshDimension).toInt();
+    for(int axis=0;axis<dimension;++axis)if(isPrescribed(axis))return true;
+    if(dimension==2&&isPrescribed(2))return true;
+    return false;
+}
+
+double DisplacementConstraintWidget::prescribedValue(int axis) const
+{
+    if(axis==2&&PublicVariables::instance().get(PublicConstants::kMeshDimension).toInt()==2)return m_rotationValue->value();
+    return axis>=0&&axis<3?m_prescribed[axis]->value():0.0;
+}
+
+int DisplacementConstraintWidget::rotationFlag() const
+{return isPrescribed(2)?0:m_rotation->currentData().toInt();}
 
 void DisplacementConstraintWidget::onNodePicked(const QString& domain, const QString& activeUuid,
                                                 GridKind kind, vtkIdType pointId, int nodeId,

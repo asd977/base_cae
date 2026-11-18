@@ -12,8 +12,8 @@ struct PhysicalFieldService
     virtual void newProject() = 0;
     virtual bool saveProject() = 0;
     virtual bool loadProject() = 0;
-    virtual void generateIIIDFile() = 0;
-    virtual void generateIIWLFile() = 0;
+    virtual bool generateIIIDFile() = 0;
+    virtual bool generateIIWLFile() = 0;
     virtual bool importIIIDFile(const QString& filePath, QString* errorMessage = nullptr) = 0;
 
     // “约束与荷载 -> 地震加速度”是全工程共享的地震输入。
@@ -25,5 +25,6 @@ struct PhysicalFieldService
 
     virtual QString pageTitleByUuid(const QString& uuid) const = 0;
     virtual void closeProject() = 0;
+    virtual bool hasPrescribedDisplacements() const = 0;
 };
 #endif // PHYSICALFIELDSERVICE_H

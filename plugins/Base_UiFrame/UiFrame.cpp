@@ -21,6 +21,7 @@
 #include <QCoreApplication>
 #include <QDir>
 #include <QHBoxLayout>
+#include <QFrame>
 #include <QIcon>
 #include <QLabel>
 #include <QMenu>
@@ -95,15 +96,15 @@ ThemeColors currentThemeColors()
     if (theme == QStringLiteral("blue"))
     {
         return {theme,
-                QStringLiteral("#073760"), QStringLiteral("#3f7193"),
-                QStringLiteral("#006ec2"), QStringLiteral("#c4e1f5"),
-                QStringLiteral("#b8d7ee"), QStringLiteral("#e9f6ff"),
-                QStringLiteral("#d5eaf8"), QStringLiteral("#e3f2fb"),
-                QStringLiteral("#82b4d6"), QStringLiteral("#2c80bd"),
-                QStringLiteral("#cce8fa"), QStringLiteral("#add9f3"),
-                QStringLiteral("#b8def6"), QStringLiteral("#7bb0d3"),
-                QStringLiteral("#2e86c7"), QStringLiteral("#006ec2"),
-                QStringLiteral("#137ecf"), QStringLiteral("#00599f"), QString()};
+                QStringLiteral("#173c5b"), QStringLiteral("#486a85"),
+                QStringLiteral("#1e6296"), QStringLiteral("#c4d9eb"),
+                QStringLiteral("#b4cee3"), QStringLiteral("#dceaf5"),
+                QStringLiteral("#cbdff0"), QStringLiteral("#d3e4f1"),
+                QStringLiteral("#9bbbd4"), QStringLiteral("#5e8fb5"),
+                QStringLiteral("#bed8ec"), QStringLiteral("#a4c8e3"),
+                QStringLiteral("#aed0e8"), QStringLiteral("#a5bfd3"),
+                QStringLiteral("#6b9cbe"), QStringLiteral("#245d89"),
+                QStringLiteral("#3375a7"), QStringLiteral("#1c4b71"), QString()};
     }
     return {QStringLiteral("light"),
             QStringLiteral("#000000"), QStringLiteral("#68727c"),
@@ -338,7 +339,7 @@ UiFrame::UiFrame(QWidget* parent, SARibbonMainWindowStyles style)
     //        m_dockManager->setStyleSheet("ads--CDockContainerWidget {
     //        background-color: white; }");
     //    }
-    setWindowIcon(QIcon(":/resources/icon.svg"));
+    setWindowIcon(QIcon(":/resources/icon.ico"));
 }
 
 UiFrame::~UiFrame()
@@ -757,42 +758,7 @@ void UiFrame::setDockWidgetStyle()
             }
         )");
     }
-    else if (c.id == QStringLiteral("blue"))
-    {
-        qss += QString::fromUtf8(R"(
-            ads--CDockManager,
-            ads--CDockContainerWidget {
-                background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
-                                            stop:0 #c5e4f8, stop:1 #a9cfe8);
-            }
 
-            ads--CDockAreaWidget {
-                background: #eff9ff;
-                border: 1px solid #7fb0d3;
-            }
-
-            ads--CDockAreaWidget[focused="true"] {
-                background: #eff9ff;
-                border-color: @dockFocusBorder@;
-            }
-
-            QSplitter::handle {
-                width: 2px;
-                height: 2px;
-                background: #7bb0d3;
-            }
-
-            QSplitter::handle:hover {
-                background: #2e86c7;
-            }
-
-            ads--CAutoHideSideBar {
-                background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
-                                            stop:0 #eff9ff, stop:1 #cfe7f8);
-                border: 1px solid #79afd5;
-            }
-        )");
-    }
 
     qss.replace(QStringLiteral("@dockFocusBorder@"), dockFocusBorder(c));
     m_dockManager->setStyleSheet(themedStyle(qss, c));
@@ -895,30 +861,7 @@ void UiFrame::updateAreaTabStyle(ads::CDockAreaWidget* area)
             }
         )");
     }
-    else if (c.id == QStringLiteral("blue"))
-    {
-        titleStyle += QString::fromUtf8(R"(
-            ads--CDockAreaTitleBar {
-                background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
-                                            stop:0 #f9fdff, stop:0.45 #e1f2fc,
-                                            stop:1 #c8e4f7);
-                border-top: 1px solid #ffffff;
-                border-bottom: 1px solid #78acd1;
-            }
 
-            ads--CDockAreaTitleBar ads--CTitleBarButton:hover {
-                background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
-                                            stop:0 #fbfeff, stop:1 #cae7f8);
-                border: 1px solid #74acd2;
-            }
-
-            ads--CDockAreaTitleBar ads--CTitleBarButton:pressed {
-                background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
-                                            stop:0 #a9d4ef, stop:1 #d6edf9);
-                border: 1px solid #2f80bb;
-            }
-        )");
-    }
     titleBar->setStyleSheet(themedStyle(titleStyle, c));
 
     auto* tabBar = titleBar->tabBar();
@@ -1047,8 +990,7 @@ void UiFrame::applyThemeToUi()
             }
 
             SARibbonBar#geoCaeRibbonBar QStackedWidget > QWidget,
-            SARibbonBar#geoCaeRibbonBar SARibbonCategory,
-            SARibbonBar#geoCaeRibbonBar SARibbonCategory > QWidget {
+            SARibbonBar#geoCaeRibbonBar SARibbonCategory {
                 background: @surface@;
                 border: none;
                 margin: 0px;
@@ -1058,12 +1000,13 @@ void UiFrame::applyThemeToUi()
             SARibbonBar#geoCaeRibbonBar SARibbonPannel {
                 background: @surface@;
                 border: none;
-                border-right: 1px solid @border@;
+                border-radius: 0px;
             }
 
             SARibbonBar#geoCaeRibbonBar SARibbonPannel > QWidget {
                 background: transparent;
                 border: none;
+                border-radius: 0px;
             }
 
             SARibbonBar#geoCaeRibbonBar SARibbonCategoryScrollButton,
@@ -1105,51 +1048,6 @@ void UiFrame::applyThemeToUi()
             }
         )"), c));
 
-        if (c.id == QStringLiteral("blue"))
-        {
-            m_ribbon->setStyleSheet(m_ribbon->styleSheet() + QString::fromUtf8(R"(
-                SARibbonBar#geoCaeRibbonBar {
-                    background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
-                                                stop:0 #f9fdff, stop:0.42 #eaf6fe,
-                                                stop:1 #cfe8f8);
-                    border-bottom: 1px solid #579cd0;
-                }
-
-                SARibbonBar#geoCaeRibbonBar QStackedWidget,
-                SARibbonBar#geoCaeRibbonBar QStackedWidget > QWidget,
-                SARibbonBar#geoCaeRibbonBar SARibbonCategory,
-                SARibbonBar#geoCaeRibbonBar SARibbonCategory > QWidget {
-                    background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
-                                                stop:0 #f8fdff, stop:1 #d7edf9);
-                    border: none;
-                    margin: 0px;
-                    padding: 0px;
-                }
-
-                SARibbonBar#geoCaeRibbonBar SARibbonPannel,
-                SARibbonBar#geoCaeRibbonBar SARibbonPannel > QWidget {
-                    background: transparent;
-                    border-right: 1px solid #86b8d8;
-                }
-
-                SARibbonBar#geoCaeRibbonBar SARibbonCategoryScrollButton,
-                SARibbonBar#geoCaeRibbonBar SARibbonButtonGroupWidget {
-                    background: transparent;
-                }
-
-                SARibbonBar#geoCaeRibbonBar QToolButton:hover {
-                    color: #005fa8;
-                    background: #d9eefb;
-                }
-
-                SARibbonBar#geoCaeRibbonBar QToolButton:pressed,
-                SARibbonBar#geoCaeRibbonBar QToolButton:checked {
-                    color: #005fa8;
-                    background: #bcdff4;
-                }
-            )"));
-        }
-
         if (auto* categoryTabBar = m_ribbon->findChild<QTabBar*>())
         {
             categoryTabBar->setDocumentMode(true);
@@ -1171,7 +1069,7 @@ void UiFrame::applyThemeToUi()
                     min-height: 30px;
                     padding: 0px 10px;
                     margin: 0px;
-                    font-size: 10pt;
+                    font-size: 10.5pt;
                 }
 
                 QTabBar::tab:hover:!selected {
@@ -1192,35 +1090,11 @@ void UiFrame::applyThemeToUi()
             )"), c));
 
             if (c.id == QStringLiteral("blue"))
-            {
-                categoryTabBar->setStyleSheet(categoryTabBar->styleSheet() + QString::fromUtf8(R"(
-                    QTabBar {
-                        background: transparent;
-                        border: none;
-                        margin-top: 2px;
-                    }
+                categoryTabBar->setStyleSheet(categoryTabBar->styleSheet() + QStringLiteral(
+                    "QTabBar::tab { color: #173c5b; }"
+                    "QTabBar::tab:hover:!selected { color: #173c5b; background: #bed8ec; }"
+                    "QTabBar::tab:selected { color: #174d76; background: #edf5fb; }"));
 
-                    QTabBar::tab {
-                        color: #073760;
-                        background: transparent;
-                    }
-
-                    QTabBar::tab:hover:!selected {
-                        color: #005fa8;
-                        background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
-                                                    stop:0 #fbfeff, stop:1 #d3edfb);
-                    }
-
-                    QTabBar::tab:selected {
-                        color: #005fa8;
-                        background: #f8fdff;
-                        border-left: 1px solid #5a9ed0;
-                        border-top: 1px solid #5a9ed0;
-                        border-right: 1px solid #5a9ed0;
-                        border-bottom: none;
-                    }
-                )"));
-            }
 
         }
 
@@ -1234,7 +1108,7 @@ void UiFrame::applyThemeToUi()
                     border-radius: 0px;
                     padding: 0px 15px;
                     margin-top: 2px;
-                    font-size: 10pt;
+                    font-size: 10.5pt;
                     font-weight: 600;
                 }
 
@@ -1250,6 +1124,7 @@ void UiFrame::applyThemeToUi()
                 }
             )"), c));
         }
+
     }
 
     const QString menuStyle = themedStyle(QString::fromUtf8(R"(
@@ -1494,6 +1369,10 @@ void UiFrame::arrangeDefaultDockLayout()
         m_dockManager->addDockWidget(ads::BottomDockWidgetArea, m_physicalDockWidget, visualArea);
     m_dockManager->addDockWidgetTabToArea(m_logDockWidget, outputArea);
 
+    // Give the model canvas the largest share; keep names and settings readable.
+    m_dockManager->setSplitterSizes(modelArea, {230, 330, 1000});
+    m_dockManager->setSplitterSizes(outputArea, {650, 180});
+
     m_centerDockArea = settingsArea;
     m_defaultLayoutArranged = true;
     captureDefaultDockState();
@@ -1555,6 +1434,16 @@ void UiFrame::buildRibbonAppButton()
 
 void UiFrame::buildRibbonTabs()
 {
+    {
+        auto* cate = m_ribbon->addCategoryPage("渗流");
+        cate->setObjectName("seepageAnalysisObj");
+        auto* panel = cate->addPannel("分析");
+        auto* actParam =
+            makeAction(this, ":/resources/menu/minimal/analysis-seepage.svg", "&渗流分析");
+        addActionToPanel(panel, actParam, 3);
+        bindEvent(this, actParam, PublicConstants::kActionSeepageKey);
+    }
+
     // =========================
     // 几何
     // =========================
@@ -1636,6 +1525,10 @@ void UiFrame::buildRibbonTabs()
                 makeAction(this, ":/resources/menu/minimal/polygon.svg", "&多边形");
 
             profileMenu->addAction(actSketch);
+            auto* actTerrain = makeAction(this, ":/resources/menu/minimal/analysis-slope.svg", "等高线地形");
+            actTerrain->setToolTip("导入带高程的等高线，构建三维地形面");
+            profileMenu->addAction(actTerrain);
+            bindEvent(this, actTerrain, PublicConstants::kActionGeomTerrainSurface);
             profileMenu->addSeparator();
             profileMenu->addAction(actProfileRect);
             profileMenu->addAction(actProfileCircle);
@@ -1762,9 +1655,9 @@ void UiFrame::buildRibbonTabs()
 
         // ---------- 检查与测量 ----------
         {
-            auto* panel = cate->addPannel("检查");
-            auto* actCheck = makeAction(this, ":/resources/menu/geometry/check-repair.svg", "&检查修复");
-            auto* actMeasure = makeAction(this, ":/resources/menu/geometry/measure.svg", "&测量");
+            // auto* panel = cate->addPannel("检查");
+            // auto* actCheck = makeAction(this, ":/resources/menu/geometry/check-repair.svg", "&检查修复");
+            // auto* actMeasure = makeAction(this, ":/resources/menu/geometry/measure.svg", "&测量");
             // addActionToPanel(panel, actCheck, 2);
             // addActionToPanel(panel, actMeasure, 2);
             // bindEvent(this, actCheck, PublicConstants::kActionGeomCheckRepair);
@@ -1805,24 +1698,24 @@ void UiFrame::buildRibbonTabs()
             bindEvent(this, actGlobal, PublicConstants::kActionPreprocessMeshGlobal);
         }
 
-               // ---------- 尺寸控制 ----------
+               // ---------- 局部网格设置 ----------
         {
-            auto* panel = cate->addPannel("尺寸控制");
-
-            auto* actVolCtrl =
-                makeAction(this, ":/resources/menu/minimal/mesh-vol.svg", "&体控制");
-            auto* actFaceCtrl =
-                makeAction(this, ":/resources/menu/minimal/mesh-face.svg", "&面控制");
-            auto* actEdgeCtrl =
-                makeAction(this, ":/resources/menu/minimal/mesh-edge.svg", "&边控制");
-
-            addActionToPanel(panel, actVolCtrl, 3);
-            addActionToPanel(panel, actFaceCtrl, 3);
-            addActionToPanel(panel, actEdgeCtrl, 3);
-
-            bindEvent(this, actVolCtrl, PublicConstants::kActionPreprocessCtrlVolume);
-            bindEvent(this, actFaceCtrl, PublicConstants::kActionPreprocessCtrlSurface);
-            bindEvent(this, actEdgeCtrl, PublicConstants::kActionPreprocessCtrlEdge);
+            auto* panel = cate->addPannel("局部网格");
+            auto* actVolume = makeAction(this, ":/resources/menu/minimal/mesh-vol.svg", "体网格设置");
+            auto* actFace = makeAction(this, ":/resources/menu/minimal/mesh-face.svg", "面网格设置");
+            auto* actEdge = makeAction(this, ":/resources/menu/minimal/mesh-edge.svg", "边网格设置");
+            auto* actSweep = makeAction(this, ":/resources/menu/geometry/sweep.svg", "扫掠网格");
+            auto* actPartition = makeAction(this, ":/resources/menu/minimal/mesh-vol.svg", "扫掠分块");
+            addActionToPanel(panel, actVolume, 2);
+            addActionToPanel(panel, actFace, 2);
+            addActionToPanel(panel, actEdge, 2);
+            addActionToPanel(panel, actSweep, 2);
+            addActionToPanel(panel, actPartition, 2);
+            bindEvent(this, actVolume, PublicConstants::kActionPreprocessMeshSingle);
+            bindEvent(this, actFace, PublicConstants::kActionPreprocessMeshLocalFace);
+            bindEvent(this, actEdge, PublicConstants::kActionPreprocessMeshLocalEdge);
+            bindEvent(this, actSweep, PublicConstants::kActionPreprocessMeshSweep);
+            bindEvent(this, actPartition, PublicConstants::kActionPreprocessMeshPartition);
         }
 
                // ---------- 网格工具 ----------
@@ -1833,19 +1726,19 @@ void UiFrame::buildRibbonTabs()
                 makeAction(this, ":/resources/menu/minimal/mesh-edit.svg", "&显示控制");
             auto* actBarElements =
                 makeAction(this, ":/resources/menu/minimal/mesh-bar-placement.svg", "&杆单元布置");
-            // auto* actMeshGrouping =
-            //     makeAction(this, ":/resources/menu/minimal/mesh-group.svg", "&网格分组");
+            auto* actMeshGrouping =
+                makeAction(this, ":/resources/menu/minimal/mesh-edit.svg", "&网格分组");
             auto* actQuality =
                 makeAction(this, ":/resources/menu/minimal/mesh-quality.svg", "&质量检查");
 
             addActionToPanel(panel, actMeshEdit, 3);
             addActionToPanel(panel, actBarElements, 3);
-            // addActionToPanel(panel, actMeshGrouping, 3);
+            addActionToPanel(panel, actMeshGrouping, 3);
             addActionToPanel(panel, actQuality, 3);
 
             bindEvent(this, actMeshEdit, PublicConstants::kActionPreprocessMeshEdit);
             bindEvent(this, actBarElements, PublicConstants::kActionPreprocessBarElements);
-            // bindEvent(this, actMeshGrouping, PublicConstants::kActionPreprocessMeshGrouping);
+            bindEvent(this, actMeshGrouping, PublicConstants::kActionPreprocessMeshGrouping);
             bindEvent(this, actQuality, PublicConstants::kActionPreprocessQualityStd);
         }
     }
@@ -1869,12 +1762,17 @@ void UiFrame::buildRibbonTabs()
                     });
         };
 
-               // ---------- 土体本构 ----------
+               // ---------- 本构模型 ----------
         {
-            auto* panel = cate->addPannel("土体本构");
+            auto* commonPanel = cate->addPannel("常用本构");
+            auto* otherPanel = cate->addPannel("其他本构");
 
             auto* actSoilEb =
                 makeAction(this, ":/resources/menu/minimal/mat-soil-eb.svg", "E-B本构");
+            auto* actMohrCoulomb =
+                makeAction(this, ":/resources/menu/minimal/mat-dagangshan.svg", "摩尔-库仑本构");
+            auto* actHoekBrown =
+                makeAction(this, ":/resources/menu/minimal/mat-dagangshan.svg", "霍克-布朗本构");
             auto* actSoilEmu =
                 makeAction(this, ":/resources/menu/minimal/mat-soil-emu.svg", "E-μ本构");
             auto* actSoilEmuCrush =
@@ -1883,40 +1781,8 @@ void UiFrame::buildRibbonTabs()
                 makeAction(this, ":/resources/menu/minimal/mat-nanshui.svg", "南水非线性本构");
             auto* actKg =
                 makeAction(this, ":/resources/menu/minimal/mat-kg.svg", "K-G本构");
-
-            addActionToPanel(panel, actSoilEb, 2);
-            addActionToPanel(panel, actSoilEmu, 2);
-            addActionToPanel(panel, actSoilEmuCrush, 2);
-            addActionToPanel(panel, actNanshui, 2);
-            addActionToPanel(panel, actKg, 2);
-
-            addMaterialAction(actSoilEb, QStringLiteral("soil_eb"));
-            addMaterialAction(actSoilEmu, QStringLiteral("soil_emu"));
-            addMaterialAction(actSoilEmuCrush, QStringLiteral("soil_emu_crush"));
-            addMaterialAction(actNanshui, QStringLiteral("soil_nanshui"));
-            addMaterialAction(actKg, QStringLiteral("soil_kg"));
-        }
-
-               // ---------- 岩体本构 ----------
-        {
-            auto* panel = cate->addPannel("岩体本构");
-
-            auto* actHoekBrown =
-                makeAction(this, ":/resources/menu/minimal/mat-dagangshan.svg", "霍克-布朗本构");
-            auto* actDagangshan =
-                makeAction(this, ":/resources/menu/minimal/mat-dagangshan.svg", "摩尔-库仑本构");
-
-            addActionToPanel(panel, actHoekBrown, 2);
-            addActionToPanel(panel, actDagangshan, 2);
-
-            addMaterialAction(actHoekBrown, QStringLiteral("hoek_brown_rock"));
-            addMaterialAction(actDagangshan, QStringLiteral("dagangshan_isotropic"));
-        }
-
-               // ---------- 工程模型 ----------
-        {
-            auto* panel = cate->addPannel("工程模型");
-
+            auto* actDp =
+                makeAction(this, ":/resources/menu/minimal/mat-dagangshan.svg", "Drucker–Prager本构");
             auto* actHjp =
                 makeAction(this, ":/resources/menu/minimal/mat-hjp.svg", "围岩开挖模型");
             auto* actDynamic =
@@ -1924,9 +1790,27 @@ void UiFrame::buildRibbonTabs()
             auto* actBar =
                 makeAction(this, ":/resources/menu/minimal/mat-bar.svg", "锚杆单元模型");
 
-            addActionToPanel(panel, actHjp, 2);
-            addActionToPanel(panel, actDynamic, 2);
-            addActionToPanel(panel, actBar, 2);
+            addActionToPanel(commonPanel, actSoilEb, 2);
+            addActionToPanel(commonPanel, actMohrCoulomb, 2);
+            addActionToPanel(commonPanel, actHoekBrown, 2);
+            addActionToPanel(commonPanel, actDp, 2);
+
+            addActionToPanel(otherPanel, actSoilEmu, 2);
+            addActionToPanel(otherPanel, actSoilEmuCrush, 2);
+            addActionToPanel(otherPanel, actNanshui, 2);
+            addActionToPanel(otherPanel, actKg, 2);
+            addActionToPanel(otherPanel, actHjp, 2);
+            addActionToPanel(otherPanel, actDynamic, 2);
+            addActionToPanel(otherPanel, actBar, 2);
+
+            addMaterialAction(actSoilEb, QStringLiteral("soil_eb"));
+            addMaterialAction(actMohrCoulomb, QStringLiteral("dagangshan_isotropic"));
+            addMaterialAction(actHoekBrown, QStringLiteral("hoek_brown_rock"));
+            addMaterialAction(actDp, QStringLiteral("drucker_prager_rock"));
+            addMaterialAction(actSoilEmu, QStringLiteral("soil_emu"));
+            addMaterialAction(actSoilEmuCrush, QStringLiteral("soil_emu_crush"));
+            addMaterialAction(actNanshui, QStringLiteral("soil_nanshui"));
+            addMaterialAction(actKg, QStringLiteral("soil_kg"));
 
             addMaterialAction(actHjp, QStringLiteral("huangjinping_underground_plant"));
             addMaterialAction(actDynamic, QStringLiteral("dam_dynamic"));
@@ -2042,48 +1926,47 @@ void UiFrame::buildRibbonTabs()
     }
 
            // =========================
-           // 分析
+           // 渗流 / 土石坝 / 洞室 / 边坡
            // =========================
+
     {
-        auto* cate = m_ribbon->addCategoryPage("分析");
-        cate->setObjectName("analysisObj");
-
-        auto* panel = cate->addPannel("分析类型");
-
-        auto* actParam =
-            makeAction(this, ":/resources/menu/minimal/analysis-seepage.svg", "&渗流分析");
+        auto* cate = m_ribbon->addCategoryPage("土石坝");
+        cate->setObjectName("damAnalysisObj");
+        auto* panel = cate->addPannel("计算");
         auto* actStress =
             makeAction(this, ":/resources/menu/minimal/analysis-dam.svg", "&土石坝计算");
+        addActionToPanel(panel, actStress, 3);
+        bindEvent(this, actStress, PublicConstants::kActionStressStrainKey);
+    }
+
+    {
+        auto* cate = m_ribbon->addCategoryPage("洞室");
+        cate->setObjectName("caveAnalysisObj");
+        auto* panel = cate->addPannel("分析");
         auto* actCave =
             makeAction(this, ":/resources/menu/minimal/analysis-cave.svg", "&洞室开挖");
-        auto* actSlope =
-            makeAction(this, ":/resources/menu/minimal/analysis-slope.svg", "&边坡分析");
         auto* actBlock =
             makeAction(this, ":/resources/menu/minimal/analysis-block.svg", "&块体稳定");
+        addActionToPanel(panel, actCave, 3);
+        addActionToPanel(panel, actBlock, 3);
+        bindEvent(this, actCave, PublicConstants::kActionCaveExcavationKey);
+        bindEvent(this, actBlock, PublicConstants::kActionCaveBlockStabilityKey);
+    }
 
+    {
+        auto* cate = m_ribbon->addCategoryPage("边坡");
+        cate->setObjectName("slopeAnalysisObj");
+        auto* panel = cate->addPannel("分析");
+        auto* actSlope =
+            makeAction(this, ":/resources/menu/minimal/analysis-slope.svg", "&边坡分析");
         auto* actSpecification =
             makeAction(this,
                        ":/resources/menu/minimal/analysis-specification.svg",
                        "&规范验算");
-
-        addActionToPanel(panel, actParam, 3);
-        addActionToPanel(panel, actStress, 3);
-        addActionToPanel(panel, actCave, 3);
         addActionToPanel(panel, actSlope, 3);
-        addActionToPanel(panel, actBlock, 3);
         addActionToPanel(panel, actSpecification, 3);
-
-        bindEvent(this, actParam, PublicConstants::kActionSeepageKey);
-        bindEvent(this, actStress, PublicConstants::kActionStressStrainKey);
-        bindEvent(this, actCave, PublicConstants::kActionCaveExcavationKey);
         bindEvent(this, actSlope, PublicConstants::kActionSlopeStabilityKey);
-        bindEvent(this, actBlock, PublicConstants::kActionCaveBlockStabilityKey);
-
-
-
-        bindEvent(this,
-                  actSpecification,
-                  PublicConstants::kActionSpecificationCheckKey);
+        bindEvent(this, actSpecification, PublicConstants::kActionSpecificationCheckKey);
     }
 
            // =========================
@@ -2190,7 +2073,7 @@ void UiFrame::buildRibbonTabs()
             m_themeActionGroup->setExclusive(true);
 
             m_themeLightAction = themeMenu->addAction(QStringLiteral("浅灰"));
-            m_themeBlueAction = themeMenu->addAction(QStringLiteral("工程蓝"));
+            m_themeBlueAction = themeMenu->addAction(QStringLiteral("深蓝"));
             m_themeDarkAction = themeMenu->addAction(QStringLiteral("暗色"));
 
             const QList<QPair<QAction*, QString>> themeActions = {

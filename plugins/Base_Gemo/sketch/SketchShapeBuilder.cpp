@@ -1,6 +1,10 @@
 #include "SketchShapeBuilder.h"
 
 #include <BRep_Builder.hxx>
+#include <BRepTools.hxx>
+#include <BRepBuilderAPI_Transform.hxx>
+#include <gp_Trsf.hxx>
+#include <sstream>
 #include <BRepBuilderAPI_MakeEdge.hxx>
 #include <BRepBuilderAPI_MakeFace.hxx>
 #include <BRepBuilderAPI_MakePolygon.hxx>
@@ -427,6 +431,25 @@ ShapeBuildResult SketchShapeBuilder::build(const SketchDocument& document, const
 
     try
     {
+        if (document.kind() == SketchDocument::Kind::NativeCurve)
+        {
+            TopoDS_Shape shape;BRep_Builder builder;
+            std::istringstream stream(document.nativeBrep().toStdString());
+            BRepTools::Read(shape, stream, builder);
+            if (shape.IsNull()) return fail(QStringLiteral("精确曲线数据无效。"));
+            gp_Trsf transform;
+            const gp_Pnt origin=toWorldPoint(planeSettings,0,0),u=toWorldPoint(planeSettings,1,0),v=toWorldPoint(planeSettings,0,1);
+            const gp_Vec x(origin,u),y(origin,v),n=x.Crossed(y);
+            transform.SetValues(x.X(),y.X(),n.X(),origin.X(),x.Y(),y.Y(),n.Y(),origin.Y(),x.Z(),y.Z(),n.Z(),origin.Z());
+            shape=BRepBuilderAPI_Transform(shape,transform,true).Shape();
+            if (document.isClosed() && planeSettings.outputMode==OutputMode::Entity && shape.ShapeType()==TopAbs_WIRE)
+            {
+                BRepBuilderAPI_MakeFace face(TopoDS::Wire(shape));
+                if(!face.IsDone()) return fail(QStringLiteral("闭合精确曲线构面失败。"));
+                shape=face.Shape();
+            }
+            ShapeBuildResult result;result.ok=true;result.shape=shape;return result;
+        }
         if (document.kind() == SketchDocument::Kind::Circle)
         {
             const auto& center = document.points().front();

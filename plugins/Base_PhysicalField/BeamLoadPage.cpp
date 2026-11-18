@@ -57,6 +57,8 @@ static QString boundaryDisplayText(MeshModuleControllerService* meshSvc, const M
 BeamLoadPage::BeamLoadPage(QWidget* parent) : BasePage("BeamLoadPage"), ui(new Ui::BeamLoadPage)
 {
     ui->setupUi(this);
+    ui->doubleSpinBoxA->setDecimals(6);ui->doubleSpinBoxA->setRange(0,1.e9);
+    ui->doubleSpinBoxP->setDecimals(6);ui->doubleSpinBoxP->setRange(-1.e15,1.e15);
 
     // 一些默认值（你可按需要改）
     ui->spinBoxLDTYPE->setValue(0);

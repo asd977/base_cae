@@ -13,6 +13,7 @@
 
 class TopoDS_Shape;
 class vtkActor;
+class vtkActor2D;
 class vtkCallbackCommand;
 class vtkCamera;
 class vtkObject;
@@ -65,6 +66,7 @@ public:
     void setBoxSelectionEnabled(bool enabled);
 
     bool screenToUv(int x, int y, double& u, double& v) const;
+    double screenToleranceUv(int pixels = 9) const;
 
     std::function<void(double u, double v, bool rightButton)> clickHandler;
     std::function<void(double u, double v)> moveHandler;
@@ -139,7 +141,7 @@ private:
     vtkSmartPointer<vtkActor> m_rubberLineActor;
     vtkSmartPointer<vtkActor> m_constructionGuideActor;
     vtkSmartPointer<vtkActor> m_tangentGuideActor;
-    vtkSmartPointer<vtkActor> m_snapActor;
+    vtkSmartPointer<vtkActor2D> m_snapActor;
     vtkSmartPointer<vtkActor> m_selectionBoxActor;
     vtkSmartPointer<vtkTextActor> m_cursorTextActor;
     vtkSmartPointer<vtkTextActor> m_hoverPointTextActor;

@@ -1,12 +1,15 @@
-﻿#pragma once
+#pragma once
 #include <services/MeshModuleControllerService.h>
 #include <vtkSmartPointer.h>
 
 #include <QObject>
 #include <QSet>
 #include <QString>
+#include <QStringList>
+class BasePage;
 
 #include "MeshGridIO.h"
+#include <SmeshWorkflowData.h>
 
 class ProjectNode;
 class VisualWidgetService;
@@ -53,7 +56,7 @@ class MeshModuleController : public QObject, public MeshModuleControllerService
     int verticalAxis() const override;
     bool exportIiinDatFile(const QString& filePath, QString* errMsg = nullptr) override;
 
-    bool importGeneratedNetgenMesh(const QString& vtkPath, QString* errMsg = nullptr) override;
+    bool importGeneratedSmeshMesh(const QString& vtkPath, QString* errMsg = nullptr) override;
 
     MshPickMap mshPickMapSolid();
     QString matypePhysicalName(int matype, int dim = 3) const override;
@@ -63,6 +66,10 @@ class MeshModuleController : public QObject, public MeshModuleControllerService
     bool groupByCoordinateRange(double xmin, double xmax, double ymin, double ymax, double zmin,
                                 double zmax, const QString& targetArrayName, int value,
                                 const QString& groupName, QString* errMsg = nullptr) override;
+    bool assignSelectedCellsToGroup(const QVector<MeshIdType>& cellIds,
+                                    const QString& attribute, int groupId,
+                                    const QString& displayName,
+                                    QString* errMsg = nullptr) override;
     bool assignDamConstructionLayers(const QSet<MeshIdType>& foundationCellIds,
                                      const QSet<MeshIdType>& damCellIds,
                                      int fillLayerCount,
@@ -83,10 +90,21 @@ class MeshModuleController : public QObject, public MeshModuleControllerService
     bool setBarPlacementMatype(const QString& placementUuid, int matype,
                                QString* errMsg = nullptr) override;
     void setBarPlacementDisplayMode(bool active) override;
+    bool collectSmeshWorkflow(const QString& meshUuid, SmeshWorkflowSettings& settings,
+                              QString& error) const;
+    Q_INVOKABLE void addSmeshSubmesh(int dimension, const QString& parentUuid);
+    Q_INVOKABLE void addSmeshSweep();
+    Q_INVOKABLE void addSmeshPartition();
+    Q_INVOKABLE void generateSmeshSubmesh(const QString& uuid);
 
   private:
     void initAction();
     void initTreeMenu();
+    void bindSmeshPage(BasePage* page);
+    QStringList availableSubmeshEntities(const QString& uuid, int dimension) const;
+    QSet<int> sweptCadVolumeIds() const;
+    void refreshVolumeScopeOwnership();
+    void removeSmeshNode(const QString& uuid);
     void removeBarPlacementNode(const QString& uuid);
 
     void onImportGrid();
@@ -96,12 +114,12 @@ class MeshModuleController : public QObject, public MeshModuleControllerService
 
     void onMeshGlobal();
     void onMeshSingle();
+    void onMeshLocalFace();
+    void onMeshLocalEdge();
+    void openLocalMeshSettings(int dimension);
     void onMeshMapped();
     void onMeshSweep();
 
-    void onCtrlVolume();
-    void onCtrlSurface();
-    void onCtrlEdge();
     void onQualityStd();
     void runQualityCheck();
     void stopQualityCheck();

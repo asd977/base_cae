@@ -1,4 +1,5 @@
 #include "NephogramSettingWidget.h"
+#include "PostThresholdDisplay.h"
 #include "PostComboBoxPerformance.h"
 
 #include <PublicConstants.h>
@@ -30,6 +31,8 @@
 #include <vtkPoints.h>
 #include <vtkPolyData.h>
 #include <vtkPolyDataMapper.h>
+#include <vtkFeatureEdges.h>
+#include <vtkStaticCleanUnstructuredGrid.h>
 #include <vtkProperty.h>
 #include <vtkRenderer.h>
 #include <vtkRendererCollection.h>
@@ -303,6 +306,48 @@ NephogramSettingWidget::~NephogramSettingWidget()
     delete ui;
 }
 
+void NephogramSettingWidget::clearThresholdDisplay()
+{
+    if (m_visualService)
+        removeActorByService(m_visualService, postActorId(getUuid(), QStringLiteral("threshold-below")), false);
+    m_belowThresholdActor = nullptr;
+    if (m_retainedThresholdGrid) invalidateDisplaySurface();
+    m_retainedThresholdGrid = nullptr;
+}
+
+void NephogramSettingWidget::applyThresholdDisplay(vtkUnstructuredGrid* grid, bool usePointData)
+{
+    clearThresholdDisplay();
+    const auto& style = postFieldDisplayStyle(m_currentArrayName);
+    if (!style.thresholdEnabled || !grid)
+    {
+        m_mapper->SetInputData(grid);
+        return;
+    }
+    const auto parts = splitPostThreshold(grid, m_currentArrayName, usePointData, style.threshold);
+    m_retainedThresholdGrid = parts.retained;
+    m_mapper->SetInputData(parts.retained);
+    invalidateDisplaySurface();
+    if (!parts.below || parts.below->GetNumberOfCells() == 0 || style.belowTransparency == 100) return;
+    auto mapper = vtkSmartPointer<vtkDataSetMapper>::New();
+    mapper->SetInputData(parts.below);
+    auto* lut = vtkLookupTable::SafeDownCast(m_visualService->scalarBarActor()->GetLookupTable());
+    double range[2]; lut->GetTableRange(range);
+    configureMapper(mapper, m_currentArrayName, usePointData, range[0], range[1], lut);
+    m_belowThresholdActor = vtkSmartPointer<vtkActor>::New();
+    m_belowThresholdActor->SetMapper(mapper);
+    if (postContourStyle().enabled && postContourStyle().monochrome)
+    {
+        mapper->ScalarVisibilityOff();
+        m_belowThresholdActor->GetProperty()->SetColor(0.97, 0.97, 0.97);
+    }
+    m_belowThresholdActor->GetProperty()->LightingOff();
+    m_belowThresholdActor->GetProperty()->SetOpacity(1.0 - style.belowTransparency / 100.0);
+    applyPostActorRepresentation(m_belowThresholdActor);
+    addActorByService(m_visualService, postActorId(getUuid(), QStringLiteral("threshold-below")),
+                      m_belowThresholdActor, QStringLiteral("阈值以下区域"), false);
+}
+
 void NephogramSettingWidget::ensureActorAttached()
 {
     if (!m_visualService || !m_actor)
@@ -324,6 +369,113 @@ void NephogramSettingWidget::ensureActorAttached()
                                         QStringLiteral("云图"), false);
 }
 
+void NephogramSettingWidget::clearSurfaceOutline()
+{
+    if (m_visualService)
+        removeActorByService(m_visualService,
+                             postActorId(getUuid(), QStringLiteral("surface-outline")), false);
+    m_outlineActor = nullptr;
+    m_outlineOriginalGrid = nullptr;
+    m_outlineFilterKey.clear();
+    m_outlineOriginalMTime = 0;
+}
+
+void NephogramSettingWidget::updateSurfaceOutline(vtkUnstructuredGrid* displayGrid)
+{
+    if (!m_visualService || !m_actorAttached || !displayGrid ||
+        displayGrid->GetNumberOfCells() == 0 ||
+        !postSceneStyle().visible || !postSceneStyle().showSurfaceOutline ||
+        postSceneStyle().representationMode != 0)
+    {
+        clearSurfaceOutline();
+        return;
+    }
+
+    // 结果 VTM 由各 MATYPE block 以 MergePointsOff() 方式拼接：相邻域的界面
+    // 即便几何重合也可能使用不同点 ID。直接 SurfaceFilter 会把该界面当外表面。
+    // 仅在轮廓管线上精确合并重合点，绝不改云图源网格/结果数值/材料筛选。
+    // 零值隐藏会修改可见拓扑；这种情况下将字段纳入缓存签名。
+    const bool hidesZero = !m_currentArrayName.isEmpty() &&
+                           postFieldDisplayStyle(m_currentArrayName).zeroDisplayMode == 2;
+    const QString filterKey = QStringLiteral("%1|%2|%3|%4")
+        .arg(postSceneStyle().followMeshFilter ? postMeshFilterSignature() : QString())
+        .arg(displayGrid->GetNumberOfCells())
+        .arg(hidesZero ? m_currentArrayName : QString())
+        .arg(hidesZero ? 1 : 0);
+    const bool inputChanged = !m_outlineActor ||
+                              m_outlineOriginalGrid.GetPointer() != m_grid.GetPointer() ||
+                              m_outlineOriginalMTime != (m_grid ? m_grid->GetMTime() : 0) ||
+                              m_outlineFilterKey != filterKey;
+    if (inputChanged)
+    {
+        QElapsedTimer timer;
+        timer.start();
+
+        // 仅合并坐标完全重合的点 (tolerance = 0)：不跨越真实的几何间隙，
+        // 避免将相邻但不连接的薄层/裂隙错误焊接。
+        auto geometryOnly = vtkSmartPointer<vtkUnstructuredGrid>::New();
+        geometryOnly->ShallowCopy(displayGrid);
+        // 只要点坐标和单元拓扑，避免清理/提面过程中复制大型结果数组。
+        geometryOnly->GetPointData()->Initialize();
+        geometryOnly->GetCellData()->Initialize();
+        geometryOnly->GetFieldData()->Initialize();
+
+        auto weld = vtkSmartPointer<vtkStaticCleanUnstructuredGrid>::New();
+        weld->SetInputData(geometryOnly);
+        weld->SetTolerance(0.0);
+        weld->Update();
+
+        auto surface = vtkSmartPointer<vtkDataSetSurfaceFilter>::New();
+        surface->SetInputConnection(weld->GetOutputPort());
+        surface->Update();
+
+        // 与 ParaView Feature Edges 一致：只保留真实开放边界与几何折角。
+        // 不要混入视角剪影、普通三角网格边或非流形边。
+        auto edges = vtkSmartPointer<vtkFeatureEdges>::New();
+        edges->SetInputConnection(surface->GetOutputPort());
+        edges->BoundaryEdgesOn();
+        edges->FeatureEdgesOn();
+        edges->SetFeatureAngle(55.0);
+        edges->ManifoldEdgesOff();
+        edges->NonManifoldEdgesOff();
+        edges->ColoringOff();
+        edges->Update();
+
+        auto lines = vtkSmartPointer<vtkPolyData>::New();
+        if (edges->GetOutput())
+            lines->ShallowCopy(edges->GetOutput());
+
+        auto mapper = vtkSmartPointer<vtkPolyDataMapper>::New();
+        mapper->SetInputData(lines);
+        mapper->ScalarVisibilityOff();
+
+        // 不保留体网格的临时副本或整张三角表面，只缓存少量特征线。
+        // 视角旋转只需渲染，不再触发昂贵的轮廓重新提取。
+        m_outlineActor = vtkSmartPointer<vtkActor>::New();
+        m_outlineActor->SetMapper(mapper);
+        m_outlineActor->GetProperty()->SetColor(0.17, 0.21, 0.25);
+        m_outlineActor->GetProperty()->SetLineWidth(1.25);
+        m_outlineActor->GetProperty()->LightingOff();
+        m_outlineActor->PickableOff();
+
+        m_outlineOriginalGrid = m_grid;
+        m_outlineOriginalMTime = m_grid ? m_grid->GetMTime() : 0;
+        m_outlineFilterKey = filterKey;
+        qInfo() << "[PostOutline] FeatureEdges" << "inputCells=" << displayGrid->GetNumberOfCells()
+                << "weldedPoints=" << (weld->GetOutput() ? weld->GetOutput()->GetNumberOfPoints() : 0)
+                << "surfaceFaces=" << (surface->GetOutput() ? surface->GetOutput()->GetNumberOfCells() : 0)
+                << "featureLines=" << lines->GetNumberOfCells()
+                << "elapsedMs=" << timer.elapsed();
+    }
+
+    const QString actorId = postActorId(getUuid(), QStringLiteral("surface-outline"));
+    if (m_visualService->getProp(actorId) != m_outlineActor.GetPointer())
+    {
+        addActorByService(m_visualService, actorId, m_outlineActor,
+                          QStringLiteral("几何轮廓/折角线"), false);
+    }
+}
+
 void NephogramSettingWidget::syncScalarBarFromCurrent()
 {
     if (m_currentArrayName.isEmpty() || !m_visualService || !m_grid)
@@ -336,6 +488,7 @@ void NephogramSettingWidget::syncScalarBarFromCurrent()
     displayGrid = postApplyZeroHideFilter(displayGrid, m_currentArrayName);
     if (!displayGrid || displayGrid->GetNumberOfCells() <= 0)
     {
+        clearThresholdDisplay();
         clearPostDisplayContext();
         if (m_mapper)
         {
@@ -351,6 +504,7 @@ void NephogramSettingWidget::syncScalarBarFromCurrent()
     vtkDataArray* arr = findScalarArray(displayGrid, m_currentArrayName, usePointData);
     if (!arr || arr->GetNumberOfTuples() <= 0)
     {
+        clearThresholdDisplay();
         clearPostDisplayContext();
         if (m_mapper)
             m_mapper->ScalarVisibilityOff();
@@ -365,7 +519,7 @@ void NephogramSettingWidget::syncScalarBarFromCurrent()
                                    dataRange[0], dataRange[1]))
         return;
 
-    m_mapper->SetInputData(displayGrid);
+    applyThresholdDisplay(displayGrid, usePointData);
     m_actor->SetMapper(m_mapper);
     double minV = dataRange[0];
     double maxV = dataRange[1];
@@ -382,6 +536,7 @@ bool NephogramSettingWidget::syncScalarBarFromResolved(vtkUnstructuredGrid* disp
     if (!arr || !m_visualService || m_currentArrayName.isEmpty() ||
         !isValidScalarRange(dataMin, dataMax))
     {
+        clearThresholdDisplay();
         clearPostDisplayContext();
         if (m_mapper)
             m_mapper->ScalarVisibilityOff();
@@ -392,7 +547,7 @@ bool NephogramSettingWidget::syncScalarBarFromResolved(vtkUnstructuredGrid* disp
     }
 
     if (property("postDisplayActive").toBool())
-        publishPostDisplayContext(m_currentArrayName, dataMin, dataMax, true, true);
+        publishPostDisplayContext(m_currentArrayName, dataMin, dataMax, true, true, true, true);
 
     {
         PostFieldRangeStyle& rangeStyle = postFieldRangeStyle(m_currentArrayName,
@@ -415,8 +570,6 @@ bool NephogramSettingWidget::syncScalarBarFromResolved(vtkUnstructuredGrid* disp
 
     postScalarBarStyle().visible = ui->showScalarBarCheckBox->isChecked();
     m_visualService->showScalarBar(postScalarBarShouldBeVisible(), false);
-    applyLegendAppearance(scalarBar, minV, maxV);
-
     vtkLookupTable* lut = vtkLookupTable::SafeDownCast(scalarBar->GetLookupTable());
     if (!lut)
     {
@@ -426,8 +579,10 @@ bool NephogramSettingWidget::syncScalarBarFromResolved(vtkUnstructuredGrid* disp
     }
 
     updateLookupTableRange(lut, minV, maxV);
+    // Apply custom tick positions only after LUT range is updated.
+    applyLegendAppearance(scalarBar, minV, maxV);
     const QString legendTitle = resolvedPostScalarBarTitle(currentScalarDisplayName());
-    scalarBar->SetTitle(legendTitle.toUtf8().constData());
+    m_visualService->setScalarBarTitle(legendTitle, false);
     scalarBar->Modified();
 
     // Mapper 的输入由 updateNephogram 统一切到域感知显示面；
@@ -527,6 +682,8 @@ void NephogramSettingWidget::beforeUnload()
         return;
 
     clearContourOverlay();
+    clearSurfaceOutline();
+    clearThresholdDisplay();
 
     if (m_actorAttached)
     {
@@ -854,9 +1011,11 @@ void NephogramSettingWidget::updateNephogram(const QString& selectedScalarName,
     displayGrid = postApplyZeroHideFilter(displayGrid, selectedScalarName);
     if (!displayGrid || displayGrid->GetNumberOfCells() <= 0)
     {
+        clearThresholdDisplay();
         clearPostDisplayContext();
         invalidateDisplaySurface();
         clearContourOverlay();
+        clearSurfaceOutline();
         if (m_mapper)
         {
             m_mapper->SetInputData(displayGrid);
@@ -875,6 +1034,8 @@ void NephogramSettingWidget::updateNephogram(const QString& selectedScalarName,
     if (!scalarArray || scalarArray->GetNumberOfTuples() <= 0)
     {
         qWarning() << "Scalar array not found:" << selectedScalarName;
+        clearSurfaceOutline();
+        clearThresholdDisplay();
         clearPostDisplayContext();
         if (m_mapper)
             m_mapper->ScalarVisibilityOff();
@@ -891,6 +1052,8 @@ void NephogramSettingWidget::updateNephogram(const QString& selectedScalarName,
     if (!isValidScalarRange(dataRange))
     {
         qWarning() << "Scalar array has no valid range:" << selectedScalarName;
+        clearSurfaceOutline();
+        clearThresholdDisplay();
         clearPostDisplayContext();
         if (m_mapper)
             m_mapper->ScalarVisibilityOff();
@@ -922,7 +1085,7 @@ void NephogramSettingWidget::updateNephogram(const QString& selectedScalarName,
 
     // 域拓扑已经由结果 VTM Block 保留。云图、透明度、切面和切块都消费同一份
     // vtkUnstructuredGrid，不再因透明度变化构造/切换另一张域 Surface。
-    m_mapper->SetInputData(displayGrid);
+    applyThresholdDisplay(displayGrid, usePointData);
     configureMapper(m_mapper, selectedScalarName, usePointData,
                     minV, maxV,
                     vtkLookupTable::SafeDownCast(
@@ -947,6 +1110,7 @@ void NephogramSettingWidget::updateNephogram(const QString& selectedScalarName,
     surfaceProperty->SetDiffuse(0.0);
     surfaceProperty->SetSpecular(0.0);
     ensureActorAttached();
+    updateSurfaceOutline(m_retainedThresholdGrid ? m_retainedThresholdGrid.GetPointer() : displayGrid.GetPointer());
 
     // 等值线明确需要一张 PolyData 表面时才在这里按需提取并缓存。
     updateContourOverlay(selectedScalarName, usePointData, minV, maxV);
@@ -1439,6 +1603,7 @@ void NephogramSettingWidget::updateContourOverlay(const QString& scalarName,
     {
         vtkSmartPointer<vtkUnstructuredGrid> displayGrid = postFilteredResultGrid(m_grid);
         displayGrid = postApplyZeroHideFilter(displayGrid, scalarName);
+        if (m_retainedThresholdGrid) displayGrid = m_retainedThresholdGrid;
         prepareDisplaySurface(displayGrid, scalarName, usePointData, mapperUsePointData);
     }
     vtkPolyData* surface = m_displaySurface;

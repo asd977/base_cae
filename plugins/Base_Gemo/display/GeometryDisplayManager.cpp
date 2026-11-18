@@ -18,8 +18,11 @@
 #include <vtkPolyDataMapper.h>
 #include <vtkProperty.h>
 #include <vtkSmartPointer.h>
+#include <vtkDoubleArray.h>
+#include <vtkColorTransferFunction.h>
 
 #include <QHash>
+#include <algorithm>
 
 namespace
 {
@@ -27,6 +30,49 @@ QHash<QString, bool>& visibilityStates()
 {
     static QHash<QString, bool> states;
     return states;
+}
+
+QHash<QString, bool>& terrainPresentations()
+{
+    static QHash<QString, bool> states;
+    return states;
+}
+
+bool topologyEdgesEnabled(const QString& uuid)
+{
+    return terrainPresentations().value(uuid, true);
+}
+
+void applyTerrainPresentation(const QString& uuid, GeomShapeObject* object)
+{
+    if (!terrainPresentations().contains(uuid) || !object || !object->getSurfActor())
+        return;
+    auto actor = object->getSurfActor();
+    auto* mapper = vtkPolyDataMapper::SafeDownCast(actor->GetMapper());
+    auto* poly = mapper ? mapper->GetInput() : nullptr;
+    if (!poly || !poly->GetNumberOfPoints()) return;
+    constexpr const char* elevationName = "TerrainElevation";
+    if (!poly->GetPointData()->GetArray(elevationName))
+    {
+        auto elevations = vtkSmartPointer<vtkDoubleArray>::New();
+        elevations->SetName(elevationName);
+        for (vtkIdType i = 0; i < poly->GetNumberOfPoints(); ++i)
+            elevations->InsertNextValue(poly->GetPoint(i)[2]);
+        poly->GetPointData()->AddArray(elevations);
+    }
+    double range[2]; poly->GetPointData()->GetArray(elevationName)->GetRange(range);
+    const double span = std::max(range[1] - range[0], 1e-9);
+    auto colors = vtkSmartPointer<vtkColorTransferFunction>::New();
+    colors->AddRGBPoint(range[0], .24, .57, .30);
+    colors->AddRGBPoint(range[0] + span * .5, .79, .74, .39);
+    colors->AddRGBPoint(range[0] + span, .63, .40, .24);
+    mapper->SetScalarModeToUsePointFieldData();
+    mapper->SelectColorArray(elevationName);
+    mapper->SetLookupTable(colors);
+    mapper->SetScalarRange(range);
+    mapper->ScalarVisibilityOn();
+    actor->GetProperty()->SetRepresentationToSurface();
+    actor->GetProperty()->EdgeVisibilityOff();
 }
 
 bool& renderSuspendedState()
@@ -53,7 +99,7 @@ void attachObjectActors(const QString& uuid, GeomShapeObject* object,
     if (object->getSurfActor())
         visual->addProp(faceId, object->getSurfActor(), QStringLiteral("Geometry"),
                         faceId, resetCamera, false);
-    if (object->getEdgeActor())
+    if (object->getEdgeActor() && topologyEdgesEnabled(uuid))
         visual->addProp(edgeId, object->getEdgeActor(), QStringLiteral("Geometry"),
                         edgeId, false, false);
 }
@@ -144,7 +190,7 @@ void setIndividualEdgeVisible(VisualWidgetService* vis,
     if (!object || !object->getEdgeActor())
         return;
 
-    const bool show = visible && !usesEmbeddedTopologyEdges(object);
+    const bool show = visible && topologyEdgesEnabled(uuid) && !usesEmbeddedTopologyEdges(object);
     object->getEdgeActor()->SetVisibility(show ? 1 : 0);
     if (vis)
         vis->setVisible(localEdgePropId(uuid), show, false);
@@ -169,7 +215,7 @@ void rebuildEdgeBatch(bool renderNow)
     for (auto it = shapeMap.cbegin(); it != shapeMap.cend(); ++it)
     {
         GeomShapeObject* object = it.value();
-        if (logicalVisible(it.key(), object) && edgePolyData(object))
+        if (logicalVisible(it.key(), object) && topologyEdgesEnabled(it.key()) && edgePolyData(object))
             ++visibleBatchableCount;
     }
 
@@ -198,7 +244,7 @@ void rebuildEdgeBatch(bool renderNow)
         const QString& uuid = it.key();
         GeomShapeObject* object = it.value();
         const bool visible = logicalVisible(uuid, object);
-        vtkPolyData* poly = visible ? edgePolyData(object) : nullptr;
+        vtkPolyData* poly = visible && topologyEdgesEnabled(uuid) ? edgePolyData(object) : nullptr;
 
         if (poly)
         {
@@ -290,7 +336,7 @@ bool GeometryDisplayManager::registerObject(const QString& uuid, GeomShapeObject
         if (object->getSurfActor())
             vis->addProp(facePropId(uuid), object->getSurfActor(), QStringLiteral("Geometry"),
                          facePropId(uuid), resetCamera, false);
-        if (object->getEdgeActor())
+        if (object->getEdgeActor() && topologyEdgesEnabled(uuid))
             vis->addProp(edgePropId(uuid), object->getEdgeActor(), QStringLiteral("Geometry"),
                          edgePropId(uuid), false, false);
     }
@@ -371,6 +417,7 @@ bool GeometryDisplayManager::setVisible(const QString& uuid, bool visible, bool 
 
     if (object)
     {
+        applyTerrainPresentation(uuid, object);
         const bool embeddedTopologyEdges = usesEmbeddedTopologyEdges(object);
         if (object->getSurfActor())
         {
@@ -385,7 +432,7 @@ bool GeometryDisplayManager::setVisible(const QString& uuid, bool visible, bool 
             // cannot be shown again while the large-scene edge batch is active.
             const bool batchableEdge = edgePolyData(object) != nullptr;
             const bool showIndividualEdge =
-                visible && !embeddedTopologyEdges &&
+                visible && topologyEdgesEnabled(uuid) && !embeddedTopologyEdges &&
                 (!edgeBatchActiveState() || !batchableEdge);
             object->getEdgeActor()->SetVisibility(showIndividualEdge ? 1 : 0);
             changed = true;
@@ -399,7 +446,7 @@ bool GeometryDisplayManager::setVisible(const QString& uuid, bool visible, bool 
         changed = vis->setVisible(facePropId(uuid), visible, false) || changed;
         const bool batchableEdge = edgePolyData(object) != nullptr;
         const bool showIndividualEdge =
-            visible && !embeddedTopologyEdges &&
+            visible && topologyEdgesEnabled(uuid) && !embeddedTopologyEdges &&
             (!edgeBatchActiveState() || !batchableEdge);
         changed = vis->setVisible(edgePropId(uuid), showIndividualEdge, false) || changed;
 
@@ -438,6 +485,19 @@ bool GeometryDisplayManager::setVisible(const QString& uuid, bool visible, bool 
 bool GeometryDisplayManager::hide(const QString& uuid, bool renderNow)
 {
     return setVisible(uuid, false, renderNow);
+}
+
+void GeometryDisplayManager::setTerrainPresentation(const QString& uuid)
+{
+    if (uuid.isEmpty()) return;
+    const bool visible = isVisible(uuid);
+    terrainPresentations().insert(uuid, false);
+    // Module navigation shows the Geometry group. Internal terrain edges must
+    // not be registered there, otherwise showing that group resurrects them.
+    if (auto* vis = ServiceRegistry::instance().getService<VisualWidgetService>())
+        vis->removeProp(edgePropId(uuid), false);
+    if (auto* mgr = GeomManager::GeomManagerInstance::getInstance())
+        if (mgr->getGeomShapeObject(uuid)) setVisible(uuid, visible, false);
 }
 
 bool GeometryDisplayManager::show(const QString& uuid, bool renderNow)
@@ -486,12 +546,16 @@ void GeometryDisplayManager::hideSources(const QStringList& uuids, bool renderNo
 void GeometryDisplayManager::forgetVisibilityState(const QString& uuid)
 {
     if (!uuid.isEmpty())
+    {
         visibilityStates().remove(uuid);
+        terrainPresentations().remove(uuid);
+    }
 }
 
 void GeometryDisplayManager::clearVisibilityStates()
 {
     visibilityStates().clear();
+    terrainPresentations().clear();
     edgeBatchDirtyState() = true;
     edgeBatchActiveState() = false;
     if (auto* vis = ServiceRegistry::instance().getService<VisualWidgetService>())

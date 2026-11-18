@@ -2,6 +2,8 @@
 
 #include <CustomComboBox.h>
 #include <ServiceRegistry.h>
+#include <PublicConstants.h>
+#include <PublicVariables.h>
 #include <services/MeshModuleControllerService.h>
 #include <struct/MeshMap.h>
 
@@ -84,7 +86,9 @@ void FaceLoadPage::beforeLoad()
 {
     PickManager::instance();
 
-    PickManager::instance().activate(getPageType(), m_uuid, PickMode::Face);
+    const auto mode=PublicVariables::instance().get(PublicConstants::kMeshDimension).toInt()==2
+        ?PickMode::Edge:PickMode::Face;
+    PickManager::instance().activate(getPageType(), m_uuid, mode);
     QObject::disconnect(ui->pickEnableCheckBox, nullptr, this, nullptr);
     QObject::connect(ui->pickEnableCheckBox, &QCheckBox::toggled, this,
                      [this](bool on)
@@ -98,8 +102,10 @@ void FaceLoadPage::beforeLoad()
 
 void FaceLoadPage::beforeUnload()
 {
-    PickManager::instance().setClickPickEnabled(getPageType(), m_uuid, true);
-    PickManager::instance().deactivate(getPageType(), m_uuid, PickMode::Face);
+    PickManager::instance().setClickPickEnabled(getPageType(), m_uuid, false);
+    const auto mode=PublicVariables::instance().get(PublicConstants::kMeshDimension).toInt()==2
+        ?PickMode::Edge:PickMode::Face;
+    PickManager::instance().deactivate(getPageType(), m_uuid, mode);
 }
 
 double FaceLoadPage::fxValue()

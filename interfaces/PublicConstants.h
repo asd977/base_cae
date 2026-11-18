@@ -13,6 +13,7 @@ constexpr char kEventLoadComplete[] = "load_complete";
 constexpr char kEventQuitApp[] = "quit_app";
 constexpr char kEventSolverFinished[] = "solver_finished";
 constexpr char kEventUiThemeChanged[] = "ui_theme_changed";
+constexpr char kEventBrandingVisibilityChanged[] = "branding_visibility_changed";
 
 // --- Notify / Broadcast (几何、网格等状态通知) ---
 constexpr char kUpdateGeomPointIndex[] = "update_geom_point_index";
@@ -124,6 +125,7 @@ constexpr char kActionGeomMeasure[] = "geom_measure";
 
 // --- 草图 Sketch ---
 constexpr char kActionGeomSketch2D[] = "geom_sketch_2d";
+constexpr char kActionGeomTerrainSurface[] = "geom_terrain_surface";
 constexpr char kActionSketchEnterEdit[] = "sketch_enter_edit";
 constexpr char kActionSketchExitEdit[] = "sketch_exit_edit";
 constexpr char kActionSketchToolLine[] = "sketch_tool_line";
@@ -154,11 +156,11 @@ constexpr char kActionPreprocessExportGrid[] = "grid_export";
 constexpr char kActionPreprocessMeshGlobal[] = "grid_mesh_global"; // 整体剖分
 constexpr char kActionPreprocessMeshSingle[] = "grid_mesh_single"; // 单体剖分
 constexpr char kActionPreprocessMeshMapped[] = "grid_mesh_mapped"; // 映射剖分
-constexpr char kActionPreprocessMeshSweep[] = "grid_mesh_sweep";   // 扫掠剖分
+constexpr char kActionPreprocessMeshSweep[] = "grid_mesh_sweep";   // 扫掠网格
+constexpr char kActionPreprocessMeshPartition[] = "grid_mesh_partition"; // 扫掠分块
+constexpr char kActionPreprocessMeshLocalFace[] = "grid_mesh_local_face";
+constexpr char kActionPreprocessMeshLocalEdge[] = "grid_mesh_local_edge";
 
-constexpr char kActionPreprocessCtrlVolume[] = "grid_ctrl_volume";   // 体控制
-constexpr char kActionPreprocessCtrlSurface[] = "grid_ctrl_surface"; // 面控制
-constexpr char kActionPreprocessCtrlEdge[] = "mesh_ctrl_edge";       // 边控制
 constexpr char kActionPreprocessMeshEdit[] = "mesh_ctrl_edit";       // 显示控制
 constexpr char kActionPreprocessMeshDisplayPanel[] = "mesh_ctrl_display_panel"; // 仅打开显示控制面板，不切换当前结果/场景
 constexpr char kActionPreprocessBarElements[] = "mesh_bar_elements"; // 杆单元布置
@@ -257,6 +259,7 @@ constexpr char kPageGeomSplit[] = "split";
 constexpr char kPageGeomChamfer[] = "chamfer";
 constexpr char kPageGeomFillet[] = "fillet";
 constexpr char kPageGeomSketch2D[] = "sketch2d";
+constexpr char kPageGeomTerrainSurface[] = "terrain_surface";
 
 constexpr char kPagePreprocessMesh2d[] = "mesh2d";
 constexpr char kPagePreprocessMesh3d[] = "mesh3d";

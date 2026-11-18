@@ -28,6 +28,7 @@
 #include <QLineEdit>
 #include <QRegularExpression>
 #include <QSet>
+#include <QSaveFile>
 #include <QTextStream>
 #include <QVector>
 #include <algorithm>
@@ -40,6 +41,7 @@
 #include "PhysicalFieldSettingWidget.h"
 #include "SeismicAndAddedMassPage.h"
 #include "TemperatureLoadPage.h"
+#include "MechanicalDofs.h"
 #include "vtkCellData.h"
 #include "vtkPointData.h"
 
@@ -368,6 +370,46 @@ void PhysicalField::newProject()
     if (m_node)
         closeProject();
     auto physicalFieldSettingWidget = std::make_unique<PhysicalFieldSettingWidget>();
+    physicalFieldSettingWidget->setDisplacementProvider(
+        [this]()
+        {
+            QVector<DisplacementOverviewItem> result;
+            QList<ProjectNode*> nodes;
+            collectDisplacementNodes(m_node, nodes);
+            for (ProjectNode* node : nodes)
+            {
+                if (!node) continue;
+                auto* page = dynamic_cast<DisplacementConstraintWidget*>(node->getPage());
+                if (!page) continue;
+                DisplacementOverviewItem item;
+                item.uuid = node->getUuid();
+                item.title = node->text(0);
+                // 工程恢复可能延迟载入页面：不能用默认 UI 状态覆盖已保存的方向。
+                if (page->hasDeferredLoadJson())
+                {
+                    const QJsonObject saved = page->saveJsonForPersistence();
+                    item.ux = saved.value(QStringLiteral("ux")).toString(QStringLiteral("1")).toInt();
+                    item.uy = saved.value(QStringLiteral("uy")).toString(QStringLiteral("1")).toInt();
+                    item.uz = saved.value(QStringLiteral("uz")).toString(QStringLiteral("1")).toInt();
+                }
+                else
+                {
+                    item.ux = page->uxFlag();
+                    item.uy = page->uyFlag();
+                    item.uz = page->uzFlag();
+                }
+                item.nodeIds = PickManager::instance().selectedNodeIds(
+                    QStringLiteral("DisplacementConstraintWidget"), item.uuid);
+                result.append(std::move(item));
+            }
+            return result;
+        },
+        [this](const QString& childUuid)
+        {
+            if (auto* target = findNodeByUuid(m_node, childUuid))
+                if (auto* pm = ServiceRegistry::instance().getService<ProjectManagerService>())
+                    pm->setCurrentItem(target);
+        });
 
     QString uuid = QUuid::createUuid().toString();
     m_node = new ProjectNode("约束与荷载", uuid, (BasePage*)physicalFieldSettingWidget.release());
@@ -977,8 +1019,18 @@ void PhysicalField::writeIIWL_Part3_BodyForce(QTextStream& os)
     }
 }
 
-void PhysicalField::generateIIIDFile()
+bool PhysicalField::hasPrescribedDisplacements() const
 {
+    QList<ProjectNode*> pages;
+    CollectNodesByKind(m_node,QStringLiteral("DisplacementConstraint"),pages);
+    for(auto* node:pages)if(auto* page=dynamic_cast<DisplacementConstraintWidget*>(node->getPage()))
+        if(page->hasPrescribedDisplacement())return true;
+    return false;
+}
+
+bool PhysicalField::generateIIIDFile()
+{
+    m_constraintsValid=false; m_prescribedValues.clear();
     PickManager::instance().updateStructure();
     auto* meshSvc = ServiceRegistry::instance().getService<MeshModuleControllerService>();
 
@@ -989,34 +1041,42 @@ void PhysicalField::generateIIIDFile()
     if (!gSolid && !gLine && !gAll)
     {
         qWarning() << "generateIIIDFile: no available grid (solid/line/all are null)";
-        return;
+        return false;
     }
 
-    auto findNodeIdArray = [](vtkUnstructuredGrid* g) -> vtkIntArray*
+    auto findNodeIdArray = [](vtkUnstructuredGrid* g) -> vtkDataArray*
     {
         if (!g || !g->GetPointData())
             return nullptr;
-        if (auto* a = vtkIntArray::SafeDownCast(g->GetPointData()->GetArray("node_id")))
+        if (auto* a = vtkDataArray::SafeDownCast(g->GetPointData()->GetArray("node_id")))
             return a;
-        return vtkIntArray::SafeDownCast(g->GetPointData()->GetArray("NodeId"));
+        return vtkDataArray::SafeDownCast(g->GetPointData()->GetArray("NodeId"));
     };
 
-    vtkIntArray* idSolid = findNodeIdArray(gSolid);
-    vtkIntArray* idLine = findNodeIdArray(gLine);
-    vtkIntArray* idAll = findNodeIdArray(gAll);
+    vtkDataArray* idSolid = findNodeIdArray(gSolid);
+    vtkDataArray* idLine = findNodeIdArray(gLine);
+    vtkDataArray* idAll = findNodeIdArray(gAll);
 
     if ((gSolid && gSolid->GetNumberOfPoints() > 0 && !idSolid) ||
         (gLine && gLine->GetNumberOfPoints() > 0 && !idLine) ||
         (gAll && gAll->GetNumberOfPoints() > 0 && !idAll))
     {
         qWarning() << "generateIIIDFile: node id array missing on some grid";
-        return;
+        return false;
     }
 
     const int NDIM = PublicVariables::instance().get(PublicConstants::kMeshDimension).toInt();
     qInfo()<<"NDIM "<<NDIM;
     const bool is3D = (NDIM == DIMENSION_3D);
-    const int MADOF = is3D ? 3 : 2;
+    const auto beamNodes=planarBeamNodes(gAll);
+    if(is3D&&!beamNodes.isEmpty())
+    {
+        QMessageBox::warning(nullptr,QStringLiteral("三维梁自由度尚未支持"),QStringLiteral("当前梁边界导出已验证二维平面梁。三维梁需要六个自由度，请先使用二维平面梁工况。"));
+        return false;
+    }
+    const bool planarBeam=!is3D&&!beamNodes.isEmpty();
+    const int MADOF = is3D||planarBeam ? 3 : 2;
+    m_exportedDofs=MADOF;
 
     // 1) 收集所有 node_id（all + solid + line），去重并排序
     QVector<int> allNodeIds;
@@ -1028,20 +1088,20 @@ void PhysicalField::generateIIIDFile()
     {
         const int n = int(gAll->GetNumberOfPoints());
         for (int i = 0; i < n; ++i)
-            allNodeIds.push_back(idAll->GetValue(i));
+            allNodeIds.push_back(idAll->GetTuple1(i));
     }
 
     if (gSolid && idSolid)
     {
         const int n = int(gSolid->GetNumberOfPoints());
         for (int i = 0; i < n; ++i)
-            allNodeIds.push_back(idSolid->GetValue(i));
+            allNodeIds.push_back(idSolid->GetTuple1(i));
     }
     if (gLine && idLine)
     {
         const int n = int(gLine->GetNumberOfPoints());
         for (int i = 0; i < n; ++i)
-            allNodeIds.push_back(idLine->GetValue(i));
+            allNodeIds.push_back(idLine->GetTuple1(i));
     }
 
     std::sort(allNodeIds.begin(), allNodeIds.end());
@@ -1058,7 +1118,10 @@ void PhysicalField::generateIIIDFile()
     // 3) 默认全自由：2D => 1 1；3D => 1 1 1
     QVector<std::array<int, 3>> flags(NUMNP);
     for (int r = 0; r < NUMNP; ++r)
+    {
         flags[r] = {1, 1, 1};
+        if(planarBeam&&!beamNodes.contains(allNodeIds[r]))flags[r][2]=0;
+    }
 
     // 4) 收集位移约束节点
     QList<ProjectNode*> bcNodes;
@@ -1067,6 +1130,8 @@ void PhysicalField::generateIIIDFile()
 
     const QString domain = "DisplacementConstraintWidget"; // 必须与 activate 一致
     QSet<int> conflictingNodeIds;
+    QSet<int> unsupportedRotationNodes;
+    QMap<QPair<int,int>,double> prescribedByDof;
 
     // 5) 应用每个约束节点的选中点。允许不同位移约束共享 node_id，
     // 普通固定方向按自由度组合，不再依赖“后写覆盖前写”的顺序。
@@ -1085,9 +1150,28 @@ void PhysicalField::generateIIIDFile()
         {
             ux = page->uxFlag();
             uy = page->uyFlag();
-            uz = is3D ? page->uzFlag() : 1;
+            uz = is3D ? page->uzFlag() : planarBeam?page->rotationFlag():1;
             qInfo() << "apply bc uuid=" << uuid << " ux,uy,uz=" << ux << uy << uz;
         }
+        const auto collectValues=[&](const QVector<vtkIdType>& ids)
+        {
+            const int modes[]={ux,uy,uz};
+            for(auto id:ids)
+            {
+                if(!rowOfNodeId.contains(int(id)))continue;
+                if(!is3D&&page&&(page->rotationFlag()!=1||page->isPrescribed(2))&&!beamNodes.contains(int(id)))
+                    unsupportedRotationNodes.insert(int(id));
+                for(int axis=0;axis<MADOF;++axis)
+                {
+                    if(modes[axis]!=0)continue;
+                    const double value=page&&page->isPrescribed(axis)?page->prescribedValue(axis):0.0;
+                    const QPair<int,int> key(int(id),axis);
+                    if(prescribedByDof.contains(key)&&std::abs(prescribedByDof[key]-value)>1.e-12)
+                        conflictingNodeIds.insert(int(id));
+                    else prescribedByDof[key]=value;
+                }
+            }
+        };
 
         // solid picks
         {
@@ -1096,6 +1180,7 @@ void PhysicalField::generateIIIDFile()
 
             qInfo() << uuid << " pickedSolid(node_id) " << pickedSolid;
             MergePickedNodeIdsToFlags(pickedSolid, ux, uy, uz, rowOfNodeId, flags, conflictingNodeIds);
+            collectValues(pickedSolid);
         }
 
         // line picks（现在返回 node_id）
@@ -1105,9 +1190,15 @@ void PhysicalField::generateIIIDFile()
 
             qInfo() << uuid << " pickedLine(node_id) " << pickedLine;
             MergePickedNodeIdsToFlags(pickedLine, ux, uy, uz, rowOfNodeId, flags, conflictingNodeIds);
+            collectValues(pickedLine);
         }
     }
 
+    if(!unsupportedRotationNodes.isEmpty())
+    {
+        QMessageBox::warning(nullptr,QStringLiteral("转角约束不适用"),QStringLiteral("绕 Z 转角约束仅适用于二维平面梁节点（KETYPE=21）。当前选择包含没有转角自由度的节点，请检查选择范围。"));
+        return false;
+    }
     if (!conflictingNodeIds.isEmpty())
     {
         QList<int> conflicts = conflictingNodeIds.values();
@@ -1119,7 +1210,7 @@ void PhysicalField::generateIIIDFile()
 
         QString detail = QStringLiteral(
             "检测到 %1 个节点在同一自由度上存在不兼容的位移约束。\n"
-            "普通 X/Y/Z 固定可以自动叠加；“悬空杆件节点”与普通固定不能静默合并。")
+            "同方向的给定位移必须相同；普通 X/Y/Z 固定可叠加；悬空杆件与普通约束不能混合。")
                              .arg(conflictingNodeIds.size());
         if (!examples.isEmpty())
             detail += QStringLiteral("\n节点示例：%1%2")
@@ -1129,7 +1220,16 @@ void PhysicalField::generateIIIDFile()
 
         QMessageBox::warning(nullptr, QStringLiteral("位移约束冲突"), detail);
         qWarning().noquote() << "generateIIIDFile:" << detail;
-        return;
+        return false;
+    }
+
+    for(auto it=prescribedByDof.cbegin();it!=prescribedByDof.cend();++it)
+    {
+        if(it.value()==0.0)continue;
+        int index=m_prescribedValues.indexOf(it.value());
+        if(index<0){index=m_prescribedValues.size();m_prescribedValues.append(it.value());}
+        if(MADOF+index+1>=10000)return false;
+        flags[rowOfNodeId[it.key().first]][it.key().second]=-(MADOF+index+1);
     }
 
     // 5.5) 孤立点（未被任何 cell 使用）强制输出全 0 约束
@@ -1144,7 +1244,7 @@ void PhysicalField::generateIIIDFile()
             if (cellIds->GetNumberOfIds() > 0)
                 continue;
 
-            const int nodeId = idAll->GetValue(int(pid));
+            const int nodeId = idAll->GetTuple1(int(pid));
             auto it = rowOfNodeId.find(nodeId);
             if (it == rowOfNodeId.end())
                 continue;
@@ -1158,14 +1258,14 @@ void PhysicalField::generateIIIDFile()
         PublicVariables::instance().get(PublicConstants::kProjectDirectoryKey).toString();
     QDir inputDir(SolverFilePaths::outputInputDirectory(projectDir));
     if (!QDir().mkpath(inputDir.absolutePath()))
-        return;
+        return false;
     const QString path = inputDir.filePath(QStringLiteral("IIID.DAT"));
 
     QFile f(path);
     if (!f.open(QIODevice::WriteOnly | QIODevice::Text))
     {
         qWarning() << "generateIIIDFile: open failed:" << path;
-        return;
+        return false;
     }
 
     QTextStream os(&f);
@@ -1176,13 +1276,15 @@ void PhysicalField::generateIIIDFile()
     {
         const int nodeId = allNodeIds[r];
         os << flags[r][0] << "\t" << flags[r][1] << "\t";
-        if (is3D)
+        if (MADOF==3)
             os << flags[r][2] << "\t";
         os << nodeId << "\n";
     }
 
     f.close();
+    m_constraintsValid=true;
     qInfo() << "IIID generated:" << path;
+    return true;
 }
 
 bool PhysicalField::importIIIDFile(const QString& filePath, QString* errorMessage)
@@ -1412,22 +1514,22 @@ bool PhysicalField::importIIIDFile(const QString& filePath, QString* errorMessag
            // 的 VTK point id。因此导入前必须先把 node_id 映射回 Solid/Line 网格点索引。
     PickManager::instance().updateStructure();
 
-    auto findNodeIdArray = [](vtkUnstructuredGrid* g) -> vtkIntArray*
+    auto findNodeIdArray = [](vtkUnstructuredGrid* g) -> vtkDataArray*
     {
         if (!g || !g->GetPointData())
             return nullptr;
 
-        if (auto* a = vtkIntArray::SafeDownCast(g->GetPointData()->GetArray("node_id")))
+        if (auto* a = vtkDataArray::SafeDownCast(g->GetPointData()->GetArray("node_id")))
             return a;
 
-        return vtkIntArray::SafeDownCast(g->GetPointData()->GetArray("NodeId"));
+        return vtkDataArray::SafeDownCast(g->GetPointData()->GetArray("NodeId"));
     };
 
     auto buildPointIdByNodeId = [&findNodeIdArray](vtkUnstructuredGrid* g)
     {
         QHash<int, vtkIdType> out;
 
-        vtkIntArray* nodeIdArr = findNodeIdArray(g);
+        vtkDataArray* nodeIdArr = findNodeIdArray(g);
         if (!g || !nodeIdArr)
             return out;
 
@@ -1436,7 +1538,7 @@ bool PhysicalField::importIIIDFile(const QString& filePath, QString* errorMessag
 
         for (vtkIdType pid = 0; pid < nPts; ++pid)
         {
-            const int nodeId = nodeIdArr->GetValue(int(pid));
+            const int nodeId = nodeIdArr->GetTuple1(int(pid));
 
             if (!out.contains(nodeId))
                 out.insert(nodeId, pid);
@@ -1449,7 +1551,7 @@ bool PhysicalField::importIIIDFile(const QString& filePath, QString* errorMessag
     {
         QSet<int> out;
 
-        vtkIntArray* nodeIdArr = findNodeIdArray(g);
+        vtkDataArray* nodeIdArr = findNodeIdArray(g);
         if (!g || !nodeIdArr)
             return out;
 
@@ -1462,7 +1564,7 @@ bool PhysicalField::importIIIDFile(const QString& filePath, QString* errorMessag
             g->GetPointCells(pid, cellIds);
 
             if (cellIds->GetNumberOfIds() == 0)
-                out.insert(nodeIdArr->GetValue(int(pid)));
+                out.insert(nodeIdArr->GetTuple1(int(pid)));
         }
 
         return out;
@@ -1628,7 +1730,7 @@ struct XYZ
 };
 
 static void FillXYZForWantedNodeIds(QSet<int>& wanted, QHash<int, XYZ>& xyzOf,
-                                    vtkUnstructuredGrid* g, vtkIntArray* nodeIdArr)
+                                    vtkUnstructuredGrid* g, vtkDataArray* nodeIdArr)
 {
     if (!g || !nodeIdArr || wanted.isEmpty())
         return;
@@ -1636,7 +1738,7 @@ static void FillXYZForWantedNodeIds(QSet<int>& wanted, QHash<int, XYZ>& xyzOf,
     const vtkIdType nPts = g->GetNumberOfPoints();
     for (vtkIdType pid = 0; pid < nPts; ++pid)
     {
-        const int nodeId = nodeIdArr->GetValue(int(pid));
+        const int nodeId = nodeIdArr->GetTuple1(int(pid));
         if (!wanted.contains(nodeId))
             continue;
 
@@ -1662,24 +1764,24 @@ void PhysicalField::writeIIWL_Part1_GeoStressPoint(QTextStream& os)
     vtkUnstructuredGrid* gSolid = PickManager::instance().solidGrid();
     vtkUnstructuredGrid* gLine = PickManager::instance().lineGrid();
 
-    vtkIntArray* idSolid =
-        gSolid ? vtkIntArray::SafeDownCast(gSolid->GetPointData()->GetArray("node_id")) : nullptr;
-    vtkIntArray* idLine =
-        gLine ? vtkIntArray::SafeDownCast(gLine->GetPointData()->GetArray("node_id")) : nullptr;
+    vtkDataArray* idSolid =
+        gSolid ? vtkDataArray::SafeDownCast(gSolid->GetPointData()->GetArray("node_id")) : nullptr;
+    vtkDataArray* idLine =
+        gLine ? vtkDataArray::SafeDownCast(gLine->GetPointData()->GetArray("node_id")) : nullptr;
 
     if (!gSolid && !gLine)
     {
         qWarning() << "IIWL Part1: both solidGrid and lineGrid are null";
         return;
     }
-    if ((gSolid && !idSolid) || (gLine && !idLine))
+    if ((gSolid && gSolid->GetNumberOfPoints()>0 && !idSolid) || (gLine && gLine->GetNumberOfPoints()>0 && !idLine))
     {
         qWarning() << "IIWL Part1: node_id array missing on some grid";
         return;
     }
 
     const int NDIM = PublicVariables::instance().get(PublicConstants::kMeshDimension).toInt();
-    const int NCOM = (NDIM == DIMENSION_2D) ? 3 : 6;
+    const int NCOM = (NDIM == DIMENSION_2D) ? 4 : 6;
 
     QList<ProjectNode*> pages;
     CollectNodesByKind(m_node, "GeoStressPointPage", pages);
@@ -1752,9 +1854,9 @@ void PhysicalField::writeIIWL_Part1_GeoStressPoint(QTextStream& os)
     os << QString("%1\t%2\t%3\tNUM_GEO\tNDIM\tNCOM\n").arg(NUM_GEO).arg(NDIM).arg(NCOM);
 
     if (NDIM == DIMENSION_2D)
-        os << "XP\tYP\tSGX\tSGY\tTXY\tII\n";
+        os << "XP\tYP\tSGX\tSGY\tSGZ\tTXY\tII\n";
     else
-        os << "XP\tYP\tZP\tSGX\tSGY\tSGZ\tTYZ\tTZX\tTXY\tII\n";
+        os << "XP\tYP\tZP\tSGX\tSGY\tSGZ\tTXY\tTYZ\tTZX\tII\n";
 
     // ✅ II：顺序号（1..NUM_GEO）
     for (int i = 0; i < nodeOrder.size(); ++i)
@@ -1768,13 +1870,13 @@ void PhysicalField::writeIIWL_Part1_GeoStressPoint(QTextStream& os)
         if (NDIM == DIMENSION_2D)
         {
             os << fmtE(xyz.x) << "\t" << fmtE(xyz.y) << "\t" << fmtE(s.sx) << "\t" << fmtE(s.sy)
-               << "\t" << fmtE(s.sxy) << "\t" << II << "\n";
+               << "\t" << fmtE(s.sz) << "\t" << fmtE(s.sxy) << "\t" << II << "\n";
         }
         else
         {
             os << fmtE(xyz.x) << "\t" << fmtE(xyz.y) << "\t" << fmtE(xyz.z) << "\t" << fmtE(s.sx)
-               << "\t" << fmtE(s.sy) << "\t" << fmtE(s.sz) << "\t" << fmtE(s.syz) << "\t"
-               << fmtE(s.sxz) << "\t" << fmtE(s.sxy) << "\t" << II << "\n";
+               << "\t" << fmtE(s.sy) << "\t" << fmtE(s.sz) << "\t" << fmtE(s.sxy) << "\t"
+               << fmtE(s.syz) << "\t" << fmtE(s.sxz) << "\t" << II << "\n";
         }
     }
 }
@@ -1813,6 +1915,51 @@ void PhysicalField::writeIIWL_Part2_GeoStressFitFace(QTextStream& os)
     }
 }
 
+namespace
+{
+struct SelectedLoadBoundary { int element; QVector<int> nodes; };
+QVector<SelectedLoadBoundary> loadBoundaries(const QString& domain, const QString& uuid, bool edge)
+{
+    auto& picks=PickManager::instance();QVector<SelectedLoadBoundary> result;
+    for (const auto kind : {GridKind::Solid, GridKind::Line})
+    {
+        auto* grid=kind==GridKind::Solid?picks.solidGrid():picks.lineGrid();
+        if(!grid)continue;
+        auto* ids=grid->GetPointData()->GetArray("node_id");
+        auto* elements=grid->GetCellData()->GetArray("elem_id");
+        if(!ids||!elements)continue;
+        auto keys=picks.getIdList(domain,uuid,edge?PickMode::Edge:PickMode::Face,kind);
+        std::sort(keys.begin(),keys.end());
+        for (auto key : keys)
+        {
+            const auto ci=key>>4;const int local=int(key&15);
+            if(ci<0||ci>=grid->GetNumberOfCells())continue;
+            auto* cell=grid->GetCell(ci);if(!cell)continue;
+            vtkCell* part=nullptr;
+            if(edge)
+            {
+                if(cell->GetCellDimension()==1)part=cell;
+                else if(local<cell->GetNumberOfEdges())part=cell->GetEdge(local);
+            }
+            else if(cell->GetCellDimension()==2||local==15)part=cell;
+            else if(local<cell->GetNumberOfFaces())part=cell->GetFace(local);
+            if(!part)continue;
+            const int count=int(part->GetNumberOfPoints());QVector<int> order;
+            // VTK puts midside nodes after corners. Native line/face loads
+            // require the perimeter order, including each midside node.
+            if(edge&&count==3)order={0,2,1};
+            else if(!edge&&count==8)order={0,4,1,5,2,6,3,7};
+            else if(!edge&&count==6)order={0,3,1,4,2,5};
+            else for(int j=0;j<count;++j)order.append(j);
+            SelectedLoadBoundary record{int(elements->GetTuple1(ci)),{}};
+            for(int j:order)record.nodes.append(int(ids->GetTuple1(part->GetPointId(j))));
+            result.append(record);
+        }
+    }
+    return result;
+}
+}
+
 void PhysicalField::writeIIWL_Part4_PointForce(QTextStream& os)
 {
     PickManager::instance().updateStructure();
@@ -1820,15 +1967,15 @@ void PhysicalField::writeIIWL_Part4_PointForce(QTextStream& os)
     vtkUnstructuredGrid* gSolid = PickManager::instance().solidGrid();
     vtkUnstructuredGrid* gLine = PickManager::instance().lineGrid();
 
-    vtkIntArray* nodeIdSolid =
-        gSolid ? vtkIntArray::SafeDownCast(gSolid->GetPointData()->GetArray("node_id")) : nullptr;
-    vtkIntArray* nodeIdLine =
-        gLine ? vtkIntArray::SafeDownCast(gLine->GetPointData()->GetArray("node_id")) : nullptr;
+    vtkDataArray* nodeIdSolid =
+        gSolid ? vtkDataArray::SafeDownCast(gSolid->GetPointData()->GetArray("node_id")) : nullptr;
+    vtkDataArray* nodeIdLine =
+        gLine ? vtkDataArray::SafeDownCast(gLine->GetPointData()->GetArray("node_id")) : nullptr;
 
-    vtkIntArray* elemIdSolid =
-        gSolid ? vtkIntArray::SafeDownCast(gSolid->GetCellData()->GetArray("elem_id")) : nullptr;
-    vtkIntArray* elemIdLine =
-        gLine ? vtkIntArray::SafeDownCast(gLine->GetCellData()->GetArray("elem_id")) : nullptr;
+    vtkDataArray* elemIdSolid =
+        gSolid ? vtkDataArray::SafeDownCast(gSolid->GetCellData()->GetArray("elem_id")) : nullptr;
+    vtkDataArray* elemIdLine =
+        gLine ? vtkDataArray::SafeDownCast(gLine->GetCellData()->GetArray("elem_id")) : nullptr;
 
     const int NDIM = PublicVariables::instance().get(PublicConstants::kMeshDimension).toInt();
     const QString domain = "PointForcePage";
@@ -1838,14 +1985,14 @@ void PhysicalField::writeIIWL_Part4_PointForce(QTextStream& os)
         qWarning() << "IIWL Part4: both solidGrid and lineGrid are null";
         return;
     }
-    if ((gSolid && !nodeIdSolid) || (gLine && !nodeIdLine))
+    if ((gSolid && gSolid->GetNumberOfPoints()>0 && !nodeIdSolid) || (gLine && gLine->GetNumberOfPoints()>0 && !nodeIdLine))
     {
         qWarning() << "IIWL Part4: node_id array missing";
         return;
     }
 
     // ---------- 建 node_id -> pid 的快速映射 ----------
-    auto buildMapNodeIdToPid = [](vtkUnstructuredGrid* g, vtkIntArray* nodeIdArr)
+    auto buildMapNodeIdToPid = [](vtkUnstructuredGrid* g, vtkDataArray* nodeIdArr)
     {
         QHash<int, vtkIdType> mp;
         if (!g || !nodeIdArr)
@@ -1854,7 +2001,7 @@ void PhysicalField::writeIIWL_Part4_PointForce(QTextStream& os)
         const vtkIdType n = g->GetNumberOfPoints();
         for (vtkIdType pid = 0; pid < n; ++pid)
         {
-            mp.insert(nodeIdArr->GetValue(int(pid)), pid);
+            mp.insert(nodeIdArr->GetTuple1(int(pid)), pid);
         }
         return mp;
     };
@@ -1864,7 +2011,7 @@ void PhysicalField::writeIIWL_Part4_PointForce(QTextStream& os)
 
     // ---------- 给定 pid，选一个“所属单元 elem_id”（稳定规则：最小 elem_id）
     // ----------
-    auto chooseElemIdForPid = [](vtkUnstructuredGrid* g, vtkIntArray* elemIdArr,
+    auto chooseElemIdForPid = [](vtkUnstructuredGrid* g, vtkDataArray* elemIdArr,
                                  vtkIdType pid) -> int
     {
         if (!g || pid < 0 || pid >= g->GetNumberOfPoints())
@@ -1883,7 +2030,7 @@ void PhysicalField::writeIIWL_Part4_PointForce(QTextStream& os)
             vtkIdType cid = cellIds->GetId(i);
             if (elemIdArr)
             {
-                int eid = elemIdArr->GetValue(int(cid));
+                int eid = elemIdArr->GetTuple1(int(cid));
                 if (eid < bestElem)
                 {
                     bestElem = eid;
@@ -1963,7 +2110,7 @@ void PhysicalField::writeIIWL_Part4_PointForce(QTextStream& os)
         {
             // 优先在 solid 找 pid；找不到再去 line
             vtkUnstructuredGrid* g = nullptr;
-            vtkIntArray* elemArr = nullptr;
+            vtkDataArray* elemArr = nullptr;
             vtkIdType pid = -1;
 
             auto itS = mapSolid.find(nodeId);
@@ -2019,6 +2166,51 @@ void PhysicalField::writeIIWL_Part4_PointForce(QTextStream& os)
         }
     }
 
+    if (NDIM == DIMENSION_3D)
+    {
+        // MAKEFL in the deployed solver passes an uninitialized local NFT
+        // instead of NFL. Constant edge tractions have an equivalent nodal
+        // representation, so integrate them before exporting native loads.
+        QList<ProjectNode*> linePages;
+        CollectNodesByKind(m_node, "LinearForcePage", linePages);
+        constexpr double xi[]={-.906179845938664,-.538469310105683,0.,.538469310105683,.906179845938664};
+        constexpr double weight[]={.236926885056189,.478628670499366,.568888888888889,.478628670499366,.236926885056189};
+        for (auto* node : linePages)
+        {
+            auto* page=dynamic_cast<LinearForcePage*>(node->getPage());if(!page)continue;
+            for (const auto& boundary : loadBoundaries("LinearForcePage",node->getUuid(),true))
+            {
+                const int count=boundary.nodes.size();if(count!=2&&count!=3)continue;
+                QSet<int> wanted;for(int id:boundary.nodes)wanted.insert(id);
+                QHash<int,XYZ> coordinates;
+                FillXYZForWantedNodeIds(wanted,coordinates,gSolid,nodeIdSolid);
+                FillXYZForWantedNodeIds(wanted,coordinates,gLine,nodeIdLine);
+                QVector<double> nodalWeight(count,0.0);
+                for(int k=0;k<5;++k)
+                {
+                    const double t=xi[k];
+                    const QVector<double> shape=count==2?QVector<double>{(1-t)/2,(1+t)/2}
+                        :QVector<double>{t*(t-1)/2,1-t*t,t*(t+1)/2};
+                    const QVector<double> derivative=count==2?QVector<double>{-.5,.5}
+                        :QVector<double>{t-.5,-2*t,t+.5};
+                    XYZ tangent;
+                    for(int j=0;j<count;++j)
+                    {
+                        const auto p=coordinates[boundary.nodes[j]];
+                        tangent.x+=derivative[j]*p.x;tangent.y+=derivative[j]*p.y;tangent.z+=derivative[j]*p.z;
+                    }
+                    const double jac=std::sqrt(tangent.x*tangent.x+tangent.y*tangent.y+tangent.z*tangent.z);
+                    for(int j=0;j<count;++j)nodalWeight[j]+=shape[j]*jac*weight[k];
+                }
+                for(int j=0;j<count;++j)
+                {
+                    const auto p=coordinates[boundary.nodes[j]];
+                    rows3.push_back({boundary.element,p.x,p.y,p.z,page->fxValue()*nodalWeight[j],
+                        page->fyValue()*nodalWeight[j],page->fzValue()*nodalWeight[j],0,0,0});
+                }
+            }
+        }
+    }
     const int NFC = (NDIM == DIMENSION_2D) ? rows2.size() : rows3.size();
 
     os << "\n";
@@ -2055,89 +2247,12 @@ void PhysicalField::writeIIWL_Part4_PointForce(QTextStream& os)
 
 void PhysicalField::writeIIWL_Part5_LinearForce(QTextStream& os)
 {
-    PickManager::instance().updateStructure();
-
-    const int NDIM = PublicVariables::instance().get(PublicConstants::kMeshDimension).toInt();
-    const QString domainLine = "LinearForcePage";
-
-    QList<ProjectNode*> pages;
-    CollectNodesByKind(m_node, "LinearForcePage", pages);
-
-    qInfo() << "IIWL Part5 LinearForce pages.size=" << pages.size();
-
-    struct Rec
-    {
-        int ke = 0;
-        QVector<int> nodeIds;
-        double fx = 0, fy = 0, fz = 0;
-    };
-    QVector<Rec> recs;
-
-    for (ProjectNode* n : pages)
-    {
-        if (!n)
-            continue;
-        const QString uuid = n->getUuid();
-        auto* page = dynamic_cast<LinearForcePage*>(n->getPage());
-        if (!page)
-            continue;
-
-        const double fx = page->fxValue();
-        const double fy = page->fyValue();
-        const double fz = (NDIM == DIMENSION_3D) ? page->fzValue() : 0.0;
-
-        // ✅ 线力：用 edgeNodesByKe（优先 lineGrid）
-        QHash<int, QVector<int>> nodesByKe =
-            PickManager::instance().getEdgeNodesByKe(domainLine, uuid, GridKind::Line);
-        if (nodesByKe.isEmpty())
-            nodesByKe = PickManager::instance().getEdgeNodesByKe(domainLine, uuid, GridKind::Solid);
-
-        qInfo() << "[Part5] uuid=" << uuid << "KE keys=" << nodesByKe.keys();
-
-        for (auto it = nodesByKe.begin(); it != nodesByKe.end(); ++it)
-        {
-            const int ke = it.key();
-            const QVector<int>& nds = it.value();
-            if (nds.isEmpty())
-                continue;
-
-            Rec r;
-            r.ke = ke;
-            r.nodeIds = nds;
-            r.fx = fx;
-            r.fy = fy;
-            r.fz = fz;
-            recs.push_back(r);
-        }
-    }
-
-    const int NFL = recs.size();
-    const int LXJMEL = 1; // 已知线荷载作用单元（我们输出 KE）
-
-    os << "\n";
-    os << NFL << "\t" << "NFL" << "\n";
-
-    qInfo() << "IIWL Part5 NFL=" << NFL << "LXJMEL=" << LXJMEL;
-
-    // 格式：KE  (线力序号)  NLIJD
-    //       J  Fx Fy Fz    (NLIJD 行)
-    for (int i = 0; i < recs.size(); ++i)
-    {
-        const int idx = i + 1;
-        const Rec& r = recs[i];
-        const int NLIJD = r.nodeIds.size();
-
-        qInfo() << "[Part5] write idx=" << idx << "ke=" << r.ke << "NLIJD=" << NLIJD;
-
-        os << r.ke << "\t" << idx << "\t" << NLIJD << "\n";
-        for (int nodeId : r.nodeIds)
-        {
-            os << nodeId << "\t" << fmtE(r.fx) << "\t" << fmtE(r.fy) << "\t" << fmtE(r.fz) << "\n";
-        }
-    }
+    // 3D line traction is integrated into nodal forces in Part4;
+    // 2D edge traction is written in Part6.
+    os << "0 NFL\n";
 }
 
-void PhysicalField::writeIIWL_Part7_TemperatureLoad(QTextStream& os)
+bool PhysicalField::writeIIWL_Part7_TemperatureLoad(QTextStream& os)
 {
     PickManager::instance().updateStructure();
 
@@ -2206,31 +2321,62 @@ void PhysicalField::writeIIWL_Part7_TemperatureLoad(QTextStream& os)
             else
             {
                 const int idx = it.value();
-                qWarning() << "IIWL Part7 duplicate nodeId=" << nodeId << "override (alfa,dt) old=("
-                           << rows[idx].alfa << "," << rows[idx].dt << ") new=(" << alfa << ","
-                           << dt << ")";
-                rows[idx].alfa = alfa;
-                rows[idx].dt = dt;
+                if (rows[idx].alfa != alfa || rows[idx].dt != dt)
+                {
+                    QMessageBox::warning(nullptr, QStringLiteral("请检查变温荷载"),
+                        QStringLiteral("节点 %1 被赋予不同的温差或膨胀系数，请删除重复设置。").arg(nodeId));
+                    return false;
+                }
             }
         }
     }
 
+    const QString project = PublicVariables::instance().get(PublicConstants::kProjectDirectoryKey).toString();
+    QSaveFile alphaFile(QDir(SolverFilePaths::outputInputDirectory(project)).filePath(QStringLiteral("THERMAL_ALPHA.DAT")));
+    if (!alphaFile.open(QIODevice::WriteOnly | QIODevice::Text)) return false;
+    QTextStream alphaStream(&alphaFile);
+    alphaStream << rows.size() << " NODE_ALPHA\n";
+    for (const auto& row : rows)
+        alphaStream << row.nodeId << ' ' << QString::number(row.alfa, 'g', 17) << '\n';
+    alphaStream.flush();
+    if (!alphaFile.commit()) return false;
+
+    // NFW=1 means a uniform temperature over the entire native mesh. Use
+    // every mesh node (zero outside the selection) for a local nodal field.
+    if (!rows.isEmpty())
+    {
+        for (auto* grid : {PickManager::instance().solidGrid(), PickManager::instance().lineGrid()})
+        {
+            if (!grid || grid->GetNumberOfPoints()==0) continue;
+            auto* ids = grid->GetPointData()->GetArray("node_id");
+            if (!ids) return false;
+            for (vtkIdType i=0; i<grid->GetNumberOfPoints(); ++i)
+            {
+                const int id = int(ids->GetTuple1(i));
+                if (!idxOfNode.contains(id))
+                {
+                    idxOfNode.insert(id, rows.size());
+                    rows.push_back({id, 0.0, 0.0});
+                }
+            }
+        }
+    }
     const int NFW = rows.size();
 
     os << "\n";
     os << QString("%1\tNFW\n").arg(NFW);
 
-    // ✅ 说明行：JMFW ALFA DT II
-    os << "JMFW\tALFA\tDT\tII\n";
+    os << "JMFW\tDT\tII\n";
 
     qInfo() << "IIWL Part7 FINAL NFW=" << NFW;
 
     for (int i = 0; i < rows.size(); ++i)
     {
         const int II = i + 1;
-        os << rows[i].nodeId << "\t" << fmtE(rows[i].alfa) << "\t" << fmtE(rows[i].dt) << "\t" << II
+        os << rows[i].nodeId << "\t" << fmtE(rows[i].dt) << "\t" << II
            << "\n";
     }
+    return true;
 }
 
 void PhysicalField::writeIIWL_Part6_FaceLoad(QTextStream& os)
@@ -2268,17 +2414,10 @@ void PhysicalField::writeIIWL_Part6_FaceLoad(QTextStream& os)
         const double fz = (NDIM == DIMENSION_3D) ? page->fzValue() : 0.0;
 
         // ✅ 面力：一般在 solidGrid（优先 solid）
-        QHash<int, QVector<int>> nodesByKe =
-            PickManager::instance().getFaceNodesByKe(domainFace, uuid, GridKind::Solid);
-        if (nodesByKe.isEmpty())
-            nodesByKe = PickManager::instance().getFaceNodesByKe(domainFace, uuid, GridKind::Line);
-
-        qInfo() << "[Part6] uuid=" << uuid << "KE keys=" << nodesByKe.keys();
-
-        for (auto it = nodesByKe.begin(); it != nodesByKe.end(); ++it)
+        for (const auto& boundary : loadBoundaries(domainFace, uuid, NDIM == DIMENSION_2D))
         {
-            const int ke = it.key();
-            const QVector<int>& nds = it.value();
+            const int ke = boundary.element;
+            const QVector<int>& nds = boundary.nodes;
             if (nds.isEmpty())
                 continue;
 
@@ -2292,11 +2431,24 @@ void PhysicalField::writeIIWL_Part6_FaceLoad(QTextStream& os)
         }
     }
 
+    if (NDIM == DIMENSION_2D)
+    {
+        QList<ProjectNode*> linePages;
+        CollectNodesByKind(m_node, "LinearForcePage", linePages);
+        for (auto* node : linePages)
+        {
+            auto* page=dynamic_cast<LinearForcePage*>(node->getPage());if(!page)continue;
+            for (const auto& boundary : loadBoundaries("LinearForcePage",node->getUuid(),true))
+                recs.push_back({boundary.element,boundary.nodes,page->fxValue(),page->fyValue(),0.0});
+        }
+    }
     const int NFT = recs.size();
     const int LXJMET = 1; // 已知面荷载作用单元（我们输出 KE）
 
     os << "\n";
     os << NFT << "\t" << "NFT" << "\n";
+    os << "0 0 0 IFUSHE NFT_A NFT_B\n";
+    os << "0 0 0 0.0 0.0 IFWEST NFT_C NFT_D HWUP_TOP HWUP_BOT\n";
 
     qInfo() << "IIWL Part6 NFT=" << NFT << "LXJMET=" << LXJMET;
 
@@ -2678,35 +2830,61 @@ void PhysicalField::generateWaveFiles()
     writeOneFile("WAVE-AZ.DAT", sz, azAmp, "AZ");
 }
 
-void PhysicalField::generateIIWLFile()
+bool PhysicalField::generateIIWLFile()
 {
+    if(!m_constraintsValid)return false;
+    auto* meshSvc=ServiceRegistry::instance().getService<MeshModuleControllerService>();
+    const auto beamNodes=planarBeamNodes(meshSvc?meshSvc->getVtkUnstructuredGrid():nullptr);
+    const int ndim=PublicVariables::instance().get(PublicConstants::kMeshDimension).toInt();
+    QList<ProjectNode*> forcePages;CollectNodesByKind(m_node,"PointForcePage",forcePages);
+    for(auto* node:forcePages)
+    {
+        auto* page=dynamic_cast<PointForcePage*>(node->getPage());if(!page)continue;
+        if(page->mxValue()==0&&page->myValue()==0&&page->mzValue()==0)continue;
+        for(auto kind:{GridKind::Solid,GridKind::Line})
+            for(auto id:PickManager::instance().getIdList("PointForcePage",node->getUuid(),PickMode::Node,kind))
+                if(ndim!=2||!beamNodes.contains(int(id))||page->mxValue()!=0||page->myValue()!=0)
+                {
+                    QMessageBox::warning(nullptr,QStringLiteral("节点力矩不适用"),QStringLiteral("当前已验证的节点力矩为二维平面梁的绕 Z 力矩。所选节点或力矩方向不匹配，无法导出。"));
+                    return false;
+                }
+    }
     const QString projectDir =
         PublicVariables::instance().get(PublicConstants::kProjectDirectoryKey).toString();
     QDir inputDir(SolverFilePaths::outputInputDirectory(projectDir));
     if (!QDir().mkpath(inputDir.absolutePath()))
-        return;
+        return false;
     const QString path = inputDir.filePath(QStringLiteral("IIWL.DAT"));
 
-    QFile f(path);
+    QSaveFile f(path);
     if (!f.open(QIODevice::WriteOnly | QIODevice::Text))
     {
         qWarning() << "generateIIWLFile: open failed:" << path;
-        return;
+        return false;
     }
 
     QTextStream os(&f);
 
     writeIIWL_Part1_GeoStressPoint(os);
     writeIIWL_Part2_GeoStressFitFace(os);
+    const int dimension = PublicVariables::instance().get(PublicConstants::kMeshDimension).toInt();
+    os << m_exportedDofs+m_prescribedValues.size() << " NIC\nII CONA CONAP CONAPP\n";
+    for (int i=1; i<=m_exportedDofs; ++i) os << i << " 0.0 0.0 0.0\n";
+    for(int i=0;i<m_prescribedValues.size();++i)
+        os << m_exportedDofs+i+1 << ' ' << QString::number(m_prescribedValues[i],'g',17) << " 0.0 0.0\n";
     writeIIWL_Part3_BodyForce(os);
     writeIIWL_Part4_PointForce(os);
     writeIIWL_Part5_LinearForce(os);
+    os << "0 0 " << (dimension == 3 ? 6 : 4) << " NFS MAGSS MACOM\nJMFS MATYPE IG STRESS\n";
     writeIIWL_Part6_FaceLoad(os);
-    writeIIWL_Part7_TemperatureLoad(os);
+    if (!writeIIWL_Part7_TemperatureLoad(os)) return false;
     writeIIWL_Part8_BeamSpecialDistributedLoad(os);
+    os << "0 IMODE_DYNA\n0 1.0 NTBX AMP_AX\n0 1.0 NTBY AMP_AY\n0 1.0 NTBZ AMP_AZ\n";
 
-    f.close();
+    os.flush();
+    if (!f.commit()) return false;
     qInfo() << "IIWL generated :" << path;
 
     generateWaveFiles();
+    return true;
 }

@@ -1,0 +1,224 @@
+{
+    "items": [
+        {
+            "children": [
+                {
+                    "children": [
+                        {
+                            "state": {
+                                "face_index": 1,
+                                "gama": "2650",
+                                "height": "2000",
+                                "idir": "1",
+                                "pgrout": "0",
+                                "pick_mode": "face",
+                                "picked_edges": [
+                                ],
+                                "picked_faces": [
+                                ],
+                                "show_preview": true
+                            },
+                            "title": "侧立面",
+                            "type": "GeoStressRegressionSideFace",
+                            "uuid": "{95e3e339-5b72-4b12-ac4b-1c3fcc5c07f3}"
+                        },
+                        {
+                            "state": {
+                                "face_index": 2,
+                                "gama": "2650",
+                                "height": "2000",
+                                "idir": "1",
+                                "pgrout": "0",
+                                "pick_mode": "face",
+                                "picked_edges": [
+                                ],
+                                "picked_faces": [
+                                ],
+                                "show_preview": true
+                            },
+                            "title": "侧立面(2)",
+                            "type": "GeoStressRegressionSideFace",
+                            "uuid": "{cc2b1b10-974a-44b6-9a3e-b112f081cbea}"
+                        },
+                        {
+                            "state": {
+                                "measure_points": [
+                                ]
+                            },
+                            "title": "实测地应力点",
+                            "type": "GeoStressRegressionMeasurePoint",
+                            "uuid": "{948961c2-14a9-4321-be1d-daf9492df4c5}"
+                        },
+                        {
+                            "state": {
+                                "fx": "0",
+                                "fy": "0",
+                                "fz": "0",
+                                "pick_mode": "face",
+                                "picked_edges": [
+                                ],
+                                "picked_faces": [
+                                ]
+                            },
+                            "title": "外面力",
+                            "type": "GeoStressRegressionOuterForce",
+                            "uuid": "{056f4ec9-7dc4-4b5b-aa89-881b8b998d95}"
+                        }
+                    ],
+                    "state": {
+                        "calc_mode": 0,
+                        "factor": "0.95",
+                        "lambda": "0.00000",
+                        "reserved": "0",
+                        "roof": "FAROOF.DAT"
+                    },
+                    "title": "地应力回归分析",
+                    "type": "GeoStressRegressionAnalysis",
+                    "uuid": "{f15d7e4f-02ec-4459-b463-fedf33702b34}"
+                },
+                {
+                    "children": [
+                        {
+                            "state": {
+                                "edge_line": [
+                                ],
+                                "edge_solid": [
+                                ],
+                                "face_line": [
+                                ],
+                                "face_solid": [
+                                ],
+                                "group_phys_id": 0,
+                                "pick_mode": "face"
+                            },
+                            "title": "衬砌内边界",
+                            "type": "CaveLiningInnerBoundary",
+                            "uuid": "{b38b3299-7c1f-4656-9697-9defbd939a28}"
+                        },
+                        {
+                            "state": {
+                                "edge_line": [
+                                ],
+                                "edge_solid": [
+                                ],
+                                "face_line": [
+                                ],
+                                "face_solid": [
+                                ],
+                                "group_phys_id": 0,
+                                "pick_mode": "face"
+                            },
+                            "title": "衬砌外边界",
+                            "type": "CaveLiningOuterBoundary",
+                            "uuid": "{7ab5a8f6-2e89-4482-a554-deb6e034430b}"
+                        },
+                        {
+                            "state": {
+                                "selected_domains": [
+                                ]
+                            },
+                            "title": "吊车梁区域",
+                            "type": "CaveCraneBeamArea",
+                            "uuid": "{c516decf-223b-4cf1-be2e-ffdb24e89c06}"
+                        },
+                        {
+                            "state": {
+                                "edge_solid": [
+                                ],
+                                "enable_view_pick": true,
+                                "excavation_layer": -1,
+                                "face_solid": [
+                                ],
+                                "selected_domains": [
+                                ],
+                                "selected_group_category": "REGION",
+                                "selected_group_dim": 3,
+                                "selected_groups": [
+                                ]
+                            },
+                            "title": "开挖体（层号 -1）",
+                            "type": "CaveExcavationBody",
+                            "uuid": "{e7dda868-2f27-4dd6-82a4-eb760e56a868}"
+                        }
+                    ],
+                    "state": {
+                        "cases": [
+                            {
+                                "icase": 1,
+                                "iday_case": "0",
+                                "iexca_end": "-1",
+                                "iexca_sta": "-1",
+                                "if_chen": "0",
+                                "if_e1toa": "0",
+                                "if_eall": "1",
+                                "if_j1toa": "0",
+                                "if_jall": "0",
+                                "ja_method": "1"
+                            }
+                        ],
+                        "crane_beam_enabled": false,
+                        "crane_beam_install_stage": 1,
+                        "crane_beam_release_factor": 1,
+                        "current_case": 0,
+                        "dt": 0.005,
+                        "excavation_days": [
+                            "0"
+                        ],
+                        "groundwater_enabled": false,
+                        "iexca_max": 1,
+                        "ifmode": "0",
+                        "ifwave": "0",
+                        "line_10": "0",
+                        "line_11": "1",
+                        "line_18": "0",
+                        "line_19": "0",
+                        "line_20": "0.05",
+                        "line_21": "0.0",
+                        "line_22": "1",
+                        "line_23": "2",
+                        "line_24": "1 100",
+                        "line_25": "4",
+                        "line_26": "0",
+                        "line_27": "",
+                        "line_28": "",
+                        "line_29": "",
+                        "line_3": "0",
+                        "line_30": "",
+                        "line_5": "0.0",
+                        "line_7": "0.0",
+                        "lining_enabled": false,
+                        "ncase": 1,
+                        "quiet_boundary_enabled": false,
+                        "reinforcement_field": {
+                            "actual_stiffness": 1.05,
+                            "bar_delta_c_mpa": 0.3,
+                            "bar_length": 9,
+                            "cable_delta_c_mpa": 0.5,
+                            "cable_length": 30,
+                            "concept_stiffness": 1.05,
+                            "formula": 1,
+                            "indraratna_stiffness_correction": 1,
+                            "mode": 0
+                        },
+                        "tend": 30,
+                        "tsta": 0
+                    },
+                    "title": "开挖与加固分析",
+                    "type": "CaveSupportComputation",
+                    "uuid": "{b0df7ee3-7459-4f55-8a1b-65af6ffb3aca}"
+                }
+            ],
+            "state": {
+            },
+            "title": "洞室开挖工程",
+            "type": "CaveExcavationAnalysis",
+            "uuid": "{ac8935ad-fea6-45f8-a710-092f175893ed}"
+        }
+    ],
+    "module": "Solver",
+    "root_title": "计算分析",
+    "state": {
+        "compute_device": "gpu",
+        "gpu_device_mode": 2
+    }
+}

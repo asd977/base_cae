@@ -76,10 +76,11 @@ inline void configureControl(QWidget* widget)
             return;
         }
 
-        if (objectName == QStringLiteral("applyButton") ||
+        if (!button->property("preserveActionText").toBool() &&
+            (objectName == QStringLiteral("applyButton") ||
             objectName == QStringLiteral("okButton") ||
             objectName == QStringLiteral("generateButton") ||
-            text == QObject::tr("生成") || text.startsWith(QObject::tr("生成")))
+            text == QObject::tr("生成") || text.startsWith(QObject::tr("生成"))))
         {
             button->setText(QObject::tr("应用"));
         }

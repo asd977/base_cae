@@ -13,6 +13,7 @@ class Output : public QObject, public OutputService
     Q_OBJECT
   public:
     Output();
+    ~Output() override;
     // 输出日志
     void outputLog(QString str);
     static void installQtLogBridge();

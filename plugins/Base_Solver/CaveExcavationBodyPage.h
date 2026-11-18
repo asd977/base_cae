@@ -11,6 +11,7 @@ class QComboBox;
 class QPushButton;
 class QListWidget;
 class QTimer;
+class QCheckBox;
 namespace Ui
 {
 class CaveExcavationBodyPage;
@@ -43,6 +44,7 @@ class CaveExcavationBodyPage : public BasePage
     void onGroupChanged(int index);
     void onGroupHovered(int index);
     void onGroupDropdownClosed();
+    void onDomainPicked(const QString& domain, const QString& uuid, const DomainKey& key);
 
   private:
     QString pickDomain() const;
@@ -73,4 +75,7 @@ class CaveExcavationBodyPage : public BasePage
     QPushButton* m_clearBtn = nullptr;
     QListWidget* m_groupList = nullptr;
     QTimer* m_groupPreviewTimer = nullptr;
+    QCheckBox* m_viewPickCheck = nullptr;
+    bool m_viewPickEnabled = true;
+    bool m_updatingGroupHighlight = false;
 };

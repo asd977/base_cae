@@ -24,6 +24,9 @@ public:
     static bool show(const QString& uuid, bool renderNow = true);
     static bool isVisible(const QString& uuid);
 
+    // Terrain is presented as a surface, without exposing its internal facets.
+    static void setTerrainPresentation(const QString& uuid);
+
     // 永久删除节点时清除单个对象状态；普通重建几何时不要调用。
     static void forgetVisibilityState(const QString& uuid);
 

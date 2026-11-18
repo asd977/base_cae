@@ -17,6 +17,8 @@
 #include <QColor>
 #include <QHash>
 #include <QComboBox>
+#include <QCheckBox>
+#include <QSignalBlocker>
 #include <QJsonArray>
 #include <QJsonObject>
 #include <QListWidget>
@@ -49,6 +51,18 @@ CaveExcavationBodyPage::CaveExcavationBodyPage(QWidget* parent)
     m_addGroupBtn = ui->addGroupButton;
     m_clearBtn = ui->clearButton;
     m_groupList = ui->groupList;
+    m_viewPickCheck = new QCheckBox(QStringLiteral("启用视图点选"), ui->pickGroupBox);
+    m_viewPickCheck->setChecked(m_viewPickEnabled);
+    m_viewPickCheck->setToolTip(QStringLiteral("点击视图中的开挖区域可定位对应分组；"
+        "点击“添加到当前”后才正式加入开挖范围。"));
+    ui->gridLayout->addWidget(m_viewPickCheck, 1, 0, 1, 4);
+    connect(m_viewPickCheck, &QCheckBox::toggled, this, [this](bool enabled)
+    {
+        m_viewPickEnabled = enabled;
+        PickManager::instance().setClickPickEnabled(pickDomain(), m_uuid, enabled);
+    });
+    connect(&PickManager::instance(), &PickManager::domainSelected, this,
+            &CaveExcavationBodyPage::onDomainPicked, Qt::UniqueConnection);
     m_removeGroupBtn = ui->removeGroupButton;
     m_groupPreviewTimer = new QTimer(this);
     m_groupPreviewTimer->setSingleShot(true);
@@ -106,8 +120,11 @@ void CaveExcavationBodyPage::beforeLoad()
 
     PickManager::instance().activate(pickDomain(), m_uuid, mode);
 
-    // 开挖体页面统一通过“分组”选择，不直接点选单个面。
-    PickManager::instance().setClickPickEnabled(pickDomain(), m_uuid, false);
+    // View click selects a group candidate, not the excavation operation itself.
+    // Use the same preferred category as the available excavation group list.
+    PickManager::instance().setPreferredDomainCategory(pickDomain(), m_uuid,
+                                                       selectionGroupCategory());
+    PickManager::instance().setClickPickEnabled(pickDomain(), m_uuid, m_viewPickEnabled);
     PickManager::instance().setBoxSelectEnabled(pickDomain(), m_uuid, false);
     PickManager::instance().clearPreviewSelection(pickDomain(), m_uuid, PickMode::Face);
     PickManager::instance().clearSelection(pickDomain(), m_uuid, PickMode::Face);
@@ -149,6 +166,7 @@ QJsonObject CaveExcavationBodyPage::saveJson()
     obj["selected_group_category"] = category;
     obj["selected_group_dim"] = dim;
     obj["excavation_layer"] = excavationLayer();
+    obj["enable_view_pick"] = m_viewPickEnabled;
 
     QJsonArray selectedDomainsArr;
     for (int g : selected)
@@ -172,6 +190,15 @@ QJsonObject CaveExcavationBodyPage::saveJson()
 void CaveExcavationBodyPage::loadJson(const QJsonObject& obj)
 {
     setupGroupCombo();
+    m_viewPickEnabled = obj.value(QStringLiteral("enable_view_pick")).toBool(true);
+    if (m_viewPickCheck)
+    {
+        const QSignalBlocker block(m_viewPickCheck);
+        m_viewPickCheck->setChecked(m_viewPickEnabled);
+    }
+    PickManager::instance().setPreferredDomainCategory(pickDomain(), m_uuid,
+                                                       selectionGroupCategory());
+    PickManager::instance().setClickPickEnabled(pickDomain(), m_uuid, m_viewPickEnabled);
 
     // 旧工程没有 excavation_layer。调用方会先按原树顺序设置兼容值，
     // 因此这里只在字段实际存在时覆盖当前值。
@@ -264,6 +291,29 @@ QVector<int> CaveExcavationBodyPage::selectedElementIds()
         out.push_back(ke);
 
     return out;
+}
+
+void CaveExcavationBodyPage::onDomainPicked(const QString& domain, const QString& uuid,
+                                              const DomainKey& key)
+{
+    if (!m_viewPickEnabled || m_updatingGroupHighlight || !m_groupCombo ||
+        domain != pickDomain() || uuid != m_uuid ||
+        key.category.compare(selectionGroupCategory(), Qt::CaseInsensitive) != 0 ||
+        key.dim != layerDomainDim())
+        return;
+
+    const int index = m_groupCombo->findData(key.id);
+    if (index < 0)
+        return;
+    m_groupPreviewTimer->stop();
+    m_pendingPreviewGroup = 0;
+    {
+        const QSignalBlocker blocker(m_groupCombo);
+        m_groupCombo->setCurrentIndex(index);
+    }
+    // A click only previews/selects a group in the combo. The existing
+    // "Add to current" button owns the final change to the excavation set.
+    updateGroupDomainHighlight(0);
 }
 
 void CaveExcavationBodyPage::onClearClicked()
@@ -741,7 +791,9 @@ void CaveExcavationBodyPage::updateGroupDomainHighlight(int previewGroup)
     };
 
     auto& pickManager = PickManager::instance();
+    m_updatingGroupHighlight = true;
     pickManager.setSelectedDomain(pickDomain(), m_uuid, domainKey(selectedGroup));
+    m_updatingGroupHighlight = false;
     pickManager.setPreviewDomain(pickDomain(), m_uuid, domainKey(previewGroup));
     pickManager.setPreDeleteDomain(pickDomain(), m_uuid, DomainKey{});
 }
@@ -757,7 +809,7 @@ int CaveExcavationBodyPage::layerDomainDim() const
 PickMode CaveExcavationBodyPage::currentPickMode() const
 {
     // 洞室开挖体选择本质是“分组选择”。
-    // 业务数据保存区域分组编号；优先使用 Physical/Netgen REGION 分组，
+    // 业务数据保存区域分组编号；优先使用 Physical/SMESH REGION 分组，
     // 并过滤杆/线单元。
     return PickMode::Domain;
 }
@@ -814,7 +866,7 @@ QString CaveExcavationBodyPage::selectionGroupCategory() const
         return configuredCategory;
 
     // 兼容没有用途元数据的旧工程：
-    // Netgen 用 REGION，Abaqus/Flac3D 用 Physical，IIIN/DAT 用 LAYER。
+    // SMESH 用 REGION，Abaqus/Flac3D 用 Physical，IIIN/DAT 用 LAYER。
     if (hasUsableCategory(QStringLiteral("REGION")))
         return QStringLiteral("REGION");
     if (hasUsableCategory(QStringLiteral("Physical")))

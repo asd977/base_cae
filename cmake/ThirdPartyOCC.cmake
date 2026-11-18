@@ -8,10 +8,6 @@ if(NOT EXISTS "${CAE_OCC_ROOT}/lib")
     message(FATAL_ERROR "OCC lib directory not found: ${CAE_OCC_ROOT}/lib")
 endif()
 
-if(WIN32 AND NOT EXISTS "${CAE_OCC_ROOT}/bin")
-    message(FATAL_ERROR "OCC runtime bin directory not found: ${CAE_OCC_ROOT}/bin")
-endif()
-
 set(CAE_OCC_LIB_NAMES
     TKBin
     TKBinL
@@ -74,9 +70,27 @@ set(CAE_OCC_LIB_NAMES
     TKXSDRAW
 )
 
+file(STRINGS "${CAE_OCC_ROOT}/inc/Standard_Version.hxx" _occ_version_line
+    REGEX "^#define OCC_VERSION_COMPLETE[ \t]+")
+string(REGEX MATCH "[0-9]+\\.[0-9]+\\.[0-9]+" CAE_OCC_VERSION "${_occ_version_line}")
+if(CAE_OCC_VERSION VERSION_GREATER_EQUAL "7.8.0")
+    # OCCT 7.8 consolidated STEP/IGES/STL toolkits under the TKDE names.
+    set(CAE_OCC_LIB_NAMES
+        TKernel TKMath TKG2d TKG3d TKBRep TKGeomBase TKGeomAlgo TKTopAlgo
+        TKPrim TKBO TKBool TKFeat TKFillet TKOffset TKShHealing TKMesh TKMeshVS
+        TKService TKV3d TKOpenGl TKIVtk
+        TKCDF TKLCAF TKCAF TKVCAF TKXCAF TKBinL TKBin TKBinXCAF TKXmlL TKXml TKXmlXCAF
+        TKXSBase TKDE TKDESTEP TKDEIGES TKDESTL TKRWMesh)
+endif()
+message(STATUS "CAE shared OpenCASCADE ${CAE_OCC_VERSION}: ${CAE_OCC_ROOT}")
+
 set(CAE_OCC_LIBRARIES "")
 
 foreach(_occ_lib IN LISTS CAE_OCC_LIB_NAMES)
+    # Switching the package must not retain import libraries from the old root.
+    if(CAE_OCC_${_occ_lib}_LIBRARY AND NOT CAE_OCC_${_occ_lib}_LIBRARY STREQUAL "${CAE_OCC_ROOT}/lib/${_occ_lib}.lib")
+        unset(CAE_OCC_${_occ_lib}_LIBRARY CACHE)
+    endif()
     find_library(CAE_OCC_${_occ_lib}_LIBRARY
         NAMES ${_occ_lib}
         PATHS "${CAE_OCC_ROOT}/lib"
@@ -99,20 +113,11 @@ set_target_properties(CAE::OCC PROPERTIES
     INTERFACE_COMPILE_FEATURES cxx_std_11
 )
 
-if(WIN32)
-    file(GLOB CAE_OCC_RUNTIME_DLLS CONFIGURE_DEPENDS "${CAE_OCC_ROOT}/bin/*.dll")
-    if(NOT CAE_OCC_RUNTIME_DLLS)
-        message(FATAL_ERROR "OCC runtime DLLs not found under: ${CAE_OCC_ROOT}/bin")
-    endif()
-endif()
-
-function(cae_copy_occ_runtime target_name)
+function(cae_copy_occ_runtime target)
     if(WIN32)
-        add_custom_command(TARGET ${target_name} POST_BUILD
-            COMMAND ${CMAKE_COMMAND} -E copy_if_different
-                ${CAE_OCC_RUNTIME_DLLS}
-                "${CAE_RUNTIME_DIR}"
-            VERBATIM
-        )
+        file(GLOB _occ_runtime_dlls "${CAE_OCC_ROOT}/bin/*.dll")
+        add_custom_command(TARGET ${target} POST_BUILD
+            COMMAND "${CMAKE_COMMAND}" -E copy_if_different ${_occ_runtime_dlls} "${CAE_RUNTIME_DIR}"
+            VERBATIM)
     endif()
 endfunction()

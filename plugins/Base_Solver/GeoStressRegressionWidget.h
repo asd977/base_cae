@@ -6,6 +6,7 @@
 #include <QStringList>
 
 class QWidget;
+class QLabel;
 
 namespace Ui
 {
@@ -63,15 +64,18 @@ class GeoStressRegressionWidget : public BasePage
   signals:
     void computeRequested();
     void stopRequested();
+    void calculationModeChanged();
 
 
   private slots:
     void onComputeClicked();
     void setComputing(bool computing);
+    void updateModeUi();
 
 
   private:
     Ui::GeoStressRegressionWidget* ui;
+    QLabel* m_modeHint = nullptr;
 };
 
 #endif // GEOSTRESSREGRESSIONWIDGET_H

@@ -7,6 +7,7 @@
 #include "ImportGeometryBuilder.h"
 #include "SketchDocument.h"
 #include "SketchShapeBuilder.h"
+#include <GeometryDisplayManager.h>
 
 #include <Standard_Failure.hxx>
 #include <TopoDS_Shape.hxx>
@@ -20,6 +21,8 @@
 #include <PublicConstants.h>
 #include <SketchPanel.h>
 #include <CavernTemplateDialog.h>
+#include "../terrain/TerrainSurfacePanel.h"
+#include "../terrain/TerrainSurfaceBuilder.h"
 #include <EarthRockfillDamDialog.h>
 #include <GravityDamDialog.h>
 #include <SlopeTemplateDialog.h>
@@ -362,6 +365,24 @@ const QVector<FeatureDescriptor>& descriptors()
             true,
             [] { return new Sketch2DDialog(); },
             rebuildSketch2D
+        },
+        {
+            PublicConstants::kPageGeomTerrainSurface,
+            QStringLiteral("TerrainSurface"), QStringLiteral("等高线地形"), {}, {},
+            true, false, false,
+            [] { return new TerrainSurfacePanel(); },
+            [](const FeatureData& feature, IGeometryService&, QString* message)
+            {
+                if (!feature.state.value("generated").toBool()) return true;
+                const auto result = GeometryTerrain::TerrainSurfaceBuilder::build(
+                    GeometryTerrain::TerrainSurfaceBuilder::sourcesFromState(feature.state),
+                    feature.state.value("spacing").toDouble(5),
+                    GeometryTerrain::TerrainSurfaceBuilder::domainMode(feature.state));
+                if (!result.ok()) { setMessage(message, result.error); return false; }
+                GeometryDisplayManager::setTerrainPresentation(feature.uuid);
+                GeometryBuildUtils::registerShape(feature.uuid,feature.title,new TopoDS_Shape(result.shape));
+                setMessage(message,result.summary()); return true;
+            }
         },
         {
             PublicConstants::kPagePreprocessBox,

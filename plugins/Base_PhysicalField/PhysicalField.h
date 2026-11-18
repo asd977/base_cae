@@ -23,10 +23,11 @@ class PhysicalField : public QObject, public PhysicalFieldService
     bool loadProject() override;
 
     // 生成约束文件
-    void generateIIIDFile();
+    bool generateIIIDFile() override;
+    bool hasPrescribedDisplacements() const override;
 
     // 生成荷载文件
-    void generateIIWLFile();
+    bool generateIIWLFile() override;
     bool importIIIDFile(const QString& filePath, QString* errorMessage = nullptr) override;
     bool validateSeismicAcceleration(QString* errorMessage = nullptr) const override;
     bool openSeismicAccelerationPage(QString* errorMessage = nullptr) override;
@@ -60,7 +61,7 @@ class PhysicalField : public QObject, public PhysicalFieldService
     void writeIIWL_Part4_PointForce(QTextStream& os);
     void writeIIWL_Part5_LinearForce(QTextStream& os);
 
-    void writeIIWL_Part7_TemperatureLoad(QTextStream& os);
+    bool writeIIWL_Part7_TemperatureLoad(QTextStream& os);
     void writeIIWL_Part8_BeamSpecialDistributedLoad(QTextStream& os);
     void writeIIWL_Part6_FaceLoad(QTextStream& os);
     void generateWaveFiles();
@@ -71,6 +72,9 @@ class PhysicalField : public QObject, public PhysicalFieldService
     void restoreNodeSelection(ProjectNode* node, const QJsonObject& item);
 
     bool m_loadingProject = false;
+    QVector<double> m_prescribedValues;
+    bool m_constraintsValid=false;
+    int m_exportedDofs=3;
 };
 
 #endif // PHYSICALFIELD_H

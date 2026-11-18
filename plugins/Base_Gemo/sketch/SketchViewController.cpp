@@ -16,6 +16,9 @@
 #include <BRepBndLib.hxx>
 #include <Standard_Failure.hxx>
 #include <vtkActor.h>
+#include <vtkActor2D.h>
+#include <vtkPolyDataMapper2D.h>
+#include <vtkProperty2D.h>
 #include <vtkCallbackCommand.h>
 #include <vtkCamera.h>
 #include <vtkCellArray.h>
@@ -514,8 +517,8 @@ void SketchViewController::onMouseMove(vtkObject* caller, unsigned long)
     interactor->GetEventPosition(x, y);
     if (x == m_lastMoveX && y == m_lastMoveY)
         return;
-    if (m_rubberLineActor && m_renderClock.isValid() && m_renderClock.elapsed() < 8)
-        return;
+    // 鼠标事件不能与 Render 节流共用时钟。渲染可节流，但不能漏掉
+    // 触点更新，否则快速移动时捕捉和点击位置表现不一致。
     m_lastMoveX = x;
     m_lastMoveY = y;
 
@@ -539,14 +542,36 @@ void SketchViewController::onMouseMove(vtkObject* caller, unsigned long)
             if (dx * dx + dy * dy > 16)
             {
                 m_draggingSelectionBox = true;
+                updateSnapIndicator(false, {});
                 updateSelectionBox(true, {m_pressU, m_pressV}, {u, v}, x < m_pressX);
             }
         }
-        if (moveHandler)
+        // 框选进行中只更新矩形，不发出昂贵的对象吸附查询。
+        // 拖动控制点的上方分支仍按每一次鼠标事件发送给编辑器。
+        if (moveHandler && !(m_boxSelectionEnabled &&
+                             m_pressButtonEvent == vtkCommand::LeftButtonPressEvent))
             moveHandler(u, v);
     }
     if (m_moveCallback)
         m_moveCallback->AbortFlagOn();
+}
+
+double SketchViewController::screenToleranceUv(int pixels) const
+{
+    auto* vis = readyVisualService();
+    if (!vis || !vis->renderer())
+        return 0.0;
+    const int* size = vis->renderer()->GetSize();
+    if (!size || size[0] < 2 || size[1] < 2)
+        return 0.0;
+    const int x = size[0] / 2;
+    const int y = size[1] / 2;
+    double u0 = 0.0, v0 = 0.0, ux = 0.0, vx = 0.0, uy = 0.0, vy = 0.0;
+    if (!screenToUv(x, y, u0, v0) ||
+        !screenToUv(x + pixels, y, ux, vx) ||
+        !screenToUv(x, y + pixels, uy, vy))
+        return 0.0;
+    return std::max(std::hypot(ux - u0, vx - v0), std::hypot(uy - u0, vy - v0));
 }
 
 bool SketchViewController::screenToUv(int x, int y, double& u, double& v) const
@@ -1583,21 +1608,30 @@ void SketchViewController::updateTangentGuideLine(bool visible, const Point2D& f
 void SketchViewController::updateSnapIndicator(bool visible, const Point2D& point)
 {
     auto* vis = readyVisualService();
-    if (!vis)
+    if (!vis || !vis->renderer())
         return;
 
     if (!visible)
     {
-        if (m_snapActor)
+        if (m_snapActor && m_snapActor->GetVisibility())
         {
-            vis->removeProp(key(QStringLiteral("snap")), false);
-            m_snapActor = nullptr;
-            m_snapPoints = nullptr;
-            m_snapPolyData = nullptr;
+            m_snapActor->VisibilityOff();
             vis->render();
         }
         return;
     }
+
+    // 采用显示坐标的 2D Actor，而不是落在草图平面上的 3D 点。
+    // DXF 构面后填充面经常与捕捉点共面，普通深度测试会把点完全遮挡。
+    const gp_Pnt world = toWorldPoint(m_settings, point.u, point.v);
+    auto* renderer = vis->renderer();
+    renderer->SetWorldPoint(world.X(), world.Y(), world.Z(), 1.0);
+    renderer->WorldToDisplay();
+    const double* display = renderer->GetDisplayPoint();
+    if (!display || !std::isfinite(display[0]) || !std::isfinite(display[1]))
+        return;
+    const double x = display[0];
+    const double y = display[1];
 
     bool createdActor = false;
     if (!m_snapActor || !m_snapPoints || !m_snapPolyData)
@@ -1605,33 +1639,34 @@ void SketchViewController::updateSnapIndicator(bool visible, const Point2D& poin
         createdActor = true;
         m_snapPoints = vtkSmartPointer<vtkPoints>::New();
         m_snapPolyData = vtkSmartPointer<vtkPolyData>::New();
+        vtkNew<vtkCellArray> lines;
+        vtkIdType box[5] = {0, 1, 2, 3, 0};
+        lines->InsertNextCell(5, box);
+        m_snapPolyData->SetLines(lines);
 
-        vtkNew<vtkCellArray> verts;
-        verts->InsertNextCell(1);
-        verts->InsertCellPoint(0);
-        m_snapPolyData->SetVerts(verts);
-
-        vtkNew<vtkPolyDataMapper> mapper;
+        vtkNew<vtkPolyDataMapper2D> mapper;
+        // By default vtkPolyDataMapper2D interprets XY as viewport pixels.
         mapper->SetInputData(m_snapPolyData);
 
-        m_snapActor = vtkSmartPointer<vtkActor>::New();
+        m_snapActor = vtkSmartPointer<vtkActor2D>::New();
         m_snapActor->SetMapper(mapper);
         m_snapActor->PickableOff();
-        m_snapActor->GetProperty()->SetColor(1.0, 0.58, 0.16);
-        m_snapActor->GetProperty()->SetOpacity(0.85);
-        m_snapActor->GetProperty()->SetPointSize(7.0);
-        m_snapActor->GetProperty()->RenderPointsAsSpheresOn();
-        m_snapActor->GetProperty()->LightingOff();
-
-        vis->addProp(key(QStringLiteral("snap")), m_snapActor, "Geometry", key(QStringLiteral("snap")), false, false);
+        m_snapActor->GetProperty()->SetColor(1.0, 0.47, 0.0);
+        m_snapActor->GetProperty()->SetLineWidth(2.5);
+        m_snapActor->GetProperty()->SetDisplayLocationToForeground();
+        vis->addProp(key(QStringLiteral("snap")), m_snapActor, "Geometry",
+                     key(QStringLiteral("snap")), false, false);
     }
 
-    const gp_Pnt world = toWorldPoint(m_settings, point.u, point.v);
-    m_snapPoints->SetNumberOfPoints(1);
-    m_snapPoints->SetPoint(0, world.X(), world.Y(), world.Z());
+    m_snapPoints->SetNumberOfPoints(4);
+    m_snapPoints->SetPoint(0, x - 4.0, y - 4.0, 0.0);
+    m_snapPoints->SetPoint(1, x + 4.0, y - 4.0, 0.0);
+    m_snapPoints->SetPoint(2, x + 4.0, y + 4.0, 0.0);
+    m_snapPoints->SetPoint(3, x - 4.0, y + 4.0, 0.0);
     m_snapPolyData->SetPoints(m_snapPoints);
     m_snapPoints->Modified();
     m_snapPolyData->Modified();
+    m_snapActor->VisibilityOn();
 
     if (createdActor || !m_renderClock.isValid() || m_renderClock.elapsed() >= 16)
     {

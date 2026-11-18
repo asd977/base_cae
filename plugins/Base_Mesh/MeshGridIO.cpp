@@ -1976,6 +1976,86 @@ vtkSmartPointer<vtkUnstructuredGrid> MeshGridIO::importNastran(const QString& fi
         return nullptr;
     }
 
+    // HyperMesh may export PID=0 while retaining component membership in
+    // $HMMOVE comments. These lists can follow the elements, repeat a component,
+    // and use THRU ranges spanning comment lines. Component IDs are source
+    // regions. Retain source property IDs independently of solver group numbers.
+    QHash<int, int> elementComponents;
+    QHash<int, QString> componentNames;
+    const QRegularExpression componentNameRe(
+        QStringLiteral("^\\$HMNAME\\s+COMP\\s+(\\d+)\\s*\"([^\"]*)\""),
+        QRegularExpression::CaseInsensitiveOption);
+    const QRegularExpression componentMoveRe(
+        QStringLiteral("^\\$HMMOVE\\s+(\\d+)\\s*$"),
+        QRegularExpression::CaseInsensitiveOption);
+    const QRegularExpression componentDataRe(
+        QStringLiteral("^\\$\\s*(?:\\d+|THRU)[\\d\\sTHRU]*$"),
+        QRegularExpression::CaseInsensitiveOption);
+    const QRegularExpression componentTokenRe(QStringLiteral("\\d+|THRU"),
+                                             QRegularExpression::CaseInsensitiveOption);
+    auto orderedElementIds = elementIdsSeen.values();
+    std::sort(orderedElementIds.begin(), orderedElementIds.end());
+    for (int i = 0; i < lines.size(); ++i)
+    {
+        const QString line = lines.at(i).trimmed();
+        if (line.compare(QStringLiteral("ENDDATA"), Qt::CaseInsensitive) == 0)
+            break;
+        const auto name = componentNameRe.match(line);
+        if (name.hasMatch())
+        {
+            int id = 0;
+            if (parseNasInt(name.captured(1), id) && id > 0)
+                componentNames.insert(id, name.captured(2).trimmed());
+            continue;
+        }
+        const auto move = componentMoveRe.match(line);
+        if (!move.hasMatch())
+            continue;
+        int component = 0;
+        if (!parseNasInt(move.captured(1), component) || component <= 0)
+            continue;
+        QStringList tokens;
+        while (i + 1 < lines.size() && componentDataRe.match(lines.at(i + 1).trimmed()).hasMatch())
+        {
+            auto matches = componentTokenRe.globalMatch(lines.at(++i));
+            while (matches.hasNext())
+                tokens.push_back(matches.next().captured().toUpper());
+        }
+        for (int token = 0; token < tokens.size(); ++token)
+        {
+            int first = 0, last = 0;
+            if (!parseNasInt(tokens.at(token), first) || first <= 0)
+            {
+                setError(QObject::tr("HyperMesh 组件 %1 的单元列表格式不完整。").arg(component));
+                return nullptr;
+            }
+            last = first;
+            if (token + 1 < tokens.size() && tokens.at(token + 1) == QStringLiteral("THRU"))
+            {
+                if (token + 2 >= tokens.size() || !parseNasInt(tokens.at(token + 2), last)
+                    || last < first)
+                {
+                    setError(QObject::tr("HyperMesh 组件 %1 的单元范围格式不完整。").arg(component));
+                    return nullptr;
+                }
+                token += 2;
+            }
+            // Iterate existing IDs only; a large sparse THRU range must not
+            // allocate or expand every integer between its endpoints.
+            auto id = std::lower_bound(orderedElementIds.cbegin(), orderedElementIds.cend(), first);
+            for (; id != orderedElementIds.cend() && *id <= last; ++id)
+            {
+                const int existing = elementComponents.value(*id);
+                if (existing > 0 && existing != component)
+                {
+                    setError(QObject::tr("Nastran 单元 %1 被分配到多个 HyperMesh 组件。").arg(*id));
+                    return nullptr;
+                }
+                elementComponents.insert(*id, component);
+            }
+        }
+    }
+
     auto points = vtkSmartPointer<vtkPoints>::New();
     points->SetDataTypeToDouble();
     points->SetNumberOfPoints(nodes.size());
@@ -2139,6 +2219,17 @@ vtkSmartPointer<vtkUnstructuredGrid> MeshGridIO::importNastran(const QString& fi
     auto* ketypeArray = vtkIntArray::SafeDownCast(grid->GetCellData()->GetArray("KETYPE"));
     auto* elemIdArray = vtkIntArray::SafeDownCast(grid->GetCellData()->GetArray("elem_id"));
     auto* partArray = vtkIntArray::SafeDownCast(grid->GetCellData()->GetArray("src_part"));
+    vtkNew<vtkIntArray> propertyIdArray;
+    vtkNew<vtkStringArray> componentNameArray;
+    if (!elementComponents.isEmpty())
+    {
+        propertyIdArray->SetName("nas_property_id");
+        propertyIdArray->SetNumberOfTuples(grid->GetNumberOfCells());
+        grid->GetCellData()->AddArray(propertyIdArray);
+        componentNameArray->SetName("GroupName");
+        componentNameArray->SetNumberOfValues(grid->GetNumberOfCells());
+        grid->GetCellData()->AddArray(componentNameArray);
+    }
 
     auto propertyKey = [](int dimension, int propertyId) -> quint64
     {
@@ -2153,12 +2244,95 @@ vtkSmartPointer<vtkUnstructuredGrid> MeshGridIO::importNastran(const QString& fi
         if (!propertyToMatype.contains(key))
             propertyToMatype.insert(key, nextMatype++);
     }
+    bool allDomainsHaveComponents = !elementComponents.isEmpty();
+    for (int index : std::as_const(insertedElementIndices))
+    {
+        const auto& element = elements.at(index);
+        if (element.dimension == meshDimension && !elementComponents.contains(element.id))
+            allDomainsHaveComponents = false;
+    }
+    if (allDomainsHaveComponents)
+    {
+        m_mshPickMap.materialGroupCategory = QStringLiteral("REGION");
+        m_mshPickMap.excavationGroupCategory = QStringLiteral("REGION");
+    }
+    QHash<quint64, int> componentBoundaryIds;
+    auto componentLabel = [&](int component)
+    {
+        const QString label = componentNames.value(component);
+        return label.isEmpty() ? QStringLiteral("组件 %1").arg(component) : label;
+    };
+    // PID=0 contains no usable material partition. Expose its components
+    // through the existing material-group selector, without an extra UI.
+    QHash<quint64, int> componentMatypes;
+    QSet<int> componentBaseDimensions;
+    QSet<int> ungroupedDimensions;
+    for (int index : std::as_const(insertedElementIndices))
+    {
+        const auto& element = elements.at(index);
+        if (element.propertyId == 0 && !elementComponents.contains(element.id))
+            ungroupedDimensions.insert(element.dimension);
+    }
+    for (int index : std::as_const(insertedElementIndices))
+    {
+        const auto& element = elements.at(index);
+        const int component = elementComponents.value(element.id);
+        if (element.propertyId != 0 || component <= 0)
+            continue;
+        const auto key = propertyKey(element.dimension, component);
+        if (componentMatypes.contains(key))
+            continue;
+        const int matype = componentBaseDimensions.contains(element.dimension) ||
+                           ungroupedDimensions.contains(element.dimension)
+            ? nextMatype++ : propertyToMatype.value(propertyKey(element.dimension, 0));
+        componentBaseDimensions.insert(element.dimension);
+        componentMatypes.insert(key, matype);
+    }
+    auto componentSet = [&](const NasElement& element) -> MeshTagSet*
+    {
+        const int component = elementComponents.value(element.id);
+        if (component <= 0)
+            return nullptr;
+        const bool domain = element.dimension == meshDimension;
+        int tagId = component;
+        if (!domain)
+        {
+            const auto key = propertyKey(element.dimension, component);
+            if (!componentBoundaryIds.contains(key))
+                componentBoundaryIds.insert(key, nextMatype++);
+            tagId = componentBoundaryIds.value(key);
+        }
+        const MeshTagKey key{domain ? QStringLiteral("REGION") : QStringLiteral("Physical"),
+                             element.dimension, tagId};
+        if (!m_mshPickMap.tagSets.contains(key))
+        {
+            MeshTagSet set;
+            set.key = key;
+            set.name = componentLabel(component);
+            set.source = QStringLiteral("HyperMeshComponent");
+            m_mshPickMap.tagSets.insert(key, set);
+        }
+        return &m_mshPickMap.tagSets[key];
+    };
     for (vtkIdType cellId = 0; cellId < grid->GetNumberOfCells(); ++cellId)
     {
         const NasElement& element =
             elements.at(insertedElementIndices.at(static_cast<int>(cellId)));
         const int propertyId = qMax(0, element.propertyId);
-        const int matype = propertyToMatype.value(propertyKey(element.dimension, propertyId));
+        const int componentId = elementComponents.value(element.id);
+        const int matype = propertyId == 0 && componentId > 0
+            ? componentMatypes.value(propertyKey(element.dimension, componentId))
+            : propertyToMatype.value(propertyKey(element.dimension, propertyId));
+
+        if (propertyId == 0 && componentId > 0)
+        {
+            auto& materialGroup = ensurePhysicalTagSet(m_mshPickMap, matype, element.dimension,
+                                                        QStringLiteral("HyperMeshComponent"));
+            materialGroup.name = componentLabel(componentId);
+            materialGroup.cellIds.push_back(cellId);
+            m_mshPickMap.groupDisplayNames[QStringLiteral("MATYPE/%1/%2")
+                .arg(element.dimension).arg(matype)] = materialGroup.name;
+        }
 
         if (matypeArray)
             matypeArray->SetValue(cellId, matype);
@@ -2169,7 +2343,28 @@ vtkSmartPointer<vtkUnstructuredGrid> MeshGridIO::importNastran(const QString& fi
         if (elemIdArray)
             elemIdArray->SetValue(cellId, element.id);
         if (partArray)
-            partArray->SetValue(cellId, propertyId);
+            partArray->SetValue(cellId, elementComponents.isEmpty()
+                                           ? propertyId : elementComponents.value(element.id));
+        if (!elementComponents.isEmpty())
+        {
+            propertyIdArray->SetValue(cellId, propertyId);
+            const int component = elementComponents.value(element.id);
+            componentNameArray->SetValue(cellId, component > 0 ? componentLabel(component).toStdString() : std::string());
+        }
+        if (auto* component = componentSet(element))
+        {
+            component->cellIds.push_back(static_cast<MeshIdType>(cellId));
+            if (element.dimension == meshDimension)
+                m_mshPickMap.cellIdToDomainTags[static_cast<MeshIdType>(cellId)].push_back(component->key);
+            else
+            {
+                auto* cell = grid->GetCell(cellId);
+                for (vtkIdType i = 0; cell && i < cell->GetNumberOfPoints(); ++i)
+                    component->pointIds.push_back(cell->GetPointId(i));
+            }
+            if (propertyId == 0)
+                continue;
+        }
 
         const QString groupName =
             propertyNames.value(propertyId,
@@ -2195,6 +2390,17 @@ vtkSmartPointer<vtkUnstructuredGrid> MeshGridIO::importNastran(const QString& fi
     {
         const NasElement& element = elements.at(boundary.elementIndex);
         const int propertyId = qMax(0, element.propertyId);
+        if (auto* component = componentSet(element))
+        {
+            for (vtkIdType pointId : boundary.pointIds)
+                component->pointIds.push_back(pointId);
+            if (boundary.entityKey >= 0 && element.dimension == 2)
+                component->faceKeys.push_back(boundary.entityKey);
+            else if (boundary.entityKey >= 0 && element.dimension == 1)
+                component->edgeKeys.push_back(boundary.entityKey);
+            if (propertyId == 0)
+                continue;
+        }
         const int matype = propertyToMatype.value(propertyKey(element.dimension, propertyId));
         const QString groupName =
             propertyNames.value(propertyId,
@@ -3088,7 +3294,14 @@ bool MeshGridIO::exportIiinFile(const QString& fileName, vtkUnstructuredGrid* gr
            // 导出目标维度单元：
            // - 3D 模型导出体单元 + 线单元（锚杆/杆单元保留）
            // - 2D 模型导出面单元 + 线单元
-    const int exportCellDim = (madim >= 3) ? 3 : 2;
+    // MADIM describes the coordinates written below. A curved terrain surface
+    // uses XYZ coordinates but still consists of 2D cells, not volume cells.
+    int exportCellDim = 0;
+    for (vtkIdType cid = 0; cid < totalCells; ++cid)
+    {
+        if (vtkCell* cell = grid->GetCell(cid))
+            exportCellDim = std::max(exportCellDim, cell->GetCellDimension());
+    }
     QVector<vtkIdType> exportCellIds;
     exportCellIds.reserve(static_cast<int>(totalCells));
     for (vtkIdType cid = 0; cid < totalCells; ++cid)
@@ -3196,6 +3409,13 @@ bool MeshGridIO::exportIiinFile(const QString& fileName, vtkUnstructuredGrid* gr
             {
                 k = 6;
                 expN = 8;
+            }
+            else if(c->GetCellType()==VTK_LINE&&storedKetype==21&&c->GetNumberOfPoints()==2)
+            {
+                // Beam and rod share VTK_LINE, but their native degrees of
+                // freedom and section properties differ. Preserve imported beams.
+                k=21;
+                expN=2;
             }
             else if (c->GetCellType() == VTK_TRIANGLE && storedKetype == 3 &&
                      connectivityPattern >= 0)

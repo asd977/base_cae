@@ -33,6 +33,7 @@
 #include <vtkSmartPointer.h>
 #include <vtkPointData.h>
 #include <vtkUnstructuredGrid.h>
+#include <vtkStringArray.h>
 
 #include <QByteArray>
 #include <QCheckBox>
@@ -67,12 +68,14 @@ constexpr int kLegacyTopologyDegenerateHex7 = 1007;
 static const QString kCategoryKetype = QStringLiteral("KETYPE");
 static const QString kCategoryMatype = QStringLiteral("MATYPE");
 static const QString kCategoryLayer = QStringLiteral("LAYER");
+static const QString kCategoryRegion = QStringLiteral("REGION");
 
 static const QString kGlobalFilterCustomKey = QStringLiteral("mesh.display.filter.custom");
 static const QString kGlobalFilterTopologyKey = QStringLiteral("mesh.display.filter.topology.checked");
 static const QString kGlobalFilterKetypeKey = QStringLiteral("mesh.display.filter.ketype.checked");
 static const QString kGlobalFilterMatypeKey = QStringLiteral("mesh.display.filter.matype.checked");
 static const QString kGlobalFilterLayerKey = QStringLiteral("mesh.display.filter.layer.checked");
+static const QString kGlobalFilterRegionKey = QStringLiteral("mesh.display.filter.region.checked");
 static const QString kGlobalFilterProjectKey = QStringLiteral("mesh.display.filter.project");
 static const QString kGlobalColorModeKey = QStringLiteral("mesh.display.color.mode");
 
@@ -91,7 +94,7 @@ static GridEditingWidget::ColorMode globalColorMode()
 {
     const int value = PublicVariables::instance().get(kGlobalColorModeKey).toInt();
     if (value < static_cast<int>(GridEditingWidget::ColorMode::None) ||
-        value > static_cast<int>(GridEditingWidget::ColorMode::Topology))
+        value > static_cast<int>(GridEditingWidget::ColorMode::Region))
     {
         return GridEditingWidget::ColorMode::None;
     }
@@ -220,6 +223,8 @@ static QSet<int> globalCheckedValues(const QString& category)
         key = kGlobalFilterMatypeKey;
     else if (category == kCategoryLayer)
         key = kGlobalFilterLayerKey;
+    else if (category == kCategoryRegion)
+        key = kGlobalFilterRegionKey;
 
     QSet<int> values = intSetFromString(PublicVariables::instance().get(key).toString());
     if (category == kCategoryTopology)
@@ -652,6 +657,7 @@ GridEditingWidget::GridEditingWidget(QWidget* parent)
         ui->comboBoxColorMode->addItem(QStringLiteral("按求解器单元类型"), static_cast<int>(ColorMode::Ketype));
         ui->comboBoxColorMode->addItem(QStringLiteral("按材料类型"), static_cast<int>(ColorMode::Matype));
         ui->comboBoxColorMode->addItem(QStringLiteral("按填筑分层"), static_cast<int>(ColorMode::Layer));
+        ui->comboBoxColorMode->addItem(QStringLiteral("按几何分域"), static_cast<int>(ColorMode::Region));
         const int initialIndex = ui->comboBoxColorMode->findData(
             static_cast<int>(initialMode));
         ui->comboBoxColorMode->setCurrentIndex(initialIndex >= 0 ? initialIndex : 0);
@@ -665,6 +671,19 @@ GridEditingWidget::GridEditingWidget(QWidget* parent)
         ui->checkBoxAutoApply->setChecked(true);
         ui->checkBoxAutoApply->setToolTip(QStringLiteral("勾选后，筛选项变化会立即更新显示。"));
     }
+
+    if (ui->checkBoxShowBranding)
+    {
+        const QSignalBlocker blocker(ui->checkBoxShowBranding);
+        ui->checkBoxShowBranding->setChecked(
+            !m_visualWidgetService || m_visualWidgetService->isBrandingVisible());
+    }
+    connect(ui->checkBoxShowBranding, &QCheckBox::toggled, this,
+            [this](bool checked)
+            {
+                if (m_visualWidgetService)
+                    m_visualWidgetService->setBrandingVisible(checked);
+            });
 
     if (ui->treeWidgetFilterValues)
     {
@@ -702,6 +721,16 @@ GridEditingWidget::GridEditingWidget(QWidget* parent)
             if (postResultFilterActive())
                 buildFilterTreeFromGrid();
         });
+    EventManager::instance().registerHandler(
+        PublicConstants::kEventBrandingVisibilityChanged, this,
+        [this](const QVariantMap& data)
+        {
+            if (!ui->checkBoxShowBranding)
+                return;
+            const QSignalBlocker blocker(ui->checkBoxShowBranding);
+            ui->checkBoxShowBranding->setChecked(
+                data.value(QStringLiteral("visible"), true).toBool());
+        });
     updateContextPresentation();
 }
 
@@ -721,11 +750,14 @@ void GridEditingWidget::clearData()
     m_allKetypes.clear();
     m_allMatypes.clear();
     m_allLayers.clear();
+    m_allRegions.clear();
+    m_regionNames.clear();
 
     m_filterTopologies.clear();
     m_filterKetypes.clear();
     m_filterMatypes.clear();
     m_filterLayers.clear();
+    m_filterRegions.clear();
 
     m_colorMode = ColorMode::None;
 
@@ -874,6 +906,7 @@ bool GridEditingWidget::cellMatchesFilter(vtkIdType cellId) const
     const int ketype = tuple1i(cd->GetArray("KETYPE"), cellId, 0);
     const int matype = tuple1i(cd->GetArray("MATYPE"), cellId, 0);
     const int layer = tuple1i(cd->GetArray("LAYER"), cellId, 0);
+    const int region = tuple1i(cd->GetArray("src_part"), cellId, 0);
 
     auto allowed = [](const QSet<int>& allValues, const QSet<int>& checkedValues, int value) -> bool
     {
@@ -885,7 +918,8 @@ bool GridEditingWidget::cellMatchesFilter(vtkIdType cellId) const
     return allowed(m_allTopologies, m_filterTopologies, topology) &&
            allowed(m_allKetypes, m_filterKetypes, ketype) &&
            allowed(m_allMatypes, m_filterMatypes, matype) &&
-           allowed(m_allLayers, m_filterLayers, layer);
+           allowed(m_allLayers, m_filterLayers, layer) &&
+           allowed(m_allRegions, m_filterRegions, region);
 }
 
 void GridEditingWidget::refreshMeshActors()
@@ -1067,6 +1101,12 @@ QSet<int> GridEditingWidget::collectVisibleCellInts(const char* arrayName) const
 
 QString GridEditingWidget::displayTextForFilterValue(const QString& category, int value) const
 {
+    if (category == kCategoryRegion)
+    {
+        const QString name = m_regionNames.value(value);
+        return name.isEmpty() ? (value == 0 ? QStringLiteral("未分域")
+                                           : QStringLiteral("域 %1").arg(value)) : name;
+    }
     if (category == kCategoryTopology)
     {
         switch (value)
@@ -1174,6 +1214,8 @@ void GridEditingWidget::buildFilterTreeFromGrid()
     QMap<int, int> ketypeCounts;
     QMap<int, int> matypeCounts;
     QMap<int, int> layerCounts;
+    QMap<int, int> regionCounts;
+    m_regionNames.clear();
 
     if (postMode)
     {
@@ -1187,6 +1229,24 @@ void GridEditingWidget::buildFilterTreeFromGrid()
         ketypeCounts = collectCellIntCounts("KETYPE");
         matypeCounts = collectCellIntCounts("MATYPE");
         layerCounts = collectCellIntCounts("LAYER");
+        regionCounts = collectCellIntCounts("src_part");
+        // Zero denotes cells without a source region. Show them only when
+        // actual regions also exist, so mixed grids can still be filtered.
+        if (regionCounts.size() == 1 && regionCounts.contains(0))
+            regionCounts.clear();
+        auto* cd = m_fullGrid ? m_fullGrid->GetCellData() : nullptr;
+        auto* parts = cd ? cd->GetArray("src_part") : nullptr;
+        auto* names = cd ? vtkStringArray::SafeDownCast(cd->GetAbstractArray("GroupName")) : nullptr;
+        for (vtkIdType cid = 0; parts && names &&
+             cid < qMin(parts->GetNumberOfTuples(), names->GetNumberOfValues()); ++cid)
+        {
+            const int region = tuple1i(parts, cid);
+            if (m_regionNames.contains(region))
+                continue;
+            const QString name = QString::fromStdString(names->GetValue(cid)).trimmed();
+            if (!name.isEmpty())
+                m_regionNames.insert(region, name);
+        }
     }
 
     bool showTopologyFilter = false;
@@ -1220,6 +1280,7 @@ void GridEditingWidget::buildFilterTreeFromGrid()
     m_allKetypes = mapKeysToSet(ketypeCounts);
     m_allMatypes = mapKeysToSet(matypeCounts);
     m_allLayers = mapKeysToSet(layerCounts);
+    m_allRegions = mapKeysToSet(regionCounts);
 
     if (postMode)
     {
@@ -1262,6 +1323,8 @@ void GridEditingWidget::buildFilterTreeFromGrid()
         m_filterKetypes = globalCheckedValues(kCategoryKetype);
         m_filterMatypes = globalCheckedValues(kCategoryMatype);
         m_filterLayers = globalCheckedValues(kCategoryLayer);
+        m_filterRegions = PublicVariables::instance().contains(kGlobalFilterRegionKey)
+            ? globalCheckedValues(kCategoryRegion) : m_allRegions;
     }
     else
     {
@@ -1269,6 +1332,7 @@ void GridEditingWidget::buildFilterTreeFromGrid()
         m_filterKetypes = m_allKetypes;
         m_filterMatypes = m_allMatypes;
         m_filterLayers = m_allLayers;
+        m_filterRegions = m_allRegions;
     }
 
     if (!postMode && !showTopologyFilter)
@@ -1284,6 +1348,8 @@ void GridEditingWidget::buildFilterTreeFromGrid()
         auto* group = new QTreeWidgetItem(ui->treeWidgetFilterValues);
         group->setText(0, title);
         group->setText(1, QString::number(counts.size()));
+        if (category == kCategoryRegion)
+            group->setToolTip(0, QStringLiteral("按几何区域分别显示；同一种材料可以包含多个几何分域。"));
         group->setData(0, kRoleCategory, category);
         group->setData(0, kRoleIsGroup, true);
         group->setFlags((group->flags() | Qt::ItemIsUserCheckable) &
@@ -1299,8 +1365,8 @@ void GridEditingWidget::buildFilterTreeFromGrid()
             child->setData(0, kRoleIsGroup, false);
             child->setFlags(child->flags() | Qt::ItemIsUserCheckable);
             child->setToolTip(
-                0, QStringLiteral("%1 = %2，结果单元数量：%3")
-                       .arg(category)
+                0, QStringLiteral("%1\n%2 = %3，单元数量：%4")
+                       .arg(child->text(0), category)
                        .arg(it.key())
                        .arg(it.value()));
 
@@ -1313,6 +1379,8 @@ void GridEditingWidget::buildFilterTreeFromGrid()
                 checked = m_filterMatypes.contains(it.key());
             else if (category == kCategoryLayer)
                 checked = m_filterLayers.contains(it.key());
+            else if (category == kCategoryRegion)
+                checked = m_filterRegions.contains(it.key());
             child->setCheckState(0, checked ? Qt::Checked : Qt::Unchecked);
         }
 
@@ -1324,6 +1392,7 @@ void GridEditingWidget::buildFilterTreeFromGrid()
         if (showTopologyFilter)
             addGroup(kCategoryTopology, QStringLiteral("网格拓扑"), topologyCounts);
         addGroup(kCategoryKetype, QStringLiteral("求解器单元类型"), ketypeCounts);
+        addGroup(kCategoryRegion, QStringLiteral("几何分域"), regionCounts);
     }
 
     // 后处理模式只显示结果域：材料 + 分层。网格类型不参与联动。
@@ -1429,6 +1498,8 @@ QSet<int> GridEditingWidget::checkedValuesForCategory(const QString& category) c
             return m_allMatypes;
         if (category == kCategoryLayer)
             return m_allLayers;
+        if (category == kCategoryRegion)
+            return m_allRegions;
     }
 
     return values;
@@ -1440,6 +1511,7 @@ void GridEditingWidget::applyFilterFromTree()
     m_filterKetypes = checkedValuesForCategory(kCategoryKetype);
     m_filterMatypes = checkedValuesForCategory(kCategoryMatype);
     m_filterLayers = checkedValuesForCategory(kCategoryLayer);
+    m_filterRegions = checkedValuesForCategory(kCategoryRegion);
 
     if (postResultFilterActive())
     {
@@ -1467,13 +1539,15 @@ void GridEditingWidget::applyFilterFromTree()
         !setEquals(m_allTopologies, m_filterTopologies) ||
         !setEquals(m_allKetypes, m_filterKetypes) ||
         !setEquals(m_allMatypes, m_filterMatypes) ||
-        !setEquals(m_allLayers, m_filterLayers);
+        !setEquals(m_allLayers, m_filterLayers) ||
+        !setEquals(m_allRegions, m_filterRegions);
 
     setGlobalValue(kGlobalFilterCustomKey, customFilter);
     setGlobalValue(kGlobalFilterTopologyKey, intSetToString(m_filterTopologies));
     setGlobalValue(kGlobalFilterKetypeKey, intSetToString(m_filterKetypes));
     setGlobalValue(kGlobalFilterMatypeKey, intSetToString(m_filterMatypes));
     setGlobalValue(kGlobalFilterLayerKey, intSetToString(m_filterLayers));
+    setGlobalValue(kGlobalFilterRegionKey, intSetToString(m_filterRegions));
     setGlobalValue(kGlobalFilterProjectKey,
                    PublicVariables::instance().get(PublicConstants::kProjectDirectoryKey));
 
@@ -1485,6 +1559,7 @@ void GridEditingWidget::applyFilterFromTree()
     filterEvent.insert(QStringLiteral("ketype"), intSetToString(m_filterKetypes));
     filterEvent.insert(QStringLiteral("matype"), intSetToString(m_filterMatypes));
     filterEvent.insert(QStringLiteral("layer"), intSetToString(m_filterLayers));
+    filterEvent.insert(QStringLiteral("region"), intSetToString(m_filterRegions));
     EventManager::instance().sendEvent(QStringLiteral("mesh.display.filter.changed"), filterEvent);
 }
 
@@ -1524,6 +1599,7 @@ void GridEditingWidget::onFilterTreeItemChanged(QTreeWidgetItem* item, int colum
     m_filterKetypes = checkedValuesForCategory(kCategoryKetype);
     m_filterMatypes = checkedValuesForCategory(kCategoryMatype);
     m_filterLayers = checkedValuesForCategory(kCategoryLayer);
+    m_filterRegions = checkedValuesForCategory(kCategoryRegion);
 
     if (ui->checkBoxAutoApply && ui->checkBoxAutoApply->isChecked())
     {
@@ -1615,6 +1691,9 @@ void GridEditingWidget::applyColorMode()
         break;
     case ColorMode::Layer:
         arrayName = "LAYER";
+        break;
+    case ColorMode::Region:
+        arrayName = "src_part";
         break;
     case ColorMode::None:
     default:

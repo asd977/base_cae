@@ -63,16 +63,16 @@ inline QString displayName(const QString& rawName)
     QString translated;
     if (key == QStringLiteral("UX") || key == QStringLiteral("U1") ||
         key == QStringLiteral("DX"))
-        translated = velocityUnit ? QStringLiteral("X速度 v_x") : QStringLiteral("X位移 u_x");
+        translated = velocityUnit ? QStringLiteral("X速度 V_x") : QStringLiteral("X位移 U_x");
     else if (key == QStringLiteral("UY") || key == QStringLiteral("U2") ||
              key == QStringLiteral("DY"))
-        translated = velocityUnit ? QStringLiteral("Y速度 v_y") : QStringLiteral("Y位移 u_y");
+        translated = velocityUnit ? QStringLiteral("Y速度 V_y") : QStringLiteral("Y位移 U_y");
     else if (key == QStringLiteral("UZ") || key == QStringLiteral("U3") ||
              key == QStringLiteral("DZ"))
-        translated = velocityUnit ? QStringLiteral("Z速度 v_z") : QStringLiteral("Z位移 u_z");
+        translated = velocityUnit ? QStringLiteral("Z速度 V_z") : QStringLiteral("Z位移 U_z");
     else if (key == QStringLiteral("UH") || key == QStringLiteral("DISP") ||
              key == QStringLiteral("U") || key == QStringLiteral("UMAG"))
-        translated = QStringLiteral("位移模 |u|");
+        translated = QStringLiteral("位移模 |U|");
     else
     {
         static const QHash<QString, QString> names = {
@@ -83,20 +83,21 @@ inline QString displayName(const QString& rawName)
             {QStringLiteral("SIG2"), QStringLiteral("中主应力 σ_2")},
             {QStringLiteral("SIG3"), QStringLiteral("最小主应力 σ_3")},
             {QStringLiteral("TMAX"), QStringLiteral("最大剪应力 τ_max")},
-            {QStringLiteral("SXX"), QStringLiteral("X正应力 σ_x")},
-            {QStringLiteral("SYY"), QStringLiteral("Y正应力 σ_y")},
-            {QStringLiteral("SZZ"), QStringLiteral("Z正应力 σ_z")},
+            {QStringLiteral("SXX"), QStringLiteral("X正应力 σ_xx")},
+            {QStringLiteral("SYY"), QStringLiteral("Y正应力 σ_yy")},
+            {QStringLiteral("SZZ"), QStringLiteral("Z正应力 σ_zz")},
             {QStringLiteral("SXY"), QStringLiteral("XY剪应力 τ_xy")},
             {QStringLiteral("SYZ"), QStringLiteral("YZ剪应力 τ_yz")},
             {QStringLiteral("SZX"), QStringLiteral("ZX剪应力 τ_zx")},
             {QStringLiteral("SXZ"), QStringLiteral("XZ剪应力 τ_xz")},
-            {QStringLiteral("MISES"), QStringLiteral("等效应力 σ_v")},
-            {QStringLiteral("VONMISES"), QStringLiteral("等效应力 σ_v")},
+            {QStringLiteral("MISES"), QStringLiteral("等效应力 σ_vm")},
+            {QStringLiteral("VONMISES"), QStringLiteral("等效应力 σ_vm")},
             {QStringLiteral("SL"), QStringLiteral("应力水平")},
+            {QStringLiteral("FUN"), QStringLiteral("材料函数值 FUN")},
 
-            {QStringLiteral("EXX"), QStringLiteral("X应变 ε_x")},
-            {QStringLiteral("EYY"), QStringLiteral("Y应变 ε_y")},
-            {QStringLiteral("EZZ"), QStringLiteral("Z应变 ε_z")},
+            {QStringLiteral("EXX"), QStringLiteral("X应变 ε_xx")},
+            {QStringLiteral("EYY"), QStringLiteral("Y应变 ε_yy")},
+            {QStringLiteral("EZZ"), QStringLiteral("Z应变 ε_zz")},
             {QStringLiteral("EXY"), QStringLiteral("XY剪应变 γ_xy")},
             {QStringLiteral("EYZ"), QStringLiteral("YZ剪应变 γ_yz")},
             {QStringLiteral("EZX"), QStringLiteral("ZX剪应变 γ_zx")},
@@ -104,9 +105,9 @@ inline QString displayName(const QString& rawName)
             {QStringLiteral("E1"), QStringLiteral("最大主应变 ε_1")},
             {QStringLiteral("E2"), QStringLiteral("中主应变 ε_2")},
             {QStringLiteral("E3"), QStringLiteral("最小主应变 ε_3")},
-            {QStringLiteral("PEXX"), QStringLiteral("X塑性应变 εp_x")},
-            {QStringLiteral("PEYY"), QStringLiteral("Y塑性应变 εp_y")},
-            {QStringLiteral("PEZZ"), QStringLiteral("Z塑性应变 εp_z")},
+            {QStringLiteral("PEXX"), QStringLiteral("X塑性应变 εp_xx")},
+            {QStringLiteral("PEYY"), QStringLiteral("Y塑性应变 εp_yy")},
+            {QStringLiteral("PEZZ"), QStringLiteral("Z塑性应变 εp_zz")},
             {QStringLiteral("PEXY"), QStringLiteral("XY塑性剪应变 γp_xy")},
             {QStringLiteral("PEYZ"), QStringLiteral("YZ塑性剪应变 γp_yz")},
             {QStringLiteral("PEZX"), QStringLiteral("ZX塑性剪应变 γp_zx")},
@@ -125,10 +126,13 @@ inline QString displayName(const QString& rawName)
             {QStringLiteral("PRESSURE"), QStringLiteral("孔压 p")},
             {QStringLiteral("PWP"), QStringLiteral("孔压 p")},
             {QStringLiteral("POR"), QStringLiteral("孔压 p")},
-            {QStringLiteral("VX"), QStringLiteral("X速度 v_x")},
-            {QStringLiteral("VY"), QStringLiteral("Y速度 v_y")},
-            {QStringLiteral("VZ"), QStringLiteral("Z速度 v_z")},
-            {QStringLiteral("VMAG"), QStringLiteral("速度模 |v|")},
+            {QStringLiteral("VX"), QStringLiteral("X速度 V_x")},
+            {QStringLiteral("V1"), QStringLiteral("X速度 V_x")},
+            {QStringLiteral("VY"), QStringLiteral("Y速度 V_y")},
+            {QStringLiteral("V2"), QStringLiteral("Y速度 V_y")},
+            {QStringLiteral("VZ"), QStringLiteral("Z速度 V_z")},
+            {QStringLiteral("V3"), QStringLiteral("Z速度 V_z")},
+            {QStringLiteral("VMAG"), QStringLiteral("速度模 |V|")},
             {QStringLiteral("VECTORMAG"), QStringLiteral("矢量模")},
 
             {QStringLiteral("TEMP"), QStringLiteral("温度 T")},
@@ -165,16 +169,16 @@ inline QString scalarBarName(const QString& rawName)
     QString symbol;
     if (key == QStringLiteral("UX") || key == QStringLiteral("U1") ||
         key == QStringLiteral("DX"))
-        symbol = velocityUnit ? QStringLiteral("v_x") : QStringLiteral("u_x");
+        symbol = velocityUnit ? QStringLiteral("V_x") : QStringLiteral("U_x");
     else if (key == QStringLiteral("UY") || key == QStringLiteral("U2") ||
              key == QStringLiteral("DY"))
-        symbol = velocityUnit ? QStringLiteral("v_y") : QStringLiteral("u_y");
+        symbol = velocityUnit ? QStringLiteral("V_y") : QStringLiteral("U_y");
     else if (key == QStringLiteral("UZ") || key == QStringLiteral("U3") ||
              key == QStringLiteral("DZ"))
-        symbol = velocityUnit ? QStringLiteral("v_z") : QStringLiteral("u_z");
+        symbol = velocityUnit ? QStringLiteral("V_z") : QStringLiteral("U_z");
     else if (key == QStringLiteral("UH") || key == QStringLiteral("DISP") ||
              key == QStringLiteral("U") || key == QStringLiteral("UMAG"))
-        symbol = QStringLiteral("|u|");
+        symbol = QStringLiteral("|U|");
     else
     {
         static const QHash<QString, QString> names = {
@@ -185,20 +189,21 @@ inline QString scalarBarName(const QString& rawName)
             {QStringLiteral("SIG2"), QStringLiteral("σ_2")},
             {QStringLiteral("SIG3"), QStringLiteral("σ_3")},
             {QStringLiteral("TMAX"), QStringLiteral("τ_max")},
-            {QStringLiteral("SXX"), QStringLiteral("σ_x")},
-            {QStringLiteral("SYY"), QStringLiteral("σ_y")},
-            {QStringLiteral("SZZ"), QStringLiteral("σ_z")},
+            {QStringLiteral("SXX"), QStringLiteral("σ_xx")},
+            {QStringLiteral("SYY"), QStringLiteral("σ_yy")},
+            {QStringLiteral("SZZ"), QStringLiteral("σ_zz")},
             {QStringLiteral("SXY"), QStringLiteral("τ_xy")},
             {QStringLiteral("SYZ"), QStringLiteral("τ_yz")},
             {QStringLiteral("SZX"), QStringLiteral("τ_zx")},
             {QStringLiteral("SXZ"), QStringLiteral("τ_xz")},
-            {QStringLiteral("MISES"), QStringLiteral("σ_v")},
-            {QStringLiteral("VONMISES"), QStringLiteral("σ_v")},
+            {QStringLiteral("MISES"), QStringLiteral("σ_vm")},
+            {QStringLiteral("VONMISES"), QStringLiteral("σ_vm")},
             {QStringLiteral("SL"), QStringLiteral("SL")},
+            {QStringLiteral("FUN"), QStringLiteral("FUN")},
 
-            {QStringLiteral("EXX"), QStringLiteral("ε_x")},
-            {QStringLiteral("EYY"), QStringLiteral("ε_y")},
-            {QStringLiteral("EZZ"), QStringLiteral("ε_z")},
+            {QStringLiteral("EXX"), QStringLiteral("ε_xx")},
+            {QStringLiteral("EYY"), QStringLiteral("ε_yy")},
+            {QStringLiteral("EZZ"), QStringLiteral("ε_zz")},
             {QStringLiteral("EXY"), QStringLiteral("γ_xy")},
             {QStringLiteral("EYZ"), QStringLiteral("γ_yz")},
             {QStringLiteral("EZX"), QStringLiteral("γ_zx")},
@@ -206,9 +211,9 @@ inline QString scalarBarName(const QString& rawName)
             {QStringLiteral("E1"), QStringLiteral("ε_1")},
             {QStringLiteral("E2"), QStringLiteral("ε_2")},
             {QStringLiteral("E3"), QStringLiteral("ε_3")},
-            {QStringLiteral("PEXX"), QStringLiteral("εp_x")},
-            {QStringLiteral("PEYY"), QStringLiteral("εp_y")},
-            {QStringLiteral("PEZZ"), QStringLiteral("εp_z")},
+            {QStringLiteral("PEXX"), QStringLiteral("εp_xx")},
+            {QStringLiteral("PEYY"), QStringLiteral("εp_yy")},
+            {QStringLiteral("PEZZ"), QStringLiteral("εp_zz")},
             {QStringLiteral("PEXY"), QStringLiteral("γp_xy")},
             {QStringLiteral("PEYZ"), QStringLiteral("γp_yz")},
             {QStringLiteral("PEZX"), QStringLiteral("γp_zx")},
@@ -218,7 +223,7 @@ inline QString scalarBarName(const QString& rawName)
             {QStringLiteral("PE3"), QStringLiteral("εp_3")},
             {QStringLiteral("PEMAX"), QStringLiteral("γp_max")},
             {QStringLiteral("PEEQ"), QStringLiteral("εp_eq")},
-            {QStringLiteral("PLASTIC_ZONE_PRS1"), QStringLiteral("σ1")},
+            {QStringLiteral("PLASTIC_ZONE_PRS1"), QStringLiteral("σ_1")},
             {QStringLiteral("FAILURE_ZONE"), QStringLiteral("塑性破坏")},
 
             {QStringLiteral("HEAD"), QStringLiteral("H")},
@@ -227,10 +232,13 @@ inline QString scalarBarName(const QString& rawName)
             {QStringLiteral("PRESSURE"), QStringLiteral("p")},
             {QStringLiteral("PWP"), QStringLiteral("p")},
             {QStringLiteral("POR"), QStringLiteral("p")},
-            {QStringLiteral("VX"), QStringLiteral("v_x")},
-            {QStringLiteral("VY"), QStringLiteral("v_y")},
-            {QStringLiteral("VZ"), QStringLiteral("v_z")},
-            {QStringLiteral("VMAG"), QStringLiteral("|v|")},
+            {QStringLiteral("VX"), QStringLiteral("V_x")},
+            {QStringLiteral("V1"), QStringLiteral("V_x")},
+            {QStringLiteral("VY"), QStringLiteral("V_y")},
+            {QStringLiteral("V2"), QStringLiteral("V_y")},
+            {QStringLiteral("VZ"), QStringLiteral("V_z")},
+            {QStringLiteral("V3"), QStringLiteral("V_z")},
+            {QStringLiteral("VMAG"), QStringLiteral("|V|")},
             {QStringLiteral("VECTORMAG"), QStringLiteral("|V|")},
 
             {QStringLiteral("TEMP"), QStringLiteral("T")},

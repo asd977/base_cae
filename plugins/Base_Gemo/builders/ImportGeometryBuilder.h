@@ -37,6 +37,14 @@ struct StepImportPartInfo
     }
 };
 
+struct DxfGeometryRecord
+{
+    QString layer;
+    QString handle;
+    QString type;
+    TopoDS_Shape shape;
+};
+
 class ImportGeometryBuilder
 {
 public:
@@ -57,6 +65,9 @@ public:
     static bool readDxfShape(const QString& filePath,
                              TopoDS_Shape& shape,
                              QString& errorMsg);
+    // 原始对象级导入，保留图层、三维坐标并递归展开 INSERT 图块。
+    static bool readDxfRecords(const QString& filePath, QVector<DxfGeometryRecord>& records,
+                               QString& diagnostic);
 
     // STEP/XDE 导入会把装配中的最终零件和多实体模型拆分为可单独操作的 Shape。
     // 结果按父导入节点 UUID 缓存在内存中，供 GeometryWorkbench 创建 STEP 实体节点。

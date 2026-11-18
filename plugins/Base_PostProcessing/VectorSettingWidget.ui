@@ -181,7 +181,7 @@
 </widget>
       </item>
       <item row="0" column="1">
-       <widget class="QComboBox" name="xComboBox" />
+       <widget class="PostScientificComboBox" name="xComboBox" />
       </item>
       <item row="1" column="0">
        <widget class="QLabel" name="yLabel">
@@ -200,7 +200,7 @@
 </widget>
       </item>
       <item row="1" column="1">
-       <widget class="QComboBox" name="yComboBox" />
+       <widget class="PostScientificComboBox" name="yComboBox" />
       </item>
       <item row="2" column="0">
        <widget class="QLabel" name="zLabel">
@@ -219,7 +219,7 @@
 </widget>
       </item>
       <item row="2" column="1">
-       <widget class="QComboBox" name="zComboBox" />
+       <widget class="PostScientificComboBox" name="zComboBox" />
       </item>
       <item row="3" column="0">
        <widget class="QLabel" name="samplingLabel">
@@ -359,6 +359,13 @@
    </item>
   </layout>
  </widget>
+ <customwidgets>
+  <customwidget>
+   <class>PostScientificComboBox</class>
+   <extends>QComboBox</extends>
+   <header>PostScientificComboBox.h</header>
+  </customwidget>
+ </customwidgets>
  <resources />
  <connections />
 </ui>

@@ -102,17 +102,7 @@
           </property>
          </widget>
         </item>
-        <item row="2" column="0">
-         <widget class="QLabel" name="outputModeLabel">
-          <property name="text">
-           <string>输出</string>
-          </property>
-         </widget>
-        </item>
-         <item row="2" column="1">
-          <widget class="QComboBox" name="outputModeCombo" />
-         </item>
-         <item row="3" column="0" colspan="2">
+         <item row="2" column="0" colspan="2">
           <widget class="QPushButton" name="importDxfButton">
            <property name="minimumHeight">
             <number>30</number>
@@ -401,7 +391,7 @@
            <number>110</number>
           </property>
           <property name="selectionMode">
-           <enum>QAbstractItemView::SingleSelection</enum>
+           <enum>QAbstractItemView::ExtendedSelection</enum>
           </property>
           <property name="selectionBehavior">
            <enum>QAbstractItemView::SelectRows</enum>
@@ -429,6 +419,12 @@
         <item>
          <layout class="QHBoxLayout" name="objectButtonRow">
           <item>
+           <widget class="QPushButton" name="selectAllObjectsButton">
+            <property name="text"><string>全选线条</string></property>
+            <property name="toolTip"><string>全选保留的普通线条，供二维构面使用（Ctrl+A）</string></property>
+           </widget>
+          </item>
+          <item>
            <widget class="QPushButton" name="editObjectButton">
             <property name="text">
              <string>编辑</string>
@@ -438,11 +434,23 @@
           <item>
            <widget class="QPushButton" name="deleteObjectButton">
             <property name="text">
-             <string>删除</string>
+             <string>删除选中</string>
             </property>
            </widget>
           </item>
          </layout>
+        </item>
+        <item>
+         <widget class="QPushButton" name="splitAtNodesButton">
+          <property name="text"><string>按节点和交点一键断开</string></property>
+          <property name="toolTip"><string>按全部线条识别交点并分割所选线条；未选择时分割全部。其余线条作为参照保留，支持撤销。</string></property>
+         </widget>
+        </item>
+        <item>
+         <widget class="QPushButton" name="planarRegionButton">
+          <property name="text"><string>生成二维面</string></property>
+          <property name="toolTip"><string>先框选土体边界和地层分界线，预检后生成二维网格面</string></property>
+         </widget>
         </item>
         <item>
          <widget class="QLabel" name="pointsTitleLabel">
@@ -679,6 +687,13 @@
         <string>辅助选项</string>
        </property>
        <layout class="QGridLayout" name="optionLayout">
+        <item row="8" column="0" colspan="2">
+         <widget class="QCheckBox" name="objectSnapCheck">
+          <property name="text"><string>对象吸附</string></property>
+          <property name="checked"><bool>true</bool></property>
+          <property name="toolTip"><string>靠近已有线条就自动贴合，绘制和拖动端点均有效。</string></property>
+         </widget>
+        </item>
         <property name="leftMargin">
          <number>8</number>
         </property>
@@ -698,12 +713,9 @@
          <number>5</number>
         </property>
         <item row="0" column="0">
-         <widget class="QCheckBox" name="snapCheck">
+         <widget class="QLabel" name="selectionToleranceLabel">
           <property name="text">
-           <string>端点</string>
-          </property>
-          <property name="checked">
-           <bool>true</bool>
+           <string>选取范围</string>
           </property>
          </widget>
         </item>
@@ -758,7 +770,7 @@
            <string>启用网格吸附</string>
           </property>
           <property name="checked">
-           <bool>true</bool>
+           <bool>false</bool>
           </property>
          </widget>
         </item>

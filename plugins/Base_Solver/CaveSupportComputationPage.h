@@ -1,16 +1,19 @@
 #pragma once
 
 #include <BasePage.h>
+#include <QPointer>
 
 #include <QString>
 #include <QVariantMap>
 #include <QVector>
 
 class QCheckBox;
+class QuietBoundarySelector;
 class QComboBox;
 class QDoubleSpinBox;
 class QGroupBox;
 class QLabel;
+class QPushButton;
 class QLineEdit;
 class QSpinBox;
 class QTableWidget;
@@ -32,7 +35,7 @@ class CaveSupportComputationPage : public BasePage
     void beforeLoad() override;
     void beforeUnload() override;
 
-    QString sectionText();
+    Q_INVOKABLE QString sectionText();
     bool exportICaveDatFile(const QString& supportCaseSection) const;
 
     // 由实际“开挖体”节点数量统一控制开挖级数，避免 ICAVE 与开挖文件数量不一致。
@@ -43,6 +46,7 @@ class CaveSupportComputationPage : public BasePage
     int calculationTypeCode() const;
     int excavationLoadMethodCode() const;
     bool modalAnalysisEnabled() const;
+    int modalCount() const;
     bool timeHistoryEnabled() const;
     bool reinforcedTaskEnabled() const;
     int groundwaterModeCode() const;
@@ -130,7 +134,7 @@ class CaveSupportComputationPage : public BasePage
     QComboBox* m_jaMethodCombo = nullptr;
     QComboBox* m_ifChenCombo = nullptr;
     QLineEdit* m_idayCaseEdit = nullptr;
-    QComboBox* m_ifModeCombo = nullptr;
+    QSpinBox* m_modalCountSpin = nullptr;
     QComboBox* m_ifWaveCombo = nullptr;
     QDoubleSpinBox* m_dtSpin = nullptr;
     QDoubleSpinBox* m_tstaSpin = nullptr;
@@ -140,6 +144,9 @@ class CaveSupportComputationPage : public BasePage
     QLineEdit* m_accZEdit = nullptr;
 
     QGroupBox* m_liningGroundwaterGroup = nullptr;
+    QPointer<QCheckBox> m_quietBoundaryCheck = nullptr;
+    QPointer<QuietBoundarySelector> m_quietBoundarySelection = nullptr;
+    QPointer<QLabel> m_quietBoundaryStatus = nullptr;
     QGroupBox* m_craneBeamGroup = nullptr;
     QCheckBox* m_liningEnabledCheck = nullptr;
     QLabel* m_liningStatusLabel = nullptr;

@@ -1,6 +1,7 @@
 #pragma once
 
 #include "BasePage.h"
+#include "LoadPageState.h"
 
 namespace Ui
 {
@@ -11,6 +12,7 @@ class BeamLoadPage : public BasePage
 {
     Q_OBJECT
   public:
+    CAE_LOAD_PAGE_STATE("spinBoxLDTYPE","doubleSpinBoxA","doubleSpinBoxP","spinBoxIDIR")
     explicit BeamLoadPage(QWidget* parent = nullptr);
     ~BeamLoadPage() override;
 

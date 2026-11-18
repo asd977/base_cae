@@ -161,6 +161,10 @@ class CORE_EXPORT PickManager : public QObject
     void clearPreviewSelection(const QString& domain, const QString& uuid, PickMode mode);
     void setBoxSelectEnabled(const QString& domain, const QString& uuid, bool enabled);
     void setClickPickEnabled(const QString& domain, const QString& uuid, bool enabled);
+    // A page can request the exact domain category used by its view picks.
+    // No preference keeps the existing automatic category precedence.
+    void setPreferredDomainCategory(const QString& domain, const QString& uuid,
+                                    const QString& category);
     void setAppliedDomains(const QString& domain, const QString& uuid,
                            const QSet<DomainKey>& keys);
     void setSelectedDomain(const QString& domain, const QString& uuid, const DomainKey& key);
@@ -277,6 +281,7 @@ class CORE_EXPORT PickManager : public QObject
     int m_dragEnd[2] = {0, 0};
     QHash<QString, QHash<QString, bool>> m_boxSelectEnabledByDomainUuid;
     QHash<QString, QHash<QString, bool>> m_clickPickEnabledByDomainUuid;
+    QHash<QString, QHash<QString, QString>> m_preferredDomainCategoryByDomainUuid;
 
     vtkSmartPointer<vtkPoints> m_dragRectPts;
     vtkSmartPointer<vtkCellArray> m_dragRectLines;

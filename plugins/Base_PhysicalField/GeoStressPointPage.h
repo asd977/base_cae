@@ -5,6 +5,7 @@
 #include <QString>
 
 #include "BasePage.h"
+#include "LoadPageState.h"
 
 class PickManager;
 
@@ -19,6 +20,7 @@ class GeoStressPointPage : public BasePage
 {
     Q_OBJECT
   public:
+    CAE_LOAD_PAGE_STATE("spinSx","spinSy","spinSz","spinSxy","spinSxz","spinSyz")
     explicit GeoStressPointPage(QWidget* parent = nullptr);
     ~GeoStressPointPage() override;
 

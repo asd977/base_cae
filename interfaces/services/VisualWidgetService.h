@@ -74,6 +74,9 @@ class VisualWidgetService
     virtual void showVisualizationView() = 0;
     virtual void setViewToolbarVisible(bool visible) = 0;
 
+    virtual void setBrandingVisible(bool visible, bool renderNow = true) = 0;
+    virtual bool isBrandingVisible() const = 0;
+
     // Optional sketch-mode hooks. Existing visual widgets remain source-compatible.
     virtual void setSketchModeEnabled(bool enabled, const QString& title = QString())
     {

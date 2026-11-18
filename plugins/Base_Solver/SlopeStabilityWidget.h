@@ -2,12 +2,19 @@
 #define SLOPESTABILITYWIDGET_H
 
 #include <BasePage.h>
+#include <QPointer>
 
 #include <QJsonObject>
 #include <QJsonArray>
 #include <QMap>
 
 class QWidget;
+class QCheckBox;
+class QuietBoundarySelector;
+class QComboBox;
+class QLabel;
+class QPushButton;
+class SlopeExcavationSettings;
 
 namespace Ui
 {
@@ -31,11 +38,14 @@ class SlopeStabilityWidget : public BasePage
     QJsonObject saveJson() override;
     void loadJson(const QJsonObject& obj) override;
     void openStandardMethodDialog();
+    bool excavationEnabled() const;
+    bool prepareExcavationFiles(const QString& inputDirectory, const QString& stressDirectory, QString* error);
 
   signals:
     void computeRequested();
     void stopRequested();
     void limitEquilibriumRequested();
+    void initialStressRequested();
 
 
   private slots:
@@ -62,6 +72,12 @@ class SlopeStabilityWidget : public BasePage
 
   private:
     Ui::SlopeStabilityWidget* ui;
+    SlopeExcavationSettings* m_excavation=nullptr;
+    QComboBox* m_dynamicExcavationShape = nullptr;
+    QCheckBox* m_postExcavationReserveCheck = nullptr;
+    QPointer<QCheckBox> m_quietBoundaryCheck = nullptr;
+    QPointer<QuietBoundarySelector> m_quietBoundarySelection = nullptr;
+    QPointer<QLabel> m_quietBoundaryStatus = nullptr;
     QMap<int, QWidget*> m_lineEditors;
     bool exportTdtraceDatFile() const;
     bool exportMaterialMappingsFile() const;

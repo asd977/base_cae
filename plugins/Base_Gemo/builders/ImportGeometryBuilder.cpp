@@ -7,6 +7,12 @@
 #include <GeomShapeObject.h>
 
 #include <BRepBuilderAPI_MakeEdge.hxx>
+#include <BRepBuilderAPI_MakeVertex.hxx>
+#include <BRepBuilderAPI_GTransform.hxx>
+#include <gp_GTrsf.hxx>
+#include <gp_Mat.hxx>
+#include <functional>
+#include <QLibrary>
 #include <BRepBuilderAPI_MakeFace.hxx>
 #include <BRepClass_FaceClassifier.hxx>
 #include <BRepGProp.hxx>
@@ -1198,38 +1204,98 @@ bool buildConnectedDxfShape(const TopoDS_Compound& edgeCompound,
     result = output;
     return true;
 }
-bool readDxfFile(const QString& filePath, TopoDS_Shape& shape, QString& errorMessage)
-{
-    QFile file(filePath);
-    if (!file.open(QIODevice::ReadOnly | QIODevice::Text))
-    {
-        errorMessage = QObject::tr("无法打开 DXF 文件：%1").arg(file.errorString());
-        return false;
-    }
 
-    QVector<DxfPair> allPairs;
-    QTextStream stream(&file);
+QString dxfText(const QVector<DxfPair>& pairs, int code, const QString& fallback = {})
+{
+    for (const auto& pair : pairs) if (pair.code == code) return pair.value;
+    return fallback;
+}
+
+bool readDxfRecordsImpl(const QString& path, QVector<DxfGeometryRecord>& records, QString& message)
+{
+    records.clear();
+    QFile file(path);
+    if (!file.open(QIODevice::ReadOnly)) {message=QObject::tr("无法打开 DXF：%1").arg(file.errorString());return false;}
+    const QByteArray bytes=file.readAll();
+    if (bytes.startsWith("AutoCAD Binary DXF")) {message=QObject::tr("请将二进制 DXF 另存为 ASCII DXF 后导入。");return false;}
+    QString content=QString::fromUtf8(bytes);
+#ifdef Q_OS_WIN
+    if (bytes.contains("ANSI_936"))
+    {
+        using DecodeFunction=int (__stdcall *)(unsigned int,unsigned long,const char*,int,wchar_t*,int);
+        const auto decode=reinterpret_cast<DecodeFunction>(QLibrary::resolve(QStringLiteral("kernel32"),"MultiByteToWideChar"));
+        const int count=decode?decode(936,0,bytes.constData(),int(bytes.size()),nullptr,0):0;
+        if (count>0) {std::wstring wide(count,L'\0');decode(936,0,bytes.constData(),int(bytes.size()),wide.data(),count);content=QString::fromStdWString(wide);}
+        else content=QString::fromLocal8Bit(bytes);
+    }
+#endif
+    QTextStream stream(&content);
+    QVector<DxfPair> pairs;
     while (!stream.atEnd())
     {
-        const QString codeLine = stream.readLine().trimmed();
-        if (stream.atEnd())
-            break;
-        const QString valueLine = stream.readLine().trimmed();
-        bool ok = false;
-        const int code = codeLine.toInt(&ok);
-        if (ok)
-            allPairs.push_back({code, valueLine});
+        const QString code=stream.readLine().trimmed();
+        if (stream.atEnd()) {message=QObject::tr("DXF 组码缺少对应值。");return false;}
+        const QString value=stream.readLine().trimmed();
+        bool ok=false;const int number=code.toInt(&ok);
+        if (!ok) {message=QObject::tr("DXF 包含无效组码。");return false;}
+        pairs.push_back({number,value});
     }
-
-    const QVector<DxfEntity> entities = dxfEntities(allPairs);
-    TopoDS_Compound compound;
-    BRep_Builder builder;
-    builder.MakeCompound(compound);
-    int edgeCount = 0;
-
-    for (int i = 0; i < entities.size(); ++i)
+    struct Block {gp_Pnt base;QVector<DxfEntity> entities;};
+    QHash<QString,Block> blocks;
+    QVector<DxfEntity> model;
+    QString section,blockName;
+    const auto raw=dxfEntities(pairs);
+    for (const auto& entity:raw)
     {
-        const DxfEntity& entity = entities.at(i);
+        if (entity.type=="SECTION") {section=dxfText(entity.pairs,2).toUpper();continue;}
+        if (entity.type=="ENDSEC") {section.clear();continue;}
+        if (section=="BLOCKS")
+        {
+            if (entity.type=="BLOCK") {blockName=dxfText(entity.pairs,2);blocks[blockName].base=dxfPoint(entity.pairs,10,20,30);}
+            else if (entity.type=="ENDBLK") blockName.clear();
+            else if (!blockName.isEmpty()) blocks[blockName].entities.push_back(entity);
+        }
+        else if (section=="ENTITIES" && dxfIntValue(entity.pairs,67)==0)
+            model.push_back(entity);
+    }
+    bool valid=true;int ignored=0;
+    std::function<void(const QVector<DxfEntity>&,const gp_GTrsf&,const QString&,int)> append;
+    append=[&](const QVector<DxfEntity>& sequence,const gp_GTrsf& transform,const QString& inheritedLayer,int depth)
+    {
+        if (!valid) return;
+        if (depth>24) {valid=false;message=QObject::tr("DXF 图块循环引用或嵌套超过 24 层。");return;}
+        for (int i=0;i<sequence.size() && valid;++i)
+        {
+            const auto& entity=sequence[i];
+            QString layer=dxfText(entity.pairs,8,"0");
+            if (layer=="0" && !inheritedLayer.isEmpty()) layer=inheritedLayer;
+            if (entity.type=="INSERT")
+            {
+                const QString name=dxfText(entity.pairs,2);
+                if (!blocks.contains(name)) {valid=false;message=QObject::tr("DXF 引用了缺失的图块：%1").arg(name);return;}
+                const auto& block=blocks[name];
+                const double sx=dxfValue(entity.pairs,41,1),sy=dxfValue(entity.pairs,42,1),sz=dxfValue(entity.pairs,43,1);
+                if (std::min({std::abs(sx),std::abs(sy),std::abs(sz)})<1e-12) {valid=false;message=QObject::tr("图块缩放比例为零。");return;}
+                const int columns=std::max(1,dxfIntValue(entity.pairs,70,1)),rows=std::max(1,dxfIntValue(entity.pairs,71,1));
+                if (static_cast<long long>(columns)*rows>10000) {valid=false;message=QObject::tr("图块阵列过大，请拆分后导入。");return;}
+                const double angle=dxfValue(entity.pairs,50)*kDxfPi/180.0,c=std::cos(angle),sn=std::sin(angle);
+                const gp_Dir normal=dxfNormal(entity.pairs);
+                const auto insert=dxfPoint(entity.pairs,10,20,30);
+                const gp_Pnt origin=dxfOcsPoint(insert.X(),insert.Y(),insert.Z(),normal);
+                const gp_Pnt x=dxfOcsPoint(c*sx,sn*sx,0,normal), y=dxfOcsPoint(-sn*sy,c*sy,0,normal),z=dxfOcsPoint(0,0,sz,normal);
+                gp_Mat matrix(x.X(),y.X(),z.X(),x.Y(),y.Y(),z.Y(),x.Z(),y.Z(),z.Z());
+                for(int row=0;row<rows;++row) for(int column=0;column<columns;++column)
+                {
+                    // MINSERT spacing is applied before rotation, independently of block scale.
+                    const double dx=column*dxfValue(entity.pairs,44),dy=row*dxfValue(entity.pairs,45);
+                    const gp_Pnt shift=dxfOcsPoint(c*dx-sn*dy,sn*dx+c*dy,0,normal);
+                    gp_XYZ translation=origin.XYZ()+shift.XYZ()-matrix*block.base.XYZ();
+                    gp_GTrsf local(matrix,translation);
+                    append(block.entities,transform.Multiplied(local),layer,depth+1);
+                }
+                continue;
+            }
+            TopoDS_Compound compound;BRep_Builder builder;builder.MakeCompound(compound);int edgeCount=0;
         if (entity.type == QStringLiteral("LINE"))
         {
             if (addDxfLine(builder, compound,
@@ -1276,11 +1342,11 @@ bool readDxfFile(const QString& filePath, TopoDS_Shape& shape, QString& errorMes
         {
             QVector<DxfVertex> vertices;
             int j = i + 1;
-            for (; j < entities.size() && entities.at(j).type != QStringLiteral("SEQEND"); ++j)
+            for (; j < sequence.size() && sequence.at(j).type != QStringLiteral("SEQEND"); ++j)
             {
-                if (entities.at(j).type != QStringLiteral("VERTEX"))
+                if (sequence.at(j).type != QStringLiteral("VERTEX"))
                     continue;
-                const QVector<DxfPair>& vertexPairs = entities.at(j).pairs;
+                const QVector<DxfPair>& vertexPairs = sequence.at(j).pairs;
                 vertices.push_back({dxfValue(vertexPairs, 10),
                                     dxfValue(vertexPairs, 20),
                                     dxfValue(vertexPairs, 30),
@@ -1296,28 +1362,33 @@ bool readDxfFile(const QString& filePath, TopoDS_Shape& shape, QString& errorMes
                                                     dxfNormal(entity.pairs), useOcs,
                                                     dxfValue(entity.pairs, 30, 0.0));
             }
-            i = std::min<int>(j, static_cast<int>(entities.size() - 1));
+            i = std::min<int>(j, static_cast<int>(sequence.size() - 1));
         }
-    }
+            else if (entity.type=="POINT") {builder.Add(compound,BRepBuilderAPI_MakeVertex(dxfPoint(entity.pairs,10,20,30)).Vertex());++edgeCount;}
+            else {if(entity.type!="SEQEND" && entity.type!="VERTEX") ++ignored;continue;}
+            if (edgeCount==0) continue;
+            TopoDS_Shape result=compound;
+            if (transform.Form()!=gp_Identity) result=BRepBuilderAPI_GTransform(compound,transform,Standard_True).Shape();
+            records.push_back({layer,dxfText(entity.pairs,5),entity.type,result});
+            if(records.size()>100000) {valid=false;message=QObject::tr("展开后的对象超过 100000 个。");return;}
+        }
+    };
+    append(model,gp_GTrsf(),QString(),0);
+    if (!valid) {records.clear();return false;}
+    if(records.empty()) {message=QObject::tr("DXF 中没有可导入的曲线或高程点。");return false;}
+    message=QObject::tr("读取 %1 个对象，保留图层和 XYZ；%2 个非曲线对象未导入。").arg(records.size()).arg(ignored);
+    return true;
+}
 
-    if (edgeCount <= 0)
-    {
-        errorMessage = QObject::tr(
-            "DXF 文件中未找到可导入的 LINE、CIRCLE、ARC、ELLIPSE、SPLINE、LWPOLYLINE 或 POLYLINE 实体。");
-        return false;
-    }
-
-    int closedProfileCount = 0;
-    int openWireCount = 0;
-    if (!buildConnectedDxfShape(compound, shape, closedProfileCount, openWireCount))
-    {
-        errorMessage = QObject::tr("DXF 边已读取，但无法连接成有效线框。");
-        return false;
-    }
-
-    errorMessage = QObject::tr("已导入 %1 个闭合轮廓和 %2 条开放线框。")
-                       .arg(closedProfileCount)
-                       .arg(openWireCount);
+bool readDxfFile(const QString& path, TopoDS_Shape& shape, QString& message)
+{
+    QVector<DxfGeometryRecord> records;
+    if(!readDxfRecordsImpl(path,records,message)) return false;
+    TopoDS_Compound compound;BRep_Builder builder;builder.MakeCompound(compound);
+    for(const auto& record:records) for(TopExp_Explorer e(record.shape,TopAbs_EDGE);e.More();e.Next()) builder.Add(compound,e.Current());
+    int closed=0,open=0;
+    if(!buildConnectedDxfShape(compound,shape,closed,open)) {message=QObject::tr("未找到可连接的有效曲线。");return false;}
+    message+=QObject::tr(" 连接为 %1 个闭合轮廓、%2 条开放线框。").arg(closed).arg(open);
     return true;
 }
 
@@ -1346,6 +1417,13 @@ void ImportGeometryBuilder::clearStepImportOptions(const QString& importUuid)
 {
     if (!importUuid.isEmpty())
         stepImportOptionsRegistry().remove(importUuid);
+}
+
+bool ImportGeometryBuilder::readDxfRecords(const QString& path, QVector<DxfGeometryRecord>& records, QString& message)
+{
+    try {return readDxfRecordsImpl(path,records,message);}
+    catch(const Standard_Failure& ex) {records.clear();message=occFailureMessage(ex);return false;}
+    catch(const std::exception& ex) {records.clear();message=QString::fromLocal8Bit(ex.what());return false;}
 }
 
 bool ImportGeometryBuilder::readDxfShape(const QString& filePath,

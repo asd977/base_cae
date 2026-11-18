@@ -178,7 +178,7 @@
              </widget>
             </item>
             <item>
-             <widget class="QComboBox" name="scalarComboBox">
+             <widget class="PostScientificComboBox" name="scalarComboBox">
               <property name="minimumSize">
                <size>
                 <width>10</width>
@@ -481,6 +481,13 @@
    </item>
   </layout>
  </widget>
+ <customwidgets>
+  <customwidget>
+   <class>PostScientificComboBox</class>
+   <extends>QComboBox</extends>
+   <header>PostScientificComboBox.h</header>
+  </customwidget>
+ </customwidgets>
  <resources />
  <connections />
 </ui>

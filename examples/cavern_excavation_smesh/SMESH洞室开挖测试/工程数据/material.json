@@ -1,0 +1,76 @@
+{
+    "added_entry_ids": [
+    ],
+    "material_transitions": [
+    ],
+    "models": [
+        {
+            "display_name": "霍克-布朗本构",
+            "entries": [
+            ],
+            "key": "hoek_brown_rock"
+        },
+        {
+            "display_name": "Drucker–Prager本构",
+            "entries": [
+            ],
+            "key": "drucker_prager_rock"
+        },
+        {
+            "display_name": "围岩开挖模型",
+            "entries": [
+            ],
+            "key": "huangjinping_underground_plant"
+        },
+        {
+            "display_name": "E-B本构",
+            "entries": [
+            ],
+            "key": "soil_eb"
+        },
+        {
+            "display_name": "E-μ本构",
+            "entries": [
+            ],
+            "key": "soil_emu"
+        },
+        {
+            "display_name": "E-μ破碎本构",
+            "entries": [
+            ],
+            "key": "soil_emu_crush"
+        },
+        {
+            "display_name": "坝料动力本构",
+            "entries": [
+            ],
+            "key": "dam_dynamic"
+        },
+        {
+            "display_name": "锚杆单元模型",
+            "entries": [
+            ],
+            "key": "huangjinping_bar_element"
+        },
+        {
+            "display_name": "摩尔-库仑本构",
+            "entries": [
+            ],
+            "key": "dagangshan_isotropic"
+        },
+        {
+            "display_name": "南水非线性本构",
+            "entries": [
+            ],
+            "key": "soil_nanshui"
+        },
+        {
+            "display_name": "K-G本构",
+            "entries": [
+            ],
+            "key": "soil_kg"
+        }
+    ],
+    "module": "Material",
+    "show_transition_node": false
+}

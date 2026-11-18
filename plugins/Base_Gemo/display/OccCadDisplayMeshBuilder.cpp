@@ -153,9 +153,26 @@ Handle(Poly_Polygon3D) polygonOfFreeEdge(const TopoDS_Edge& edge, TopLoc_Locatio
     if (!polygon.IsNull() && !Precision::IsInfinite(first) && !Precision::IsInfinite(last))
         return polygon;
 
-    first = std::max(-50.0, first);
-    last = std::min(50.0, last);
-    if (!(last > first))
+    // 只有数学上无界的 Curve 才限制一个有限预览窗口。正常 DXF / 草图
+    // 线段的参数区间是有限的，通常随实际长度增长（例如 [0, 500]）。
+    // 旧代码无条件裁剪到 [-50, 50]，导致在普通几何/网格页面只显示
+    // 长边开头的一小截，而草图编辑层按完整参数绘制，看起来不一致。
+    const bool finiteFirst = std::isfinite(first) && !Precision::IsInfinite(first);
+    const bool finiteLast = std::isfinite(last) && !Precision::IsInfinite(last);
+    if (!finiteFirst && !finiteLast)
+    {
+        first = -50.0;
+        last = 50.0;
+    }
+    else if (!finiteFirst)
+    {
+        first = last - 100.0;
+    }
+    else if (!finiteLast)
+    {
+        last = first + 100.0;
+    }
+    if (!std::isfinite(first) || !std::isfinite(last) || !(last > first))
         return Handle(Poly_Polygon3D)();
 
     double curveFirst = 0.0;

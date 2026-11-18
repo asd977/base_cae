@@ -1,6 +1,7 @@
 #pragma once
 
 #include "BasePage.h"
+#include "LoadPageState.h"
 
 class QDoubleSpinBox;
 class QSpinBox;
@@ -16,6 +17,7 @@ class TemperatureLoadPage : public BasePage
 {
     Q_OBJECT
   public:
+    CAE_LOAD_PAGE_STATE("lineEditAlfa","lineEditDT")
     explicit TemperatureLoadPage(QWidget* parent = nullptr);
     ~TemperatureLoadPage() override;
 

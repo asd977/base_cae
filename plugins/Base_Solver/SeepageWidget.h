@@ -39,7 +39,7 @@ class SeepageWidget : public BasePage
     QString transientInitialStateDirectory(const QString& workspaceRoot = QString()) const;
     bool validateInputs(QString* errorMessage) const;
 
-    bool exportIseepDatFile() const;
+    bool exportIseepDatFile(int computeTypeOverride = 0) const;
 
     QJsonObject saveJson() override;
     void loadJson(const QJsonObject& obj) override;

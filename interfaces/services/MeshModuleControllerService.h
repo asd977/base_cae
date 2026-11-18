@@ -1,4 +1,4 @@
-﻿#ifndef MESH_MODULE_CONTROLLER_SERVICE_H
+#ifndef MESH_MODULE_CONTROLLER_SERVICE_H
 #define MESH_MODULE_CONTROLLER_SERVICE_H
 
 #include <QHash>
@@ -43,43 +43,10 @@ struct MshPickMap;
 template <typename T> class vtkSmartPointer;
 class vtkUnstructuredGrid;
 
-struct EdgeControlRule
-{
-    QString edgeIds;
-
-    // Netgen-native local maximum element size on the selected edge.
-    // A non-positive value means that this rule came from an older project and
-    // should be converted from divisions when the edge length is available.
-    double maxSize = 0.0;
-
-    // Legacy Gmsh fields retained only for loading existing projects.
-    int divisions = 10;
-    double bias = 1.0;
-};
-
-struct FaceControlRule
-{
-    QString faceIds;
-
-    // Netgen-native local maximum element size on the selected face.
-    double maxSize = 0.0;
-
-    // Legacy Gmsh fields retained only for loading existing projects.
-    double localSizeFactor = 1.0;
-    bool curvatureRefine = true;
-    int curvatureElementsPer2Pi = 20;
-};
-
-struct VolumeControlRule
-{
-    QString volumeIds;
-
-    // Netgen-native local maximum element size inside the selected volume.
-    double maxSize = 0.0;
-
-    // Legacy Gmsh field retained only for loading existing projects.
-    double localSizeFactor = 1.0;
-};
+// Native SMESH maximum-size controls on selected CAD subshapes.
+struct EdgeControlRule { QString edgeIds; double maxSize = 0.0; };
+struct FaceControlRule { QString faceIds; double maxSize = 0.0; };
+struct VolumeControlRule { QString volumeIds; double maxSize = 0.0; };
 
 struct BarElementPlacement
 {
@@ -134,7 +101,7 @@ struct MeshModuleControllerService
     virtual QString sourceMeshFilePath() const = 0;
     virtual int verticalAxis() const = 0;
     virtual bool exportIiinDatFile(const QString& filePath, QString* errMsg = nullptr) = 0;
-    virtual bool importGeneratedNetgenMesh(const QString& vtkPath, QString* errMsg = nullptr) = 0;
+    virtual bool importGeneratedSmeshMesh(const QString& vtkPath, QString* errMsg = nullptr) = 0;
     virtual MshPickMap mshPickMapSolid() = 0;
     virtual QString matypePhysicalName(int matype, int dim = 3) const = 0;
     virtual void setMshPickMapSolid(const MshPickMap& pickMap) = 0;
@@ -145,6 +112,12 @@ struct MeshModuleControllerService
                                         double zmin, double zmax, const QString& targetArrayName,
                                         int value, const QString& groupName,
                                         QString* errMsg = nullptr) = 0;
+    // Cell ids always refer to the full imported grid (VTK ids), not elem_id.
+    // This changes exactly one solver attribute and preserves the other.
+    virtual bool assignSelectedCellsToGroup(const QVector<MeshIdType>& cellIds,
+                                            const QString& attribute, int groupId,
+                                            const QString& displayName,
+                                            QString* errMsg = nullptr) = 0;
     virtual bool assignDamConstructionLayers(const QSet<MeshIdType>& foundationCellIds,
                                              const QSet<MeshIdType>& damCellIds,
                                              int fillLayerCount,

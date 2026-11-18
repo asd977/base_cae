@@ -18,6 +18,8 @@ if(WIN32)
             @ONLY
         )
         target_sources(CAE_BASE PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/app.rc")
+        set_source_files_properties("${CMAKE_CURRENT_BINARY_DIR}/app.rc"
+            PROPERTIES OBJECT_DEPENDS "${CAE_APP_ICON}")
     else()
         message(WARNING "Application icon was not found: ${CAE_APP_ICON}")
     endif()
@@ -41,6 +43,39 @@ set_target_properties(CAE_BASE PROPERTIES
     OUTPUT_NAME "POWERCHINA-GEOCAE"
     RUNTIME_OUTPUT_DIRECTORY "${CAE_RUNTIME_DIR}"
 )
+
+if(WIN32)
+    add_executable(CAE_SolverErrorBridge WIN32 ../solver/SolverErrorBridge.cpp)
+    set_target_properties(CAE_SolverErrorBridge PROPERTIES
+        AUTOMOC OFF AUTOUIC OFF AUTORCC OFF OUTPUT_NAME "ErrShow")
+    foreach(_config "" _DEBUG _RELEASE _RELWITHDEBINFO _MINSIZEREL)
+        set_target_properties(CAE_SolverErrorBridge PROPERTIES
+            RUNTIME_OUTPUT_DIRECTORY${_config} "${CAE_RUNTIME_DIR}/solver/Runtime/C08_ErrShow/DEBUG")
+    endforeach()
+    add_dependencies(CAE_BASE CAE_SolverErrorBridge)
+    set(CAE_SOLVER_RUNTIME_SOURCE "${CMAKE_SOURCE_DIR}/solver/Runtime" CACHE PATH
+        "Native solver protocol tables (read-only source)")
+    # Older Qt Creator kits cached an empty value and silently omitted all tables.
+    if(NOT CAE_SOLVER_RUNTIME_SOURCE)
+        set(CAE_SOLVER_RUNTIME_SOURCE "${CMAKE_SOURCE_DIR}/solver/Runtime" CACHE PATH
+            "Native solver protocol tables (read-only source)" FORCE)
+    endif()
+    if(CAE_SOLVER_RUNTIME_SOURCE)
+        # Run on incremental builds too: POST_BUILD on ErrShow alone skips
+        # repairing missing runtime tables when that executable is up to date.
+        add_custom_target(CAE_DEPLOY_SOLVER_RUNTIME)
+        add_dependencies(CAE_DEPLOY_SOLVER_RUNTIME CAE_SolverErrorBridge)
+        add_dependencies(CAE_BASE CAE_DEPLOY_SOLVER_RUNTIME)
+        foreach(_table KEATT_CON.DAT KEATT_VAR.DAT KONG.DAT C02_TABLE/AT0128.DAT)
+            get_filename_component(_table_dir "${_table}" DIRECTORY)
+            add_custom_command(TARGET CAE_DEPLOY_SOLVER_RUNTIME POST_BUILD
+                COMMAND ${CMAKE_COMMAND} -E make_directory "${CAE_RUNTIME_DIR}/solver/Runtime/${_table_dir}"
+                COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                    "${CAE_SOLVER_RUNTIME_SOURCE}/${_table}" "${CAE_RUNTIME_DIR}/solver/Runtime/${_table}"
+                VERBATIM)
+        endforeach()
+    endif()
+endif()
 
 set(CAE_SOLVER_EXECUTABLE
     "${CMAKE_SOURCE_DIR}/solver/PCCAE_CPU/PCCAE_CPU.exe"

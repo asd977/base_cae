@@ -20,6 +20,7 @@ SketchDocument::Kind safeKindFromInt(int value)
     case SketchDocument::Kind::PointsOnly:
     case SketchDocument::Kind::Arc:
     case SketchDocument::Kind::Curve:
+    case SketchDocument::Kind::NativeCurve:
         return static_cast<SketchDocument::Kind>(value);
     }
     return SketchDocument::Kind::Empty;
@@ -79,6 +80,7 @@ bool samePoints(const std::vector<Point2D>& a, const std::vector<Point2D>& b)
 
 void SketchDocument::clear()
 {
+    m_nativeBrep.clear();
     m_kind = Kind::Empty;
     m_points.clear();
     m_displayPoints.clear();
@@ -89,6 +91,11 @@ void SketchDocument::clear()
     m_circleRadius = 0.0;
     m_arcKind = ArcKind::Through;
     m_arcSweep = 0.0;
+}
+
+void SketchDocument::setNativeCurve(const std::vector<Point2D>& points, const QString& brep, bool closed)
+{
+    clear();m_kind=Kind::NativeCurve;m_points=points;m_nativeBrep=brep;m_closed=closed;m_finished=true;
 }
 
 const std::vector<Point2D>& SketchDocument::displayPoints() const
@@ -105,6 +112,8 @@ void SketchDocument::setDisplayPoints(const std::vector<Point2D>& points)
 
 bool SketchDocument::isRenderable() const
 {
+    if (m_kind == Kind::NativeCurve)
+        return !m_nativeBrep.isEmpty() && m_points.size() >= 2;
     if (m_kind == Kind::Circle)
         return m_points.size() == 1 && m_circleRadius > 1.0e-9;
     if (m_kind == Kind::Arc)
@@ -464,6 +473,7 @@ QJsonObject SketchDocument::toJson() const
         }
         obj[QStringLiteral("profileSegments")] = segmentArr;
     }
+    if (m_kind == Kind::NativeCurve) obj["nativeBrep"] = m_nativeBrep;
     return obj;
 }
 
@@ -474,6 +484,7 @@ void SketchDocument::fromJson(const QJsonObject& obj)
     m_closed = obj.value("closed").toBool(false);
     m_finished = obj.value("finished").toBool(false);
     m_construction = obj.value("construction").toBool(false);
+    m_nativeBrep = obj.value("nativeBrep").toString();
     m_circleRadius = obj.value("circleRadius").toDouble(0.0);
     m_arcKind = safeArcKindFromInt(obj.value("arcKind").toInt(static_cast<int>(ArcKind::Through)));
     m_arcSweep = obj.value("arcSweep").toDouble(0.0);

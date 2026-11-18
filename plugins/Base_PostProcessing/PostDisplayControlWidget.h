@@ -8,8 +8,10 @@ class VisualWidgetService;
 class vtkCallbackCommand;
 class vtkObject;
 class QCheckBox;
+class QGroupBox;
 class QComboBox;
 class QSpinBox;
+class QDoubleSpinBox;
 
 namespace Ui
 {
@@ -49,7 +51,14 @@ class PostDisplayControlWidget : public QWidget
     double m_dragOffsetX{0.0};
     double m_dragOffsetY{0.0};
 
+    QGroupBox* m_thresholdGroup{nullptr};
+    QCheckBox* m_thresholdEnabled{nullptr};
+    QDoubleSpinBox* m_thresholdValue{nullptr};
+    QSpinBox* m_belowTransparency{nullptr};
     QSpinBox* m_gridLineStrengthSpinBox{nullptr};
+    QCheckBox* m_showOutlineCheckBox{nullptr};
+    QComboBox* m_tickModeComboBox{nullptr};
+    QDoubleSpinBox* m_tickStepSpinBox{nullptr};
     QCheckBox* m_reverseColorsCheckBox{nullptr};
     QComboBox* m_contourModeComboBox{nullptr};
 };

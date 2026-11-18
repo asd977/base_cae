@@ -55,7 +55,7 @@ struct MshPickMap
 
     // ----- 分组用途 -----
     // 这里保存“业务应该使用哪一种域分组”，避免页面根据现有标签自行猜测。
-    // Netgen:       material=REGION,   excavation=REGION
+    // SMESH:       material=REGION,   excavation=REGION
     // Abaqus/Flac3D: material=Physical, excavation=Physical
     // IIIN/DAT:      material=MATYPE,    excavation=LAYER
     // Physical 与 REGION 仍保留各自来源语义，但业务页面只读取这里的用途映射。
@@ -76,6 +76,10 @@ struct MshPickMap
     // 域、边界点、边界线、边界面都统一落到这里。
     // 页面层应只读取 MeshModuleController::boundaryTagSets()/domainTagSets()，不要直接读 bndXXX。
     QHash<MeshTagKey, MeshTagSet> tagSets;
+    // Human labels of solver fields are project metadata, never overwritten by
+    // GroupName (which refers to source geometry, not MATYPE/LAYER).
+    QHash<QString, QString> groupDisplayNames; // "MATYPE/3/4" -> "sandstone"
+
     QHash<MeshIdType, QVector<MeshTagKey>> cellIdToDomainTags;
     QHash<MeshIdType, QVector<MeshTagKey>> pointIdToBoundaryTags;
 

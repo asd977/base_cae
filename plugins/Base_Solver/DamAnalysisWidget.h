@@ -1,6 +1,7 @@
 ﻿#pragma once
 
 #include <BasePage.h>
+#include <QPointer>
 
 #include <QJsonObject>
 #include <QMap>
@@ -11,6 +12,9 @@
 
 #include <struct/MeshMap.h>
 
+class QCheckBox;
+class QuietBoundarySelector;
+class QPushButton;
 class QLineEdit;
 class QWidget;
 class QComboBox;
@@ -97,6 +101,9 @@ class DamAnalysisWidget : public BasePage
     QComboBox* m_comboPgen = nullptr;
     QComboBox* m_comboIfRock = nullptr;
     QComboBox* m_comboIfIso = nullptr;
+    QPointer<QCheckBox> m_quietBoundaryCheck = nullptr;
+    QPointer<QuietBoundarySelector> m_quietBoundarySelection = nullptr;
+    QPointer<QLabel> m_quietBoundaryStatus = nullptr;
     QGroupBox* m_groupFreezeThaw = nullptr;
     QLineEdit* m_editIceExpansion = nullptr;
     QGroupBox* m_groupConstructionLayers = nullptr;

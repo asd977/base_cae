@@ -46,8 +46,12 @@ OutputWidget::OutputWidget(QWidget* parent) : QWidget(parent), ui(new Ui::Output
 
 void OutputWidget::outputMessage(const QString& str)
 {
-    ui->textEdit->append(str.toHtmlEscaped());
-    ui->textEdit->moveCursor(QTextCursor::End);
+    QTextCursor cursor(ui->textEdit->document());
+    cursor.movePosition(QTextCursor::End);
+    if (!ui->textEdit->document()->isEmpty()) cursor.insertBlock();
+    cursor.insertText(str);
+    ui->textEdit->setTextCursor(cursor);
+    ui->textEdit->ensureCursorVisible();
 }
 
 void OutputWidget::showEvent(QShowEvent* event)

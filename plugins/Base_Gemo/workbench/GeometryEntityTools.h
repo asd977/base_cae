@@ -45,7 +45,7 @@ QVector<TopoDS_Shape> splitTemporaryPartitionRegions(const QStringList& geometry
                                               QVector<int>* ownerVolumeIds = nullptr);
 // Polycube Region Blocking finite-surface precheck. Each surface payload contains
 // loops (outer + optional holes) in physical CAD coordinates. OCC uses the same
-// finite face geometry that Mesh later sends to Gmsh BooleanFragments.
+// finite face geometry that Mesh later sends to SMESH BooleanFragments.
 QVariantMap evaluateHexBlockingSurfaces(const QStringList& geometryUuids, const QVariantList& surfaces);
 // Export the active OCC CAD boundary as one welded, pure-triangle OBJ for
 // Polycube labeling.  The companion face-map stores one global OCC Face id

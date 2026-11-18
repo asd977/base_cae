@@ -1,4 +1,5 @@
 ﻿#include "DamAnalysisWidget.h"
+#include "DamInputProtocol.h"
 
 #include <PublicConstants.h>
 #include <PublicVariables.h>
@@ -7,6 +8,7 @@
 #include <services/MeshModuleControllerService.h>
 #include <services/VisualWidgetService.h>
 #include <QAbstractItemView>
+#include <QCheckBox>
 #include <QColor>
 #include <QComboBox>
 #include <QDir>
@@ -53,12 +55,26 @@
 #include "ui_DamAnalysisWidget.h"
 
 #include "SolverUiLayoutHelper.h"
+#include "SolverQuietBoundary.h"
+#include "QuietBoundarySelector.h"
 DamAnalysisWidget::DamAnalysisWidget(QWidget* parent)
     : BasePage("DamAnalysis"), ui(new Ui::DamAnalysisWidget)
 {
     ui->setupUi(this);
     initValueEditors();
     setupConstructionLayerUi();
+    m_quietBoundaryCheck = new QCheckBox(QStringLiteral("考虑粘弹性边界"), ui->groupDynamic);
+    m_quietBoundaryCheck->setObjectName(QStringLiteral("quietBoundaryCheck"));
+    m_quietBoundaryCheck->setToolTip(QStringLiteral("用于吸收人工截断边界的波动；启用后在模型中选择边界区域。"));
+    m_quietBoundarySelection = new QuietBoundarySelector(ui->groupDynamic);
+    m_quietBoundaryStatus = m_quietBoundarySelection->statusLabel();
+    ui->formLayoutDynamic->addRow(QString(),m_quietBoundaryCheck);
+    ui->formLayoutDynamic->addRow(m_quietBoundarySelection);
+    m_quietBoundarySelection->setEnabled(false);
+    connect(m_quietBoundaryCheck,&QCheckBox::toggled,this,[this](bool enabled){
+        m_quietBoundarySelection->setEnabled(enabled);
+        if(!enabled)m_quietBoundarySelection->stop();
+    });
     SolverUiLayoutHelper::polishPage(this);
     SolverUiLayoutHelper::setupComputeControls(this);
     connect(ui->btnCompute, &QPushButton::clicked, this, &DamAnalysisWidget::onComputeClicked);
@@ -88,6 +104,7 @@ void DamAnalysisWidget::beforeLoad()
 
 void DamAnalysisWidget::beforeUnload()
 {
+    if(m_quietBoundarySelection)m_quietBoundarySelection->stop();
     m_constructionLayerUiActive = false;
     clearConstructionLayerHighlights();
 }
@@ -319,8 +336,8 @@ void DamAnalysisWidget::rebuildConstructionLayerPanel()
 
     QVector<RegionChoice> regions;
     const QStringList preferredCategories = m_existingConstructionLayersValid
-        ? QStringList{QStringLiteral("LAYER"), QStringLiteral("Physical"), QStringLiteral("MATYPE")}
-        : QStringList{QStringLiteral("Physical"), QStringLiteral("MATYPE"), QStringLiteral("LAYER")};
+        ? QStringList{QStringLiteral("LAYER"), QStringLiteral("REGION"), QStringLiteral("Physical"), QStringLiteral("MATYPE")}
+        : QStringList{QStringLiteral("REGION"), QStringLiteral("Physical"), QStringLiteral("MATYPE"), QStringLiteral("LAYER")};
     for (const QString& category : preferredCategories)
     {
         QVector<RegionChoice> candidate = collectRegions(category);
@@ -923,6 +940,8 @@ void DamAnalysisWidget::updateAnalysisModeVisibility()
     if (!staticEnabled)
         clearConstructionLayerHighlights();
 
+    if (m_quietBoundaryStatus)
+        m_quietBoundaryStatus->setText(m_quietBoundarySelection->summary());
     updateDynamicOptionVisibility();
 }
 
@@ -960,7 +979,7 @@ QString DamAnalysisWidget::defaultValueByLine(int lineNo) const
         "MA_PLATE.DAT", "JDTRACE.DAT", "KETRACE.DAT", "TDTRACE.DAT", "0", "0", "0.05", "0.0",
         "1", "4   10", "0.000", "1.962", "1.308", "0.1", "0.2", "2.0", "0.9", "7.0", "0",
         "10", "0", "-0.206", "2100.0 2105.0", "2.7110 2.9480", "24.381 3.1310",
-        "JMFW.DAT", "0.0357", "0", "---", "---"};
+        "JMFW.DAT", "0.0357", "0", "FA_DYNA.DAT", "---"};
     return defaults.value(lineNo - 1);
 }
 
@@ -979,7 +998,7 @@ QString DamAnalysisWidget::descriptionByLine(int lineNo) const
         "反应谱衰减指数", "地震震级", "模态特征值求解", "模态阶数",
         "面板坝冻融循环次数（均质坝不用）", "面板坝冻融影响系数（均质坝不用）",
         "面板坝冻融影响高程（均质坝不用）", "面板坝冻融抗压系数（均质坝不用）",
-        "面板坝冻融抗拉系数（均质坝不用）", "结冰区域", "冰线膨胀率", "保留参数（求解器未使用）", "系统参数",
+        "面板坝冻融抗拉系数（均质坝不用）", "结冰区域", "冰线膨胀率", "动力粘弹性边界开关", "动力粘弹性边界面集",
         "系统参数"};
     return descriptions.value(lineNo - 1);
 }
@@ -1003,10 +1022,11 @@ QString DamAnalysisWidget::lineValue(int lineNo) const
                                     m_editIter->text().trimmed());
     if (lineNo >= 31 && lineNo <= 35)
         return defaultValueByLine(lineNo);
-    // P038 虽然在 IFILL.DAT 中保留，但当前求解器只读取该行而未参与结冰开关判断。
-    // 结冰计算实际由 JMFW.DAT 是否存在触发，因此这里固定写 0，避免制造一个“假开关”。
     if (lineNo == 38)
-        return defaultValueByLine(lineNo);
+        return m_quietBoundaryCheck && m_quietBoundaryCheck->isChecked()
+            && (ui->comboLine19->currentData().toString() == QStringLiteral("2")
+                || ui->comboLine19->currentData().toString() == QStringLiteral("3"))
+            ? QStringLiteral("1") : QStringLiteral("0");
 
     QWidget* w = m_lineEditors.value(lineNo, nullptr);
     if (auto* combo = qobject_cast<QComboBox*>(w))
@@ -1035,7 +1055,11 @@ void DamAnalysisWidget::setLineValue(int lineNo, const QString& value)
     if (lineNo >= 31 && lineNo <= 35)
         return;
     if (lineNo == 38)
+    {
+        if (m_quietBoundaryCheck)
+            m_quietBoundaryCheck->setChecked(value.trimmed() == QStringLiteral("1"));
         return;
+    }
 
 
     QWidget* w = m_lineEditors.value(lineNo, nullptr);
@@ -1057,7 +1081,7 @@ void DamAnalysisWidget::setLineValue(int lineNo, const QString& value)
 bool DamAnalysisWidget::isFixedFileLine(int lineNo) const
 {
     static const QSet<int> fixedLines = {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14,
-                                         31, 32, 33, 34, 35, 36, 38, 39, 40};
+                                         31, 32, 33, 34, 35, 36, 39, 40};
     return fixedLines.contains(lineNo);
 }
 
@@ -1070,6 +1094,14 @@ bool DamAnalysisWidget::validateInputs(QString* errorMessage) const
             *errorMessage = message;
     };
 
+    if (m_quietBoundaryCheck && m_quietBoundaryCheck->isChecked()
+        && (ui->comboLine19->currentData().toString() == QStringLiteral("2")
+            || ui->comboLine19->currentData().toString() == QStringLiteral("3"))
+        && !m_quietBoundarySelection->generate())
+    {
+        setError(QStringLiteral("请在模型中选择粘弹性边界区域；当前支持线性边界面（二维选择边）。"));
+        return false;
+    }
     if (m_constructionLayerUiDirty)
     {
         setError(QStringLiteral("尚未完成坝体施工分层，请为每个区域指定坝基或坝体。"));
@@ -1208,8 +1240,10 @@ bool DamAnalysisWidget::exportIfillDatFile(int mcase, const QString& cycleSectio
     if (!QDir().mkpath(wd.absolutePath()) || !QDir().mkpath(inputDir.absolutePath()))
         return false;
 
-    // 均质坝的坝体和基岩材料集合由求解器按当前网格层派生，避免复用
-    // 旧模型的面板坝/心墙坝区域文件。坝基扬压力在均质坝分支中固定不用。
+    // Refresh homogeneous-dam derived sets here, after obsolete-file cleanup.
+    // The native fallback attempts to inspect arrays already released by AUTOPACK.
+    const bool homogeneous=normalizeEnumValue(lineValue(10))==QStringLiteral("4");
+    if (homogeneous)
     for (const QString& obsoleteFile : {
              QStringLiteral("MA_ROCK.DAT"),
              QStringLiteral("MA_DAMUP.DAT"),
@@ -1219,6 +1253,12 @@ bool DamAnalysisWidget::exportIfillDatFile(int mcase, const QString& cycleSectio
              QStringLiteral("FA_DAMBASE.DAT")})
     {
         QFile::remove(inputDir.filePath(obsoleteFile));
+    }
+
+    if(!DamInputProtocol::prepareMaterialSets(inputDir,homogeneous,&error))
+    {
+        QMessageBox::warning(nullptr,QStringLiteral("请完善填筑材料"),error);
+        return false;
     }
 
     auto ensureTrailingSep = [](const QString& path)
@@ -1326,10 +1366,13 @@ void DamAnalysisWidget::setMCaseCount(int mcase)
 QJsonObject DamAnalysisWidget::saveJson()
 {
     QJsonObject obj;
+    obj["quiet_boundary_selection"]=m_quietBoundarySelection?m_quietBoundarySelection->save():QJsonObject();
     QJsonArray arr;
     for (int lineNo = 1; lineNo <= 40; ++lineNo)
         arr.append(lineValue(lineNo));
     obj["base_values"] = arr;
+    obj["quiet_boundary_enabled"] =
+        m_quietBoundaryCheck && m_quietBoundaryCheck->isChecked();
     obj["x_values"] = QJsonArray {m_editX1->text(), m_editX2->text(), m_editX3->text()};
     obj["alfa_values"] = QJsonArray {m_editAlfa1->text(), m_editAlfa2->text(), m_editAlfa3->text()};
     obj["upstream_axis_value"] = m_comboUpstreamAxis->currentData().toString();
@@ -1346,6 +1389,7 @@ QJsonObject DamAnalysisWidget::saveJson()
 
 void DamAnalysisWidget::loadJson(const QJsonObject& obj)
 {
+    m_quietBoundarySelection->load(obj.value("quiet_boundary_selection").toObject(),obj.value("quiet_boundary_enabled").toBool(false));
     const QJsonArray arr = obj.value("base_values").toArray();
     for (int lineNo = 1; lineNo <= 40; ++lineNo)
     {
@@ -1354,6 +1398,9 @@ void DamAnalysisWidget::loadJson(const QJsonObject& obj)
         const QString value = (lineNo - 1 < arr.size() ? arr.at(lineNo - 1).toString() : defaultValueByLine(lineNo));
         setLineValue(lineNo, value);
     }
+    if (obj.contains("quiet_boundary_enabled") && m_quietBoundaryCheck)
+        m_quietBoundaryCheck->setChecked(
+            obj.value("quiet_boundary_enabled").toBool(false));
     const QJsonValue xVal = obj.value("x_values");
     const QJsonArray xArr = xVal.toArray();
     if (!xArr.isEmpty())

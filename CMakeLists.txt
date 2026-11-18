@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.16)
+cmake_minimum_required(VERSION 3.20)
 
 project(CAE_BASE LANGUAGES CXX)
 
@@ -12,6 +12,7 @@ set(CMAKE_AUTORCC ON)
 if(MSVC)
     add_compile_options(/utf-8 /MP)
 endif()
+include("${CMAKE_SOURCE_DIR}/cmake/MsvcNinjaDependencies.cmake")
 
 set(CAE_RUNTIME_DIR "${CMAKE_BINARY_DIR}")
 set(CAE_PLUGIN_DIR "${CMAKE_BINARY_DIR}/plugins")
@@ -56,17 +57,14 @@ find_package(Qt6 REQUIRED COMPONENTS
 
 find_package(Qt6 QUIET COMPONENTS OpenGLWidgets)
 
-set(CAE_NETGEN_ROOT
-    "${CAE_3RDPARTY_ROOT}/netgen"
-    CACHE PATH
-    "Netgen root"
-)
-
 set(CAE_OCC_ROOT
-    "${CAE_3RDPARTY_ROOT}/OCC"
+    "${CAE_3RDPARTY_ROOT}/OCC-7.9.3"
     CACHE PATH
     "OpenCASCADE root"
 )
+if(CAE_OCC_ROOT STREQUAL "${CAE_3RDPARTY_ROOT}/OCC")
+    set(CAE_OCC_ROOT "${CAE_3RDPARTY_ROOT}/OCC-7.9.3" CACHE PATH "OpenCASCADE root" FORCE)
+endif()
 
 set(CAE_DOCKING_ROOT
     "${CAE_3RDPARTY_ROOT}/Qt6-AdvancedDock"
@@ -86,7 +84,6 @@ set(CAE_VTK_DIR
     "Optional path containing VTKConfig.cmake"
 )
 
-include("${CMAKE_SOURCE_DIR}/cmake/ThirdPartyNetgen.cmake")
 include("${CMAKE_SOURCE_DIR}/cmake/ThirdPartyOCC.cmake")
 include("${CMAKE_SOURCE_DIR}/cmake/ThirdPartyDockingWidget.cmake")
 include("${CMAKE_SOURCE_DIR}/cmake/ThirdPartySARibbon.cmake")
@@ -95,3 +92,8 @@ include("${CMAKE_SOURCE_DIR}/cmake/ThirdPartyVTK.cmake")
 add_subdirectory(core)
 add_subdirectory(plugins)
 add_subdirectory(launcher)
+
+include(CTest)
+if(BUILD_TESTING)
+    add_subdirectory(tests)
+endif()

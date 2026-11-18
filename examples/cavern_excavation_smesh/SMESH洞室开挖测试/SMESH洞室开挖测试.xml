@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<SmartCAEProject version="1.0">
+    <Name>SMESH洞室开挖测试</Name>
+    <ProjectFiles>
+        <PreProcessing>工程数据/preprocessing.json</PreProcessing>
+        <PostProcessing>工程数据/postprocessing.json</PostProcessing>
+        <Mesh>工程数据/mesh.json</Mesh>
+        <Material>工程数据/material.json</Material>
+        <PhysicalField>工程数据/physical_field.json</PhysicalField>
+        <Solver>工程数据/solver.json</Solver>
+        <Surrogate>工程数据/surrogate_model.json</Surrogate>
+    </ProjectFiles>
+    <GlobalValues>
+        <Value key="mesh_dimension" type="int">3</Value>
+    </GlobalValues>
+</SmartCAEProject>

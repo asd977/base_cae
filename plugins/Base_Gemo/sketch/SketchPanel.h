@@ -19,6 +19,7 @@ class QEvent;
 class QLabel;
 class QGroupBox;
 class QPushButton;
+class QAction;
 class QTableWidget;
 class QWidget;
 
@@ -45,7 +46,17 @@ enum class SketchSnapKind
 {
     None = 0,
     Point = 1,
-    Grid = 2
+    Grid = 2,
+    Midpoint = 3,
+    Intersection = 4,
+    OnCurve = 5
+};
+
+enum class SketchEditOperation
+{
+    None = 0,
+    Split,
+    Extend
 };
 
 class Sketch2DDialog : public BasePage
@@ -61,6 +72,12 @@ public:
     void setInitialCommand(GeometrySketch::Command command);
     void syncVisibilityFromTree(bool visible);
 
+    // Reconstruct the user-approved 2D regions from the actual saved sketch
+    // documents. The visible preview/runtime shape may be stale after project
+    // restore; meshing must not mistake a confirmed region for open wires.
+    bool buildApprovedMeshingFaces(TopoDS_Shape& faces, QString& diagnostic) const;
+    bool importDxfFile(const QString& path, QString& diagnostic);
+
 protected:
     bool eventFilter(QObject* watched, QEvent* event) override;
 
@@ -71,6 +88,8 @@ private:
         GeometrySketch::SketchDocument active;
         std::vector<GeometrySketch::Point2D> referencePoints;
         int editingCommittedIndex = -1;
+        bool planarFaceMode = false;
+        QList<int> planarFaceRows;
     };
 
     void initUi();
@@ -78,8 +97,6 @@ private:
     void initViewCallbacks();
 
     GeometrySketch::PlaneSettings planeSettings() const;
-    GeometrySketch::OutputMode outputMode() const;
-    bool outputAsEntity() const;
     GeometrySketch::Command currentCommand() const;
     StandaloneArcMode standaloneArcMode() const;
     GeometrySketch::SketchDocument::ArcKind currentArcKind() const;
@@ -109,6 +126,7 @@ private:
     int selectedCommittedIndex() const;
     QList<int> selectedCommittedIndices() const;
     void selectObjectRows(const QList<int>& rows, bool additive = false);
+    void selectAllObjects();
     void clearSketchSelection();
     QString documentTypeText(const GeometrySketch::SketchDocument& document) const;
     QString documentDetailText(const GeometrySketch::SketchDocument& document) const;
@@ -120,10 +138,18 @@ private:
                              GeometrySketch::Point2D& point) const;
     bool documentSelectionBounds(const GeometrySketch::SketchDocument& document,
                                  double& minU, double& maxU, double& minV, double& maxV) const;
+    bool documentIntersectsBox(const GeometrySketch::SketchDocument& document,
+                               double minU, double maxU, double minV, double maxV) const;
     double distanceToDocument(const GeometrySketch::SketchDocument& document, double u, double v) const;
     GeometrySketch::Command preferredCommandForDocument(const GeometrySketch::SketchDocument& document) const;
     void editSelectedObject();
     void deleteSelectedObject();
+    void explodeSelectedObjects();
+    void splitObjectsAtNodes();
+    void startSplitSelectedObject();
+    void startExtendSelectedObject();
+    void handleGeometryEditClick(double u, double v, bool rightButton);
+    void finishGeometryEdit(const QString& message, const QList<int>& rows);
     void copySelectedObjects();
     void toggleSelectedConstruction();
     void syncDocumentFromTable();
@@ -137,7 +163,8 @@ private:
     double autoCloseRange() const;
     bool orthoEnabled() const;
     bool applyOrthoFrom(const GeometrySketch::Point2D& base, double& u, double& v) const;
-    bool snap(double& u, double& v, int* snappedIndex = nullptr, SketchSnapKind* snapKind = nullptr) const;
+    bool snap(double& u, double& v, int* snappedIndex = nullptr, SketchSnapKind* snapKind = nullptr,
+              int excludeCommittedRow = -1) const;
     bool isNearFirstPoint(double u, double v) const;
     bool tableShowsReferencePoints() const;
     bool hasActivePoints() const;
@@ -204,6 +231,7 @@ private:
 
     void updatePreview();
     void updateSelectionHighlight();
+    void createPlanarRegions();
     void generateGeometry();
     void importDxfToSketch();
 
@@ -239,12 +267,21 @@ private:
 
     GeometrySketch::SketchDocument m_document;
     std::vector<GeometrySketch::SketchDocument> m_committedDocuments;
+    bool m_planarFaceMode = false;
+    QList<int> m_planarFaceRows;
+    TopoDS_Shape m_planarPreviewFace;
     std::vector<GeometrySketch::Point2D> m_referencePoints;
     int m_editingCommittedIndex = -1;
+    SketchEditOperation m_pendingGeometryEdit = SketchEditOperation::None;
+    int m_geometryEditTarget = -1;
     GeometrySketch::SketchViewController m_view;
 
     Ui::Sketch2DDialog* ui = nullptr;
     QButtonGroup* m_toolGroup = nullptr;
+    QAction* m_editControlPointsAction = nullptr;
+    QAction* m_decomposeAction = nullptr;
+    QAction* m_breakAtPointAction = nullptr;
+    QAction* m_extendToBoundaryAction = nullptr;
     QString m_statusMessage;
     QString m_cursorStatusText;
     QString m_arcAngleStatusText;
@@ -256,6 +293,7 @@ private:
     bool m_controlPointDragMoved = false;
     int m_draggedPointObjectIndex = -1;
     int m_draggedPointIndex = -1;
+    GeometrySketch::Point2D m_dragStartCursor; // 小幅鼠标抖动不算拖动。
 
     std::vector<SketchSnapshot> m_undoStack;
     std::vector<SketchSnapshot> m_redoStack;

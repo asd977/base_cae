@@ -1,6 +1,7 @@
 #pragma once
 
 #include "BasePage.h"
+#include "LoadPageState.h"
 
 class QDoubleSpinBox;
 class QSpinBox;
@@ -16,6 +17,7 @@ class PointForcePage : public BasePage
 {
     Q_OBJECT
   public:
+    CAE_LOAD_PAGE_STATE("spinFx","spinFy","spinFz","spinMx","spinMy","spinMz")
     explicit PointForcePage(QWidget* parent = nullptr);
     ~PointForcePage() override;
 

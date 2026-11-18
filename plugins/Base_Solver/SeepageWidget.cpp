@@ -298,7 +298,7 @@ void SeepageWidget::updateBoundarySummary()
     }
 }
 
-bool SeepageWidget::exportIseepDatFile() const
+bool SeepageWidget::exportIseepDatFile(int computeTypeOverride) const
 {
     const QString projectDir =
         PublicVariables::instance().get(PublicConstants::kProjectDirectoryKey).toString();
@@ -317,7 +317,8 @@ bool SeepageWidget::exportIseepDatFile() const
 
     const QString inputDirAbs = ensureTrailingSep(inputDir.absolutePath());
     const QString seepCaseDirName = QStringLiteral("SEEPCASE01");
-    const int computeType = ui->comboComputeType->currentData().toInt();
+    const int computeType = computeTypeOverride > 0
+        ? computeTypeOverride : ui->comboComputeType->currentData().toInt();
     QString dynamicInitialDir = wd.filePath(seepCaseDirName);
     if (computeType == 2)
     {

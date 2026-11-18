@@ -1,6 +1,7 @@
 #pragma once
 
 #include "BasePage.h"
+#include "LoadPageState.h"
 
 class QDoubleSpinBox;
 class QSpinBox;
@@ -16,6 +17,7 @@ class FaceLoadPage : public BasePage
 {
     Q_OBJECT
   public:
+    CAE_LOAD_PAGE_STATE("lineEditX","lineEditY","lineEditZ")
     explicit FaceLoadPage(QWidget* parent = nullptr);
     ~FaceLoadPage() override;
 

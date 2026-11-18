@@ -24,6 +24,7 @@
 #include <QJsonObject>
 #include <QInputDialog>
 #include <QLineEdit>
+#include <QLoggingCategory>
 #include <QMap>
 #include <QMessageBox>
 #include <QMenu>
@@ -38,6 +39,7 @@
 #include <QTextStream>
 #include <QTimer>
 #include <QProcess>
+#include <QProcessEnvironment>
 #include <QUuid>
 #include <QVariant>
 #include <QWidget>
@@ -71,6 +73,8 @@
 #include "CaveBlockStabilityWidget.h"
 #include "CaveExcavationWidget.h"
 #include "CaveSupportComputationPage.h"
+#include "CaveExcavationProtocol.h"
+#include "ThermalLoadProtocol.h"
 #include "CaveReinforcementFieldPage.h"
 #include "SeepageBoundaryPage.h"
 #include "SeepageWidget.h"
@@ -84,9 +88,53 @@
 #include "SlopeStabilityWidget.h"
 #include "SlopeStandardMethodDialog.h"
 #include "SolverSettingWidget.h"
+#include "SolverDirectoryProtocol.h"
+#include "SolverMeshProtocol.h"
+#include "QuietBoundaryPage.h"
+#include "../../solver/SolverErrorLog.h"
+
+Q_LOGGING_CATEGORY(caeSolverLog, "cae.solver")
 
 namespace
 {
+QJsonObject restoreQuietBoundaryState(QJsonObject object)
+{
+    QJsonArray children;auto state=object["state"].toObject();
+    for(const auto& entry:object["children"].toArray())
+    {
+        const auto child=entry.toObject();
+        if(child["type"].toString()=="QuietBoundary")
+        {
+            const auto boundary=child["state"].toObject();
+            if(!state.contains("quiet_boundary_enabled")&&boundary.contains("enabled"))
+                state["quiet_boundary_enabled"]=boundary["enabled"];
+            state["quiet_boundary_selection"]=boundary["selection"];
+        }
+        else children.append(restoreQuietBoundaryState(child));
+    }
+    object["state"]=state;object["children"]=children;return object;
+}
+
+QMessageBox::StandardButton solverWarning(QWidget* parent, const QString& title, const QString& text,
+    QMessageBox::StandardButtons buttons=QMessageBox::Ok, QMessageBox::StandardButton defaultButton=QMessageBox::NoButton)
+{
+    qCWarning(caeSolverLog).noquote()<<title+QStringLiteral(": ")+text;
+    return QMessageBox::warning(parent,title,text,buttons,defaultButton);
+}
+
+void printSolverOutput(const QString& workspace, const QString& text)
+{
+    qInfo().noquote() << (QStringLiteral("__RAW__") + text);
+    if (workspace.isEmpty()) return;
+    QFile log(QDir(workspace).filePath(QStringLiteral("求解日志.txt")));
+    if (!log.open(QIODevice::WriteOnly | QIODevice::Append))
+    {
+        qCWarning(caeSolverLog).noquote() << QStringLiteral("无法保存求解日志：%1；%2").arg(log.fileName(),log.errorString());
+        return;
+    }
+    log.write(text.toUtf8());
+    if (!text.endsWith(QLatin1Char('\n'))) log.write("\n");
+}
 constexpr int kSolverCustomTitleRole = Qt::UserRole + 104;
 constexpr char kLegacyNamedAnalysisWorkspaceRoot[] = u8"计算结果";
 constexpr char kLegacyAnalysisWorkspaceRoot[] = ".analysis_runs";
@@ -527,13 +575,6 @@ QString deployedSolverExecutable(const SolverRuntimeOptions& options)
             .filePath(options.executableRelativePath));
 }
 
-void terminateDeployedSolvers()
-{
-    QProcess::execute("taskkill", {"-f", "-im", "PCCAE_CPU.exe"});
-    QProcess::execute("taskkill", {"-f", "-im", "PCCAE_GPU.exe"});
-    QProcess::execute("taskkill", {"-f", "-im", "A0_FEMANALYSIS.exe"});
-}
-
 QString deployedCaveBlockExecutable()
 {
     const QString appDir = QCoreApplication::applicationDirPath();
@@ -553,84 +594,19 @@ QString deployedCaveBlockExecutable()
     return {};
 }
 
-QString solverErrorFromText(const QString& text)
+QString solverErrorContextFromRunLogs(const QString& workspace,qint64 started)
 {
-    static const QRegularExpression errorLine(
-        QStringLiteral(
-            R"((?:^|[\r\n])\s*((?:(?:ERROR\b|forrtl:\s*(?:severe|error)\b)[^\r\n]*|Failed to create subdirectory)))"),
-        QRegularExpression::CaseInsensitiveOption);
-    QString lastError;
-    QRegularExpressionMatchIterator matches = errorLine.globalMatch(text);
-    while (matches.hasNext())
-        lastError = matches.next().captured(1).trimmed();
-    return lastError;
-}
-
-QString solverErrorFromRunLogs(const QString& workspace, qint64 startedAtMs)
-{
-    if (workspace.isEmpty())
-        return {};
-
-    QString newestError;
-    qint64 newestModifiedMs = 0;
-    QDirIterator logs(workspace,
-                      {QStringLiteral("III110.DAT"), QStringLiteral("fort.110")},
-                      QDir::Files, QDirIterator::Subdirectories);
-    while (logs.hasNext())
+    QString result;qint64 newest=0;
+    QDirIterator files(workspace,{"III110.DAT","fort.110"},QDir::Files,QDirIterator::Subdirectories);
+    while(files.hasNext())
     {
-        const QString path = logs.next();
-        const QFileInfo info(path);
-        const qint64 modifiedMs = info.lastModified().toMSecsSinceEpoch();
-        if (startedAtMs > 0 && modifiedMs < startedAtMs)
-            continue;
-
-        QFile file(path);
-        if (!file.open(QIODevice::ReadOnly | QIODevice::Text))
-            continue;
-        constexpr qint64 kLogTailBytes = 256 * 1024;
-        if (file.size() > kLogTailBytes)
-            file.seek(file.size() - kLogTailBytes);
-        const QString error = solverErrorFromText(QString::fromLocal8Bit(file.readAll()));
-        if (!error.isEmpty() && modifiedMs >= newestModifiedMs)
-        {
-            newestModifiedMs = modifiedMs;
-            newestError = error;
-        }
+        QFile file(files.next());const QFileInfo info(file);
+        if(info.lastModified().toMSecsSinceEpoch()<started||info.lastModified().toMSecsSinceEpoch()<newest||!file.open(QIODevice::ReadOnly))continue;
+        if(file.size()>256*1024)file.seek(file.size()-256*1024);
+        const auto error=nativeSolverErrorTail(file.readAll().toStdString());
+        if(!error.empty()){result=QString::fromLocal8Bit(error.data(),qsizetype(error.size()));newest=info.lastModified().toMSecsSinceEpoch();}
     }
-    return newestError;
-}
-
-QString customerFacingSolverFailure(const QString& technicalReason)
-{
-    const QString reason = technicalReason.trimmed();
-    if (reason.contains(QStringLiteral("未生成块体稳定计算结果")))
-        return QStringLiteral("未生成块体稳定计算结果。请完成块体计算后再关闭计算窗口。");
-    if (reason.contains(QStringLiteral("FILE DOES NOT EXIST"), Qt::CaseInsensitive)
-        || reason.contains(QStringLiteral("does not exist"), Qt::CaseInsensitive))
-    {
-        return QStringLiteral(
-            "计算所需数据不完整。请检查当前工况的边界、材料和过程设置后重试。");
-    }
-    if (reason.contains(QStringLiteral("Failed to create subdirectory"),
-                        Qt::CaseInsensitive)
-        || reason.contains(QStringLiteral("permission"), Qt::CaseInsensitive)
-        || reason.contains(QStringLiteral("access is denied"), Qt::CaseInsensitive))
-    {
-        return QStringLiteral(
-            "无法创建计算数据。请先保存工程，并确认工程所在位置可以正常写入。");
-    }
-    if (reason.contains(QStringLiteral("out of memory"), Qt::CaseInsensitive)
-        || reason.contains(QStringLiteral("insufficient memory"), Qt::CaseInsensitive))
-    {
-        return QStringLiteral(
-            "计算所需内存不足。请关闭其他大型程序，或适当减小模型规模后重试。");
-    }
-    if (reason.contains(QStringLiteral("singular"), Qt::CaseInsensitive))
-    {
-        return QStringLiteral(
-            "当前模型的约束或材料设置可能不完整，计算无法继续。请检查后重试。");
-    }
-    return QStringLiteral("计算未完成，系统未能识别具体原因。");
+    return result;
 }
 
 bool copyFileReplacing(const QString& sourcePath, const QString& targetPath)
@@ -1226,6 +1202,7 @@ QString solverNodeBaseTitle(const QString& kind)
         {QStringLiteral("CaveBlockStabilityAnalysis"), QStringLiteral("块体稳定分析")},
         {QStringLiteral("FillStorageCycle"), QStringLiteral("填筑蓄水")},
         {QStringLiteral("DamDynamicAnalysis"), QStringLiteral("动力分析")},
+        {QStringLiteral("QuietBoundary"), QStringLiteral("粘弹性边界")},
         {QStringLiteral("GeoStressRegression"), QStringLiteral("地应力回归分析")},
         {QStringLiteral("GeoStressRegressionSideFace"), QStringLiteral("侧立面")},
         {QStringLiteral("GeoStressRegressionMeasurePoint"), QStringLiteral("实测地应力点")},
@@ -1302,6 +1279,8 @@ int solverChildOrderRank(ProjectNode* parent, ProjectNode* child)
     const QString parentKind = parent->data(0, ProjectNode::RoleKind).toString();
     const QString childKind = child->data(0, ProjectNode::RoleKind).toString();
     const QString pageType = child->getPage() ? child->getPage()->getPageType() : QString();
+
+    if (childKind == QStringLiteral("QuietBoundary")) return 12;
 
     if (parentKind == QStringLiteral("SlopeLimitEquilibriumAnalysis"))
     {
@@ -1568,7 +1547,7 @@ bool Solver::loadProject()
         rootSettingsPage->loadJson(rootState);
     for (const auto& item : root.value("items").toArray())
     {
-        const QJsonObject analysisObj = item.toObject();
+        const QJsonObject analysisObj = restoreQuietBoundaryState(item.toObject());
         const QJsonObject analysisState = analysisObj.value("state").toObject();
         const QString analysisType = analysisObj.value("type").toString();
 
@@ -1622,6 +1601,8 @@ bool Solver::loadProject()
                     {
                         onComputeSlopeStability(analysisNode);
                     });
+            connect(slopePage, &SlopeStabilityWidget::initialStressRequested, this,
+                    [this, analysisNode]{addGeoStressRegressionNode(analysisNode, true, false);});
             connect(slopePage, &SlopeStabilityWidget::limitEquilibriumRequested, this,
                     &Solver::onSpecificationCheckAction);
             connectStopRequest(slopePage);
@@ -1869,6 +1850,8 @@ bool Solver::loadProject()
 
             if (auto* geoPage = dynamic_cast<GeoStressRegressionWidget*>(page))
             {
+                connect(geoPage, &GeoStressRegressionWidget::calculationModeChanged, this,
+                        [this, node]{syncGeoStressConditionalNodes(node);});
                 connect(geoPage, &GeoStressRegressionWidget::computeRequested, this,
                         [this, node]()
                         {
@@ -2189,6 +2172,7 @@ bool Solver::loadProject()
                     addGeoStressMeasurePointNode(child, false);
                 if (countGeoStressChildren(child, "GeoStressRegressionOuterForce") == 0)
                     addGeoStressOuterForceNode(child, false);
+                syncGeoStressConditionalNodes(child);
             }
         }
 
@@ -2342,6 +2326,7 @@ bool Solver::loadProject()
         analysisNode->setExpanded(false);
         syncSeepageConditionalNodes(analysisNode);
         syncDamConditionalNodes(analysisNode);
+        syncQuietBoundaryNode(analysisNode);
     }
 
     syncAnalysisNodeNames();
@@ -2749,7 +2734,7 @@ void Solver::renameNodeByUuid(const QString& uuid)
     }
     if (newTitle.isEmpty())
     {
-        QMessageBox::warning(nullptr, QStringLiteral("名称无效"),
+        solverWarning(nullptr, QStringLiteral("名称无效"),
                              QStringLiteral("名称不能为空。"));
         return;
     }
@@ -2763,7 +2748,7 @@ void Solver::renameNodeByUuid(const QString& uuid)
         if (newTitle.contains(invalidPathChars) || newTitle.endsWith(QLatin1Char('.'))
             || newTitle.endsWith(QLatin1Char(' ')))
         {
-            QMessageBox::warning(
+            solverWarning(
                 nullptr, QStringLiteral("名称无效"),
                 QStringLiteral("名称不能包含 \\ / : * ? \" < > |，也不能以空格或句点结尾。"));
             return;
@@ -2782,7 +2767,7 @@ void Solver::renameNodeByUuid(const QString& uuid)
             if (sibling != node
                 && sibling->text(0).compare(displayTitle, Qt::CaseInsensitive) == 0)
             {
-                QMessageBox::warning(nullptr, QStringLiteral("名称重复"),
+                solverWarning(nullptr, QStringLiteral("名称重复"),
                                      QStringLiteral("已存在“%1”，请使用其他名称。")
                                          .arg(displayTitle));
                 return;
@@ -3146,7 +3131,7 @@ void Solver::completeBatchItem(bool succeeded, const QString& detail)
     if (auto* page = m_root ? dynamic_cast<SolverSettingWidget*>(m_root->getPage()) : nullptr)
     {
         QString status = succeeded ? QStringLiteral("完成") : QStringLiteral("失败");
-        if (!succeeded && !detail.trimmed().isEmpty())
+        if (!detail.trimmed().isEmpty())
             status += QStringLiteral("（%1）").arg(detail.trimmed());
         page->setBatchItemStatus(m_batchCurrentUuid, status);
     }
@@ -3512,7 +3497,8 @@ void Solver::addSeepageNaturalBoundaryNode(ProjectNode* analysisNode, bool setCu
     }
 }
 
-void Solver::addGeoStressRegressionNode(ProjectNode* analysisNode, bool setCurrent)
+void Solver::addGeoStressRegressionNode(ProjectNode* analysisNode, bool setCurrent,
+                                       bool notifyExisting)
 {
     if (!analysisNode)
         return;
@@ -3522,9 +3508,10 @@ void Solver::addGeoStressRegressionNode(ProjectNode* analysisNode, bool setCurre
     {
         if (setCurrent)
         {
-            QMessageBox::information(
-                nullptr, QStringLiteral("数量限制"),
-                QStringLiteral("每个洞室开挖分析只能设置一个地应力回归分析。"));
+            if (notifyExisting)
+                QMessageBox::information(
+                    nullptr, QStringLiteral("数量限制"),
+                    QStringLiteral("每个分析工况只能设置一个地应力回归分析。"));
             if (auto* pm = ServiceRegistry::instance().getService<ProjectManagerService>())
                 pm->setCurrentItem(existing);
         }
@@ -3542,12 +3529,15 @@ void Solver::addGeoStressRegressionNode(ProjectNode* analysisNode, bool setCurre
             {
                 onComputeGeoStressRegression(node);
             });
+    connect(page, &GeoStressRegressionWidget::calculationModeChanged, this,
+            [this, node]{syncGeoStressConditionalNodes(node);});
             connectStopRequest(page);
 
     for (int i = 0; i < minimumGeoStressSideFaceCount(); ++i)
         addGeoStressSideFaceNode(node, false);
     addGeoStressMeasurePointNode(node, false);
     addGeoStressOuterForceNode(node, false);
+    syncGeoStressConditionalNodes(node);
     node->setExpanded(true);
     syncChildNodeNames(analysisNode);
 
@@ -3579,6 +3569,7 @@ void Solver::addGeoStressSideFaceNode(ProjectNode* geostressNode, bool setCurren
     geostressNode->addChild(node);
     geostressNode->setExpanded(true);
     syncChildNodeNames(geostressNode);
+    syncGeoStressConditionalNodes(geostressNode);
     if (setCurrent)
     {
         if (auto* pm = ServiceRegistry::instance().getService<ProjectManagerService>())
@@ -3609,6 +3600,7 @@ void Solver::addGeoStressMeasurePointNode(ProjectNode* geostressNode, bool setCu
     geostressNode->addChild(node);
     geostressNode->setExpanded(true);
     syncChildNodeNames(geostressNode);
+    syncGeoStressConditionalNodes(geostressNode);
     if (setCurrent)
     {
         if (auto* pm = ServiceRegistry::instance().getService<ProjectManagerService>())
@@ -3639,6 +3631,7 @@ void Solver::addGeoStressOuterForceNode(ProjectNode* geostressNode, bool setCurr
     geostressNode->addChild(node);
     geostressNode->setExpanded(true);
     syncChildNodeNames(geostressNode);
+    syncGeoStressConditionalNodes(geostressNode);
     if (setCurrent)
     {
         if (auto* pm = ServiceRegistry::instance().getService<ProjectManagerService>())
@@ -3651,6 +3644,36 @@ GeoStressRegressionWidget::ExportPayload Solver::buildGeoStressPayload(ProjectNo
     GeoStressRegressionWidget::ExportPayload payload;
     if (!geostressNode)
         return payload;
+
+    auto* settings = dynamic_cast<GeoStressRegressionWidget*>(geostressNode->getPage());
+    if (settings && settings->calculationModeCode() == 0)
+    {
+        // Legacy GEOSTR requires side metadata and copies face files even in
+        // gravity-only mode, before it skips all side/roof loading branches.
+        // Supply empty inactive records without consuming disabled UI inputs.
+        const QString project = PublicVariables::instance().get(PublicConstants::kProjectDirectoryKey).toString();
+        const QDir inputs(SolverFilePaths::outputInputDirectory(project));
+        if (!QDir().mkpath(inputs.absolutePath())) return payload;
+        const bool twoDimensional = PublicVariables::instance().get(PublicConstants::kMeshDimension).toInt() == 2;
+        const QByteArray empty = twoDimensional
+            ? QByteArray("0 4 NJX MAKOD\nKJX KE1 KE2 JD1 JD2 JAT\n")
+            : QByteArray("0 6 NJX MAKOD\nKJX KE1 KE2 JD1 JD2 JD3 JD4 JAT\n");
+        QStringList files{QStringLiteral("FAROOF.DAT")};
+        for (int i = 1; i <= minimumGeoStressSideFaceCount(); ++i)
+        {
+            const auto name = QStringLiteral("FA_SIDE%1.DAT").arg(i);
+            files.append(name);payload.sideFaceFiles.append(name);
+            payload.faceRows.append({twoDimensional ? QStringLiteral("2") : QStringLiteral("3"),
+                                     QStringLiteral("0"),QStringLiteral("0"),QStringLiteral("0"),QString::number(i)});
+        }
+        for (const auto& name : files)
+        {
+            QSaveFile file(inputs.filePath(name));
+            if (!file.open(QIODevice::WriteOnly) || file.write(empty) != empty.size() || !file.commit()) return {};
+        }
+        payload.roofFileReady = true;
+        return payload;
+    }
 
     int measureIndex = 0;
     for (ProjectNode* child : geostressNode->getChildren())
@@ -3855,7 +3878,7 @@ void Solver::addCaveExcavationBodyNode(ProjectNode* supportNode, bool setCurrent
         --newLayer;
     if (newLayer < -999)
     {
-        QMessageBox::warning(
+        solverWarning(
             nullptr, QStringLiteral("无法新增开挖体"),
             QStringLiteral("开挖阶段数量已达到上限。"));
         return;
@@ -4066,10 +4089,13 @@ void Solver::onSlopeStabilityAction()
             {
                 onComputeSlopeStability(analysisNode);
             });
+    connect(slopePage, &SlopeStabilityWidget::initialStressRequested, this,
+            [this, analysisNode]{addGeoStressRegressionNode(analysisNode, true, false);});
     connect(slopePage, &SlopeStabilityWidget::limitEquilibriumRequested, this,
             &Solver::onSpecificationCheckAction);
     connectStopRequest(slopePage);
 
+    syncQuietBoundaryNode(analysisNode);
     m_root->addChild(analysisNode);
     analysisNode->setExpanded(true);
     syncAnalysisNodeNames();
@@ -4183,7 +4209,7 @@ void Solver::onComputeSeepage(ProjectNode* analysisNode)
     QString parameterError;
     if (!seepagePage || !seepagePage->validateInputs(&parameterError))
     {
-        QMessageBox::warning(
+        solverWarning(
             nullptr, QStringLiteral("请完善渗流设置"),
             parameterError.isEmpty()
                 ? QStringLiteral("当前渗流设置未正确加载。请重新打开工程后再试。")
@@ -4210,7 +4236,7 @@ void Solver::onComputeSeepage(ProjectNode* analysisNode)
                     QStringLiteral("排水井区域"), seepagePage->drainWellEnabled());
     if (!missingBoundaries.isEmpty())
     {
-        QMessageBox::warning(
+        solverWarning(
             nullptr, QStringLiteral("请完善边界设置"),
             QStringLiteral("以下边界尚未选择：\n%1")
                 .arg(missingBoundaries.join(QLatin1Char('\n'))));
@@ -4273,7 +4299,7 @@ void Solver::onComputeSeepage(ProjectNode* analysisNode)
         naturalErrors.removeDuplicates();
         if (!naturalErrors.isEmpty())
         {
-            QMessageBox::warning(
+            solverWarning(
                 nullptr, QStringLiteral("请完善天然渗流初始面"),
                 naturalErrors.join(QLatin1Char('\n')));
             return;
@@ -4289,7 +4315,7 @@ void Solver::onComputeSeepage(ProjectNode* analysisNode)
         if (workspaceDir.isEmpty()
             || seepagePage->transientInitialStateDirectory(workspaceDir).isEmpty())
         {
-            QMessageBox::warning(
+            solverWarning(
                 nullptr, QStringLiteral("缺少初始状态"),
                 QStringLiteral(
                     "当前工况还没有可用于非稳态计算的初始水头场。\n"
@@ -4305,7 +4331,7 @@ void Solver::onComputeSeepage(ProjectNode* analysisNode)
     const QString runDir = SolverFilePaths::outputRoot(projectDir);
     if (!forceIiinLayersToOne(runDir))
     {
-        QMessageBox::warning(
+        solverWarning(
             nullptr, QStringLiteral("无法开始计算"),
             QStringLiteral("当前网格不满足渗流计算要求。请检查网格设置后重试。"));
         clearSolverRunDirectory();
@@ -4316,7 +4342,7 @@ void Solver::onComputeSeepage(ProjectNode* analysisNode)
                         .absoluteFilePath("MESG_IAUTO.DAT"));
     if (!iautoFile.open(QIODevice::WriteOnly | QIODevice::Text))
     {
-        QMessageBox::warning(
+        solverWarning(
             nullptr, QStringLiteral("无法开始计算"),
             QStringLiteral("渗流计算数据准备失败。请保存工程后重试。"));
         clearSolverRunDirectory();
@@ -4330,7 +4356,10 @@ void Solver::onComputeSeepage(ProjectNode* analysisNode)
     bool ok = true;
     QStringList failedFiles;
 
-    if (!seepagePage || !seepagePage->exportIseepDatFile())
+    // Run the two stages in separate native processes. AUTOSEEP's combined
+    // branch reuses global state/file names left by its steady solver.
+    if (!seepagePage || !seepagePage->exportIseepDatFile(
+            seepagePage->computeType() == 3 ? 1 : 0))
     {
         ok = false;
         failedFiles << QStringLiteral("渗流计算参数");
@@ -4389,12 +4418,16 @@ void Solver::onComputeSeepage(ProjectNode* analysisNode)
 
     if (ok)
     {
-        launchSolverExecutable(analysisNode, "渗流分析");
+        if (launchSolverExecutable(analysisNode, "渗流分析"))
+        {
+            if (seepagePage->computeType() == 3)
+                m_seepageContinuationUuid = analysisNode->getUuid();
+        }
     }
     else
     {
         clearSolverRunDirectory();
-        QMessageBox::warning(
+        solverWarning(
             nullptr, QStringLiteral("无法开始计算"),
             QStringLiteral("以下设置未能用于计算：\n%1\n请检查后重试。")
                 .arg(failedFiles.join(QLatin1Char('\n'))));
@@ -4403,7 +4436,7 @@ void Solver::onComputeSeepage(ProjectNode* analysisNode)
     catch (const std::exception& e)
     {
         clearSolverRunDirectory();
-        qWarning() << "渗流分析计算失败:" << e.what();
+        qCWarning(caeSolverLog) << "渗流分析计算失败:" << e.what();
     }
 }
 
@@ -4423,7 +4456,7 @@ void Solver::onComputeStressStrain(ProjectNode* analysisNode)
     auto* stressPage = dynamic_cast<DamAnalysisWidget*>(analysisNode ? analysisNode->getPage() : nullptr);
     if (!stressPage)
     {
-        QMessageBox::warning(
+        solverWarning(
             nullptr, QStringLiteral("无法开始计算"),
             QStringLiteral("当前土石坝设置未正确加载。请重新打开工程后再试。"));
         return;
@@ -4436,21 +4469,21 @@ void Solver::onComputeStressStrain(ProjectNode* analysisNode)
     {
         if (!dynamicPage)
         {
-            QMessageBox::warning(nullptr, QStringLiteral("请完善动力分析"),
+            solverWarning(nullptr, QStringLiteral("请完善动力分析"),
                                  QStringLiteral("当前工况缺少“动力分析”子节点，请重新打开工程。"));
             return;
         }
         QString dynamicError;
         if (!dynamicPage->validateInputs(&dynamicError))
         {
-            QMessageBox::warning(nullptr, QStringLiteral("请完善动力分析"), dynamicError);
+            solverWarning(nullptr, QStringLiteral("请完善动力分析"), dynamicError);
             return;
         }
     }
     QString parameterError;
     if (!stressPage->validateInputs(&parameterError))
     {
-        QMessageBox::warning(nullptr, QStringLiteral("请完善土石坝设置"), parameterError);
+        solverWarning(nullptr, QStringLiteral("请完善土石坝设置"), parameterError);
         return;
     }
 
@@ -4467,7 +4500,7 @@ void Solver::onComputeStressStrain(ProjectNode* analysisNode)
         QString error;
         if (!cycle->validateInputs(&error))
         {
-            QMessageBox::warning(
+            solverWarning(
                 nullptr, QStringLiteral("请完善填筑蓄水"),
                 error);
             return;
@@ -4476,14 +4509,14 @@ void Solver::onComputeStressStrain(ProjectNode* analysisNode)
     }
     if (cycleIndex == 0)
     {
-        QMessageBox::warning(
+        solverWarning(
             nullptr, QStringLiteral("缺少填筑蓄水设置"),
             QStringLiteral("当前土石坝工况缺少“填筑蓄水”子节点。"));
         return;
     }
     if (cyclePages.size() > 99)
     {
-        QMessageBox::warning(
+        solverWarning(
             nullptr, QStringLiteral("工况数量超限"),
             QStringLiteral("单个土石坝分析最多支持 99 个工况。"));
         return;
@@ -4500,7 +4533,7 @@ void Solver::onComputeStressStrain(ProjectNode* analysisNode)
                 || !cycle->hasEffectiveWaterFill(caseIndex)
                 || cycle->lastCycleHasReservoirCreep()))
         {
-            QMessageBox::warning(
+            solverWarning(
                 nullptr, QStringLiteral("水位骤降计算限制"),
                 QStringLiteral("第 %1 个工况的水位骤降与当前施工阶段冲突。"
                                "请检查蓄水、浸润和流变设置。")
@@ -4513,7 +4546,7 @@ void Solver::onComputeStressStrain(ProjectNode* analysisNode)
     const bool hasWave = dynamicPage && dynamicPage->usesWaveAnalysis();
     if (stressPage->dynamicOnlyEnabled() && !hasModal && !hasWave)
     {
-        QMessageBox::warning(
+        solverWarning(
             nullptr, QStringLiteral("请设置动力分析"),
             QStringLiteral("当前选择了“仅动力计算”，但“动力分析”中没有启用模态分析或地震波时程分析。"));
         return;
@@ -4532,7 +4565,7 @@ void Solver::onComputeStressStrain(ProjectNode* analysisNode)
         {
             if (waveError.isEmpty())
                 waveError = QStringLiteral("无法读取“约束与荷载”中的地震加速度设置。");
-            QMessageBox::warning(
+            solverWarning(
                 nullptr, QStringLiteral("请设置地震加速度"),
                 QStringLiteral("%1\n\n请在“约束与荷载 → 地震加速度”中检查后重试。")
                     .arg(waveError));
@@ -4556,7 +4589,7 @@ void Solver::onComputeStressStrain(ProjectNode* analysisNode)
                 && !cycle->lastCycleHasReservoirCreep();
             if (!supported)
             {
-                QMessageBox::warning(
+                solverWarning(
                     nullptr, QStringLiteral("结冰区域计算限制"),
                     QStringLiteral("第 %1 个工况的结冰变形与当前施工阶段冲突。"
                                    "请确保结冰前已完成蓄水，并关闭浸润变形、水位骤降和蓄水期流变。")
@@ -4578,7 +4611,7 @@ void Solver::onComputeStressStrain(ProjectNode* analysisNode)
         const double creepDt = stressPage->creepTimeStep(&creepDtOk);
         if (!creepDtOk || !std::isfinite(creepDt) || creepDt <= 0.0)
         {
-            QMessageBox::warning(
+            solverWarning(
                 nullptr, QStringLiteral("请完善流变设置"),
                 QStringLiteral("已启用填筑期或蓄水期流变，蠕变计算时间步长必须大于 0。"));
             return;
@@ -4606,7 +4639,7 @@ void Solver::onComputeStressStrain(ProjectNode* analysisNode)
     }
     if (!missingNodes.isEmpty())
     {
-        QMessageBox::warning(
+        solverWarning(
             nullptr, QStringLiteral("请完善区域设置"),
             QStringLiteral("以下区域尚未选择：\n%1")
                 .arg(missingNodes.join(QLatin1Char('\n'))));
@@ -4637,7 +4670,7 @@ void Solver::onComputeStressStrain(ProjectNode* analysisNode)
         }
         if (!invalidWaveFiles.isEmpty())
         {
-            QMessageBox::warning(
+            solverWarning(
                 nullptr, QStringLiteral("地震波数据生成失败"),
                 QStringLiteral("地震加速度已通过页面校验，但生成的求解输入仍存在问题：\n%1\n\n"
                                "请返回“约束与荷载 → 地震加速度”检查数据。")
@@ -4653,7 +4686,7 @@ void Solver::onComputeStressStrain(ProjectNode* analysisNode)
         if (!prepareDamSeepageFiles(
                 cyclePages.at(i), i + 1, projectDir, &associationError))
         {
-            QMessageBox::warning(
+            solverWarning(
                 nullptr, QStringLiteral("渗流结果关联失败"),
                 associationError);
             clearSolverRunDirectory();
@@ -4671,7 +4704,7 @@ void Solver::onComputeStressStrain(ProjectNode* analysisNode)
             .filePath(QStringLiteral("IIIN.DAT"));
     if (!validateDamFillRanges(damIiinPath, fillLayerRanges, &damLayerError))
     {
-        QMessageBox::warning(
+        solverWarning(
             nullptr, QStringLiteral("请检查施工分层"), damLayerError);
         clearSolverRunDirectory();
         return;
@@ -4680,7 +4713,7 @@ void Solver::onComputeStressStrain(ProjectNode* analysisNode)
     DamLayerSummary damLayerSummary;
     if (!readDamLayerSummary(damIiinPath, &damLayerSummary, &damLayerError))
     {
-        QMessageBox::warning(
+        solverWarning(
             nullptr, QStringLiteral("请检查施工分层"), damLayerError);
         clearSolverRunDirectory();
         return;
@@ -4714,7 +4747,7 @@ void Solver::onComputeStressStrain(ProjectNode* analysisNode)
         }
         if (stateDirectoryName.isEmpty())
         {
-            QMessageBox::warning(
+            solverWarning(
                 nullptr, QStringLiteral("无法确定动力初始状态"),
                 QStringLiteral("第 %1 个工况没有形成可用于动力计算的静力状态，请检查施工阶段设置。")
                     .arg(i + 1));
@@ -4724,7 +4757,7 @@ void Solver::onComputeStressStrain(ProjectNode* analysisNode)
         if ((hasModal || hasWave)
             && stateDirectoryName == QStringLiteral("DISK00"))
         {
-            QMessageBox::warning(
+            solverWarning(
                 nullptr, QStringLiteral("缺少动力初始状态"),
                 QStringLiteral("第 %1 个工况启用了动力分析，但施工序列没有形成坝体静力结果。")
                     .arg(i + 1));
@@ -4776,7 +4809,7 @@ void Solver::onComputeStressStrain(ProjectNode* analysisNode)
 
             if (!missingStateFiles.isEmpty())
             {
-                QMessageBox::warning(
+                solverWarning(
                     nullptr, QStringLiteral("缺少已有静力结果"),
                     QStringLiteral("第 %1 个工况没有可用的前序静力结果。请先用相同工况完成一次静力计算，再运行“仅动力计算”。")
                         .arg(i + 1));
@@ -4793,7 +4826,7 @@ void Solver::onComputeStressStrain(ProjectNode* analysisNode)
                         .absoluteFilePath("MESG_IAUTO.DAT"));
     if (!iautoFile.open(QIODevice::WriteOnly | QIODevice::Text))
     {
-        QMessageBox::warning(
+        solverWarning(
             nullptr, QStringLiteral("无法开始计算"),
             QStringLiteral("土石坝计算数据准备失败。请保存工程后重试。"));
         clearSolverRunDirectory();
@@ -4869,7 +4902,7 @@ void Solver::onComputeStressStrain(ProjectNode* analysisNode)
     else
     {
         clearSolverRunDirectory();
-        QMessageBox::warning(
+        solverWarning(
             nullptr, QStringLiteral("无法开始计算"),
             QStringLiteral("以下设置未能用于计算：\n%1\n请检查后重试。")
                 .arg(failedFiles.join(QLatin1Char('\n'))));
@@ -4878,7 +4911,7 @@ void Solver::onComputeStressStrain(ProjectNode* analysisNode)
     catch (const std::exception& e)
     {
         clearSolverRunDirectory();
-        qWarning() << "土石坝分析失败:" << e.what();
+        qCWarning(caeSolverLog) << "土石坝分析失败:" << e.what();
     }
 }
 
@@ -4939,7 +4972,7 @@ void Solver::onComputeCaveExcavation(ProjectNode* analysisNode)
 
     if (!supportPage)
     {
-        QMessageBox::warning(
+        solverWarning(
             nullptr, QStringLiteral("无法开始计算"),
             QStringLiteral("当前洞室开挖设置未正确加载。请重新打开工程后再试。"));
         return;
@@ -4949,7 +4982,7 @@ void Solver::onComputeCaveExcavation(ProjectNode* analysisNode)
     QString caveParameterError;
     if (!supportPage->validateInputs(&caveParameterError))
     {
-        QMessageBox::warning(nullptr, QStringLiteral("请完善洞室开挖设置"),
+        solverWarning(nullptr, QStringLiteral("请完善洞室开挖设置"),
                              caveParameterError);
         return;
     }
@@ -4957,7 +4990,7 @@ void Solver::onComputeCaveExcavation(ProjectNode* analysisNode)
     {
         if (!craneBeamAreaPage)
         {
-            QMessageBox::warning(
+            solverWarning(
                 nullptr, QStringLiteral("请完善吊车梁设置"),
                 QStringLiteral("吊车梁区域设置未正确加载。请重新打开工程后再试。"));
             return;
@@ -4965,7 +4998,7 @@ void Solver::onComputeCaveExcavation(ProjectNode* analysisNode)
         QString craneError;
         if (craneBeamAreaPage->selectedMaterialIds(&craneError).isEmpty())
         {
-            QMessageBox::warning(nullptr, QStringLiteral("请完善吊车梁设置"), craneError);
+            solverWarning(nullptr, QStringLiteral("请完善吊车梁设置"), craneError);
             return;
         }
     }
@@ -4973,21 +5006,21 @@ void Solver::onComputeCaveExcavation(ProjectNode* analysisNode)
     {
         if (!liningInnerBoundaryPage || !liningOuterBoundaryPage)
         {
-            QMessageBox::warning(
+            solverWarning(
                 nullptr, QStringLiteral("请完善衬砌设置"),
                 QStringLiteral("衬砌边界设置未正确加载。请重新打开工程后再试。"));
             return;
         }
         if (liningInnerBoundaryPage->selectionCount() <= 0)
         {
-            QMessageBox::warning(
+            solverWarning(
                 nullptr, QStringLiteral("请完善衬砌设置"),
                 QStringLiteral("请在“衬砌内边界”中选择衬砌与洞腔接触的网格边或网格面。"));
             return;
         }
         if (liningOuterBoundaryPage->selectionCount() <= 0)
         {
-            QMessageBox::warning(
+            solverWarning(
                 nullptr, QStringLiteral("请完善衬砌设置"),
                 QStringLiteral("请在“衬砌外边界”中选择衬砌与围岩接触的网格边或网格面。"));
             return;
@@ -4995,7 +5028,7 @@ void Solver::onComputeCaveExcavation(ProjectNode* analysisNode)
     }
     if (excavationBodies.isEmpty())
     {
-        QMessageBox::warning(
+        solverWarning(
             nullptr, QStringLiteral("请添加开挖体"),
             QStringLiteral("请至少添加一个开挖体，并选择对应区域。"));
         return;
@@ -5006,7 +5039,7 @@ void Solver::onComputeCaveExcavation(ProjectNode* analysisNode)
     {
         if (body.layer >= 0)
         {
-            QMessageBox::warning(
+            solverWarning(
                 nullptr, QStringLiteral("请检查开挖顺序"),
                 QStringLiteral("“%1”的开挖顺序无效，请从第 1 级开始连续设置。")
                     .arg(body.node ? body.node->text(0) : QStringLiteral("开挖体")));
@@ -5014,7 +5047,7 @@ void Solver::onComputeCaveExcavation(ProjectNode* analysisNode)
         }
         if (ownerByLayer.contains(body.layer))
         {
-            QMessageBox::warning(
+            solverWarning(
                 nullptr, QStringLiteral("请检查开挖顺序"),
                 QStringLiteral("“%1”和“%2”使用了同一开挖阶段。每个阶段只保留一个开挖体；"
                                "同一阶段的多个区域请合并到同一个节点。")
@@ -5036,7 +5069,7 @@ void Solver::onComputeCaveExcavation(ProjectNode* analysisNode)
         const int expectedLayer = -(index + 1);
         if (excavationBodies[index].layer != expectedLayer)
         {
-            QMessageBox::warning(
+            solverWarning(
                 nullptr, QStringLiteral("请检查开挖顺序"),
                 QStringLiteral("开挖阶段必须从第 1 级开始连续设置，不能跳级。"));
             return;
@@ -5047,14 +5080,14 @@ void Solver::onComputeCaveExcavation(ProjectNode* analysisNode)
     const int caveLoadMethod = supportPage->excavationLoadMethodCode();
     if (caveCalculationType < 1 || caveCalculationType > 3)
     {
-        QMessageBox::warning(
+        solverWarning(
             nullptr, QStringLiteral("请检查计算类型"),
             QStringLiteral("请选择静力、动力或静力与动力组合计算。"));
         return;
     }
     if (caveLoadMethod < 1 || caveLoadMethod > 2)
     {
-        QMessageBox::warning(
+        solverWarning(
             nullptr, QStringLiteral("请检查开挖荷载"),
             QStringLiteral("请选择按开挖面或按开挖单元施加开挖荷载。"));
         return;
@@ -5081,7 +5114,7 @@ void Solver::onComputeCaveExcavation(ProjectNode* analysisNode)
     }
     if (hasTetrahedron)
     {
-        qWarning() << "cave excavation continues with four-node tetrahedral cells";
+        qCWarning(caeSolverLog) << "cave excavation continues with four-node tetrahedral cells";
     }
 
     const QDir projectRoot(QDir(projectDir).absolutePath());
@@ -5093,7 +5126,7 @@ void Solver::onComputeCaveExcavation(ProjectNode* analysisNode)
         stressFile = projectRoot.filePath(stressRelativePath);
     if (!QFileInfo::exists(stressFile))
     {
-        QMessageBox::warning(
+        solverWarning(
             nullptr, QStringLiteral("缺少初始地应力"),
             QStringLiteral("当前工程还没有可用的初始地应力结果。请先完成地应力回归分析。"));
         return;
@@ -5106,7 +5139,7 @@ void Solver::onComputeCaveExcavation(ProjectNode* analysisNode)
         !QFileInfo::exists(QDir(SolverFilePaths::projectInputDirectory(projectDir))
                                .filePath(QStringLiteral("TDTRACE.DAT"))))
     {
-        QMessageBox::warning(
+        solverWarning(
             nullptr, QStringLiteral("请完善动力设置"),
             QStringLiteral("动力计算设置不完整。仅进行静力开挖时，请关闭模态分析和时程分析。"));
         return;
@@ -5123,7 +5156,7 @@ void Solver::onComputeCaveExcavation(ProjectNode* analysisNode)
 
         if (elemIds.isEmpty())
         {
-            QMessageBox::warning(
+            solverWarning(
                 nullptr, QStringLiteral("请检查开挖区域"),
                 QStringLiteral("“%1”尚未选择有效的实体区域。")
                     .arg(excavationBodies[level].node
@@ -5136,7 +5169,7 @@ void Solver::onComputeCaveExcavation(ProjectNode* analysisNode)
         {
             if (assignedSourceElements.contains(elemId))
             {
-                QMessageBox::warning(
+                solverWarning(
                     nullptr, QStringLiteral("请检查开挖区域"),
                     QStringLiteral("同一网格区域被重复分配到多个开挖阶段，请删除重复选择。"));
                 return;
@@ -5156,7 +5189,7 @@ void Solver::onComputeCaveExcavation(ProjectNode* analysisNode)
                         .absoluteFilePath("MESG_IAUTO.DAT"));
     if (!iautoFile.open(QIODevice::WriteOnly | QIODevice::Text))
     {
-        QMessageBox::warning(
+        solverWarning(
             nullptr, QStringLiteral("无法开始计算"),
             QStringLiteral("洞室开挖计算数据准备失败。请保存工程后重试。"));
         clearSolverRunDirectory();
@@ -5477,7 +5510,7 @@ void Solver::onComputeCaveExcavation(ProjectNode* analysisNode)
 
         if (!caveCtx.grid || caveCtx.calculationElemToCellId.isEmpty())
         {
-            QMessageBox::warning(
+            solverWarning(
                 nullptr, QStringLiteral("请检查开挖区域"),
                 QStringLiteral("部分开挖区域与当前网格不一致。请重新选择开挖区域后重试。"));
             return;
@@ -5491,7 +5524,7 @@ void Solver::onComputeCaveExcavation(ProjectNode* analysisNode)
                 normalizeExcavationElems(selectedSourceElements[level]);
             if (calculationIds.size() != selectedSourceElements[level].size())
             {
-                QMessageBox::warning(
+                solverWarning(
                     nullptr, QStringLiteral("请检查开挖区域"),
                     QStringLiteral("第 %1 级开挖体与当前网格不一致。请重新选择该区域后重试。")
                         .arg(level + 1));
@@ -5516,7 +5549,7 @@ void Solver::onComputeCaveExcavation(ProjectNode* analysisNode)
         if (!patchIiinElementLayers(inputDir.filePath(QStringLiteral("IIIN.DAT")),
                                     caveLayerByElementId))
         {
-            QMessageBox::warning(
+            solverWarning(
                 nullptr, QStringLiteral("请检查开挖顺序"),
                 QStringLiteral("开挖层级设置无效。请确认各级开挖从第 1 级开始连续设置。"));
             clearSolverRunDirectory();
@@ -5568,7 +5601,7 @@ void Solver::onComputeCaveExcavation(ProjectNode* analysisNode)
         struct IijxRow
         {
             int ke1 = 0;
-            int ke2 = -1;
+            int excavationLayer = -1;
             QVector<int> nodeIds;
             int jat = 0;
             std::array<double, 3> center{{0.0, 0.0, 0.0}};
@@ -5672,7 +5705,6 @@ void Solver::onComputeCaveExcavation(ProjectNode* analysisNode)
                                 continue;
 
                             bool hasOtherSelectedOwner = false;
-                            int oppositeKe = -1;
                             for (const EdgeOwner& owner : ownerIt->second)
                             {
                                 if (owner.ke == ke)
@@ -5683,9 +5715,6 @@ void Solver::onComputeCaveExcavation(ProjectNode* analysisNode)
                                     hasOtherSelectedOwner = true;
                                     break;
                                 }
-
-                                if (oppositeKe < 0)
-                                    oppositeKe = owner.ke;
                             }
 
                             if (hasOtherSelectedOwner)
@@ -5695,7 +5724,7 @@ void Solver::onComputeCaveExcavation(ProjectNode* analysisNode)
 
                             IijxRow row;
                             row.ke1 = ke;
-                            row.ke2 = oppositeKe;
+                            row.excavationLayer = caveLayerByElementId.value(ke, iex2);
                             row.nodeIds = {nodeIdOfPoint(p1), nodeIdOfPoint(p2)};
                             double xyz[3]{};
                             caveCtx.grid->GetPoint(p1, xyz);
@@ -5807,7 +5836,6 @@ void Solver::onComputeCaveExcavation(ProjectNode* analysisNode)
                                 continue;
 
                             bool hasOtherSelectedOwner = false;
-                            int oppositeKe = -1;
                             for (const FaceOwner& owner : ownerIt->second)
                             {
                                 if (owner.ke == ke)
@@ -5818,9 +5846,6 @@ void Solver::onComputeCaveExcavation(ProjectNode* analysisNode)
                                     hasOtherSelectedOwner = true;
                                     break;
                                 }
-
-                                if (oppositeKe < 0)
-                                    oppositeKe = owner.ke;
                             }
 
                             // 两侧都属于开挖体的是内部面，不应写入 IIJX。
@@ -5831,7 +5856,7 @@ void Solver::onComputeCaveExcavation(ProjectNode* analysisNode)
 
                             IijxRow row;
                             row.ke1 = ke;
-                            row.ke2 = oppositeKe;
+                            row.excavationLayer = caveLayerByElementId.value(ke, iex2);
                             row.nodeIds.reserve(int(faceNodeCount));
                             for (vtkIdType pid : orientedPointIds)
                                 row.nodeIds.push_back(nodeIdOfPoint(pid));
@@ -5863,7 +5888,7 @@ void Solver::onComputeCaveExcavation(ProjectNode* analysisNode)
             if (caveCtx.targetDim == 3 && faceNodeCount == 0)
                 faceNodeCount = 3;
 
-            // IIJX 的 MAKOD = KE1、KE2 两列 + 实际面节点数。
+            // 洞室 EXCAIIWL 的 MAKOD = KE1、ILAY 两列 + 实际面节点数。
             // 四面体：3 节点面 -> MAKOD=5 -> 后续 IIWL 中 NFAJD=3。
             // 六面体：4 节点面 -> MAKOD=6 -> 后续 IIWL 中 NFAJD=4。
             const int makod = faceNodeCount + 2;
@@ -5898,26 +5923,18 @@ void Solver::onComputeCaveExcavation(ProjectNode* analysisNode)
                       .arg(makod, 9);
 
             if (caveCtx.targetDim == 2)
-                os << "    KJX     KE1     KE2     JD1     JD2  JAT\n";
+                os << "    KJX     KE1    ILAY     JD1     JD2  JAT\n";
             else if (faceNodeCount == 3)
-                os << "    KJX     KE1     KE2     JD1     JD2     JD3  JAT\n";
+                os << "    KJX     KE1    ILAY     JD1     JD2     JD3  JAT\n";
             else
-                os << "    KJX     KE1     KE2     JD1     JD2     JD3     JD4  JAT\n";
+                os << "    KJX     KE1    ILAY     JD1     JD2     JD3     JD4  JAT\n";
 
             for (int i = 0; i < rows.size(); ++i)
             {
                 const IijxRow& row = rows[i];
 
-                os << QString("%1%2%3")
-                          .arg(i + 1, 9)
-                          .arg(row.ke1, 9)
-                          .arg(row.ke2, 9);
-
-                for (int nodeId : row.nodeIds)
-                    os << QString("%1").arg(nodeId, 9);
-
-                // 通用 READ_IIJX 会读取 JAT；ARCHFTVECT 在读满所需字段后会丢弃本行尾部 JAT。
-                os << QString("%1\n").arg(row.jat, 10);
+                CaveExcavationProtocol::writeFace(os, i + 1, row.ke1,
+                                                  row.excavationLayer, row.nodeIds, row.jat);
             }
 
             os << QString("    DIR=%1                                                    \n").arg(inputPath);
@@ -6039,6 +6056,16 @@ void Solver::onComputeCaveExcavation(ProjectNode* analysisNode)
             ok = false;
             failedFiles << expectedTotalIijx;
         }
+        if (ok && caveLoadMethod == 2)
+        {
+            QString error;
+            if (!CaveExcavationProtocol::prepareElementInputs(
+                    inputDir, wd, excavationBodies.size(), &error))
+            {
+                ok = false;
+                failedFiles << error;
+            }
+        }
     }
 
     if (ok)
@@ -6048,8 +6075,8 @@ void Solver::onComputeCaveExcavation(ProjectNode* analysisNode)
     else
     {
         clearSolverRunDirectory();
-        qWarning() << "洞室开挖数据准备失败:" << failedFiles;
-        QMessageBox::warning(
+        qCWarning(caeSolverLog) << "洞室开挖数据准备失败:" << failedFiles;
+        solverWarning(
             nullptr, QStringLiteral("无法开始计算"),
             QStringLiteral("洞室开挖数据准备失败。请检查开挖步骤和区域选择后重试。"));
     }
@@ -6057,7 +6084,7 @@ void Solver::onComputeCaveExcavation(ProjectNode* analysisNode)
     catch (const std::exception& e)
     {
         clearSolverRunDirectory();
-        qWarning() << "洞室开挖计算失败:" << e.what();
+        qCWarning(caeSolverLog) << "洞室开挖计算失败:" << e.what();
     }
 }
 
@@ -6081,7 +6108,7 @@ void Solver::onComputeSlopeStability(ProjectNode* analysisNode)
     QFile iautoFile(QDir(runDir).absoluteFilePath("MESG_IAUTO.DAT"));
     if (!iautoFile.open(QIODevice::WriteOnly | QIODevice::Text))
     {
-        QMessageBox::warning(
+        solverWarning(
             nullptr, QStringLiteral("无法开始计算"),
             QStringLiteral("边坡计算数据准备失败。请保存工程后重试。"));
         clearSolverRunDirectory();
@@ -6092,24 +6119,48 @@ void Solver::onComputeSlopeStability(ProjectNode* analysisNode)
         os << "8\n";
     }
 
-    if (!forceIiinLayersToOne(runDir))
+    auto* slopePage = dynamic_cast<SlopeStabilityWidget*>(analysisNode->getPage());
+    if (!slopePage || (!slopePage->excavationEnabled() && !forceIiinLayersToOne(runDir)))
     {
-        QMessageBox::warning(
+        solverWarning(
             nullptr, QStringLiteral("请检查网格"),
             QStringLiteral("当前网格不满足边坡计算要求。请检查网格设置后重试。"));
         clearSolverRunDirectory();
         return;
     }
 
-    auto* slopePage = dynamic_cast<SlopeStabilityWidget*>(analysisNode->getPage());
+    if(slopePage->excavationEnabled())
+    {
+        QString error;
+        if(!slopePage->prepareExcavationFiles(SolverFilePaths::outputInputDirectory(projectDir),QDir(analysisWorkspace(analysisNode)).filePath("GEOSTR"),&error))
+        { clearSolverRunDirectory();solverWarning(nullptr,QStringLiteral("请完善边坡开挖设置"),error);return; }
+    }
     if (slopePage && slopePage->exportIslopDatFile())
     {
+        const auto values=slopePage->saveJson().value(QStringLiteral("base_values")).toArray();
+        if(values.size()>7 && values[7].toString()==QStringLiteral("2"))
+        {
+            // READ_IIWL's dimension fallback reads DIR/IIIN.DAT even when
+            // its load directory is DIR_DEFAULT. Stage the current mesh in
+            // this analysis workspace; never use another case's old copy.
+            QFile source(QDir(SolverFilePaths::outputInputDirectory(projectDir)).filePath(QStringLiteral("IIIN.DAT")));
+            QSaveFile target(QDir(runDir).filePath(QStringLiteral("IIIN.DAT")));
+            const bool opened=source.open(QIODevice::ReadOnly);
+            const auto bytes=opened?source.readAll():QByteArray();
+            if(!opened||bytes.isEmpty()||!target.open(QIODevice::WriteOnly)
+                ||target.write(bytes)!=bytes.size()||!target.commit())
+            {
+                clearSolverRunDirectory();
+                solverWarning(nullptr,QStringLiteral("无法开始计算"),QStringLiteral("无法准备自定义荷载网格。"));
+                return;
+            }
+        }
         launchSolverExecutable(analysisNode, "边坡分析");
     }
     else
     {
         clearSolverRunDirectory();
-        QMessageBox::warning(
+        solverWarning(
             nullptr, QStringLiteral("无法开始计算"),
             QStringLiteral("边坡计算数据准备失败。请检查设置后重试。"));
     }
@@ -6117,7 +6168,7 @@ void Solver::onComputeSlopeStability(ProjectNode* analysisNode)
     catch (const std::exception& e)
     {
         clearSolverRunDirectory();
-        qWarning() << "边坡分析计算失败:" << e.what();
+        qCWarning(caeSolverLog) << "边坡分析计算失败:" << e.what();
     }
 }
 
@@ -6213,7 +6264,7 @@ void Solver::onComputeGeoStressRegression(ProjectNode* analysisNode)
                      : nullptr;
     if (!page)
     {
-        QMessageBox::warning(
+        solverWarning(
             nullptr, QStringLiteral("无法开始计算"),
             QStringLiteral("当前地应力回归设置未正确加载。请重新打开工程后再试。"));
         return;
@@ -6241,22 +6292,23 @@ void Solver::onComputeGeoStressRegression(ProjectNode* analysisNode)
     }
 
     const int minimumSideFaces = minimumGeoStressSideFaceCount();
-    if (sideFaceCount < minimumSideFaces || sideFaceCount > 4)
+    const bool regression = page->calculationModeCode() != 0;
+    if (regression && (sideFaceCount < minimumSideFaces || sideFaceCount > 4))
     {
         const int dimension =
             PublicVariables::instance().get(PublicConstants::kMeshDimension).toInt();
-        QMessageBox::warning(
+        solverWarning(
             nullptr, QStringLiteral("请检查侧立面"),
             QStringLiteral("%1维地应力回归需要至少 %2 个侧立面，且最多允许 4 个。")
                 .arg(dimension == 2 ? 2 : 3)
                 .arg(minimumSideFaces));
         return;
     }
-    if (!unsetSideFaces.isEmpty())
+    if (regression && !unsetSideFaces.isEmpty())
     {
         const QString objectName = minimumSideFaces == 1 ? QStringLiteral("网格边")
                                                           : QStringLiteral("网格面");
-        QMessageBox::warning(nullptr, QStringLiteral("请完善侧立面"),
+        solverWarning(nullptr, QStringLiteral("请完善侧立面"),
                              QStringLiteral("请为以下节点选择%1：\n%2")
                                  .arg(objectName, unsetSideFaces.join(QLatin1Char('\n'))));
         return;
@@ -6276,14 +6328,14 @@ void Solver::onComputeGeoStressRegression(ProjectNode* analysisNode)
         }
         if (!pressureErrors.isEmpty())
         {
-            QMessageBox::warning(nullptr, QStringLiteral("请检查侧立面参数"),
+            solverWarning(nullptr, QStringLiteral("请检查侧立面参数"),
                                  pressureErrors.join(QLatin1Char('\n')));
             return;
         }
     }
-    if (measurePointCount > 100)
+    if (regression && measurePointCount > 100)
     {
-        QMessageBox::warning(nullptr, QStringLiteral("实测点数量已达上限"),
+        solverWarning(nullptr, QStringLiteral("实测点数量已达上限"),
                              QStringLiteral("实测地应力点最多允许 100 个。"));
         return;
     }
@@ -6296,7 +6348,7 @@ void Solver::onComputeGeoStressRegression(ProjectNode* analysisNode)
     QString initialLayerError;
     if (!normalizeGeoStressSolidLayers(&initialLayerError))
     {
-        QMessageBox::warning(nullptr, QStringLiteral("请检查初始地层"),
+        solverWarning(nullptr, QStringLiteral("请检查初始地层"),
                              initialLayerError);
         clearSolverRunDirectory();
         return;
@@ -6306,7 +6358,7 @@ void Solver::onComputeGeoStressRegression(ProjectNode* analysisNode)
                         .absoluteFilePath("MESG_IAUTO.DAT"));
     if (!iautoFile.open(QIODevice::WriteOnly | QIODevice::Text))
     {
-        QMessageBox::warning(
+        solverWarning(
             nullptr, QStringLiteral("无法开始计算"),
             QStringLiteral("地应力回归计算数据准备失败。请保存工程后重试。"));
         clearSolverRunDirectory();
@@ -6320,15 +6372,15 @@ void Solver::onComputeGeoStressRegression(ProjectNode* analysisNode)
     const GeoStressRegressionWidget::ExportPayload payload = buildGeoStressPayload(analysisNode);
     if (!payload.roofFileReady)
     {
-        QMessageBox::warning(
+        solverWarning(
             nullptr, QStringLiteral("请检查地表边界"),
             QStringLiteral("地表边界设置无法用于计算，请重新检查所选网格边界。"));
         clearSolverRunDirectory();
         return;
     }
-    if (payload.faceRows.size() != sideFaceCount)
+    if (regression && payload.faceRows.size() != sideFaceCount)
     {
-        QMessageBox::warning(
+        solverWarning(
             nullptr, QStringLiteral("请检查侧立面"),
             QStringLiteral("侧立面设置无法用于计算，请重新检查所选网格边界。"));
         clearSolverRunDirectory();
@@ -6336,7 +6388,7 @@ void Solver::onComputeGeoStressRegression(ProjectNode* analysisNode)
     }
     if (page && page->calculationModeCode() == 1 && payload.measureRows.isEmpty())
     {
-        QMessageBox::warning(
+        solverWarning(
             nullptr, QStringLiteral("请添加实测点"),
             QStringLiteral("已启用实测地应力回归，请至少添加一个实测点。"));
         clearSolverRunDirectory();
@@ -6349,7 +6401,7 @@ void Solver::onComputeGeoStressRegression(ProjectNode* analysisNode)
             QDir(SolverFilePaths::outputRoot(projectDir)).filePath(QStringLiteral("GEOSTR")));
         if (previousGeoStressDir.exists() && !previousGeoStressDir.removeRecursively())
         {
-            QMessageBox::warning(
+            solverWarning(
                 nullptr, QStringLiteral("无法开始计算"),
                 QStringLiteral("上一轮计算结果正在被其他程序使用。请关闭相关程序后重试。"));
             clearSolverRunDirectory();
@@ -6360,7 +6412,7 @@ void Solver::onComputeGeoStressRegression(ProjectNode* analysisNode)
     else
     {
         clearSolverRunDirectory();
-        QMessageBox::warning(
+        solverWarning(
             nullptr, QStringLiteral("无法开始计算"),
             QStringLiteral("地应力回归数据准备失败。请检查设置后重试。"));
     }
@@ -6368,7 +6420,7 @@ void Solver::onComputeGeoStressRegression(ProjectNode* analysisNode)
     catch (const std::exception& e)
     {
         clearSolverRunDirectory();
-        qWarning() << "地应力回归分析失败:" << e.what();
+        qCWarning(caeSolverLog) << "地应力回归分析失败:" << e.what();
     }
 }
 
@@ -6392,7 +6444,7 @@ void Solver::onComputeCaveBlockStability(ProjectNode* analysisNode)
     QString blockError;
     if (!blockPage->validateInputs(&blockError))
     {
-        QMessageBox::warning(nullptr, QStringLiteral("请完善块体稳定设置"), blockError);
+        solverWarning(nullptr, QStringLiteral("请完善块体稳定设置"), blockError);
         return;
     }
 
@@ -6405,7 +6457,7 @@ void Solver::onComputeCaveBlockStability(ProjectNode* analysisNode)
 
     if (planePages.isEmpty())
     {
-        QMessageBox::warning(
+        solverWarning(
             nullptr, QStringLiteral("请添加滑块面"),
             QStringLiteral("请至少添加一个滑块面后再计算。"));
         return;
@@ -6415,7 +6467,7 @@ void Solver::onComputeCaveBlockStability(ProjectNode* analysisNode)
         QString planeError;
         if (!planePages[i]->validateInputs(&planeError))
         {
-            QMessageBox::warning(
+            solverWarning(
                 nullptr, QStringLiteral("请完善滑块面设置"),
                 QStringLiteral("第 %1 个滑块面：%2").arg(i + 1).arg(planeError));
             return;
@@ -6429,7 +6481,7 @@ void Solver::onComputeCaveBlockStability(ProjectNode* analysisNode)
     QDir sliderDir(QDir(projectDir).filePath(QStringLiteral("SliderCase")));
     if (!QDir().mkpath(sliderDir.absolutePath()))
     {
-        QMessageBox::warning(nullptr, QStringLiteral("无法开始计算"),
+        solverWarning(nullptr, QStringLiteral("无法开始计算"),
                              QStringLiteral("无法准备块体稳定计算数据。"));
         return;
     }
@@ -6460,7 +6512,7 @@ void Solver::onComputeCaveBlockStability(ProjectNode* analysisNode)
             QString iiinError;
             iiinReady = meshSvc->exportIiinDatFile(targetIiin, &iiinError);
             if (!iiinReady)
-                qWarning().noquote() << "块体稳定网格数据生成失败:" << iiinError;
+                qCWarning(caeSolverLog).noquote() << "块体稳定网格数据生成失败:" << iiinError;
         }
     }
     if (!iiinReady)
@@ -6476,7 +6528,7 @@ void Solver::onComputeCaveBlockStability(ProjectNode* analysisNode)
     }
     if (!iiinReady || !QFileInfo::exists(targetIiin))
     {
-        QMessageBox::warning(nullptr, QStringLiteral("请检查网格"),
+        solverWarning(nullptr, QStringLiteral("请检查网格"),
                              QStringLiteral("当前网格无法用于块体稳定计算。"));
         return;
     }
@@ -6486,13 +6538,13 @@ void Solver::onComputeCaveBlockStability(ProjectNode* analysisNode)
         launchCaveBlockSolverExecutable(analysisNode);
     }
     else
-        QMessageBox::warning(
+        solverWarning(
             nullptr, QStringLiteral("无法开始计算"),
             QStringLiteral("块体稳定计算数据准备失败。请检查滑块面和参数设置后重试。"));
     }
     catch (const std::exception& e)
     {
-        qWarning() << "洞室块体稳定性计算失败:" << e.what();
+        qCWarning(caeSolverLog) << "洞室块体稳定性计算失败:" << e.what();
     }
 }
 
@@ -6515,68 +6567,91 @@ void Solver::setComputeWidgetRunning(QWidget* widget, bool computing) const
 
 void Solver::consumeSolverOutput()
 {
-    if (!m_solverProcess)
-        return;
+    if (!m_solverProcess) return;
+    const QString rawOutput = QString::fromLocal8Bit(m_solverProcess->readAllStandardOutput());
+    if (rawOutput.isEmpty()) return;
+    printSolverOutput(m_activeAnalysisWorkspace, rawOutput);
+    if (!nativeSolverErrorTail(rawOutput.toLocal8Bit().toStdString()).empty())
+        m_solverErrorOutputSeen = true;
 
-    const QString output =
-        QString::fromLocal8Bit(m_solverProcess->readAllStandardOutput()).trimmed();
-    if (output.isEmpty())
-        return;
-
-    qInfo().noquote() << ("__RAW__" + output);
-
-    const QString error = solverErrorFromText(output);
-    if (!error.isEmpty())
-        m_solverFailureDetail = error;
-
-    if (!m_solverFailureDetail.isEmpty() &&
-        output.contains(QStringLiteral("PRESS ANY LETTER"), Qt::CaseInsensitive))
-    {
-        m_solverProcess->write("x\n");
-        m_solverProcess->waitForBytesWritten(1000);
-    }
-
-    if (output.contains(QStringLiteral("结束进程")) && m_solverFailureDetail.isEmpty())
-    {
-        m_solverFailureDetail =
-            solverErrorFromRunLogs(m_activeAnalysisWorkspace, m_solverStartedAtMs);
-        if (m_solverFailureDetail.isEmpty())
-        {
-            const bool batchItemFinished = m_batchActive && !m_batchCurrentUuid.isEmpty();
-            notifySolverFinished();
-            finishSolverProcess(true);
-            if (batchItemFinished)
-            {
-                completeBatchItem(true);
-                QTimer::singleShot(0, this, &Solver::startNextBatchCompute);
-            }
-        }
-    }
+    // Acknowledge the console solver's final key prompt, then wait for its
+    // actual finished signal. Output text never completes or kills a run.
+    if (rawOutput.contains(QStringLiteral("输入任意键"))
+        || rawOutput.contains(QStringLiteral("PRESS ANY LETTER"), Qt::CaseInsensitive)
+        || rawOutput.contains(QStringLiteral("PRESS ANY KEY"), Qt::CaseInsensitive))
+        m_solverProcess->write("\n");
 }
 
 void Solver::handleSolverProcessFinished(int exitCode, QProcess::ExitStatus exitStatus)
 {
-    if (m_solverFailureDetail.isEmpty())
-        m_solverFailureDetail =
-            solverErrorFromRunLogs(m_activeAnalysisWorkspace, m_solverStartedAtMs);
-
-    // A0_FEMANALYSIS 是旧式 GUI 程序，正常关闭进程并不代表用户已经完成块体计算。
-    // 只有实际生成 SAFE_CAVEBLK.DAT 才视为块体稳定计算完成。
-    if (m_solverFailureDetail.isEmpty() &&
-        m_activeAnalysisKind == QStringLiteral("CaveBlockStabilityAnalysis") &&
-        exitStatus == QProcess::NormalExit && exitCode == 0)
+    if (!m_solverProcess) return;
+    m_solverProcess->disconnect(this);
+    for (auto* timer : m_solverProcess->findChildren<QTimer*>()) timer->stop();
+    const QString remaining = QString::fromLocal8Bit(m_solverProcess->readAllStandardOutput());
+    if (!remaining.isEmpty())
     {
-        const QFileInfo resultInfo(
-            QDir(m_activeAnalysisWorkspace)
-                .filePath(QStringLiteral("SliderCase/SAFE_CAVEBLK.DAT")));
-        if (!resultInfo.exists() || resultInfo.size() <= 0)
-            m_solverFailureDetail =
-                QStringLiteral("未生成块体稳定计算结果。请完成块体计算后再关闭计算窗口。");
+        printSolverOutput(m_activeAnalysisWorkspace, remaining);
+        if (!nativeSolverErrorTail(remaining.toLocal8Bit().toStdString()).empty())
+            m_solverErrorOutputSeen = true;
+    }
+    // Replay native diagnostics that were written only to unit 110. They are
+    // displayed as logs and never used to override the process exit status.
+    if (!m_solverErrorOutputSeen)
+    {
+        const QString error = solverErrorContextFromRunLogs(m_activeAnalysisWorkspace, m_solverStartedAtMs);
+        if (!error.isEmpty()) printSolverOutput(m_activeAnalysisWorkspace, error);
+    }
+    if (m_solverFailureDetail.isEmpty() && exitCode == 0
+        && exitStatus == QProcess::NormalExit
+        && m_activeAnalysisKind == QStringLiteral("SeepageAnalysis"))
+    {
+        if (m_solverFailureDetail.isEmpty() && !m_seepageContinuationUuid.isEmpty())
+        {
+            ProjectNode* node = findAnalysisNodeByUuid(m_seepageContinuationUuid);
+            auto* page = node ? dynamic_cast<SeepageWidget*>(node->getPage()) : nullptr;
+            const QString workspace = m_activeAnalysisWorkspace;
+            auto& variables = PublicVariables::instance();
+            bool prepared = page && variables.set(PublicConstants::kSolverRunDirectoryKey,
+                                                  workspace, QStringLiteral("solver_runtime"));
+            for (const QString name : {QStringLiteral("ISEEP.DAT"), QStringLiteral("III110.DAT")})
+            {
+                if (!prepared) break;
+                const QString source = QDir(workspace).filePath(name);
+                const QString target = QDir(workspace).filePath(QStringLiteral("STEADY_") + name);
+                if (QFileInfo::exists(target)) prepared = QFile::remove(target);
+                if (prepared) prepared = QFile::copy(source, target);
+            }
+            prepared = prepared && page->exportIseepDatFile(2);
+            if (!prepared)
+                m_solverFailureDetail = QStringLiteral("稳态已完成，但无法准备非稳态计算输入。");
+            else
+            {
+                const auto widget = m_activeComputeWidget;
+                qInfo().noquote() << QStringLiteral("稳态渗流已完成，继续当前工况的非稳态计算。");
+                // Do not publish an intermediate completed/stopped event or
+                // advance the batch queue between the two stages.
+                m_solverFinishedNotified = true;
+                finishSolverProcess(false);
+                m_pendingComputeWidget = widget;
+                variables.set(PublicConstants::kSolverRunDirectoryKey, workspace,
+                              QStringLiteral("solver_runtime"));
+                if (!launchSolverExecutable(node, QStringLiteral("渗流分析")))
+                {
+                    writeAnalysisManifest(workspace, node->getUuid(), node->text(0),
+                        QStringLiteral("SeepageAnalysis"), QStringLiteral("渗流分析"), QStringLiteral("failed"));
+                    if (m_batchActive && !m_batchCurrentUuid.isEmpty())
+                    {
+                        completeBatchItem(false, QStringLiteral("非稳态计算未启动"));
+                        QTimer::singleShot(0, this, &Solver::startNextBatchCompute);
+                    }
+                }
+                return;
+            }
+        }
     }
 
     const bool succeeded = exitStatus == QProcess::NormalExit && exitCode == 0
                            && m_solverFailureDetail.isEmpty();
-    QString failureReason;
     if (succeeded)
     {
         notifySolverFinished();
@@ -6598,27 +6673,16 @@ void Solver::handleSolverProcessFinished(int exitCode, QProcess::ExitStatus exit
                               m_activeAnalysisName, m_activeAnalysisKind,
                               m_activeAnalysisType, QStringLiteral("failed"));
 
-        failureReason = m_solverFailureDetail;
-        if (failureReason.isEmpty() && exitStatus == QProcess::CrashExit)
-            failureReason = QStringLiteral("求解器进程异常退出");
-        if (failureReason.isEmpty())
-            failureReason = QStringLiteral("求解器退出码：%1").arg(exitCode);
-
-        qWarning().noquote() << m_activeAnalysisType << "failed:" << failureReason
-                             << "exitCode=" << exitCode
-                             << "exitStatus=" << static_cast<int>(exitStatus);
-        QMessageBox::warning(
-            nullptr, QStringLiteral("计算未完成"),
-            QStringLiteral("%1未完成。\n%2")
-                .arg(m_activeAnalysisType, customerFacingSolverFailure(failureReason)));
+        printSolverOutput(m_activeAnalysisWorkspace, QStringLiteral("计算失败，请查看求解器日志。"));
+        QMessageBox::warning(nullptr, QStringLiteral("计算失败"),
+            QStringLiteral("%1失败，请查看求解器日志。").arg(m_activeAnalysisType));
     }
 
     const bool batchItemFinished = m_batchActive && !m_batchCurrentUuid.isEmpty();
     finishSolverProcess(false);
     if (batchItemFinished)
     {
-        completeBatchItem(succeeded,
-                          succeeded ? QString() : QStringLiteral("求解失败"));
+        completeBatchItem(succeeded, succeeded ? QString() : QStringLiteral("求解失败"));
         QTimer::singleShot(0, this, &Solver::startNextBatchCompute);
     }
 }
@@ -6626,19 +6690,24 @@ void Solver::handleSolverProcessFinished(int exitCode, QProcess::ExitStatus exit
 void Solver::finishSolverProcess(bool terminateProcess)
 {
     clearSolverRunDirectory();
-    if (terminateProcess && !m_solverFinishedNotified && !m_activeAnalysisWorkspace.isEmpty())
+    if (terminateProcess && !m_solverFinishedNotified && m_solverFailureDetail.isEmpty()
+        && !m_activeAnalysisWorkspace.isEmpty())
         writeAnalysisManifest(m_activeAnalysisWorkspace, m_activeAnalysisUuid,
                               m_activeAnalysisName, m_activeAnalysisKind,
                               m_activeAnalysisType, QStringLiteral("stopped"));
-
-    if (terminateProcess)
-        terminateDeployedSolvers();
 
     if (m_solverProcess)
     {
         m_solverProcess->disconnect(this);
         if (terminateProcess && m_solverProcess->state() != QProcess::NotRunning)
         {
+#ifdef Q_OS_WIN
+            // ErrShow is a child process and otherwise survives its parent,
+            // leaving a modal legacy error dialog after a stopped calculation.
+            QProcess::execute(QStringLiteral("taskkill"),
+                {QStringLiteral("/PID"), QString::number(m_solverProcess->processId()),
+                 QStringLiteral("/T"), QStringLiteral("/F")});
+#endif
             m_solverProcess->kill();
             m_solverProcess->waitForFinished(3000);
         }
@@ -6655,7 +6724,9 @@ void Solver::finishSolverProcess(bool terminateProcess)
     m_activeAnalysisKind.clear();
     m_activeAnalysisType.clear();
     m_solverFailureDetail.clear();
+    m_solverErrorOutputSeen=false;
     m_solverStartedAtMs = 0;
+    m_seepageContinuationUuid.clear();
 }
 
 void Solver::clearSolverRunDirectory() const
@@ -6690,6 +6761,7 @@ bool Solver::canDeleteNode(ProjectNode* node) const
         QStringLiteral("CaveCraneBeamArea"),
         QStringLiteral("DamIceRegion"),
         QStringLiteral("DamDynamicAnalysis"),
+        QStringLiteral("QuietBoundary"),
         QStringLiteral("SlopeLimitEquilibriumSection")};
     if (fixedKinds.contains(kind))
         return false;
@@ -6720,6 +6792,27 @@ bool Solver::canDeleteNode(ProjectNode* node) const
         return countGeoStressChildren(parent,
                                       QStringLiteral("GeoStressRegressionOuterForce")) > 1;
     return true;
+}
+
+void Solver::syncGeoStressConditionalNodes(ProjectNode* geostressNode) const
+{
+    auto* page = geostressNode
+        ? dynamic_cast<GeoStressRegressionWidget*>(geostressNode->getPage()) : nullptr;
+    if (!page) return;
+    const bool active = page->calculationModeCode() != 0;
+    for (auto* child : geostressNode->getChildren())
+    {
+        if (!child || !child->getPage()) continue;
+        const auto type = child->getPage()->getPageType();
+        if (type != QStringLiteral("GeoStressRegressionSideFace")
+            && type != QStringLiteral("GeoStressRegressionMeasurePoint")
+            && type != QStringLiteral("GeoStressRegressionOuterForce")) continue;
+        int count = 0;
+        if (auto* side = dynamic_cast<GeoStressSideFacePage*>(child->getPage()))count = side->selectionCount();
+        else if (auto* points = dynamic_cast<GeoStressMeasurePointPage*>(child->getPage()))count = points->points().size();
+        updateBoundaryNodeStatus(child, count, active,
+            QStringLiteral("仅计算自重应力时不参与计算；切换至实测地应力回归后启用。"));
+    }
 }
 
 void Solver::updateBoundaryNodeStatus(ProjectNode* node, int selectionCount, bool enabled,
@@ -7069,8 +7162,23 @@ bool Solver::prepareDamSeepageFiles(FillStorageCyclePage* cyclePage,
     return true;
 }
 
+void Solver::syncQuietBoundaryNode(ProjectNode* owner) const
+{
+    if(!owner||!owner->getPage()||findChildByPageType(owner,QStringLiteral("QuietBoundary")))return;
+    auto* page=owner->getPage();
+    auto* check=page->findChild<QCheckBox*>("quietBoundaryCheck");
+    auto* selection=page->findChild<QuietBoundarySelector*>("quietBoundarySelector");
+    if(!check||!selection)return;
+    auto* boundary=new QuietBoundaryPage(check,selection);
+    const QUuid id=QUuid::createUuidV5(QUuid(owner->getUuid()),QByteArrayLiteral("QuietBoundary"));
+    auto* node=new ProjectNode(QStringLiteral("粘弹性边界"),id.toString(),boundary);
+    setupNodeRole(node,QStringLiteral("QuietBoundary"));owner->addChild(node);
+    node->setToolTip(0,QStringLiteral("选择粘弹性边界作用区域；开关位于父节点设置页面"));
+}
+
 void Solver::syncDamConditionalNodes(ProjectNode* analysisNode) const
 {
+    syncQuietBoundaryNode(analysisNode);
     auto* page = analysisNode ? dynamic_cast<DamAnalysisWidget*>(analysisNode->getPage()) : nullptr;
     if (!page)
         return;
@@ -7218,6 +7326,7 @@ void Solver::syncDamConditionalNodes(ProjectNode* analysisNode) const
 
 void Solver::syncCaveSupportConditionalNodes(ProjectNode* supportNode) const
 {
+    syncQuietBoundaryNode(supportNode);
     auto* page = supportNode
         ? dynamic_cast<CaveSupportComputationPage*>(supportNode->getPage()) : nullptr;
     if (!page)
@@ -7460,6 +7569,8 @@ bool Solver::writeAnalysisManifest(const QString& workspaceDir, const QString& a
     root.insert(QStringLiteral("analysisKind"), analysisKind);
     root.insert(QStringLiteral("lastAnalysisType"), analysisType);
     root.insert(QStringLiteral("state"), state);
+    root.remove(QStringLiteral("convergenceWarnings"));
+    root.remove(QStringLiteral("resultQuality"));
     root.insert(QStringLiteral("updatedAt"),
                 QDateTime::currentDateTimeUtc().toString(Qt::ISODateWithMs));
 
@@ -7532,7 +7643,7 @@ void Solver::notifySolverFinished()
     if (!writeAnalysisManifest(m_activeAnalysisWorkspace, m_activeAnalysisUuid,
                                m_activeAnalysisName, m_activeAnalysisKind,
                                m_activeAnalysisType, QStringLiteral("completed")))
-        qWarning() << "failed to update analysis result manifest";
+        qCWarning(caeSolverLog) << "failed to update analysis result manifest";
 
     QVariantMap data;
     data.insert(QStringLiteral("analysisType"), m_activeAnalysisType);
@@ -7573,7 +7684,7 @@ bool Solver::beginCommonCompute(
 
     if (!analysisNode->getPage())
     {
-        QMessageBox::warning(
+        solverWarning(
             nullptr, QStringLiteral("无法开始计算"),
             QStringLiteral("%1设置未正确加载。请重新打开工程后再试。").arg(analysisType));
         return false;
@@ -7589,8 +7700,6 @@ bool Solver::beginCommonCompute(
             return false;
         finishSolverProcess(true);
     }
-    else
-        terminateDeployedSolvers();
 
     const QString projectDir =
         PublicVariables::instance().get(PublicConstants::kProjectDirectoryKey).toString();
@@ -7604,7 +7713,7 @@ bool Solver::beginCommonCompute(
         !PublicVariables::instance().set(PublicConstants::kSolverRunDirectoryKey, runDir,
                                          QStringLiteral("solver_runtime")))
     {
-        QMessageBox::warning(
+        solverWarning(
             nullptr, QStringLiteral("无法开始计算"),
             QStringLiteral("无法准备%1数据。请先保存工程，并确认工程所在位置可以正常写入。")
                 .arg(analysisType));
@@ -7612,6 +7721,7 @@ bool Solver::beginCommonCompute(
     }
     const auto fail = [this, owner, workspaceDir, analysisType]() -> bool
     {
+        printSolverOutput(workspaceDir,QStringLiteral("%1数据准备失败；工作目录：%2。请查看上方具体错误。").arg(analysisType,workspaceDir));
         writeAnalysisManifest(workspaceDir, owner->getUuid(), owner->text(0).trimmed(),
                               owner->data(0, ProjectNode::RoleKind).toString(), analysisType,
                               QStringLiteral("failed"));
@@ -7620,8 +7730,13 @@ bool Solver::beginCommonCompute(
     };
 
     QDir inputDir(SolverFilePaths::outputInputDirectory(projectDir));
+    printSolverOutput(workspaceDir,QStringLiteral("\n[%1] 准备%2：%3\n计算目录：%4\n输入目录：%5")
+        .arg(QDateTime::currentDateTime().toString(Qt::ISODate),analysisType,owner->text(0),workspaceDir,inputDir.absolutePath()));
     if (!QDir().mkpath(inputDir.absolutePath()))
+    {
+        qCWarning(caeSolverLog).noquote()<<QStringLiteral("无法创建计算输入目录：%1").arg(inputDir.absolutePath());
         return fail();
+    }
 
     auto* meshSvc = ServiceRegistry::instance().getService<MeshModuleControllerService>();
     if (meshSvc)
@@ -7636,7 +7751,7 @@ bool Solver::beginCommonCompute(
             // DAT 导入时已经保存公共副本，这里只在分析副本缺失时兜底复制。
             if (!QFile::exists(targetIiin) && !QFile::copy(sourceMeshPath, targetIiin))
             {
-                QMessageBox::warning(
+                solverWarning(
                     nullptr, QStringLiteral("请检查网格"),
                     QStringLiteral("%1缺少可用网格。请重新导入或重新生成网格后重试。")
                         .arg(analysisType));
@@ -7648,8 +7763,8 @@ bool Solver::beginCommonCompute(
             QString iiinErr;
             if (!meshSvc->exportIiinDatFile(targetIiin, &iiinErr))
             {
-                qWarning().noquote() << analysisType << "网格计算数据生成失败:" << iiinErr;
-                QMessageBox::warning(
+                qCWarning(caeSolverLog).noquote() << analysisType << "网格计算数据生成失败:" << iiinErr;
+                solverWarning(
                     nullptr, QStringLiteral("请检查网格"),
                     QStringLiteral("%1无法使用当前网格。请检查网格后重试。")
                         .arg(analysisType));
@@ -7661,8 +7776,26 @@ bool Solver::beginCommonCompute(
     auto* physicalFieldService = ServiceRegistry::instance().getService<PhysicalFieldService>();
     if (physicalFieldService)
     {
-        physicalFieldService->generateIIIDFile();
-        physicalFieldService->generateIIWLFile();
+        if(physicalFieldService->hasPrescribedDisplacements())
+        {
+            auto* slope=dynamic_cast<SlopeStabilityWidget*>(owner->getPage());
+            const auto state=slope?slope->saveJson():QJsonObject();
+            const auto values=state.value(QStringLiteral("base_values")).toArray();
+            if(values.size()<19||values[7].toString()!=QStringLiteral("2")||values[18].toString()!=QStringLiteral("1"))
+            {
+                solverWarning(nullptr,QStringLiteral("请检查指定位移"),
+                    QStringLiteral("当前自动施工、动力或渗流流程不会采用独立指定位移。请使用自定义荷载的静力工况。"));
+                return fail();
+            }
+        }
+        if(!physicalFieldService->generateIIIDFile())
+        {qCWarning(caeSolverLog).noquote()<<QStringLiteral("位移约束文件 IIID.DAT 生成失败：%1").arg(inputDir.absolutePath());return fail();}
+        if (!physicalFieldService->generateIIWLFile())
+        {
+            solverWarning(nullptr, QStringLiteral("请检查荷载设置"),
+                QStringLiteral("无法生成当前荷载，请修正荷载设置后重试。"));
+            return fail();
+        }
     }
 
     auto* materialManagerService = ServiceRegistry::instance().getService<MaterialManagerService>();
@@ -7671,7 +7804,7 @@ bool Solver::beginCommonCompute(
     {
         if (materialManagerService->hasConfiguredMaterials())
         {
-            QMessageBox::warning(
+            solverWarning(
                 nullptr, QStringLiteral("请检查材料设置"),
                 QStringLiteral("当前材料设置无法用于计算。请根据材料页面中的提示修正后重试。"));
             return fail();
@@ -7679,22 +7812,27 @@ bool Solver::beginCommonCompute(
         const QFileInfo existingImat(inputDir.filePath(QStringLiteral("IMAT.DAT")));
         if (!existingImat.exists() || existingImat.size() <= 0)
         {
-            QMessageBox::warning(
+            solverWarning(
                 nullptr, QStringLiteral("请完善材料设置"),
                 QStringLiteral("当前工程还没有可用于计算的材料参数。"));
             return fail();
         }
-        QMessageBox::warning(
+        solverWarning(
             nullptr, QStringLiteral("材料设置未更新"),
             QStringLiteral("部分材料设置暂未更新，本次计算将使用上次保存的材料参数。"));
     }
 
     QString materialError;
+    if (!ThermalLoadProtocol::apply(inputDir, &materialError))
+    {
+        solverWarning(nullptr, QStringLiteral("请检查变温荷载"), materialError);
+        return fail();
+    }
     if (!validateSolverMaterials(inputDir.filePath(QStringLiteral("IIIN.DAT")),
                                  inputDir.filePath(QStringLiteral("IMAT.DAT")),
                                  &materialError))
     {
-        QMessageBox::warning(nullptr, QStringLiteral("请检查材料设置"), materialError);
+        solverWarning(nullptr, QStringLiteral("请检查材料设置"), materialError);
         return fail();
     }
 
@@ -7707,7 +7845,7 @@ bool Solver::beginCommonCompute(
         failedInputs << QStringLiteral("结果跟踪设置");
     if (!failedInputs.isEmpty())
     {
-        QMessageBox::warning(
+        solverWarning(
             nullptr, QStringLiteral("无法开始计算"),
             QStringLiteral("以下设置未能用于计算：\n%1\n请检查后重试。")
                 .arg(failedInputs.join(QLatin1Char('\n'))));
@@ -7718,7 +7856,7 @@ bool Solver::beginCommonCompute(
     catch (const std::exception& e)
     {
         clearSolverRunDirectory();
-        qWarning() << "beginCommonCompute 失败:" << e.what();
+        qCWarning(caeSolverLog) << "beginCommonCompute 失败:" << e.what();
         return false;
     }
 }
@@ -7729,8 +7867,8 @@ bool Solver::launchCaveBlockSolverExecutable(ProjectNode* analysisNode)
     const QString exePath = deployedCaveBlockExecutable();
     if (!QFileInfo::exists(exePath))
     {
-        qWarning() << "A0_FEMANALYSIS.exe missing from solver/FEMAnalysis";
-        QMessageBox::warning(
+        qCWarning(caeSolverLog) << "A0_FEMANALYSIS.exe missing from solver/FEMAnalysis";
+        solverWarning(
             nullptr, QStringLiteral("计算程序未安装"),
             QStringLiteral("未找到块体稳定计算程序。请检查软件安装后重试。"));
         return false;
@@ -7749,15 +7887,13 @@ bool Solver::launchCaveBlockSolverExecutable(ProjectNode* analysisNode)
             return false;
         finishSolverProcess(true);
     }
-    else
-        terminateDeployedSolvers();
 
     ProjectNode* owner = topLevelAnalysisNode(analysisNode);
     QString workspaceDir;
     QString sliderDir;
     if (!owner || !prepareAnalysisWorkspace(analysisNode, true, &workspaceDir, &sliderDir))
     {
-        QMessageBox::warning(
+        solverWarning(
             nullptr, QStringLiteral("计算程序未启动"),
             QStringLiteral("当前分析的数据准备失败。请保存工程后重试。"));
         return false;
@@ -7809,7 +7945,7 @@ bool Solver::launchCaveBlockSolverExecutable(ProjectNode* analysisNode)
     if (!updateCaveBlockIiiDirDat(sliderDir))
     {
         restoreOriginalIiiDir();
-        QMessageBox::warning(
+        solverWarning(
             nullptr, QStringLiteral("计算程序未启动"),
             QStringLiteral("块体稳定计算准备失败。请保存工程后重试。"));
         return false;
@@ -7825,6 +7961,7 @@ bool Solver::launchCaveBlockSolverExecutable(ProjectNode* analysisNode)
     m_activeAnalysisKind = owner->data(0, ProjectNode::RoleKind).toString();
     m_activeAnalysisType = QStringLiteral("块体稳定分析");
     m_solverFailureDetail.clear();
+    m_solverErrorOutputSeen=false;
     m_solverStartedAtMs = QDateTime::currentMSecsSinceEpoch();
     writeAnalysisManifest(m_activeAnalysisWorkspace, m_activeAnalysisUuid,
                           m_activeAnalysisName, m_activeAnalysisKind,
@@ -7838,13 +7975,18 @@ bool Solver::launchCaveBlockSolverExecutable(ProjectNode* analysisNode)
     m_solverProcess->setProgram(exePath);
     m_solverProcess->setArguments(QStringList());
     m_solverProcess->setProcessChannelMode(QProcess::MergedChannels);
+    // Intel Fortran runtime: deliver stdout writes immediately to the pipe.
+    auto environment=QProcessEnvironment::systemEnvironment();
+    environment.insert(QStringLiteral("FORT_BUFFER_STDOUT"),QStringLiteral("FALSE"));
+    environment.insert(QStringLiteral("FORT_BUFFERED"),QStringLiteral("FALSE"));
+    m_solverProcess->setProcessEnvironment(environment);
 
     connect(m_solverProcess, &QProcess::readyReadStandardOutput,
             this, &Solver::consumeSolverOutput);
 
     connect(m_solverProcess, &QProcess::errorOccurred, this,
             [this](QProcess::ProcessError error) {
-                if (error != QProcess::UnknownError && m_solverProcess
+                if ((error == QProcess::FailedToStart || error == QProcess::Crashed) && m_solverProcess
                     && m_solverFailureDetail.isEmpty())
                     m_solverFailureDetail = m_solverProcess->errorString();
             });
@@ -7859,8 +8001,8 @@ bool Solver::launchCaveBlockSolverExecutable(ProjectNode* analysisNode)
     m_solverProcess->start();
     if (!m_solverProcess->waitForStarted(5000))
     {
-        qWarning() << "块体稳定计算程序启动失败:" << m_solverProcess->errorString();
-        QMessageBox::warning(
+        qCWarning(caeSolverLog) << "块体稳定计算程序启动失败:" << m_solverProcess->errorString();
+        solverWarning(
             nullptr, QStringLiteral("计算程序未启动"),
             QStringLiteral("块体稳定计算程序无法启动。请检查软件安装后重试。"));
 
@@ -7886,8 +8028,8 @@ bool Solver::launchSolverExecutable(ProjectNode* analysisNode, const QString& an
     const QString exePath = deployedSolverExecutable(runtimeOptions);
     if (!QFileInfo::exists(exePath))
     {
-        qWarning() << "solver executable missing:" << exePath;
-        QMessageBox::warning(
+        qCWarning(caeSolverLog) << "solver executable missing:" << exePath;
+        solverWarning(
             nullptr, QStringLiteral("计算程序未启动"),
             QStringLiteral("%1所需的%2计算程序未安装完整。请修复或重新安装软件。")
                 .arg(analysisType,
@@ -7909,8 +8051,6 @@ bool Solver::launchSolverExecutable(ProjectNode* analysisNode, const QString& an
             return false;
         finishSolverProcess(true);
     }
-    else
-        terminateDeployedSolvers();
 
     ProjectNode* owner = topLevelAnalysisNode(analysisNode);
     const QString runDir = SolverFilePaths::runDirectory();
@@ -7918,7 +8058,9 @@ bool Solver::launchSolverExecutable(ProjectNode* analysisNode, const QString& an
     if (!owner || runDir.isEmpty() || !QDir(runDir).exists() ||
         workspaceManifestUuid(runDir) != owner->getUuid())
     {
-        QMessageBox::warning(
+        qCWarning(caeSolverLog).noquote()<<QStringLiteral("计算目录校验失败：目录=%1；当前分析=%2；目录记录=%3")
+            .arg(runDir,owner?owner->getUuid():QStringLiteral("无分析节点"),workspaceManifestUuid(runDir));
+        solverWarning(
             nullptr, QStringLiteral("计算程序未启动"),
             QStringLiteral("当前分析的数据准备失败。请保存工程后重试。"));
         clearSolverRunDirectory();
@@ -7928,11 +8070,12 @@ bool Solver::launchSolverExecutable(ProjectNode* analysisNode, const QString& an
     const int solverMode = solverModeFromAnalysisType(analysisType);
     if (solverMode > 0)
     {
-        if (!updateIiiDirDat(runDir, solverMode, runtimeOptions.deviceCode))
+        QString preparationError;
+        if (!updateIiiDirDat(runDir, solverMode, runtimeOptions.deviceCode, &preparationError))
         {
-            QMessageBox::warning(
+            solverWarning(
                 nullptr, QStringLiteral("计算程序未启动"),
-                QStringLiteral("%1计算准备失败。请保存工程后重试。").arg(analysisType));
+                QStringLiteral("计算未启动，请查看日志。"));
             clearSolverRunDirectory();
             return false;
         }
@@ -7943,7 +8086,7 @@ bool Solver::launchSolverExecutable(ProjectNode* analysisNode, const QString& an
 
         if (!updatePrepDatFiles(runDir, solverMode, verticalAxis))
         {
-            QMessageBox::warning(
+            solverWarning(
                 nullptr, QStringLiteral("计算程序未启动"),
                 QStringLiteral("%1无法使用当前网格。请检查网格后重试。").arg(analysisType));
             clearSolverRunDirectory();
@@ -7961,6 +8104,7 @@ bool Solver::launchSolverExecutable(ProjectNode* analysisNode, const QString& an
     m_activeAnalysisKind = owner->data(0, ProjectNode::RoleKind).toString();
     m_activeAnalysisType = analysisType;
     m_solverFailureDetail.clear();
+    m_solverErrorOutputSeen=false;
     m_solverStartedAtMs = QDateTime::currentMSecsSinceEpoch();
     writeAnalysisManifest(m_activeAnalysisWorkspace, m_activeAnalysisUuid,
                           m_activeAnalysisName, m_activeAnalysisKind,
@@ -7968,7 +8112,7 @@ bool Solver::launchSolverExecutable(ProjectNode* analysisNode, const QString& an
 
     m_solverProcess = new QProcess(this);
     qInfo().noquote()
-        << QStringLiteral("启动%1求解器：%2；IDEVICE=%3")
+        << QStringLiteral("__RAW__启动%1求解器：%2；IDEVICE=%3")
                .arg(runtimeOptions.useGpu ? QStringLiteral("GPU") : QStringLiteral("CPU"),
                     exePath)
                .arg(runtimeOptions.deviceCode);
@@ -7976,13 +8120,18 @@ bool Solver::launchSolverExecutable(ProjectNode* analysisNode, const QString& an
     m_solverProcess->setProgram(exePath);
     m_solverProcess->setArguments(QStringList());
     m_solverProcess->setProcessChannelMode(QProcess::MergedChannels);
+    // Intel Fortran runtime: deliver stdout writes immediately to the pipe.
+    auto environment=QProcessEnvironment::systemEnvironment();
+    environment.insert(QStringLiteral("FORT_BUFFER_STDOUT"),QStringLiteral("FALSE"));
+    environment.insert(QStringLiteral("FORT_BUFFERED"),QStringLiteral("FALSE"));
+    m_solverProcess->setProcessEnvironment(environment);
 
     connect(m_solverProcess, &QProcess::readyReadStandardOutput,
             this, &Solver::consumeSolverOutput);
 
     connect(m_solverProcess, &QProcess::errorOccurred, this,
             [this](QProcess::ProcessError error) {
-                if (error != QProcess::UnknownError && m_solverProcess
+                if ((error == QProcess::FailedToStart || error == QProcess::Crashed) && m_solverProcess
                     && m_solverFailureDetail.isEmpty())
                     m_solverFailureDetail = m_solverProcess->errorString();
             });
@@ -7996,8 +8145,8 @@ bool Solver::launchSolverExecutable(ProjectNode* analysisNode, const QString& an
     m_solverProcess->start();
     if (!m_solverProcess->waitForStarted(5000))
     {
-        qWarning() << analysisType << "计算程序启动失败:" << m_solverProcess->errorString();
-        QMessageBox::warning(
+        qCWarning(caeSolverLog) << analysisType << "计算程序启动失败:" << m_solverProcess->errorString();
+        solverWarning(
             nullptr, QStringLiteral("计算程序未启动"),
             QStringLiteral("%1计算程序无法启动。请检查软件安装后重试。")
                 .arg(analysisType));
@@ -8062,17 +8211,26 @@ bool Solver::updateCaveBlockIiiDirDat(const QString& sliderDir) const
 }
 
 
-bool Solver::updateIiiDirDat(const QString& projectDir, int solverMode, int deviceCode) const
+bool Solver::updateIiiDirDat(const QString& projectDir, int solverMode, int deviceCode, QString* error) const
 {
+    const auto fail = [error](const QString& detail) {
+        if (error) *error=detail;
+        qCWarning(caeSolverLog).noquote()<<detail;
+        return false;
+    };
+    const QDir runtime(QDir(QCoreApplication::applicationDirPath()).filePath(QStringLiteral("solver/Runtime")));
+    QString runtimeError;
+    if (!SolverDirectoryProtocol::validateRuntime(runtime, &runtimeError)) return fail(runtimeError);
     QFile file("D:/IIIDIR.DAT");
     if (!file.exists() || !file.open(QIODevice::ReadOnly | QIODevice::Text))
-        return false;
+        return fail(QStringLiteral("无法读取求解器目录文件 %1：%2（原生求解器要求此文件位于 D 盘）")
+            .arg(file.fileName(),file.exists()?file.errorString():QStringLiteral("文件不存在")));
 
     QString content = QString::fromLocal8Bit(file.readAll());
     file.close();
     QStringList lines = content.split(QRegularExpression("\\r?\\n"), Qt::KeepEmptyParts);
     if (lines.size() < 2)
-        return false;
+        return fail(QStringLiteral("求解器目录文件 %1 内容不完整：只有 %2 行，至少需要9行。").arg(file.fileName()).arg(lines.size()));
 
     QString projectWithSlash = QDir::toNativeSeparators(QDir(projectDir).absolutePath());
     if (!projectWithSlash.endsWith(QDir::separator()))
@@ -8084,16 +8242,23 @@ bool Solver::updateIiiDirDat(const QString& projectDir, int solverMode, int devi
 
     lines[0] = QString("'%1'").arg(projectWithSlash);
     if (lines.size() < 9)
-        return false;
+        return fail(QStringLiteral("求解器目录文件 %1 内容不完整：只有 %2 行，至少需要9行。").arg(file.fileName()).arg(lines.size()));
     lines[4] = QString("%1  IDEVICE").arg(qBound(0, deviceCode, 2), 9);
     lines[5] = QString("%1  ILOG_GZKZR").arg(0, 9);
     lines[6] = QString("%1  ILOG_SOLVE").arg(0, 9);
     lines[7] = QString("'%1'").arg(inputDir);
     lines[8] = QString("%1   ").arg(solverMode, 12);
 
-    if (!file.open(QIODevice::WriteOnly | QIODevice::Text | QIODevice::Truncate))
-        return false;
-    file.write(lines.join("\n").toLocal8Bit());
+    // The bundled error receiver shares the native D-drive protocol. Do not
+    // fall back to the obsolete C-drive mirror when deployment is incomplete.
+    QString runtimePath = QDir::toNativeSeparators(runtime.absolutePath());
+    if (!runtimePath.endsWith(QDir::separator())) runtimePath += QDir::separator();
+    lines[3] = QStringLiteral("'%1'").arg(runtimePath);
+    QSaveFile primary(QStringLiteral("D:/IIIDIR.DAT"));
+    const QByteArray updated = lines.join("\n").toLocal8Bit();
+    if (!primary.open(QIODevice::WriteOnly) || primary.write(updated) != updated.size() || !primary.commit())
+        return fail(QStringLiteral("无法更新求解器目录文件 %1：%2；本次工作目录：%3")
+            .arg(primary.fileName(),primary.errorString(),projectDir));
     return true;
 }
 
@@ -8101,14 +8266,22 @@ bool Solver::updatePrepDatFiles(const QString& projectDir, int solverMode, int v
 {
     QFile file(QDir(SolverFilePaths::analysisInputDirectory(projectDir))
                    .filePath(QStringLiteral("IIIN.DAT")));
-    if (!file.exists() || !file.open(QIODevice::ReadOnly | QIODevice::Text))
+    const auto fail = [&file](const QString& detail) {
+        qCWarning(caeSolverLog).noquote()<<QStringLiteral("网格计算文件准备失败：%1；%2").arg(file.fileName(),detail);
         return false;
+    };
+    if (!file.exists() || !file.open(QIODevice::ReadOnly | QIODevice::Text))
+        return fail(file.exists()?file.errorString():QStringLiteral("文件不存在"));
 
     QString content = QString::fromLocal8Bit(file.readAll());
     file.close();
     QStringList lines = content.split(QRegularExpression("\\r?\\n"), Qt::KeepEmptyParts);
     if (lines.size() < 2)
-        return false;
+        return fail(QStringLiteral("网格头缺失"));
+
+    if(!SolverMeshProtocol::completeFaceDimensions(lines,
+        QDir(QDir(QCoreApplication::applicationDirPath()).filePath(QStringLiteral("solver/Runtime")))))
+        return fail(QStringLiteral("单元面维数无效，或 solver/Runtime 单元定义表缺失"));
 
     static const QRegularExpression intRe(QStringLiteral("[-+]?\\d+"));
     auto integerMatches = [](const QString& line)
@@ -8122,7 +8295,7 @@ bool Solver::updatePrepDatFiles(const QString& projectDir, int solverMode, int v
 
     const QVector<QRegularExpressionMatch> header = integerMatches(lines.at(0));
     if (header.size() < 4)
-        return false;
+        return fail(QStringLiteral("网格头应包含节点数、维数、单元数及节点宽度"));
     const int numnp = header.at(0).captured().toInt();
     const int madim = header.at(1).captured().toInt();
     const int nelem = header.at(2).captured().toInt();
@@ -8130,7 +8303,7 @@ bool Solver::updatePrepDatFiles(const QString& projectDir, int solverMode, int v
     const int firstElemLine = 2 + numnp;
     if (numnp < 0 || nelem < 0 || manod <= 0 || firstElemLine < 0 ||
         lines.size() < firstElemLine + nelem)
-        return false;
+        return fail(QStringLiteral("节点或单元记录数量与网格头不符"));
 
     // The legacy reinforcement interpolation always reads four nodes in 2D.
     // Older project snapshots padded three-node triangles with node 0, which
@@ -8405,7 +8578,7 @@ bool Solver::exportInouseDatFile()
             }
             else
             {
-                qWarning() << "INOUSE: polyhedron cell has no valid face stream, source cell id ="
+                qCWarning(caeSolverLog) << "INOUSE: polyhedron cell has no valid face stream, source cell id ="
                            << sourceCellId;
             }
         }
@@ -8555,6 +8728,9 @@ bool Solver::exportInouseDatFile()
         if (!cell || cell->GetCellDimension() != 1 ||
             !calculationElementByCell.contains(cid))
             continue;
+        // Native INOUSE counts embedded rods (KETYPE=1), not beams.
+        auto* nativeTypes=grid->GetCellData()->GetArray("KETYPE");
+        if(nativeTypes&&int(nativeTypes->GetTuple1(cid))==21)continue;
         vtkIdList* ptIds = cell->GetPointIds();
         if (!ptIds || ptIds->GetNumberOfIds() < 2)
             continue;

@@ -47,6 +47,10 @@ class NephogramSettingWidget : public BasePage
 
   private:
     void ensureActorAttached();
+    void applyThresholdDisplay(vtkUnstructuredGrid* grid, bool usePointData);
+    void clearThresholdDisplay();
+    void updateSurfaceOutline(vtkUnstructuredGrid* displayGrid);
+    void clearSurfaceOutline();
     void syncScalarBarFromCurrent();
     bool syncScalarBarFromResolved(vtkUnstructuredGrid* displayGrid, vtkDataArray* array,
                                    bool usePointData, double dataMin, double dataMax);
@@ -85,6 +89,8 @@ class NephogramSettingWidget : public BasePage
     VisualWidgetService* m_visualService{nullptr};
 
     vtkSmartPointer<vtkActor> m_actor;
+    vtkSmartPointer<vtkActor> m_belowThresholdActor;
+    vtkSmartPointer<vtkUnstructuredGrid> m_retainedThresholdGrid;
     vtkSmartPointer<vtkDataSetMapper> m_mapper;
     vtkSmartPointer<vtkUnstructuredGrid> m_grid;
     // m_displaySurface 仅用于等值线的外表面缓存。
@@ -104,6 +110,10 @@ class NephogramSettingWidget : public BasePage
     double m_legendPositionX{0.0};
     double m_legendPositionY{0.0};
 
+    vtkSmartPointer<vtkActor> m_outlineActor;
+    vtkSmartPointer<vtkUnstructuredGrid> m_outlineOriginalGrid;
+    vtkMTimeType m_outlineOriginalMTime{0};
+    QString m_outlineFilterKey;
     vtkSmartPointer<vtkActor> m_contourActor;
     vtkSmartPointer<vtkActor2D> m_contourLabelActor;
 

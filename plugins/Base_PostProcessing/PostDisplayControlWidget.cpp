@@ -1,9 +1,12 @@
 #include "PostDisplayControlWidget.h"
 
 #include "PostVisualUtils.h"
+#include "CompactPostDoubleSpinBox.h"
 #include "ResultDisplayNames.h"
+#include "PostScientificText.h"
 #include "ui_PostDisplayControlWidget.h"
 
+#include <EventManager.h>
 #include <services/VisualWidgetService.h>
 #include <PublicConstants.h>
 
@@ -46,8 +49,55 @@ PostDisplayControlWidget::PostDisplayControlWidget(VisualWidgetService* visualSe
     gridLineRow->addWidget(m_gridLineStrengthSpinBox, 1);
     ui->visibilityLayout->insertLayout(2, gridLineRow);
 
+    m_showOutlineCheckBox = new QCheckBox(QStringLiteral("表面显示几何轮廓/折角线"), ui->visibilityGroupBox);
+    m_showOutlineCheckBox->setToolTip(QStringLiteral("仅显示模型开放边界和明显折角，不显示普通网格线或视角剪影；材料分界不单独描边。"));
+    ui->visibilityLayout->insertWidget(2, m_showOutlineCheckBox);
     m_reverseColorsCheckBox = new QCheckBox(QStringLiteral("反转颜色"), ui->scalarBarGroupBox);
     ui->scalarBarFormLayout->insertRow(1, m_reverseColorsCheckBox);
+    m_tickModeComboBox = new QComboBox(ui->scalarBarGroupBox);
+    m_tickModeComboBox->addItem(QStringLiteral("自动刻度"), 0);
+    m_tickModeComboBox->addItem(QStringLiteral("等分数量"), 1);
+    m_tickModeComboBox->addItem(QStringLiteral("固定步长"), 2);
+    ui->scalarBarFormLayout->insertRow(2, QStringLiteral("刻度模式"), m_tickModeComboBox);
+    m_tickStepSpinBox = new CompactPostDoubleSpinBox(ui->scalarBarGroupBox);
+    m_tickStepSpinBox->setRange(1.0e-12, 1.0e100);
+    m_tickStepSpinBox->setDecimals(12);
+    m_tickStepSpinBox->setKeyboardTracking(false);
+    ui->scalarBarFormLayout->insertRow(3, QStringLiteral("刻度步长"), m_tickStepSpinBox);
+
+    m_thresholdGroup = new QGroupBox(QStringLiteral("阈值透明显示（云图）"), this);
+    m_thresholdGroup->setObjectName(QStringLiteral("postThresholdGroup"));
+    auto* thresholdForm = new QFormLayout(m_thresholdGroup);
+    m_thresholdEnabled = new QCheckBox(QStringLiteral("低于阈值的区域透明显示"), m_thresholdGroup);
+    m_thresholdEnabled->setObjectName(QStringLiteral("postThresholdEnabled"));
+    m_thresholdValue = new CompactPostDoubleSpinBox(m_thresholdGroup);
+    m_thresholdValue->setObjectName(QStringLiteral("postThresholdValue"));
+    m_thresholdValue->setRange(-1.0e100, 1.0e100);
+    m_thresholdValue->setDecimals(12);
+    m_thresholdValue->setKeyboardTracking(false);
+    m_belowTransparency = new QSpinBox(m_thresholdGroup);
+    m_belowTransparency->setObjectName(QStringLiteral("postBelowTransparency"));
+    m_belowTransparency->setRange(0, 100);
+    m_belowTransparency->setSuffix(QStringLiteral(" %"));
+    m_belowTransparency->setToolTip(QStringLiteral("0% 为不透明，100% 为完全透明；大于或等于阈值的区域保持原云图。阈值单位与当前变量一致。"));
+    thresholdForm->addRow(m_thresholdEnabled);
+    thresholdForm->addRow(QStringLiteral("结果阈值"), m_thresholdValue);
+    thresholdForm->addRow(QStringLiteral("阈值以下透明度"), m_belowTransparency);
+    ui->verticalLayout->insertWidget(2, m_thresholdGroup);
+    auto commitThreshold = [this]() {
+        const auto& context = postDisplayFieldContext();
+        if (m_syncing || !context.valid || !context.supportsThreshold) return;
+        auto& style = postFieldDisplayStyle(context.fieldName);
+        style.thresholdEnabled = m_thresholdEnabled->isChecked();
+        style.threshold = m_thresholdValue->value();
+        style.belowTransparency = m_belowTransparency->value();
+        m_thresholdValue->setEnabled(style.thresholdEnabled);
+        m_belowTransparency->setEnabled(style.thresholdEnabled);
+        notifyRefresh(QStringLiteral("threshold"));
+    };
+    connect(m_thresholdEnabled, &QCheckBox::toggled, this, commitThreshold);
+    connect(m_thresholdValue, &QDoubleSpinBox::editingFinished, this, commitThreshold);
+    connect(m_belowTransparency, &QSpinBox::valueChanged, this, commitThreshold);
 
     m_contourModeComboBox = new QComboBox(ui->contourGroupBox);
     m_contourModeComboBox->addItem(QStringLiteral("叠加云图"), 0);
@@ -85,6 +135,13 @@ PostDisplayControlWidget::PostDisplayControlWidget(VisualWidgetService* visualSe
     };
     connect(ui->showResultsCheckBox, &QCheckBox::toggled, this, applySceneVisibility);
 
+    connect(ui->showBrandingCheckBox, &QCheckBox::toggled, this, [this](bool checked)
+    {
+        if (m_syncing || !m_visualService)
+            return;
+        m_visualService->setBrandingVisible(checked);
+    });
+
     connect(ui->displayModeComboBox, QOverload<int>::of(&QComboBox::currentIndexChanged),
             this, [this](int index)
             {
@@ -93,10 +150,60 @@ PostDisplayControlWidget::PostDisplayControlWidget(VisualWidgetService* visualSe
                 postSceneStyle().representationMode =
                     ui->displayModeComboBox->itemData(index).toInt();
                 applyPostSceneRepresentation(m_visualService, false);
+                m_showOutlineCheckBox->setEnabled(postSceneStyle().representationMode == 0);
                 notifyRefresh(QStringLiteral("representation"));
                 if (m_visualService)
                     m_visualService->render();
             });
+
+    connect(m_showOutlineCheckBox, &QCheckBox::toggled, this, [this](bool enabled)
+    {
+        if (m_syncing)
+            return;
+        postSceneStyle().showSurfaceOutline = enabled;
+        notifyRefresh(QStringLiteral("surface-outline"));
+    });
+
+    connect(m_tickModeComboBox, QOverload<int>::of(&QComboBox::currentIndexChanged),
+            this, [this](int index)
+    {
+        if (m_syncing || index < 0)
+            return;
+        postScalarBarStyle().tickMode = m_tickModeComboBox->itemData(index).toInt();
+        ui->tickCountSpinBox->setEnabled(postScalarBarStyle().tickMode != 2);
+        m_tickStepSpinBox->setEnabled(postScalarBarStyle().tickMode == 2);
+        if (postScalarBarStyle().tickMode == 2 && m_visualService)
+        {
+            if (auto* bar = m_visualService->scalarBarActor())
+            {
+                if (auto* lut = bar->GetLookupTable())
+                {
+                    const double* limits = lut->GetRange();
+                    const double span = limits[1] - limits[0];
+                    // The old default 1.0 produces only one/no label when
+                    // the field has a magnitude around 1e-4.
+                    if (std::isfinite(span) && span > 0.0 &&
+                        postScalarBarStyle().tickStep > span)
+                    {
+                        const double suggested = suggestedPostScalarTickStep(
+                            limits[0], limits[1], ui->tickCountSpinBox->value());
+                        const QSignalBlocker blocker(m_tickStepSpinBox);
+                        m_tickStepSpinBox->setValue(suggested);
+                        postScalarBarStyle().tickStep = m_tickStepSpinBox->value();
+                    }
+                }
+            }
+        }
+        applyScalarBarAppearance();
+    });
+    connect(m_tickStepSpinBox, QOverload<double>::of(&QDoubleSpinBox::valueChanged),
+            this, [this](double step)
+    {
+        if (m_syncing)
+            return;
+        postScalarBarStyle().tickStep = step;
+        applyScalarBarAppearance();
+    });
 
     connect(m_gridLineStrengthSpinBox, QOverload<int>::of(&QSpinBox::valueChanged),
             this, [this](int value)
@@ -275,6 +382,14 @@ PostDisplayControlWidget::PostDisplayControlWidget(VisualWidgetService* visualSe
             syncRangeControls();
             applyScalarBarAppearance();
         });
+    EventManager::instance().registerHandler(
+        PublicConstants::kEventBrandingVisibilityChanged, this,
+        [this](const QVariantMap& data)
+        {
+            const QSignalBlocker blocker(ui->showBrandingCheckBox);
+            ui->showBrandingCheckBox->setChecked(
+                data.value(QStringLiteral("visible"), true).toBool());
+        });
 
     syncFromState();
 }
@@ -293,6 +408,8 @@ void PostDisplayControlWidget::syncFromState()
     const PostContourStyle& contour = postContourStyle();
 
     ui->showResultsCheckBox->setChecked(postSceneStyle().visible);
+    ui->showBrandingCheckBox->setChecked(
+        !m_visualService || m_visualService->isBrandingVisible());
     const int displayModeIndex = ui->displayModeComboBox->findData(postSceneStyle().representationMode);
     ui->displayModeComboBox->setCurrentIndex(displayModeIndex >= 0 ? displayModeIndex : 0);
     ui->followMeshFilterCheckBox->setChecked(postSceneStyle().followMeshFilter);
@@ -300,6 +417,12 @@ void PostDisplayControlWidget::syncFromState()
     ui->scalarBarTitleEdit->setText(bar.customTitle);
     m_reverseColorsCheckBox->setChecked(bar.reverseColors);
     m_gridLineStrengthSpinBox->setValue(postSceneStyle().gridLineStrength);
+    m_showOutlineCheckBox->setChecked(postSceneStyle().showSurfaceOutline);
+    m_showOutlineCheckBox->setEnabled(postSceneStyle().representationMode == 0);
+    m_tickModeComboBox->setCurrentIndex(bar.tickMode);
+    m_tickStepSpinBox->setValue(bar.tickStep);
+    m_tickStepSpinBox->setEnabled(bar.tickMode == 2);
+    ui->tickCountSpinBox->setEnabled(bar.tickMode != 2);
     ui->showContourCheckBox->setChecked(contour.enabled);
     const int contourModeIndex = m_contourModeComboBox->findData(contour.monochrome ? 1 : 0);
     m_contourModeComboBox->setCurrentIndex(contourModeIndex >= 0 ? contourModeIndex : 0);
@@ -330,6 +453,13 @@ void PostDisplayControlWidget::syncRangeControls()
     QScopedValueRollback<bool> guard(m_syncing, true);
 
     const PostDisplayFieldContext& context = postDisplayFieldContext();
+    m_thresholdGroup->setEnabled(context.valid && context.supportsThreshold);
+    const auto& thresholdStyle = postFieldDisplayStyle(context.fieldName);
+    m_thresholdEnabled->setChecked(thresholdStyle.thresholdEnabled);
+    m_thresholdValue->setValue(thresholdStyle.threshold);
+    m_belowTransparency->setValue(thresholdStyle.belowTransparency);
+    m_thresholdValue->setEnabled(thresholdStyle.thresholdEnabled);
+    m_belowTransparency->setEnabled(thresholdStyle.thresholdEnabled);
     ui->rangeGroupBox->setEnabled(context.valid);
     ui->scalarBarGroupBox->setEnabled(context.valid && context.supportsScalarBar);
     ui->showScalarBarCheckBox->setEnabled(context.valid && context.supportsScalarBar);
@@ -357,7 +487,9 @@ void PostDisplayControlWidget::syncRangeControls()
         return;
     }
 
-    ui->currentFieldValueLabel->setText(ResultDisplayNames::displayName(context.fieldName));
+    ui->currentFieldValueLabel->setTextFormat(Qt::RichText);
+    ui->currentFieldValueLabel->setText(
+        PostScientificText::toHtml(ResultDisplayNames::displayName(context.fieldName)));
     PostFieldRangeStyle& range = postFieldRangeStyle(
         context.fieldName, context.dataMinimum, context.dataMaximum);
     ui->autoRangeCheckBox->setChecked(range.automatic);
@@ -383,7 +515,7 @@ void PostDisplayControlWidget::applyScalarBarAppearance(bool renderNow)
                                            ? ResultDisplayNames::scalarBarName(context.fieldName)
                                            : QString();
         const QString title = resolvedPostScalarBarTitle(automaticTitle);
-        scalarBar->SetTitle(title.toUtf8().constData());
+        m_visualService->setScalarBarTitle(title, false);
         scalarBar->Modified();
     }
     m_visualService->showScalarBar(postScalarBarShouldBeVisible(), false);
@@ -501,13 +633,17 @@ bool PostDisplayControlWidget::handleScalarBarDragEvent(unsigned long eventId)
         style.positionX = x;
         style.positionY = y;
         scalarBar->Modified();
-        renderWindow->Render();
+        // A raw renderWindow->Render() bypasses VisualizationWidget::render(),
+        // which owns the Qt <sub>/<sup> title overlay placement. Keep both in sync.
+        m_visualService->render();
         return true;
     }
 
     if (eventId == vtkCommand::MiddleButtonReleaseEvent && m_draggingScalarBar)
     {
         m_draggingScalarBar = false;
+        // Re-sync after the last mouse event as well (high-DPI/resizing).
+        m_visualService->render();
         return true;
     }
     return false;

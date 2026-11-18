@@ -802,7 +802,7 @@ void PickManager::updateStructure()
     m_solidPickDataSet = dataSetFromProp(m_solidProp);
     m_linePickDataSet = dataSetFromProp(m_lineProp);
 
-    // 只允许拾取当前网格 actor。Netgen 网格导入后场景中可能同时保留几何、
+    // 只允许拾取当前网格 actor。SMESH 网格导入后场景中可能同时保留几何、
     // 旧网格或辅助 actor；不限制 PickList 时 vtkCellPicker 可能先命中其他 prop，
     // 随后因 prop 不属于当前网格而被 pickAt() 丢弃，表现为“开启点选没有效果”。
     if (m_cellPicker)
@@ -1189,6 +1189,7 @@ void PickManager::resetProjectState()
 
     m_boxSelectEnabledByDomainUuid.clear();
     m_clickPickEnabledByDomainUuid.clear();
+    m_preferredDomainCategoryByDomainUuid.clear();
     m_nodeConstraintFlagsByDomainUuid.clear();
     m_ownerPointSolidByDomain.clear();
     m_pointsSolidByDomainUuid.clear();
@@ -1571,9 +1572,8 @@ void PickManager::OnLeftButtonRelease(vtkObject* caller, unsigned long, void* cl
         ;
     else
     {
-        if (!self->isClickPickEnabledForActive())
-            return;
-        self->pickAt(xy[0], xy[1]);
+        if (self->isClickPickEnabledForActive())
+            self->pickAt(xy[0], xy[1]);
     }
 
     if (self->m_styleDisabledByBoxSelect)
@@ -1640,7 +1640,7 @@ bool PickManager::pickAt(int x, int y)
 
     if (m_pickMode == PickMode::Domain)
     {
-        const int pickedDomainDim = (kind == GridKind::Line) ? 1 : 3;
+        int pickedDomainDim = (kind == GridKind::Line) ? 1 : 3;
 
         vtkIdType origCellId = cellId;
         vtkDataArray* origCellArr = findArray(ds->GetCellData(), "vtkOriginalCellIds", "orig_cell_id");
@@ -1652,6 +1652,13 @@ bool PickManager::pickAt(int x, int y)
         {
             QVector<DomainKey> candidates;
             const QVector<DomainKey> domains = meshSvc->availableDomains(QString());
+            // Solid actor also displays 2D meshes. Do not hard-code dimension 3.
+            if (kind == GridKind::Solid)
+            {
+                const int actualDim = meshSvc->mshPickMapSolid().meshDim;
+                if (actualDim == 2 || actualDim == 3)
+                    pickedDomainDim = actualDim;
+            }
             for (const DomainKey& key : domains)
             {
                 if (key.dim != pickedDomainDim || key.id == 0)
@@ -1661,9 +1668,29 @@ bool PickManager::pickAt(int x, int y)
                     candidates.push_back(key);
             }
 
+            // Materials, excavation and other pages do not use the same category.
+            // A preferred category prevents clicking a cave LAYER from selecting MATYPE.
+            const QString preferred = m_preferredDomainCategoryByDomainUuid
+                .value(m_currentDomain).value(m_currentUUid);
+            if (!preferred.isEmpty())
+            {
+                for (const DomainKey& key : candidates)
+                {
+                    if (key.category.compare(preferred, Qt::CaseInsensitive) == 0 &&
+                        domainKeyIsValidForDisplay(key))
+                    {
+                        pickedKey = key;
+                        break;
+                    }
+                }
+                if (!domainKeyIsValidForDisplay(pickedKey))
+                    return false; // Never silently select a different business category.
+            }
+
                    // 负数目前主要出现在 LAYER 中；先识别负数 LAYER，避免被同一单元上的 MATYPE 抢先选走。
             for (const DomainKey& key : candidates)
             {
+                if (!preferred.isEmpty()) break;
                 if (key.category.compare(QStringLiteral("LAYER"), Qt::CaseInsensitive) == 0 && key.id < 0)
                 {
                     pickedKey = key;
@@ -3799,6 +3826,12 @@ void PickManager::setBoxSelectEnabled(const QString& domain, const QString& uuid
         updateDragRect(0, 0, 0, 0, false);
 }
 
+void PickManager::setPreferredDomainCategory(const QString& domain, const QString& uuid,
+                                             const QString& category)
+{
+    m_preferredDomainCategoryByDomainUuid[domain][uuid] = category.trimmed();
+}
+
 void PickManager::setClickPickEnabled(const QString& domain, const QString& uuid, bool enabled)
 {
     m_clickPickEnabledByDomainUuid[domain][uuid] = enabled;
@@ -4016,6 +4049,24 @@ bool PickManager::hardwareBoxSelect(int x0, int y0, int x1, int y1, bool deselec
 
     bool changed = false;
     int dirtyBits = DirtyNone;
+    bool solidSelectionTouched = false;
+    bool lineSelectionTouched = false;
+    auto noteSelectionTouched = [&](GridKind kind)
+    {
+        if (kind == GridKind::Solid)
+            solidSelectionTouched = true;
+        else
+            lineSelectionTouched = true;
+    };
+    auto notifySelectionChanged = [&]()
+    {
+        if (!changed)
+            return;
+        if (solidSelectionTouched)
+            emit selectionChanged(m_currentDomain, m_currentUUid, m_pickMode, GridKind::Solid);
+        if (lineSelectionTouched)
+            emit selectionChanged(m_currentDomain, m_currentUUid, m_pickMode, GridKind::Line);
+    };
 
     auto worldPointInRect = [&](const double p[3]) -> bool
     {
@@ -4397,8 +4448,13 @@ bool PickManager::hardwareBoxSelect(int x0, int y0, int x1, int y1, bool deselec
             setNodeSelected_NoRefresh(GridKind::Line, pointId, !deselect);
 
         changed = !solidPointIds.isEmpty() || !linePointIds.isEmpty();
+        if (!solidPointIds.isEmpty())
+            noteSelectionTouched(GridKind::Solid);
+        if (!linePointIds.isEmpty())
+            noteSelectionTouched(GridKind::Line);
         if (changed)
             markDirty(DirtyNode);
+        notifySelectionChanged();
         return changed;
     }
 
@@ -4417,6 +4473,7 @@ bool PickManager::hardwareBoxSelect(int x0, int y0, int x1, int y1, bool deselec
                 setFaceSelected_NoRefresh(GridKind::Solid,
                                           packFaceKey(originalCellId, originalFaceLocalId),
                                           !deselect);
+                noteSelectionTouched(GridKind::Solid);
                 changed = true;
                 continue;
             }
@@ -4430,6 +4487,7 @@ bool PickManager::hardwareBoxSelect(int x0, int y0, int x1, int y1, bool deselec
             {
                 setFaceSelected_NoRefresh(GridKind::Solid,
                                           packFaceKey(candidate.cellId, 15), !deselect);
+                noteSelectionTouched(GridKind::Solid);
                 changed = true;
                 continue;
             }
@@ -4437,11 +4495,13 @@ bool PickManager::hardwareBoxSelect(int x0, int y0, int x1, int y1, bool deselec
             {
                 setFaceSelected_NoRefresh(GridKind::Solid,
                                           packFaceKey(candidate.cellId, faceId), !deselect);
+                noteSelectionTouched(GridKind::Solid);
                 changed = true;
             }
         }
         if (changed)
             markDirty(DirtyFace);
+        notifySelectionChanged();
         return changed;
     }
 
@@ -4588,6 +4648,7 @@ bool PickManager::hardwareBoxSelect(int x0, int y0, int x1, int y1, bool deselec
                                     if (hasA && hasB)
                                     {
                                         setEdgeSelected_NoRefresh(kind, edgeKey, !deselect);
+                                        noteSelectionTouched(kind);
                                         changed = true;
                                         matchedByTagSet = true;
                                         break;
@@ -4621,6 +4682,7 @@ bool PickManager::hardwareBoxSelect(int x0, int y0, int x1, int y1, bool deselec
                             {
                                 setEdgeSelected_NoRefresh(kind, packEdgeKey(origCellId, ei),
                                                           !deselect);
+                                noteSelectionTouched(kind);
                                 changed = true;
                                 break;
                             }
@@ -4640,6 +4702,7 @@ bool PickManager::hardwareBoxSelect(int x0, int y0, int x1, int y1, bool deselec
                     if (!edgeInRect(pids))
                         continue;
                     setEdgeSelected_NoRefresh(kind, packEdgeKey(pickedCellId, 15), !deselect);
+                    noteSelectionTouched(kind);
                     changed = true;
                     continue;
                 }
@@ -4659,6 +4722,7 @@ bool PickManager::hardwareBoxSelect(int x0, int y0, int x1, int y1, bool deselec
                     if (!edgeInRect(pids))
                         continue;
                     setEdgeSelected_NoRefresh(kind, packEdgeKey(pickedCellId, ei), !deselect);
+                    noteSelectionTouched(kind);
                     changed = true;
                 }
             }
@@ -4707,6 +4771,7 @@ bool PickManager::hardwareBoxSelect(int x0, int y0, int x1, int y1, bool deselec
 
     if (changed && dirtyBits != DirtyNone)
         markDirty(dirtyBits);
+    notifySelectionChanged();
     return changed;
 }
 

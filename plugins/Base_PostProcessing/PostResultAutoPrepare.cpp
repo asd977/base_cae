@@ -27,9 +27,8 @@ namespace
 constexpr char kLegacyPostResultRoot[] = "post";
 constexpr char kManifestName[] = "manifest.json";
 constexpr char kLegacyAnalysisManifestFileName[] = "analysis.json";
-// v26: 强度折减结果把折减系数从“结果文件”提升到第三层结果选择器；
-// 同时继续沿用原生 VTM/MATYPE Block 缓存。旧 manifest 需要重建。
-constexpr int kManifestVersion = 26;
+// v27: 补充 NODCMM 的 FUN 原始结果；旧缓存升级后可直接选择新结果。
+constexpr int kManifestVersion = 27;
 
 bool resultPackageExists(const QFileInfo& info)
 {
@@ -487,6 +486,8 @@ QString baseDisplayName(const QString& kind)
         return QStringLiteral("主塑性应变");
     if (normalized == QStringLiteral("stress_level"))
         return QStringLiteral("应力水平");
+    if (normalized == QStringLiteral("material_function"))
+        return QStringLiteral("材料函数值（FUN）");
     if (normalized == QStringLiteral("failure_zone"))
         return QStringLiteral("破坏区");
     if (normalized == QStringLiteral("vtu") || normalized == QStringLiteral("vtm"))
@@ -715,6 +716,7 @@ GeneratedFileInfo generatedFileInfo(const QString& fileName, bool strengthReduct
         {"plastic_zone_stress", "plastic_zone_stress"},
         {"head_pressure", "head_pressure"},
         {"stress_level", "stress_level"},
+        {"material_function", "material_function"},
         {"failure_zone", "failure_zone"},
         {"displacement", "displacement"},
         {"velocity", "velocity"},
@@ -727,6 +729,7 @@ GeneratedFileInfo generatedFileInfo(const QString& fileName, bool strengthReduct
         {"tec_pls_stress", "plastic_zone_stress"},
         {"tec_cmm", "stress_level"},
         {"tec_sl", "stress_level"},
+        {"tec_fun", "material_function"},
         {"tec_hp", "head_pressure"},
     };
 
@@ -1070,7 +1073,7 @@ int resultTypeOrder(const QString& displayName)
         QStringLiteral("水头渗压"), QStringLiteral("渗流速度"),
         QStringLiteral("位移"), QStringLiteral("主应力"),
         QStringLiteral("最大塑性应力"), QStringLiteral("塑性应变"), QStringLiteral("主塑性应变"),
-        QStringLiteral("应力水平"), QStringLiteral("破坏区"),
+        QStringLiteral("应力水平"), QStringLiteral("材料函数值（FUN）"), QStringLiteral("破坏区"),
         QStringLiteral("网格结果"), QStringLiteral("其他结果")};
     for (int index = 0; index < orderedTypes.size(); ++index)
     {

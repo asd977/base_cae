@@ -1,4 +1,4 @@
-﻿#include <EventManager.h>
+#include <EventManager.h>
 #include <PluginInterface.h>
 #include <PublicConstants.h>
 #include <StyleManager.h>
@@ -223,7 +223,7 @@ int main(int argc, char** argv)
     auto* vtkOutput = ApplicationVtkOutputWindow::New();
     vtkOutputWindow::SetInstance(vtkOutput);
     vtkOutput->Delete();
-    app.setWindowIcon(QIcon(QStringLiteral(":/resources/icon.svg")));
+    app.setWindowIcon(QIcon(QStringLiteral(":/resources/icon.ico")));
     app.setStyle(new NeutralCheckStyle);
 
     QTranslator qtChineseTranslator;
@@ -244,7 +244,7 @@ int main(int argc, char** argv)
     QSettings uiSettings(QDir(exePath).filePath(QStringLiteral("config/file.ini")),
                          QSettings::IniFormat);
     const QString initialTheme =
-        uiSettings.value(QStringLiteral("General/uiTheme"), QStringLiteral("light")).toString();
+        uiSettings.value(QStringLiteral("General/uiTheme"), QStringLiteral("blue")).toString();
     StyleManager::applyTheme(app, initialTheme);
 
 

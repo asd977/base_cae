@@ -62,6 +62,14 @@ function(cae_add_base_plugin plugin_dir)
 
     cae_collect_target_files(_headers _sources _forms _resources "${_dir}")
 
+    # The SMESH/NETGEN implementation is built exclusively into the standalone
+    # CAE_SMESHBridge DLL. Base_Mesh accesses it through SMESHBridgeApi.h and
+    # QLibrary; compiling SMESHBridge.cpp into Base_Mesh as well would require
+    # the native SMESH SDK in the UI plugin and duplicate the bridge exports.
+    if(plugin_dir STREQUAL "Base_Mesh")
+        list(FILTER _sources EXCLUDE REGEX "/tools/SMESHBridge\\.cpp$")
+    endif()
+
     if(plugin_dir STREQUAL "Base_ProjectManager")
         list(FILTER _headers EXCLUDE REGEX ".*/ProjectManagerWidget\\.h$")
         list(FILTER _sources EXCLUDE REGEX ".*/ProjectManagerWidget\\.cpp$")
@@ -135,7 +143,8 @@ function(cae_add_base_plugin plugin_dir)
         PRIVATE
             core
             ${_qt_libs}
-            CAE::Netgen
+            # NETGEN is consumed inside the standalone SMESH bridge, not
+            # through a direct CAE::Netgen target on every Qt plugin.
             CAE::OCC
             CAE::DockingWidget
             CAE::SARibbon
@@ -197,3 +206,14 @@ endfunction()
 foreach(_plugin IN LISTS CAE_BASE_PLUGIN_DIRS)
     cae_add_base_plugin(${_plugin})
 endforeach()
+
+# The standalone SMESH backend lives in a separately loaded DLL.  Register it
+# after Base_Mesh exists so callers (including meshing check targets in the
+# parent CMake project) may safely depend on CAE_SMESHBridge.
+# Do not create a dummy target: the real SDK/OCCT compatibility checks in the
+# backend module must still run.
+if(TARGET Base_Mesh AND NOT TARGET CAE_SMESHBridge)
+    include("${CMAKE_CURRENT_SOURCE_DIR}/Base_Mesh/cmake/SMESHBackend.cmake")
+    cae_enable_smesh_backend(Base_Mesh)
+endif()
+

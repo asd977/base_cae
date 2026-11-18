@@ -1,10 +1,14 @@
 #pragma once
 
+#include "PostScientificText.h"
+
 #include <QApplication>
 #include <QComboBox>
 #include <QListView>
 #include <QPointer>
 #include <QSize>
+#include <QStyle>
+#include <QStyleOptionViewItem>
 #include <QStyledItemDelegate>
 
 #include <algorithm>
@@ -17,6 +21,30 @@ public:
     explicit FixedHeightDelegate(QObject* parent = nullptr)
         : QStyledItemDelegate(parent)
     {
+    }
+
+    void paint(QPainter* painter, const QStyleOptionViewItem& option,
+               const QModelIndex& index) const override
+    {
+        const QString field = index.data(Qt::DisplayRole).toString();
+        if (!PostScientificText::hasSubscript(field))
+        {
+            QStyledItemDelegate::paint(painter, option, index);
+            return;
+        }
+
+        QStyleOptionViewItem styled = option;
+        initStyleOption(&styled, index);
+        const QString shown = styled.text;
+        styled.text.clear();
+        const QStyle* itemStyle = styled.widget ? styled.widget->style() : QApplication::style();
+        itemStyle->drawControl(QStyle::CE_ItemViewItem, &styled, painter, styled.widget);
+        const QRect textRect = itemStyle->subElementRect(
+            QStyle::SE_ItemViewItemText, &styled, styled.widget).adjusted(2, 0, -2, 0);
+        const bool selected = styled.state & QStyle::State_Selected;
+        const QColor color = styled.palette.color(
+            selected ? QPalette::HighlightedText : QPalette::Text);
+        PostScientificText::paint(painter, textRect, shown, styled.font, color);
     }
 
     QSize sizeHint(const QStyleOptionViewItem& option,

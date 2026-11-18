@@ -1,9 +1,17 @@
 #include "SlopeStabilityWidget.h"
+#include "SlopeExcavationSettings.h"
+#include "SlopeExcavationProtocol.h"
+#include <ServiceRegistry.h>
+#include <services/MeshModuleControllerService.h>
+#include <QFileInfo>
+#include <QSaveFile>
 
 #include <PublicConstants.h>
 #include <PublicVariables.h>
 #include <SolverFilePaths.h>
 #include <QComboBox>
+#include <QCheckBox>
+#include <QLabel>
 #include <QDir>
 #include <QFile>
 #include <QHeaderView>
@@ -24,6 +32,8 @@
 #include "ui_SlopeStabilityWidget.h"
 
 #include "SolverUiLayoutHelper.h"
+#include "SolverQuietBoundary.h"
+#include "QuietBoundarySelector.h"
 namespace
 {
 QStringList splitGravityComponents(const QString& value)
@@ -80,6 +90,11 @@ SlopeStabilityWidget::SlopeStabilityWidget(QWidget* parent)
     Q_UNUSED(parent);
     ui->setupUi(this);
     setupStableModeSections();
+    auto* excavationBox=new QGroupBox(QStringLiteral("分级开挖与加固"),this);
+    auto* excavationLayout=new QVBoxLayout(excavationBox);
+    m_excavation=new SlopeExcavationSettings(excavationBox);excavationLayout->addWidget(m_excavation);
+    ui->verticalLayout->insertWidget(1,excavationBox);
+    connect(m_excavation,&SlopeExcavationSettings::initialStressRequested,this,&SlopeStabilityWidget::initialStressRequested);
     SolverUiLayoutHelper::polishPage(this);
     SolverUiLayoutHelper::setupComputeControls(this);
 
@@ -123,6 +138,8 @@ SlopeStabilityWidget::SlopeStabilityWidget(QWidget* parent)
     ui->line5Combo->setItemData(0, "1");
     ui->line5Combo->setItemData(1, "2");
     ui->line5Combo->setItemData(2, "3");
+    ui->line5Combo->addItem(QStringLiteral("线弹性分析"),QStringLiteral("0"));
+    ui->label5->setText(QStringLiteral("力学分析方法"));
     ui->line8Combo->setItemData(0, "1");
     ui->line8Combo->setItemData(1, "2");
     ui->line8Combo->setItemText(1, QStringLiteral("施加已设置的外部荷载"));
@@ -242,7 +259,32 @@ void SlopeStabilityWidget::setupStableModeSections()
     appendFormRow(ui->dynamicForm, endTimeRow);
 
     ui->islopGroup->setTitle(QStringLiteral("静力参数"));
+    m_postExcavationReserveCheck = new QCheckBox(
+        QStringLiteral("计算开挖后强度储备"), ui->islopGroup);
+    m_postExcavationReserveCheck->setObjectName(QStringLiteral("postExcavationReserveCheck"));
+    m_postExcavationReserveCheck->setChecked(true);
+    m_postExcavationReserveCheck->setToolTip(
+        QStringLiteral("仅控制 SOLVER 的开挖后强度储备工况；分级开挖仍需完整的开挖模型。"));
+    ui->formLayout->addRow(QString(), m_postExcavationReserveCheck);
     ui->dynamicGroup->setTitle(QStringLiteral("动力参数"));
+    m_dynamicExcavationShape = new QComboBox(ui->dynamicGroup);
+    m_dynamicExcavationShape->setObjectName(QStringLiteral("dynamicExcavationShape"));
+    m_dynamicExcavationShape->setToolTip(QStringLiteral(
+        "仅对含开挖级的网格生效；没有开挖级时求解器可能强制采用开挖前构型。"));
+    m_dynamicExcavationShape->addItem(QStringLiteral("开挖前构型"), QStringLiteral("1"));
+    m_dynamicExcavationShape->addItem(QStringLiteral("开挖后构型"), QStringLiteral("2"));
+    ui->dynamicForm->addRow(QStringLiteral("动力计算构型"), m_dynamicExcavationShape);
+    m_quietBoundaryCheck = new QCheckBox(QStringLiteral("考虑粘弹性边界"), ui->dynamicGroup);
+    m_quietBoundaryCheck->setObjectName(QStringLiteral("quietBoundaryCheck"));
+    m_quietBoundarySelection = new QuietBoundarySelector(ui->dynamicGroup);
+    m_quietBoundaryStatus = m_quietBoundarySelection->statusLabel();
+    ui->dynamicForm->addRow(QString(),m_quietBoundaryCheck);
+    ui->dynamicForm->addRow(m_quietBoundarySelection);
+    m_quietBoundarySelection->setEnabled(false);
+    connect(m_quietBoundaryCheck,&QCheckBox::toggled,this,[this](bool enabled){
+        m_quietBoundarySelection->setEnabled(enabled);
+        if(!enabled)m_quietBoundarySelection->stop();
+    });
 }
 
 SlopeStabilityWidget::~SlopeStabilityWidget()
@@ -252,10 +294,13 @@ SlopeStabilityWidget::~SlopeStabilityWidget()
 
 void SlopeStabilityWidget::beforeLoad()
 {
+    m_excavation->enter();
 }
 
 void SlopeStabilityWidget::beforeUnload()
 {
+    m_excavation->leave();
+    if(m_quietBoundarySelection)m_quietBoundarySelection->stop();
 }
 
 void SlopeStabilityWidget::updateAnalysisModeVisibility()
@@ -273,6 +318,8 @@ void SlopeStabilityWidget::updateAnalysisModeVisibility()
     ui->reserveGroup->setVisible(showStatic);
     ui->dynamicGroup->setVisible(showDynamic);
 
+    if (m_quietBoundaryStatus)
+        m_quietBoundaryStatus->setText(m_quietBoundarySelection->summary());
     updateMethodVisibility();
     updateDampingControls();
     updateTimeHistoryVisibility();
@@ -285,6 +332,9 @@ void SlopeStabilityWidget::updateMethodVisibility()
     const bool strengthReduction =
         ui->line3Combo->currentData().toString() != QStringLiteral("0");
     ui->reserveGroup->setVisible(showStatic && strengthReduction);
+    if (m_postExcavationReserveCheck)
+        ui->formLayout->setRowVisible(m_postExcavationReserveCheck,
+                                     showStatic && strengthReduction);
 }
 
 void SlopeStabilityWidget::updateDampingControls()
@@ -322,8 +372,23 @@ QString SlopeStabilityWidget::quoteValue(const QString& value) const
 
 QString SlopeStabilityWidget::lineValue(int lineNo) const
 {
+    if (lineNo == 21) return QStringLiteral("-1");
+    if (lineNo == 22) return QString::number(excavationEnabled()?-m_excavation->stageCount():-1);
+    if (lineNo == 23) return excavationEnabled()&&!m_excavation->reinforced()?QStringLiteral("1"):QStringLiteral("0");
+    if (lineNo == 24) return excavationEnabled()&&m_excavation->reinforced()?QStringLiteral("1"):QStringLiteral("0");
     if (lineNo == 4)
         return gravityLineValue();
+    if (lineNo == 10)
+        return m_dynamicExcavationShape ? m_dynamicExcavationShape->currentData().toString()
+                                        : QStringLiteral("1");
+    if (lineNo == 26)
+        return m_postExcavationReserveCheck && m_postExcavationReserveCheck->isChecked()
+            ? QStringLiteral("1") : QStringLiteral("0");
+    if (lineNo == 27)
+        return m_quietBoundaryCheck && m_quietBoundaryCheck->isChecked()
+            && (ui->line19Combo->currentData().toString() == QStringLiteral("2")
+                || ui->line19Combo->currentData().toString() == QStringLiteral("3"))
+            ? QStringLiteral("1") : QStringLiteral("0");
     // MACHAN.DAT 当前始终导出 0 个材料映射，分材料阻尼不可成立。
     if (lineNo == 15)
         return QStringLiteral("0");
@@ -338,6 +403,22 @@ QString SlopeStabilityWidget::lineValue(int lineNo) const
 
 void SlopeStabilityWidget::setLineValue(int lineNo, const QString& value)
 {
+    if (lineNo == 10 && m_dynamicExcavationShape)
+    {
+        const int index = m_dynamicExcavationShape->findData(value.trimmed());
+        m_dynamicExcavationShape->setCurrentIndex(index >= 0 ? index : 0);
+        return;
+    }
+    if (lineNo == 26 && m_postExcavationReserveCheck)
+    {
+        m_postExcavationReserveCheck->setChecked(value.trimmed() != QStringLiteral("0"));
+        return;
+    }
+    if (lineNo == 27 && m_quietBoundaryCheck)
+    {
+        m_quietBoundaryCheck->setChecked(value.trimmed() == QStringLiteral("1"));
+        return;
+    }
     if (lineNo == 4)
     {
         setGravityLineValue(value);
@@ -385,8 +466,9 @@ QString SlopeStabilityWidget::defaultValueByLine(int lineNo) const
 {
     static const QStringList defaults = {"", "MACB.DAT", "3",
                                          "0.0   -9.81   0.0", "1", "500", "0.0001", "1", "IIWL.DAT",
-                                         "--------------", "--------------", "JDTRACE.DAT", "KETRACE.DAT",
-                                         "TDTRACE.DAT", "0", "0", "0.05", "0.0", "1", "MACHAN.DAT"};
+                                         "1", "---", "JDTRACE.DAT", "KETRACE.DAT",
+                                         "TDTRACE.DAT", "0", "0", "0.05", "0.0", "1", "MACHAN.DAT",
+                                         "-1", "-1", "0", "0", "4", "1", "0", "FA_DYNA.DAT", "---", "---"};
     return defaults.value(lineNo - 1);
 }
 
@@ -460,6 +542,11 @@ bool SlopeStabilityWidget::exportIslopDatFile() const
     if (previousCaseDir.exists() && !previousCaseDir.removeRecursively())
         return false;
 
+    for(const QString& folder:{QStringLiteral("CASE01EXCA"),QStringLiteral("CASE01JACA")})
+    {
+        QDir previous(wd.filePath(folder));if(previous.exists() && !previous.removeRecursively())return false;
+    }
+
     // 同步清理该分析的后处理缓存，计算完成后按新工况重新生成。
     QDir previousPostDir(wd.filePath(
         QString::fromUtf8(PublicConstants::kPostResultDirectoryName)));
@@ -481,9 +568,12 @@ bool SlopeStabilityWidget::exportIslopDatFile() const
     QTextStream os(&file);
     os.setEncoding(QStringConverter::System);
     const QString inputDirAbs = ensureTrailingSep(inputDir.absolutePath());
-    const QString caseDirAbs = ensureTrailingSep(wd.filePath("CASE01"));
+    const QString dynamicState=excavationEnabled() && lineValue(10)==QStringLiteral("2")
+        ? QStringLiteral("CASE01%1/%2%3").arg(m_excavation->reinforced()?"JACA":"EXCA",m_excavation->reinforced()?"J":"E",QStringLiteral("%1").arg(m_excavation->stageCount(),2,10,QLatin1Char('0')))
+        : QStringLiteral("CASE01");
+    const QString caseDirAbs = ensureTrailingSep(wd.filePath(dynamicState));
 
-    for (int lineNo = 1; lineNo <= 20; ++lineNo)
+    for (int lineNo = 1; lineNo <= 30; ++lineNo)
     {
         QString value = lineValue(lineNo);
         if (lineNo == 1)
@@ -500,7 +590,10 @@ bool SlopeStabilityWidget::exportIslopDatFile() const
         if (factorItem && !factorItem->text().trimmed().isEmpty())
             ++nsrf;
     }
-    os << nsrf << "    NSRF\n";
+    // SLOPIKEY uses NSRF for NSTEP even when strength reduction is off.
+    // A single unit load step is required for an ordinary elastic solve.
+    os << (strengthReduction?nsrf:1) << "    NSRF\n";
+    if(!strengthReduction)os << "1.0000 1.0000 1 SRF IFPR II\n";
     for (int row = 0; strengthReduction && row < ui->strengthReserveTable->rowCount(); ++row)
     {
         const auto* factorItem = ui->strengthReserveTable->item(row, 0);
@@ -544,6 +637,18 @@ bool SlopeStabilityWidget::validateInputs(QString* errorMessage) const
             *errorMessage = message;
         return false;
     };
+    if(excavationEnabled())
+    {
+        const auto stages=m_excavation->selectedStages();QSet<int> used;
+        if(stages.isEmpty())return fail(QStringLiteral("请新增开挖级并选择区域。"));
+        for(int i=0;i<stages.size();++i)
+        {
+            if(stages[i].isEmpty())return fail(QStringLiteral("第 %1 级没有选择开挖区域。").arg(i+1));
+            for(int id:stages[i]){if(used.contains(id))return fail(QStringLiteral("同一区域不能分配到多个开挖级。"));used.insert(id);}
+        }
+        if(m_excavation->reinforced() && m_excavation->reinforcement()->mode()==CaveReinforcementFieldPage::Mode::Disabled)
+            return fail(QStringLiteral("请在开挖面加固中选择加固方式。"));
+    }
     auto number = [](const QLineEdit* edit, double* value = nullptr)
     {
         bool ok = false;
@@ -553,6 +658,11 @@ bool SlopeStabilityWidget::validateInputs(QString* errorMessage) const
         return ok;
     };
 
+    if (m_quietBoundaryCheck && m_quietBoundaryCheck->isChecked()
+        && (ui->line19Combo->currentData().toString() == QStringLiteral("2")
+            || ui->line19Combo->currentData().toString() == QStringLiteral("3"))
+        && !m_quietBoundarySelection->generate())
+        return fail(QStringLiteral("请在模型中选择粘弹性边界区域；当前支持线性边界面（二维选择边）。"));
     if (!number(ui->gravityXEdit) || !number(ui->gravityYEdit) || !number(ui->gravityZEdit))
         return fail(QStringLiteral("重力加速度必须填写三个有效数值。"));
 
@@ -630,10 +740,14 @@ bool SlopeStabilityWidget::exportTdtraceDatFile() const
 QJsonObject SlopeStabilityWidget::saveJson()
 {
     QJsonObject obj;
+    obj["excavation"]=m_excavation->save();
+    obj["quiet_boundary_selection"]=m_quietBoundarySelection?m_quietBoundarySelection->save():QJsonObject();
     QJsonArray arr;
-    for (int lineNo = 1; lineNo <= 20; ++lineNo)
+    for (int lineNo = 1; lineNo <= 30; ++lineNo)
         arr.append(lineValue(lineNo));
     obj["base_values"] = arr;
+    obj["quiet_boundary_enabled"] =
+        m_quietBoundaryCheck && m_quietBoundaryCheck->isChecked();
     QJsonArray reserve;
     for (int row = 0; row < ui->strengthReserveTable->rowCount(); ++row)
     {
@@ -663,8 +777,10 @@ QJsonObject SlopeStabilityWidget::saveJson()
 
 void SlopeStabilityWidget::loadJson(const QJsonObject& obj)
 {
+    m_excavation->load(obj.value("excavation").toObject());
+    m_quietBoundarySelection->load(obj.value("quiet_boundary_selection").toObject(),obj.value("quiet_boundary_enabled").toBool(false));
     const QJsonArray arr = obj.value("base_values").toArray();
-    for (int lineNo = 1; lineNo <= 20; ++lineNo)
+    for (int lineNo = 1; lineNo <= 30; ++lineNo)
     {
         if (lineNo == 1)
             continue;
@@ -673,6 +789,9 @@ void SlopeStabilityWidget::loadJson(const QJsonObject& obj)
         setLineValue(lineNo, value);
     }
 
+    if (obj.contains("quiet_boundary_enabled") && m_quietBoundaryCheck)
+        m_quietBoundaryCheck->setChecked(
+            obj.value("quiet_boundary_enabled").toBool(false));
     if (obj.contains("strength_reserve"))
     {
         const QJsonArray savedReserve = obj.value("strength_reserve").toArray();
@@ -748,4 +867,43 @@ void SlopeStabilityWidget::setComputing(bool computing)
     ui->btnCompute->setProperty("computing", computing);
     ui->btnCompute->setText(computing ? QStringLiteral("停止计算")
                                       : QStringLiteral("数值法计算"));
+}
+
+bool SlopeStabilityWidget::excavationEnabled() const { return m_excavation && m_excavation->enabled(); }
+
+bool SlopeStabilityWidget::prepareExcavationFiles(const QString& inputDirectory,const QString& stressDirectory,QString* error)
+{
+    auto fail=[&](const QString& message){if(error)*error=message;return false;};
+    auto* mesh=ServiceRegistry::instance().getService<MeshModuleControllerService>();
+    if(!mesh)return fail(QStringLiteral("无法读取当前网格。"));
+    auto grid=mesh->getVtkUnstructuredGrid();
+    const int dimension=PublicVariables::instance().get(PublicConstants::kMeshDimension).toInt();
+    const QDir input(inputDirectory);
+    for(const QString& name:{QStringLiteral("MODSTR.TXT"),QStringLiteral("ISGMAR.TXT")})
+    {
+        QFile source(QDir(stressDirectory).filePath(name));
+        if(!source.open(QIODevice::ReadOnly) || source.size()==0)return fail(QStringLiteral("请先通过“设置／计算初始地应力”完成本工况的初始地应力计算。"));
+        const auto bytes=source.readAll();QSaveFile output(input.filePath(name));
+        if(!output.open(QIODevice::WriteOnly) || output.write(bytes)!=bytes.size() || !output.commit())return fail(QStringLiteral("无法准备初始地应力文件。"));
+    }
+    SlopeExcavationProtocol::Prepared prepared;QString message;
+    const bool preserve=QFileInfo(mesh->sourceMeshFilePath()).suffix().compare("dat",Qt::CaseInsensitive)==0;
+    if(!SlopeExcavationProtocol::prepare(input,grid,dimension,preserve,m_excavation->selectedStages(),prepared,message))return fail(message);
+    if(m_excavation->reinforced())
+    {
+        if(!m_excavation->reinforcement()->exportFieldFiles(inputDirectory,grid,dimension,prepared.layers,prepared.faces,&message))return fail(message);
+        if(!SlopeExcavationProtocol::remapReinforcementIds(input,grid,prepared,message))return fail(message);
+    }
+    else {QFile::remove(input.filePath("ALFAIE.DAT"));QFile::remove(input.filePath("ALFAJD.DAT"));}
+    // AUTOSLOP tests the input directory, but READ_ALFAIE reads the run root.
+    // Supply both native locations; keep both fresh when support is disabled.
+    QDir runtime(inputDirectory);runtime.cdUp();
+    for(const QString& name:{QStringLiteral("ALFAIE.DAT"),QStringLiteral("ALFAJD.DAT")})
+    {
+        if(!m_excavation->reinforced()){QFile::remove(runtime.filePath(name));continue;}
+        QFile source(input.filePath(name));if(!source.open(QIODevice::ReadOnly))return fail(QStringLiteral("无法读取加固参数场。"));
+        const auto bytes=source.readAll();QSaveFile output(runtime.filePath(name));
+        if(!output.open(QIODevice::WriteOnly)||output.write(bytes)!=bytes.size()||!output.commit())return fail(QStringLiteral("无法准备工况加固参数场。"));
+    }
+    return true;
 }

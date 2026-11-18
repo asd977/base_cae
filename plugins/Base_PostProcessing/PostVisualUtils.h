@@ -13,6 +13,7 @@
 #include <vtkCellData.h>
 #include <vtkCellArray.h>
 #include <vtkDataArray.h>
+#include <vtkDoubleArray.h>
 #include <vtkExtractCells.h>
 #include <vtkIdList.h>
 #include <vtkLookupTable.h>
@@ -38,6 +39,7 @@
 #include <QDebug>
 #include <QDialogButtonBox>
 #include <QDoubleSpinBox>
+#include "CompactPostDoubleSpinBox.h"
 #include <QFormLayout>
 #include <QGroupBox>
 #include <QHash>
@@ -66,6 +68,9 @@ struct PostScalarBarStyle
     int labelFont{11};
     int precision{4};
     int tickCount{7};
+    // 0=VTK auto; 1=exact equal-interval count; 2=specified nice step.
+    int tickMode{0};
+    double tickStep{1.0};
     int widthPercent{8};
     int heightPercent{62};
     bool hasCustomPosition{false};
@@ -87,6 +92,9 @@ struct PostFieldDisplayStyle
 {
     // 仅用于有明确离散语义的结果：0=正常显示，2=隐藏零值区域。
     int zeroDisplayMode{0};
+    bool thresholdEnabled{false};
+    double threshold{0.0};
+    int belowTransparency{80};
 };
 
 struct PostFieldRangeStyle
@@ -103,6 +111,7 @@ struct PostSceneStyle
     bool followMeshFilter{true};
     // 0=表面，1=表面+单元边线，2=线框。
     int representationMode{0};
+    bool showSurfaceOutline{true};
     // 网格线强度百分比；越小越接近背景色。
     int gridLineStrength{35};
 };
@@ -116,6 +125,7 @@ struct PostDisplayFieldContext
     bool supportsScalarBar{true};
     bool supportsContours{false};
     bool supportsContourLabels{false};
+    bool supportsThreshold{false};
 };
 
 struct PostMeshFilterReport
@@ -391,7 +401,7 @@ inline void setPostViewActive(bool active)
 
 inline void publishPostDisplayContext(const QString& fieldName, double dataMin, double dataMax,
                                       bool supportsContours, bool supportsContourLabels,
-                                      bool supportsScalarBar = true)
+                                      bool supportsScalarBar = true, bool supportsThreshold = false)
 {
     PostDisplayFieldContext& context = postDisplayFieldContext();
     context.fieldName = fieldName;
@@ -402,6 +412,7 @@ inline void publishPostDisplayContext(const QString& fieldName, double dataMin, 
     context.supportsScalarBar = supportsScalarBar;
     context.supportsContours = supportsContours;
     context.supportsContourLabels = supportsContourLabels;
+    context.supportsThreshold = supportsThreshold;
 
     QVariantMap data;
     data.insert(QStringLiteral("fieldName"), fieldName);
@@ -466,6 +477,7 @@ inline QJsonObject savePostDisplaySettings()
     obj[QStringLiteral("postVisible")] = scene.visible;
     obj[QStringLiteral("followMeshFilter")] = scene.followMeshFilter;
     obj[QStringLiteral("representationMode")] = scene.representationMode;
+    obj[QStringLiteral("showSurfaceOutline")] = scene.showSurfaceOutline;
     obj[QStringLiteral("gridLineStrength")] = scene.gridLineStrength;
     obj[QStringLiteral("scalarBarVisible")] = bar.visible;
     obj[QStringLiteral("scalarBarReverseColors")] = bar.reverseColors;
@@ -474,6 +486,8 @@ inline QJsonObject savePostDisplaySettings()
     obj[QStringLiteral("scalarBarLabelFont")] = bar.labelFont;
     obj[QStringLiteral("scalarBarPrecision")] = bar.precision;
     obj[QStringLiteral("scalarBarTickCount")] = bar.tickCount;
+    obj[QStringLiteral("scalarBarTickMode")] = bar.tickMode;
+    obj[QStringLiteral("scalarBarTickStep")] = bar.tickStep;
     obj[QStringLiteral("scalarBarWidth")] = bar.widthPercent;
     obj[QStringLiteral("scalarBarHeight")] = bar.heightPercent;
     obj[QStringLiteral("scalarBarHasPosition")] = bar.hasCustomPosition;
@@ -490,6 +504,9 @@ inline QJsonObject savePostDisplaySettings()
     {
         QJsonObject display;
         display[QStringLiteral("zeroDisplayMode")] = it.value().zeroDisplayMode;
+        display[QStringLiteral("thresholdEnabled")] = it.value().thresholdEnabled;
+        display[QStringLiteral("threshold")] = it.value().threshold;
+        display[QStringLiteral("belowTransparency")] = it.value().belowTransparency;
         fieldDisplay[it.key()] = display;
     }
     obj[QStringLiteral("fieldDisplay")] = fieldDisplay;
@@ -517,6 +534,7 @@ inline void loadPostDisplaySettings(const QJsonObject& obj)
     scene.visible = obj.value(QStringLiteral("postVisible")).toBool(scene.visible);
     scene.followMeshFilter = obj.value(QStringLiteral("followMeshFilter")).toBool(scene.followMeshFilter);
     scene.representationMode = qBound(0, obj.value(QStringLiteral("representationMode")).toInt(scene.representationMode), 2);
+    scene.showSurfaceOutline = obj.value(QStringLiteral("showSurfaceOutline")).toBool(scene.showSurfaceOutline);
     scene.gridLineStrength = qBound(0, obj.value(QStringLiteral("gridLineStrength")).toInt(scene.gridLineStrength), 100);
     bar.visible = obj.value(QStringLiteral("scalarBarVisible")).toBool(bar.visible);
     bar.reverseColors = obj.value(QStringLiteral("scalarBarReverseColors")).toBool(bar.reverseColors);
@@ -525,6 +543,9 @@ inline void loadPostDisplaySettings(const QJsonObject& obj)
     bar.labelFont = qBound(8, obj.value(QStringLiteral("scalarBarLabelFont")).toInt(bar.labelFont), 32);
     bar.precision = qBound(1, obj.value(QStringLiteral("scalarBarPrecision")).toInt(bar.precision), 10);
     bar.tickCount = qBound(2, obj.value(QStringLiteral("scalarBarTickCount")).toInt(bar.tickCount), 64);
+    bar.tickMode = qBound(0, obj.value(QStringLiteral("scalarBarTickMode")).toInt(bar.tickMode), 2);
+    const double savedTickStep = obj.value(QStringLiteral("scalarBarTickStep")).toDouble(bar.tickStep);
+    bar.tickStep = std::isfinite(savedTickStep) && savedTickStep > 0.0 ? savedTickStep : 1.0;
     bar.widthPercent = qBound(5, obj.value(QStringLiteral("scalarBarWidth")).toInt(bar.widthPercent), 25);
     bar.heightPercent = qBound(25, obj.value(QStringLiteral("scalarBarHeight")).toInt(bar.heightPercent), 90);
     bar.hasCustomPosition = obj.value(QStringLiteral("scalarBarHasPosition")).toBool(bar.hasCustomPosition);
@@ -543,6 +564,11 @@ inline void loadPostDisplaySettings(const QJsonObject& obj)
         // 不再提供“隐藏未破坏区域”或通用 0 值隐藏功能。
         // 兼容旧工程时也强制恢复完整几何显示。
         style.zeroDisplayMode = 0;
+        const auto display = it.value().toObject();
+        style.thresholdEnabled = display.value(QStringLiteral("thresholdEnabled")).toBool(false);
+        style.threshold = display.value(QStringLiteral("threshold")).toDouble(0.0);
+        if (!std::isfinite(style.threshold)) style.thresholdEnabled = false;
+        style.belowTransparency = qBound(0, display.value(QStringLiteral("belowTransparency")).toInt(80), 100);
         postFieldDisplayStyles().insert(it.key(), style);
     }
 
@@ -1190,7 +1216,8 @@ inline bool postActorSupportsRepresentationControl(const QString& id)
            !lower.contains(QStringLiteral("label")) &&
            !lower.contains(QStringLiteral("vector")) &&
            !lower.contains(QStringLiteral("glyph")) &&
-           !lower.contains(QStringLiteral("probe"));
+           !lower.contains(QStringLiteral("probe")) &&
+           !lower.contains(QStringLiteral("outline"));
 }
 
 inline void applyPostActorRepresentation(vtkActor* actor)
@@ -1237,6 +1264,21 @@ inline void applyPostSceneRepresentation(VisualWidgetService* service, bool rend
         service->render();
 }
 
+// A readable initial step for "fixed step" when a new field is many orders
+// of magnitude smaller than the previous one (e.g. velocity in mm/s).
+inline double suggestedPostScalarTickStep(double lo, double hi, int desiredTicks)
+{
+    if (!std::isfinite(lo) || !std::isfinite(hi) || hi <= lo)
+        return 1.0;
+    const double raw = (hi - lo) / double(std::max(1, desiredTicks - 1));
+    if (!(raw > 0.0) || !std::isfinite(raw))
+        return 1.0;
+    const double decade = std::pow(10.0, std::floor(std::log10(raw)));
+    const double ratio = raw / decade;
+    const double unit = ratio <= 1.0 ? 1.0 : (ratio <= 2.0 ? 2.0 : (ratio <= 5.0 ? 5.0 : 10.0));
+    return unit * decade;
+}
+
 inline void applyStandardPostScalarBar(vtkScalarBarActor* scalarBar)
 {
     if (!scalarBar)
@@ -1266,9 +1308,97 @@ inline void applyStandardPostScalarBar(vtkScalarBarActor* scalarBar)
     const bool failureType = postDisplayFieldContext().valid &&
                              postIsFailureTypeField(postDisplayFieldContext().fieldName);
     scalarBar->SetNumberOfLabels(failureType ? 3 : style.tickCount);
-    const QByteArray labelFormat = failureType
-                                       ? QByteArray("%.0f")
-                                       : QStringLiteral("%.%1g").arg(style.precision).toLatin1();
+    // Failure types are discrete categories 0/1/2 and always keep exact labels.
+    // For continuous fields, vtkScalarBarActor supports explicit tick positions.
+    if (failureType)
+    {
+        auto labels = vtkSmartPointer<vtkDoubleArray>::New();
+        for (int i = 0; i <= 2; ++i)
+            labels->InsertNextValue(static_cast<double>(i));
+        scalarBar->SetCustomLabels(labels);
+        scalarBar->UseCustomLabelsOn();
+    }
+    else if (style.tickMode != 0 && scalarBar->GetLookupTable())
+    {
+        const double* range = scalarBar->GetLookupTable()->GetRange();
+        const double lo = range[0];
+        const double hi = range[1];
+        if (std::isfinite(lo) && std::isfinite(hi) && hi > lo)
+        {
+            auto labels = vtkSmartPointer<vtkDoubleArray>::New();
+            if (style.tickMode == 1)
+            {
+                const int count = qBound(2, style.tickCount, 64);
+                for (int i = 0; i < count; ++i)
+                    labels->InsertNextValue(i == count - 1 ? hi :
+                                            lo + (hi - lo) * double(i) / double(count - 1));
+            }
+            else if (style.tickMode == 2 && style.tickStep > 0.0 &&
+                     std::isfinite(style.tickStep))
+            {
+                // ScalarBar allows 64 labels. If there are more, use a whole
+                // multiple of the user's step so the displayed labels stay regular.
+                const double n = (hi - lo) / style.tickStep;
+                const double stride = std::max(1.0, std::ceil(n / 62.0));
+                const double effectiveStep = style.tickStep * stride;
+                const double first = std::ceil((lo - effectiveStep * 1e-10) /
+                                               effectiveStep) * effectiveStep;
+                for (int i = 0; i < 64; ++i)
+                {
+                    const double v = first + effectiveStep * i;
+                    if (!std::isfinite(v) || v > hi + effectiveStep * 1e-9)
+                        break;
+                    if (v >= lo - effectiveStep * 1e-9)
+                        labels->InsertNextValue(std::abs(v) < effectiveStep * 1e-12 ? 0.0 : v);
+                }
+            }
+            if (labels->GetNumberOfTuples() > 0)
+            {
+                scalarBar->SetCustomLabels(labels);
+                scalarBar->UseCustomLabelsOn();
+            }
+        }
+    }
+    QByteArray labelFormat("%.0f");
+    if (!failureType)
+    {
+        const int significantDigits = qBound(1, style.precision, 10);
+        const double* limits = scalarBar->GetLookupTable() ? scalarBar->GetLookupTable()->GetRange() : nullptr;
+        double labelStep = limits ? (limits[1]-limits[0]) / std::max(1, style.tickCount-1) : 1.0;
+        if (scalarBar->GetUseCustomLabels() && scalarBar->GetCustomLabels())
+        {
+            auto* values = scalarBar->GetCustomLabels();
+            for (vtkIdType i = 1; i < values->GetNumberOfTuples(); ++i)
+            {
+                const double gap = values->GetValue(i)-values->GetValue(i-1);
+                if (gap > 0.0) labelStep = std::min(labelStep, gap);
+            }
+        }
+        const int stepDecimals = std::isfinite(labelStep) && labelStep > 0.0
+                                     ? std::max(0, int(std::ceil(-std::log10(labelStep)))) : 0;
+        const double* range = scalarBar->GetLookupTable()
+                                  ? scalarBar->GetLookupTable()->GetRange() : nullptr;
+        const double magnitude = range ? std::max(std::abs(range[0]), std::abs(range[1])) : 0.0;
+        // %g switches from fixed to e-notation at different powers for each tick.
+        // Choose once per legend, so upper/lower/inner labels all look consistent.
+        if (std::isfinite(magnitude) && magnitude > 0.0 &&
+            (magnitude < 1.0e-3 || magnitude >= 1.0e5))
+        {
+            const int distinguishDigits = std::isfinite(labelStep) && labelStep > 0.0
+                                              ? int(std::ceil(std::log10(magnitude / labelStep))) : 0;
+            labelFormat = QStringLiteral("%.%1e").arg(qBound(0, std::max(significantDigits-1, distinguishDigits), 16)).toLatin1();
+        }
+        else if (std::isfinite(magnitude) && magnitude > 0.0)
+        {
+            const int integerDigits = std::max(1, static_cast<int>(std::floor(std::log10(magnitude))) + 1);
+            const int decimalDigits = qBound(0, std::max(significantDigits - integerDigits, stepDecimals), 16);
+            labelFormat = QStringLiteral("%.%1f").arg(decimalDigits).toLatin1();
+        }
+        else
+        {
+            labelFormat = QStringLiteral("%.%1f").arg(significantDigits).toLatin1();
+        }
+    }
     scalarBar->SetLabelFormat(labelFormat.constData());
     scalarBar->DrawBackgroundOff();
     scalarBar->DrawFrameOff();
@@ -1297,7 +1427,7 @@ inline void applyStandardPostScalarBar(VisualWidgetService* service, const QStri
         return;
     applyStandardPostScalarBar(scalarBar);
     const QString resolvedTitle = resolvedPostScalarBarTitle(title);
-    scalarBar->SetTitle(resolvedTitle.toUtf8().constData());
+    service->setScalarBarTitle(resolvedTitle, false);
     scalarBar->Modified();
 }
 
@@ -1322,8 +1452,8 @@ inline bool editPostDisplaySettings(QWidget* parent, VisualWidgetService* servic
         auto* rangeForm = new QFormLayout(rangeGroup);
         automaticRange = new QCheckBox(QStringLiteral("自动使用数据范围"), rangeGroup);
         automaticRange->setChecked(rangeStyle.automatic);
-        rangeMinSpin = new QDoubleSpinBox(rangeGroup);
-        rangeMaxSpin = new QDoubleSpinBox(rangeGroup);
+        rangeMinSpin = new CompactPostDoubleSpinBox(rangeGroup);
+        rangeMaxSpin = new CompactPostDoubleSpinBox(rangeGroup);
         rangeMinSpin->setRange(-1.0e100, 1.0e100);
         rangeMaxSpin->setRange(-1.0e100, 1.0e100);
         rangeMinSpin->setDecimals(8);
@@ -1362,6 +1492,31 @@ inline bool editPostDisplaySettings(QWidget* parent, VisualWidgetService* servic
     QSpinBox* labelFont = makeSpin(8, 32, bar.labelFont);
     QSpinBox* precision = makeSpin(1, 10, bar.precision);
     QSpinBox* ticks = makeSpin(2, 64, bar.tickCount);
+    auto* tickMode = new QComboBox(scalarBarGroup);
+    tickMode->addItem(QStringLiteral("自动刻度"), 0);
+    tickMode->addItem(QStringLiteral("等分数量"), 1);
+    tickMode->addItem(QStringLiteral("固定步长"), 2);
+    tickMode->setCurrentIndex(bar.tickMode);
+    auto* tickStep = new CompactPostDoubleSpinBox(scalarBarGroup);
+    tickStep->setRange(1.0e-12, 1.0e100);
+    tickStep->setDecimals(12);
+    tickStep->setValue(bar.tickStep);
+    tickStep->setKeyboardTracking(false);
+    QObject::connect(tickMode, QOverload<int>::of(&QComboBox::currentIndexChanged),
+                     tickStep, [tickStep, ticks, service](int index)
+    {
+        tickStep->setEnabled(index == 2);
+        if (index != 2 || !service || !service->scalarBarActor())
+            return;
+        auto* lut = service->scalarBarActor()->GetLookupTable();
+        if (!lut)
+            return;
+        const double* limits = lut->GetRange();
+        const double span = limits[1] - limits[0];
+        if (std::isfinite(span) && span > 0.0 && tickStep->value() > span)
+            tickStep->setValue(suggestedPostScalarTickStep(limits[0], limits[1], ticks->value()));
+    });
+    tickStep->setEnabled(bar.tickMode == 2);
     QSpinBox* width = makeSpin(5, 25, bar.widthPercent);
     QSpinBox* height = makeSpin(25, 90, bar.heightPercent);
     width->setSuffix(QStringLiteral(" %"));
@@ -1370,7 +1525,9 @@ inline bool editPostDisplaySettings(QWidget* parent, VisualWidgetService* servic
     scalarBarForm->addRow(QStringLiteral("标题字号"), titleFont);
     scalarBarForm->addRow(QStringLiteral("刻度字号"), labelFont);
     scalarBarForm->addRow(QStringLiteral("数值位数"), precision);
+    scalarBarForm->addRow(QStringLiteral("刻度模式"), tickMode);
     scalarBarForm->addRow(QStringLiteral("刻度数量"), ticks);
+    scalarBarForm->addRow(QStringLiteral("刻度步长"), tickStep);
     scalarBarForm->addRow(QStringLiteral("色标宽度"), width);
     scalarBarForm->addRow(QStringLiteral("色标高度"), height);
     rootLayout->addWidget(scalarBarGroup);
@@ -1437,6 +1594,8 @@ inline bool editPostDisplaySettings(QWidget* parent, VisualWidgetService* servic
     bar.labelFont = labelFont->value();
     bar.precision = precision->value();
     bar.tickCount = ticks->value();
+    bar.tickMode = tickMode->currentData().toInt();
+    bar.tickStep = tickStep->value();
     bar.widthPercent = width->value();
     bar.heightPercent = height->value();
 

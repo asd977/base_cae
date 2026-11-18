@@ -3,6 +3,7 @@
 #include <QWidget>
 
 #include "BasePage.h"
+#include "LoadPageState.h"
 #include "PickManager.h"
 
 class QCheckBox;
@@ -17,6 +18,7 @@ class GeoStressFitFacePage : public BasePage
 {
     Q_OBJECT
   public:
+    CAE_LOAD_PAGE_STATE("editFname","spinII","spinRou","spinHeight","spinPgrout","comboIdir","radionButtonFace","radionButtonEdge")
     explicit GeoStressFitFacePage(QWidget* parent = nullptr);
     ~GeoStressFitFacePage() override;
 

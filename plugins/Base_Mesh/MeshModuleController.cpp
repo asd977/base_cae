@@ -1,17 +1,17 @@
-﻿#include "MeshModuleController.h"
+#include "MeshModuleController.h"
 
 #include <EventManager.h>
 #include <ContextMenuHub.h>
 #include <BarElementPlacementWidget.h>
 #include <GridEditingWidget.h>
-#include <MeshEdgeControlWidget.h>
-#include <MeshFaceControlWidget.h>
 #include <MeshGlobalMeshingWidget.h>
 #include <MeshGroupingWidget.h>
 #include <MeshImportSettingsWidget.h>
 #include <MeshQualityCheckWidget.h>
 #include <MeshSingleMeshingWidget.h>
-#include <MeshVolumeControlWidget.h>
+#include "MeshSmeshSubmeshWidget.h"
+#include "MeshSmeshSweepWidget.h"
+#include "MeshSmeshPartitionWidget.h"
 #include <PickManager.h>
 #include <ProjectNode.h>
 #include <PublicConstants.h>
@@ -20,6 +20,7 @@
 #include <ServiceRegistry.h>
 #include <qfiledialog.h>
 #include <services/OutputService.h>
+#include <services/PreProcessingService.h>
 #include <services/MaterialManagerService.h>
 #include <services/ProjectManagerService.h>
 #include <services/UiFrameService.h>
@@ -172,7 +173,7 @@ static const char* kMeshMapFileName = PublicConstants::kMeshMapFileName;
 static constexpr char kMeshBinaryCacheFileName[] = u8"工程数据/mesh_snapshot.cache.vtu";
 static constexpr char kMeshSurfaceCacheFileName[] = u8"工程数据/mesh_surface_mapped_v2.cache.vtp";
 static constexpr char kMeshLegacyOuterSurfaceCacheFileName[] = u8"工程数据/mesh_surface.cache.vtp";
-static constexpr int kMeshDisplayCacheVersion = 2;
+static constexpr int kMeshDisplayCacheVersion = 3;
 static constexpr char kMeshLineCacheFileName[] = u8"工程数据/mesh_line.cache.vtu";
 // 与 MeshGridIO 的 IIIN 退化拓扑恢复规则同步。旧二进制缓存没有此版本标记，
 // 或版本较低时，必须从 IIIN 权威快照重新解析，避免旧 TOPOLOGY_TYPE 锁死。
@@ -1523,6 +1524,10 @@ static bool saveMeshMapJson(const QString& filePath,
     }
 
     root["tag_sets"] = tagSets;
+    QJsonObject displayNames;
+    for (auto it = pick.groupDisplayNames.constBegin(); it != pick.groupDisplayNames.constEnd(); ++it)
+        displayNames.insert(it.key(), it.value());
+    root["group_display_names"] = displayNames;
 
     QFile file(filePath);
 
@@ -1560,6 +1565,9 @@ static bool loadMeshMapJson(const QString& filePath,
     MshPickMap pick;
 
     pick.meshDim = root.value("mesh_dim").toInt();
+    const QJsonObject displayNames = root.value("group_display_names").toObject();
+    for (auto it = displayNames.begin(); it != displayNames.end(); ++it)
+        pick.groupDisplayNames.insert(it.key(), it.value().toString());
     pick.materialGroupCategory =
         root.value("material_group_category").toString().trimmed();
     pick.excavationGroupCategory =
@@ -1786,14 +1794,30 @@ static const QString kMeshDisplayFilterCustomKey = QStringLiteral("mesh.display.
 static const QString kMeshDisplayFilterKetypeKey = QStringLiteral("mesh.display.filter.ketype.checked");
 static const QString kMeshDisplayFilterMatypeKey = QStringLiteral("mesh.display.filter.matype.checked");
 static const QString kMeshDisplayFilterLayerKey = QStringLiteral("mesh.display.filter.layer.checked");
+static const QString kMeshDisplayFilterRegionKey = QStringLiteral("mesh.display.filter.region.checked");
 static const QString kMeshDisplayColorModeKey = QStringLiteral("mesh.display.color.mode");
 
-static void meshDisplayPreferMaterialColors(vtkUnstructuredGrid* grid)
+static void meshDisplayPreferSourceColors(vtkUnstructuredGrid* grid)
 {
     auto* cellData = grid ? grid->GetCellData() : nullptr;
     auto* matype = cellData ? cellData->GetArray("MATYPE") : nullptr;
-    const int colorMode = (matype && matype->GetNumberOfTuples() > 0) ? 2 : 0;
+    int colorMode = (matype && matype->GetNumberOfTuples() > 0) ? 2 : 0;
+    auto* regions = cellData ? cellData->GetArray("src_part") : nullptr;
+    QSet<int> regionIds;
+    for (vtkIdType cid = 0; regions && cid < regions->GetNumberOfTuples(); ++cid)
+    {
+        const int id = static_cast<int>(regions->GetTuple1(cid));
+        if (id > 0)
+            regionIds.insert(id);
+        if (regionIds.size() > 1)
+        {
+            colorMode = static_cast<int>(GridEditingWidget::ColorMode::Region);
+            break;
+        }
+    }
     PublicVariables::instance().set(kMeshDisplayColorModeKey, colorMode,
+                                    QStringLiteral("project_dir"));
+    PublicVariables::instance().set(kMeshDisplayFilterCustomKey, false,
                                     QStringLiteral("project_dir"));
 }
 
@@ -2196,7 +2220,8 @@ static bool meshDisplayCellPassesDisplayFilter(vtkUnstructuredGrid* grid,
                                                bool customFilter,
                                                const QSet<int>& ketypes,
                                                const QSet<int>& matypes,
-                                               const QSet<int>& layers)
+                                               const QSet<int>& layers,
+                                               const QSet<int>* regions = nullptr)
 {
     if (!customFilter)
         return true;
@@ -2207,6 +2232,15 @@ static bool meshDisplayCellPassesDisplayFilter(vtkUnstructuredGrid* grid,
     {
         return values.isEmpty() || values.contains(value);
     };
+
+    // An empty stored region selection means hide all regions. A missing key
+    // is a legacy filter, which must continue to include every source region.
+    auto* regionArray = grid->GetCellData() ? grid->GetCellData()->GetArray("src_part") : nullptr;
+    if (regionArray && regions)
+    {
+        if (!regions->contains(meshDisplayDomainValue(grid, cellId, "src_part")))
+            return false;
+    }
 
     return allowed(meshDisplayDomainValue(grid, cellId, "KETYPE"), ketypes) &&
            allowed(meshDisplayDomainValue(grid, cellId, "MATYPE"), matypes) &&
@@ -2222,6 +2256,11 @@ static vtkSmartPointer<vtkPolyData> meshDisplayBuildMappedSurface(vtkUnstructure
     auto out = vtkSmartPointer<vtkPolyData>::New();
     if (!grid || grid->GetNumberOfCells() <= 0 || !grid->GetPoints())
         return out;
+
+    const QSet<int> regions = meshDisplayIntSetFromString(
+        PublicVariables::instance().get(kMeshDisplayFilterRegionKey).toString());
+    const QSet<int>* regionFilter = PublicVariables::instance().contains(kMeshDisplayFilterRegionKey)
+        ? &regions : nullptr;
 
            // 无论默认显示还是自定义筛选，都保留原有完整 mapped-surface 语义：
            // 外表面 + MATYPE/LAYER 内部分界面都生成。性能通过缓存解决，不能通过删显示面解决。
@@ -2273,7 +2312,7 @@ static vtkSmartPointer<vtkPolyData> meshDisplayBuildMappedSurface(vtkUnstructure
     const vtkIdType nCells = grid->GetNumberOfCells();
     for (vtkIdType cid = 0; cid < nCells; ++cid)
     {
-        if (!meshDisplayCellPassesDisplayFilter(grid, cid, customFilter, ketypes, matypes, layers))
+        if (!meshDisplayCellPassesDisplayFilter(grid, cid, customFilter, ketypes, matypes, layers, regionFilter))
             continue;
 
         const int dim = meshDisplayCellDimensionFast(grid, cid);
@@ -2488,10 +2527,15 @@ static vtkSmartPointer<vtkUnstructuredGrid> meshDisplayBuildLineGrid(vtkUnstruct
     if (!fullGrid)
         return vtkSmartPointer<vtkUnstructuredGrid>::New();
 
+    const QSet<int> regions = meshDisplayIntSetFromString(
+        PublicVariables::instance().get(kMeshDisplayFilterRegionKey).toString());
+    const QSet<int>* regionFilter = PublicVariables::instance().contains(kMeshDisplayFilterRegionKey)
+        ? &regions : nullptr;
+
     const vtkIdType nCells = fullGrid->GetNumberOfCells();
     for (vtkIdType cid = 0; cid < nCells; ++cid)
     {
-        if (!meshDisplayCellPassesDisplayFilter(fullGrid, cid, customFilter, ketypes, matypes, layers))
+        if (!meshDisplayCellPassesDisplayFilter(fullGrid, cid, customFilter, ketypes, matypes, layers, regionFilter))
             continue;
         if (meshDisplayCellDimensionFast(fullGrid, cid) == 1)
             lineIds->InsertNextId(cid);
@@ -2578,6 +2622,12 @@ static void meshDisplayApplyGlobalState(vtkUnstructuredGrid* fullGrid,
     case 3:
         arrayName = "LAYER";
         break;
+    case 4:
+        arrayName = "TOPOLOGY_TYPE";
+        break;
+    case 5:
+        arrayName = "src_part";
+        break;
     default:
         break;
     }
@@ -2606,9 +2656,6 @@ static void meshDisplayApplyGlobalState(vtkUnstructuredGrid* fullGrid,
 // #include "MeshSingleMeshingWidget.h"
 // #include "MeshMappedMeshingWidget.h"
 // #include "MeshSweepMeshingWidget.h"
-// #include "MeshVolumeControlWidget.h"
-// #include "MeshFaceControlWidget.h"
-// #include "MeshEdgeControlWidget.h"
 // #include "MeshQualityStandardWidget.h"
 
 static void syncPickMapGroupingFromGrid(vtkUnstructuredGrid* grid);
@@ -2668,6 +2715,41 @@ void MeshModuleController::initTreeMenu()
         QStringLiteral("project_tree.node"), this,
         [this](QMenu* menu, const QVariantMap& ctx)
         {
+            if (ctx.value("module").toString()=="Mesh") {
+                const QString kind=ctx.value("kind").toString();
+                const QString uuid=ctx.value("uuid").toString();
+                if(kind=="MeshRoot") {
+                    if(!findDirectChildByKind(m_gridNode,"GlobalMeshing"))
+                        ContextMenuHub::addAction(menu,this,tr("添加整体剖分"),[this]{onMeshGlobal();});
+                } else {
+                    int dimension=kind=="GlobalMeshing"?3:
+                        kind=="SmeshVolumeSubmesh"?3:
+                        kind=="SmeshFaceSubmesh"?2:
+                        kind=="SmeshEdgeSubmesh"?1:0;
+                    if(kind=="GlobalMeshing") {
+                        auto* pm=ServiceRegistry::instance().getService<ProjectManagerService>();
+                        auto* node=pm?pm->findNodeByUuid(uuid):nullptr;
+                        if(auto* page=node?dynamic_cast<MeshGlobalMeshingWidget*>(node->getPage()):nullptr)
+                            dimension=page->meshingDimension();
+                        if(dimension==3) {
+                            ContextMenuHub::addAction(menu,this,tr("添加体网格设置"),[this,uuid]{addSmeshSubmesh(3,uuid);});
+                            ContextMenuHub::addAction(menu,this,tr("添加扫掠网格"),[this]{addSmeshSweep();});
+                            ContextMenuHub::addAction(menu,this,tr("扫掠分块"),[this]{addSmeshPartition();});
+                        }
+                        if(dimension>=2)
+                            ContextMenuHub::addAction(menu,this,tr("添加面网格设置"),[this,uuid]{addSmeshSubmesh(2,uuid);});
+                    } else if(dimension==3) {
+                        ContextMenuHub::addAction(menu,this,tr("添加面网格设置"),[this,uuid]{addSmeshSubmesh(2,uuid);});
+                    }
+                    if(dimension>=2)
+                        ContextMenuHub::addAction(menu,this,tr("添加边网格设置"),[this,uuid]{addSmeshSubmesh(1,uuid);});
+                    if(kind=="SmeshVolumeSubmesh"||kind=="SmeshFaceSubmesh"||
+                       kind=="SmeshEdgeSubmesh"||kind=="SmeshSweep"||kind=="SmeshPartition") {
+                        if(!menu->isEmpty())ContextMenuHub::addSeparator(menu);
+                        ContextMenuHub::addAction(menu,this,tr("删除"),[this,uuid]{removeSmeshNode(uuid);});
+                    }
+                }
+            }
             if (ctx.value(QStringLiteral("module")).toString() != QStringLiteral("Mesh") ||
                 ctx.value(QStringLiteral("kind")).toString() != QStringLiteral("BarElementPlacement"))
             {
@@ -2894,8 +2976,6 @@ bool MeshModuleController::saveProject()
             obj["edge_ids"] = rule.edgeIds;
             obj["max_size"] = rule.maxSize;
             // Keep the legacy values so old builds can still open the project.
-            obj["divisions"] = rule.divisions;
-            obj["bias"] = rule.bias;
             arr.append(obj);
         }
 
@@ -2911,9 +2991,6 @@ bool MeshModuleController::saveProject()
             QJsonObject obj;
             obj["face_ids"] = rule.faceIds;
             obj["max_size"] = rule.maxSize;
-            obj["local_size_factor"] = rule.localSizeFactor;
-            obj["curvature_refine"] = rule.curvatureRefine;
-            obj["curvature_per_2pi"] = rule.curvatureElementsPer2Pi;
             arr.append(obj);
         }
 
@@ -2929,7 +3006,6 @@ bool MeshModuleController::saveProject()
             QJsonObject obj;
             obj["volume_ids"] = rule.volumeIds;
             obj["max_size"] = rule.maxSize;
-            obj["local_size_factor"] = rule.localSizeFactor;
             arr.append(obj);
         }
 
@@ -3264,7 +3340,8 @@ bool MeshModuleController::loadProject()
         {
             m_loadedSurfaceDisplayCache = readMeshSurfaceCache(surfaceCachePath);
         }
-        if (!rebuiltTopologyCache && meshCacheIsFresh(lineCachePath, snapshotPath))
+        if (!rebuiltTopologyCache && displayCacheVersion == kMeshDisplayCacheVersion &&
+            meshCacheIsFresh(lineCachePath, snapshotPath))
             m_loadedLineDisplayCache = readMeshGridCache(lineCachePath);
         // 工程网格恢复完成后自动适应一次视图。
         displayCurrentGrid(true);
@@ -3281,8 +3358,6 @@ bool MeshModuleController::loadProject()
         EdgeControlRule rule;
         rule.edgeIds = obj.value("edge_ids").toString();
         rule.maxSize = obj.value("max_size").toDouble(0.0);
-        rule.divisions = obj.value("divisions").toInt(10);
-        rule.bias = obj.value("bias").toDouble(1.0);
 
         m_edgeRules.push_back(rule);
     }
@@ -3296,9 +3371,6 @@ bool MeshModuleController::loadProject()
         FaceControlRule rule;
         rule.faceIds = obj.value("face_ids").toString();
         rule.maxSize = obj.value("max_size").toDouble(0.0);
-        rule.localSizeFactor = obj.value("local_size_factor").toDouble(1.0);
-        rule.curvatureRefine = obj.value("curvature_refine").toBool(true);
-        rule.curvatureElementsPer2Pi = obj.value("curvature_per_2pi").toInt(20);
 
         m_faceRules.push_back(rule);
     }
@@ -3312,7 +3384,6 @@ bool MeshModuleController::loadProject()
         VolumeControlRule rule;
         rule.volumeIds = obj.value("volume_ids").toString();
         rule.maxSize = obj.value("max_size").toDouble(0.0);
-        rule.localSizeFactor = obj.value("local_size_factor").toDouble(1.0);
 
         m_volumeRules.push_back(rule);
     }
@@ -3324,15 +3395,16 @@ bool MeshModuleController::loadProject()
 
         if (kind == "SingleMeshing")
             return new MeshSingleMeshingWidget();
-
-        if (kind == "VolumeControl")
-            return new MeshVolumeControlWidget();
-
-        if (kind == "FaceControl")
-            return new MeshFaceControlWidget();
-
-        if (kind == "EdgeControl")
-            return new MeshEdgeControlWidget();
+        if (kind == "SmeshVolumeSubmesh" || kind == "SmeshFaceSubmesh" || kind == "SmeshEdgeSubmesh") {
+            auto* page=new MeshSmeshSubmeshWidget(kind=="SmeshVolumeSubmesh"?3:kind=="SmeshFaceSubmesh"?2:1);
+            bindSmeshPage(page); return page;
+        }
+        if (kind == "SmeshSweep") {
+            auto* page=new MeshSmeshSweepWidget();bindSmeshPage(page);return page;
+        }
+        if (kind == "SmeshPartition") {
+            auto* page=new MeshSmeshPartitionWidget();bindSmeshPage(page);return page;
+        }
 
         if (kind == "MeshGrouping")
             return new MeshGroupingWidget();
@@ -3398,6 +3470,38 @@ bool MeshModuleController::loadProject()
         node->setData(0, ProjectNode::RoleUuid, uuid);
 
         page->loadJson(obj.value("page_data").toObject());
+        if(auto* sweep=dynamic_cast<MeshSmeshSweepWidget*>(page)) {
+            sweep->setMeshPlanIdentity(uuid,title);
+            sweep->setPartitionPlanIdentity(parent->getUuid());
+        }
+        if(auto* partition=dynamic_cast<MeshSmeshPartitionWidget*>(page))
+            partition->setMeshPlanIdentity(parent->getUuid(),parent->text(0));
+        if(auto* local=dynamic_cast<MeshSmeshSubmeshWidget*>(page)) {
+            const QString oldDefault=local->settings().dimension==3?tr("体 SubMesh"):
+                local->settings().dimension==2?tr("面 SubMesh"):tr("边 SubMesh");
+            const QString oldTitle=obj.value("title").toString();
+            if(oldTitle==oldDefault || oldTitle==kind || oldTitle.isEmpty()) {
+                const QString prefix=local->settings().name;
+                QSet<QString> names;
+                for(auto* child:parent->getChildren())names.insert(child->text(0));
+                int number=1;
+                while(names.contains(prefix+QStringLiteral("-%1").arg(number)))++number;
+                local->setDisplayName(prefix+QStringLiteral("-%1").arg(number));
+                node->setText(0,local->settings().name);
+            }
+        } else if(auto* sweep=dynamic_cast<MeshSmeshSweepWidget*>(page)) {
+            if(title==tr("扫掠剖分") || title==kind) {
+                const QString prefix=sweep->settings().name;
+                QSet<QString> names;
+                for(auto* child:parent->getChildren())names.insert(child->text(0));
+                int number=1;
+                while(names.contains(prefix+QStringLiteral("-%1").arg(number)))++number;
+                sweep->setDisplayName(prefix+QStringLiteral("-%1").arg(number));
+                node->setText(0,sweep->settings().name);
+            }
+        } else if(kind=="GlobalMeshing" && title==tr("网格划分")) {
+            node->setText(0,tr("整体剖分"));
+        }
 
         parent->addChild(node);
 
@@ -3416,13 +3520,95 @@ bool MeshModuleController::loadProject()
         loadNode(m_gridNode, n.toObject());
     }
 
+    // Retire the old size-control pages without losing their saved CAD sizes.
+    // Valid legacy rules become editable SMESH settings and are removed from
+    // the legacy lists, so the mesher never applies both representations.
+    auto migrateSizeRule = [this](int dimension, const QString& text, double size)
+    {
+        if (!std::isfinite(size) || size <= 0.0)
+            return false;
+        QSet<int> selected;
+        for (const QString& part : text.split(',', Qt::SkipEmptyParts))
+        {
+            const auto bounds = part.trimmed().split('-');
+            bool firstOk = false, lastOk = true;
+            const int first = bounds.value(0).trimmed().toInt(&firstOk);
+            const int last = bounds.size() == 1 ? first : bounds.value(1).trimmed().toInt(&lastOk);
+            if (bounds.size() > 2 || !firstOk || !lastOk || first <= 0 || last < first || last > 1000000)
+                return false;
+            for (int id = first; id <= last; ++id)
+                selected.insert(id);
+        }
+        if (selected.isEmpty())
+            return false;
+
+        auto* parent = findDirectChildByKind(m_gridNode, "GlobalMeshing");
+        if (!parent)
+        {
+            parent = new ProjectNode(tr("整体剖分"), QUuid::createUuid().toString(), new MeshGlobalMeshingWidget());
+            parent->setData(0, ProjectNode::RoleModule, "Mesh");
+            parent->setData(0, ProjectNode::RoleKind, "GlobalMeshing");
+            parent->setData(0, ProjectNode::RoleUuid, parent->getUuid());
+            m_gridNode->addChild(parent);
+        }
+        QSet<QString> names;
+        for (auto* child : parent->getChildren())
+        {
+            names.insert(child->text(0));
+            if (auto* existing = dynamic_cast<MeshSmeshSubmeshWidget*>(child->getPage()))
+            {
+                const auto settings = existing->settings();
+                const QSet<int> ids(settings.entityIds.cbegin(), settings.entityIds.cend());
+                if (settings.dimension == dimension && ids == selected && settings.maxSize == size)
+                    return true;
+                // A second sibling with overlapping CAD ids is invalid in SMESH.
+                // Keep that legacy restriction in its supported data format
+                // rather than changing an existing task's parameters on load.
+                if (settings.dimension == dimension && ids.intersects(selected))
+                    return false;
+            }
+        }
+        const QString prefix = dimension == 3 ? tr("体网格设置") : dimension == 2 ? tr("面网格设置") : tr("边网格设置");
+        int number = 1;
+        while (names.contains(prefix + QStringLiteral("-%1").arg(number))) ++number;
+        QList<int> ordered = selected.values();
+        std::sort(ordered.begin(), ordered.end());
+        QJsonArray ids;
+        for (int id : ordered) ids.append(id);
+        auto* page = new MeshSmeshSubmeshWidget(dimension);
+        const QString name = prefix + QStringLiteral("-%1").arg(number);
+        page->loadJson({{"name", name}, {"entity_ids", ids}, {"max_size", size}});
+        bindSmeshPage(page);
+        auto* node = new ProjectNode(name, QUuid::createUuid().toString(), page);
+        node->setData(0, ProjectNode::RoleModule, "Mesh");
+        node->setData(0, ProjectNode::RoleKind,
+                      dimension == 3 ? "SmeshVolumeSubmesh" : dimension == 2 ? "SmeshFaceSubmesh" : "SmeshEdgeSubmesh");
+        node->setData(0, ProjectNode::RoleUuid, node->getUuid());
+        parent->addChild(node);
+        return true;
+    };
+    m_edgeRules.removeIf([&](const EdgeControlRule& rule) { return migrateSizeRule(1, rule.edgeIds, rule.maxSize); });
+    m_faceRules.removeIf([&](const FaceControlRule& rule) { return migrateSizeRule(2, rule.faceIds, rule.maxSize); });
+    m_volumeRules.removeIf([&](const VolumeControlRule& rule) { return migrateSizeRule(3, rule.volumeIds, rule.maxSize); });
+
     updateQualityCheckContext(false);
+
+    // The dock survives project changes even when this project has no saved
+    // MeshEdit tree node. closeProject() cleared it, so refresh its source here.
+    if (m_gridEditingWidget)
+    {
+        if (m_hasGrid && m_importedGrid)
+            m_gridEditingWidget->setEditableGrid(m_importedGrid, m_sourceFileName);
+        else
+            m_gridEditingWidget->clearGrid();
+    }
 
     return true;
 }
 
 void MeshModuleController::closeProject()
 {
+    MeshSmeshWorkflowState::reset();
     if (auto* qualityProcess = findChild<QProcess*>(QStringLiteral("gridQualityProcess"));
         qualityProcess && qualityProcess->state() != QProcess::NotRunning)
     {
@@ -3571,10 +3757,10 @@ QVector<MeshTagSet> MeshModuleController::boundaryTagSets(int dimFilter) const
         MeshTagSet set = it.value();
         const bool isPhysical =
             set.key.category.compare(QStringLiteral("Physical"), Qt::CaseInsensitive) == 0;
-        const bool isNetgenBoundary =
-            set.key.category.compare(QStringLiteral("NetgenBoundary"),
+        const bool isSmeshBoundary =
+            set.key.category.compare(QStringLiteral("SmeshBoundary"),
                                      Qt::CaseInsensitive) == 0;
-        if (!isPhysical && !isNetgenBoundary)
+        if (!isPhysical && !isSmeshBoundary)
             continue;
         if (set.key.dim < 0 || set.key.dim >= map.meshDim)
             continue;
@@ -3634,7 +3820,7 @@ QString MeshModuleController::displayTextOfTag(const MeshTagKey& key) const
         const QString name = normalizePhysicalUiName(key.dim, key.id, map.tagSets.value(key).name);
         if (key.category == QStringLiteral("Physical") ||
             key.category.compare(QStringLiteral("REGION"), Qt::CaseInsensitive) == 0 ||
-            key.category.compare(QStringLiteral("NetgenBoundary"),
+            key.category.compare(QStringLiteral("SmeshBoundary"),
                                  Qt::CaseInsensitive) == 0)
             return name;
         return QStringLiteral("%1：%2").arg(key.category, name);
@@ -3842,6 +4028,10 @@ void MeshModuleController::initAction()
         {
             onMeshSingle();
         });
+    reg(PublicConstants::kActionPreprocessMeshLocalFace,
+        [this] { onMeshLocalFace(); });
+    reg(PublicConstants::kActionPreprocessMeshLocalEdge,
+        [this] { onMeshLocalEdge(); });
     reg(PublicConstants::kActionPreprocessMeshMapped,
         [this]
         {
@@ -3852,6 +4042,7 @@ void MeshModuleController::initAction()
         {
             onMeshSweep();
         });
+    reg(PublicConstants::kActionPreprocessMeshPartition,[this]() { addSmeshPartition(); });
 
     reg(PublicConstants::kActionPreprocessMeshEdit,
         [this]
@@ -3876,22 +4067,6 @@ void MeshModuleController::initAction()
             onMeshGrouping();
         });
 
-           // --- Control & Quality ---
-    reg(PublicConstants::kActionPreprocessCtrlVolume,
-        [this]
-        {
-            onCtrlVolume();
-        });
-    reg(PublicConstants::kActionPreprocessCtrlSurface,
-        [this]
-        {
-            onCtrlSurface();
-        });
-    reg(PublicConstants::kActionPreprocessCtrlEdge,
-        [this]
-        {
-            onCtrlEdge();
-        }); // NEW
     reg(PublicConstants::kActionPreprocessQualityStd,
         [this]
         {
@@ -3976,7 +4151,7 @@ void MeshModuleController::importGridFile(const QString& fileName)
     if (ext == "vtk")
     {
         // 普通 VTK 不携带 mesh_map.json，必须清掉上一张网格的分组映射。
-        // 有有效 src_part 时按 Netgen 区域处理，否则按 DAT 风格的 MATYPE/LAYER 处理。
+        // 有有效 src_part 时按 SMESH 区域处理，否则按 DAT 风格的 MATYPE/LAYER 处理。
         MshPickMap vtkPickMap;
         bool hasPositiveRegion = false;
         vtkDataArray* regionArray = m_importedGrid->GetCellData()
@@ -4049,8 +4224,8 @@ void MeshModuleController::importGridFile(const QString& fileName)
     m_splitCacheLine = nullptr;
     m_splitCacheNonLine = nullptr;
 
-    // 导入完成后直接进入“显示控制”，并优先按 MATYPE 显示材料颜色。
-    meshDisplayPreferMaterialColors(m_importedGrid);
+    // Multiple source regions should be visible even when they share MATYPE.
+    meshDisplayPreferSourceColors(m_importedGrid);
     displayCurrentGrid(true);
     openGridDisplayControlPage();
     updateQualityCheckContext(true);
@@ -4058,14 +4233,14 @@ void MeshModuleController::importGridFile(const QString& fileName)
     PickManager::instance().clearDomainSelection(QStringLiteral("MaterialManager"));
 }
 
-bool MeshModuleController::importGeneratedNetgenMesh(const QString& vtkPath, QString* errMsg)
+bool MeshModuleController::importGeneratedSmeshMesh(const QString& vtkPath, QString* errMsg)
 {
     QString err;
     auto grid = readVtkUnstructuredGrid(vtkPath, &err);
     if (!grid || grid->GetNumberOfCells() == 0)
     {
         if (errMsg)
-            *errMsg = err.isEmpty() ? QStringLiteral("Generated Netgen VTK mesh is empty") : err;
+            *errMsg = err.isEmpty() ? QStringLiteral("生成的网格文件为空。") : err;
         return false;
     }
 
@@ -4073,14 +4248,14 @@ bool MeshModuleController::importGeneratedNetgenMesh(const QString& vtkPath, QSt
     m_hasGrid = true;
     m_sourceFileName = vtkPath;
 
-    // A generated Netgen VTK is a new mesh, not a reload of the previous
-    // Gmsh/IIIN mesh. Keeping the old map here left stale Physical ids,
+    // A generated SMESH VTK is a new mesh, not a reload of the previous
+    // previous imported mesh. Keeping the old map here left stale Physical ids,
     // boundary points and cell ids behind, so UI combo boxes targeted data
     // from the preceding mesh.
-    MshPickMap netgenPickMap;
-    netgenPickMap.materialGroupCategory = QStringLiteral("REGION");
-    netgenPickMap.excavationGroupCategory = QStringLiteral("REGION");
-    MeshGridIO::instance().setMeshMap(netgenPickMap);
+    MshPickMap smeshPickMap;
+    smeshPickMap.materialGroupCategory = QStringLiteral("REGION");
+    smeshPickMap.excavationGroupCategory = QStringLiteral("REGION");
+    MeshGridIO::instance().setMeshMap(smeshPickMap);
     {
         vtkSmartPointer<vtkUnstructuredGrid> tmpLine;
         vtkSmartPointer<vtkUnstructuredGrid> tmpNonLine;
@@ -4088,7 +4263,7 @@ bool MeshModuleController::importGeneratedNetgenMesh(const QString& vtkPath, QSt
     }
 
     syncPickMapGroupingFromGrid(m_importedGrid);
-    meshDisplayPreferMaterialColors(m_importedGrid);
+    meshDisplayPreferSourceColors(m_importedGrid);
     displayCurrentGrid(true);
     openGridDisplayControlPage();
     updateQualityCheckContext(true);
@@ -4145,32 +4320,40 @@ void MeshModuleController::onExportGrid()
 
 void MeshModuleController::onMeshGlobal()
 {
+    if(!m_gridNode)return;
     if (auto* existed = findDirectChildByKind(m_gridNode, "GlobalMeshing"))
     {
         if (auto* pm = ServiceRegistry::instance().getService<ProjectManagerService>())
             pm->setCurrentItem(existed);
-        QMessageBox::information(nullptr, "整体剖分", "整体剖分节点已存在，仅允许添加一次。");
         return;
     }
     MeshGlobalMeshingWidget* w = new MeshGlobalMeshingWidget();
-    auto* node = new ProjectNode("网格划分", QUuid::createUuid().toString(), (BasePage*)w);
+    auto* node = new ProjectNode("整体剖分", QUuid::createUuid().toString(), (BasePage*)w);
     node->setData(0, ProjectNode::RoleModule, "Mesh");
     node->setData(0, ProjectNode::RoleKind, "GlobalMeshing");
+    node->setData(0, ProjectNode::RoleUuid, node->getUuid());
     m_gridNode->addChild(node);
+    m_gridNode->setExpanded(true);
     if (auto* pm = ServiceRegistry::instance().getService<ProjectManagerService>())
         pm->setCurrentItem(node);
 }
 
-void MeshModuleController::onMeshSingle()
+void MeshModuleController::onMeshSingle() { openLocalMeshSettings(3); }
+void MeshModuleController::onMeshLocalFace() { openLocalMeshSettings(2); }
+void MeshModuleController::onMeshLocalEdge() { openLocalMeshSettings(1); }
+
+void MeshModuleController::openLocalMeshSettings(int dimension)
 {
-    auto* w = new MeshSingleMeshingWidget();
-    auto* node =
-        new ProjectNode("单体剖分", QUuid::createUuid().toString(), static_cast<BasePage*>(w));
-    node->setData(0, ProjectNode::RoleModule, "Mesh");
-    node->setData(0, ProjectNode::RoleKind, "SingleMeshing");
-    m_gridNode->addChild(node);
-    if (auto* pm = ServiceRegistry::instance().getService<ProjectManagerService>())
-        pm->setCurrentItem(node);
+    if(!m_gridNode)return;
+    auto* global=findDirectChildByKind(m_gridNode,"GlobalMeshing");
+    if(!global){onMeshGlobal();global=findDirectChildByKind(m_gridNode,"GlobalMeshing");}
+    auto* page=global?dynamic_cast<MeshGlobalMeshingWidget*>(global->getPage()):nullptr;
+    if(!page)return;
+    if(dimension==3 && page->meshingDimension()!=3) {
+        QMessageBox::warning(nullptr,tr("体网格设置"),tr("当前为二维表面网格，请在整体剖分中选择三维体网格。"));
+        return;
+    }
+    addSmeshSubmesh(dimension,global->getUuid());
 }
 
 void MeshModuleController::onMeshMapped()
@@ -4179,80 +4362,7 @@ void MeshModuleController::onMeshMapped()
     auto w = std::make_unique<QWidget>();
 }
 
-void MeshModuleController::onMeshSweep()
-{
-    // auto* w = new MeshSweepMeshingWidget();
-    auto w = std::make_unique<QWidget>();
-}
-
-void MeshModuleController::onCtrlVolume()
-{
-    auto* globalNode = findDirectChildByKind(m_gridNode, "GlobalMeshing");
-    if (!globalNode)
-    {
-        QMessageBox::warning(nullptr, "体控制", "请先添加“整体剖分(网格划分)”节点，再添加体控制。");
-        return;
-    }
-    if (findDirectChildByKind(globalNode, "VolumeControl"))
-    {
-        QMessageBox::information(nullptr, "体控制", "体控制节点已存在，仅允许添加一次。");
-        return;
-    }
-    auto* w = new MeshVolumeControlWidget();
-    auto* node =
-        new ProjectNode("体控制", QUuid::createUuid().toString(), static_cast<BasePage*>(w));
-    node->setData(0, ProjectNode::RoleModule, "Mesh");
-    node->setData(0, ProjectNode::RoleKind, "VolumeControl");
-    globalNode->addChild(node);
-    if (auto* pm = ServiceRegistry::instance().getService<ProjectManagerService>())
-        pm->setCurrentItem(node);
-}
-
-void MeshModuleController::onCtrlSurface()
-{
-    auto* globalNode = findDirectChildByKind(m_gridNode, "GlobalMeshing");
-    if (!globalNode)
-    {
-        QMessageBox::warning(nullptr, "面控制", "请先添加“整体剖分(网格划分)”节点，再添加面控制。");
-        return;
-    }
-    if (findDirectChildByKind(globalNode, "FaceControl"))
-    {
-        QMessageBox::information(nullptr, "面控制", "面控制节点已存在，仅允许添加一次。");
-        return;
-    }
-    auto* w = new MeshFaceControlWidget();
-    auto* node =
-        new ProjectNode("面控制", QUuid::createUuid().toString(), static_cast<BasePage*>(w));
-    node->setData(0, ProjectNode::RoleModule, "Mesh");
-    node->setData(0, ProjectNode::RoleKind, "FaceControl");
-    globalNode->addChild(node);
-    if (auto* pm = ServiceRegistry::instance().getService<ProjectManagerService>())
-        pm->setCurrentItem(node);
-}
-
-void MeshModuleController::onCtrlEdge()
-{
-    auto* globalNode = findDirectChildByKind(m_gridNode, "GlobalMeshing");
-    if (!globalNode)
-    {
-        QMessageBox::warning(nullptr, "边控制", "请先添加“整体剖分(网格划分)”节点，再添加边控制。");
-        return;
-    }
-    if (findDirectChildByKind(globalNode, "EdgeControl"))
-    {
-        QMessageBox::information(nullptr, "边控制", "边控制节点已存在，仅允许添加一次。");
-        return;
-    }
-    auto* w = new MeshEdgeControlWidget();
-    auto* node =
-        new ProjectNode("边控制", QUuid::createUuid().toString(), static_cast<BasePage*>(w));
-    node->setData(0, ProjectNode::RoleModule, "Mesh");
-    node->setData(0, ProjectNode::RoleKind, "EdgeControl");
-    globalNode->addChild(node);
-    if (auto* pm = ServiceRegistry::instance().getService<ProjectManagerService>())
-        pm->setCurrentItem(node);
-}
+void MeshModuleController::onMeshSweep() { addSmeshSweep(); }
 
 void MeshModuleController::onQualityStd()
 {
@@ -4836,7 +4946,7 @@ void MeshModuleController::runQualityCheck()
                         m_splitCacheSource = nullptr;
                         m_splitCacheLine = nullptr;
                         m_splitCacheNonLine = nullptr;
-                        meshDisplayPreferMaterialColors(m_importedGrid);
+                        meshDisplayPreferSourceColors(m_importedGrid);
                         displayCurrentGrid();
                         PickManager::instance().clearDomainSelection(
                             QStringLiteral("MaterialManager"));
@@ -5349,7 +5459,7 @@ vtkSmartPointer<vtkActor> MeshModuleController::createLineActor(vtkUnstructuredG
     return actor;
 }
 
-static void rebuildNetgenBoundaryTagSets(MshPickMap& pick,
+static void rebuildSmeshBoundaryTagSets(MshPickMap& pick,
                                          vtkUnstructuredGrid* grid,
                                          int meshDim)
 {
@@ -5357,16 +5467,16 @@ static void rebuildNetgenBoundaryTagSets(MshPickMap& pick,
         return;
 
     auto* nativeFacets = vtkIntArray::SafeDownCast(
-        grid->GetFieldData()->GetArray("NetgenBoundaryFacets"));
+        grid->GetFieldData()->GetArray("SmeshBoundaryFacets"));
     if (!nativeFacets || nativeFacets->GetNumberOfComponents() < 4)
         return;
 
-    // The VTK field data is authoritative for a newly generated Netgen mesh.
-    // Remove only old Netgen sets; Gmsh Physical groups remain a separate model.
+    // The VTK field data is authoritative for a newly generated SMESH mesh.
+    // Remove only old SMESH sets; imported Physical groups remain a separate model.
     QVector<MeshTagKey> removeKeys;
     for (auto it = pick.tagSets.constBegin(); it != pick.tagSets.constEnd(); ++it)
     {
-        if (it.key().category.compare(QStringLiteral("NetgenBoundary"),
+        if (it.key().category.compare(QStringLiteral("SmeshBoundary"),
                                       Qt::CaseInsensitive) == 0)
             removeKeys.push_back(it.key());
     }
@@ -5378,7 +5488,7 @@ static void rebuildNetgenBoundaryTagSets(MshPickMap& pick,
         QVector<MeshTagKey>& tags = it.value();
         tags.erase(std::remove_if(tags.begin(), tags.end(), [](const MeshTagKey& key)
         {
-            return key.category.compare(QStringLiteral("NetgenBoundary"),
+            return key.category.compare(QStringLiteral("SmeshBoundary"),
                                         Qt::CaseInsensitive) == 0;
         }), tags.end());
     }
@@ -5390,7 +5500,7 @@ static void rebuildNetgenBoundaryTagSets(MshPickMap& pick,
 
     QHash<QString, QString> names;
     if (auto* nameArray = vtkStringArray::SafeDownCast(
-            grid->GetFieldData()->GetAbstractArray("NetgenBoundaryNames")))
+            grid->GetFieldData()->GetAbstractArray("SmeshBoundaryNames")))
     {
         const vtkIdType valueCount = nameArray->GetNumberOfValues();
         for (vtkIdType value = 0; value + 2 < valueCount; value += 3)
@@ -5464,7 +5574,7 @@ static void rebuildNetgenBoundaryTagSets(MshPickMap& pick,
     auto ensureSet = [&](int boundaryDimension, int boundaryId) -> MeshTagSet&
     {
         const MeshTagKey key{
-            QStringLiteral("NetgenBoundary"), boundaryDimension, boundaryId};
+            QStringLiteral("SmeshBoundary"), boundaryDimension, boundaryId};
         if (!pick.tagSets.contains(key))
         {
             MeshTagSet set;
@@ -5474,7 +5584,7 @@ static void rebuildNetgenBoundaryTagSets(MshPickMap& pick,
                                                 Qt::CaseInsensitive) == 0)
                 name = physicalUiNameByDim(boundaryDimension, boundaryId);
             set.name = name;
-            set.source = QStringLiteral("Netgen");
+            set.source = QStringLiteral("SMESH");
             pick.tagSets.insert(key, set);
         }
         return pick.tagSets[key];
@@ -5580,7 +5690,7 @@ static void rebuildNetgenBoundaryTagSets(MshPickMap& pick,
     for (auto it = pick.tagSets.begin(); it != pick.tagSets.end(); ++it)
     {
         MeshTagSet& set = it.value();
-        if (set.key.category.compare(QStringLiteral("NetgenBoundary"),
+        if (set.key.category.compare(QStringLiteral("SmeshBoundary"),
                                      Qt::CaseInsensitive) != 0)
             continue;
         normalizeMeshTagSet(set);
@@ -5619,6 +5729,40 @@ static void syncPickMapGroupingFromGrid(vtkUnstructuredGrid* grid)
         }
     }
 
+    // IIIN snapshots omit src_part/GroupName. Recover the authoritative source
+    // regions from mesh_map.json before rebuilding tags or the display panel.
+    if (!hasUsableRegionCellData && grid->GetCellData())
+    {
+        auto restoredRegions = vtkSmartPointer<vtkIntArray>::New();
+        restoredRegions->SetName("src_part");
+        restoredRegions->SetNumberOfTuples(grid->GetNumberOfCells());
+        restoredRegions->FillValue(0);
+        auto restoredNames = vtkSmartPointer<vtkStringArray>::New();
+        restoredNames->SetName("GroupName");
+        restoredNames->SetNumberOfValues(grid->GetNumberOfCells());
+        for (auto it = pick.tagSets.constBegin(); it != pick.tagSets.constEnd(); ++it)
+        {
+            const MeshTagSet& set = it.value();
+            if (set.key.category.compare("REGION", Qt::CaseInsensitive) != 0 || set.key.id <= 0)
+                continue;
+            for (MeshIdType cid : set.cellIds)
+            {
+                if (cid < 0 || cid >= grid->GetNumberOfCells() ||
+                    meshDisplayCellDimensionFast(grid, cid) != set.key.dim)
+                    continue;
+                restoredRegions->SetValue(cid, set.key.id);
+                restoredNames->SetValue(cid, set.name.toStdString());
+                hasUsableRegionCellData = true;
+            }
+        }
+        if (hasUsableRegionCellData)
+        {
+            grid->GetCellData()->AddArray(restoredRegions);
+            grid->GetCellData()->AddArray(restoredNames);
+            regionCellData = restoredRegions;
+        }
+    }
+
     int meshDim = -1;
     const vtkIdType nCells = grid->GetNumberOfCells();
 
@@ -5642,7 +5786,7 @@ static void syncPickMapGroupingFromGrid(vtkUnstructuredGrid* grid)
 
     // The point table belongs to the current grid. Rebuild both directions
     // every time instead of retaining ids from a previously imported mesh.
-    // Netgen writes node_id directly into the generated VTK, so no auxiliary
+    // SMESH writes node_id directly into the generated VTK, so no auxiliary
     // mesh-map file is needed for node picking and solver export.
     pick.nodeIdToPointId.clear();
     pick.pointIdToNodeId.clear();
@@ -5662,7 +5806,15 @@ static void syncPickMapGroupingFromGrid(vtkUnstructuredGrid* grid)
 
     // 所有网格入口（INP、FLAC3D、VTK、工程恢复及重新分组）都在这里
     // 统一同步实际网格维度，避免求解模块读取到未初始化或过期的全局值。
-    PublicVariables::instance().set(PublicConstants::kMeshDimension, meshDim, "mesh");
+    // A line-only model still has 2D/3D spatial coordinates. Publishing 1 here
+    // makes load exporters fall into their 3D branch while IIIN remains 2D.
+    int spatialDim=meshDim;
+    if(meshDim==1)
+    {
+        double bounds[6];grid->GetBounds(bounds);
+        spatialDim=std::abs(bounds[5]-bounds[4])>1.e-12?3:2;
+    }
+    PublicVariables::instance().set(PublicConstants::kMeshDimension, spatialDim, "mesh");
 
     QVector<MeshTagKey> removeKeys;
 
@@ -5679,7 +5831,7 @@ static void syncPickMapGroupingFromGrid(vtkUnstructuredGrid* grid)
         const bool isRegion =
             key.category.compare("REGION", Qt::CaseInsensitive) == 0;
 
-        // Generated Netgen VTK files carry src_part and are authoritative.
+        // Generated SMESH VTK files carry src_part and are authoritative.
         // IIIN project snapshots do not carry that extra array; in that case
         // retain REGION sets restored from mesh_map.json instead of deleting
         // the excavation grouping during project load.
@@ -5729,9 +5881,9 @@ static void syncPickMapGroupingFromGrid(vtkUnstructuredGrid* grid)
         {
             MeshTagSet set;
             set.key = key;
-            // GroupName describes a Netgen source geometry region. It must
+            // GroupName describes a SMESH source geometry region. It must
             // not become the label of the common MATYPE/LAYER domains: all
-            // Netgen cells initially have LAYER=1, so that made the whole-model
+            // SMESH cells initially have LAYER=1, so that made the whole-model
             // layer look like one particular geometry part in combo boxes.
             const bool isRegion =
                 category.compare("REGION", Qt::CaseInsensitive) == 0;
@@ -5739,9 +5891,10 @@ static void syncPickMapGroupingFromGrid(vtkUnstructuredGrid* grid)
                     cid < groupNameArr->GetNumberOfValues()
                 ? QString::fromStdString(groupNameArr->GetValue(cid)).trimmed()
                 : QString();
-            set.name = groupName.isEmpty()
-                ? QString("%1=%2").arg(category).arg(id)
-                : groupName;
+            const QString labelKey = QStringLiteral("%1/%2/%3").arg(category).arg(dim).arg(id);
+            const QString savedLabel = pick.groupDisplayNames.value(labelKey).trimmed();
+            set.name = !savedLabel.isEmpty() ? savedLabel
+                : (groupName.isEmpty() ? QString("%1=%2").arg(category).arg(id) : groupName);
             set.source = "GridCellData";
 
             pick.tagSets.insert(key, set);
@@ -5803,9 +5956,9 @@ static void syncPickMapGroupingFromGrid(vtkUnstructuredGrid* grid)
         }
     }
 
-    // Restore Netgen's native point/edge/face boundary regions carried by VTK.
-    // They intentionally remain distinct from Gmsh Physical groups internally.
-    rebuildNetgenBoundaryTagSets(pick, grid, meshDim);
+    // Restore SMESH's native point/edge/face boundary regions carried by VTK.
+    // They intentionally remain distinct from imported Physical groups internally.
+    rebuildSmeshBoundaryTagSets(pick, grid, meshDim);
 
     MeshGridIO::instance().setMeshMap(pick);
 }
@@ -5878,10 +6031,14 @@ bool MeshModuleController::autoGroupingBySpatialBins(int binCount, const QString
     double maxV[3] = {-std::numeric_limits<double>::max(), -std::numeric_limits<double>::max(),
                       -std::numeric_limits<double>::max()};
 
+    int highestDimension = 0;
+    for (vtkIdType cid = 0; cid < nCells; ++cid)
+        if (vtkCell* c = m_importedGrid->GetCell(cid))
+            highestDimension = qMax(highestDimension, c->GetCellDimension());
     for (vtkIdType cid = 0; cid < nCells; ++cid)
     {
         auto* cell = m_importedGrid->GetCell(cid);
-        if (!cell)
+        if (!cell || highestDimension < 2 || cell->GetCellDimension() != highestDimension)
             continue;
         double b[6] = {0, 0, 0, 0, 0, 0};
         cell->GetBounds(b);
@@ -5933,23 +6090,6 @@ bool MeshModuleController::autoGroupingBySpatialBins(int binCount, const QString
         targetArr = newArr;
     }
 
-    auto* groupArr =
-        vtkStringArray::SafeDownCast(m_importedGrid->GetCellData()->GetAbstractArray("GroupName"));
-    if (!groupArr)
-    {
-        auto newGroup = vtkSmartPointer<vtkStringArray>::New();
-        newGroup->SetName("GroupName");
-        newGroup->SetNumberOfValues(nCells);
-        for (vtkIdType i = 0; i < nCells; ++i)
-            newGroup->SetValue(i, "");
-        m_importedGrid->GetCellData()->AddArray(newGroup);
-        groupArr = newGroup;
-    }
-    else if (groupArr->GetNumberOfValues() != nCells)
-    {
-        groupArr->SetNumberOfValues(nCells);
-    }
-
            // 使用“按主轴排序后的等数量分箱”（quantile
            // binning），避免仅按跨度均分导致某些组过密/过疏。
     std::sort(centers.begin(), centers.end(),
@@ -5974,11 +6114,24 @@ bool MeshModuleController::autoGroupingBySpatialBins(int binCount, const QString
         const int targetValue = startValue + bin;
         const vtkIdType cid = centers[i].cid;
         targetArr->SetValue(cid, targetValue);
-        groupArr->SetValue(cid, QString("%1_%2").arg(groupPrefix).arg(targetValue).toUtf8().constData());
     }
 
     m_importedGrid->GetCellData()->Modified();
     m_importedGrid->Modified();
+    {
+        MshPickMap pick = MeshGridIO::instance().getMeshMap();
+        int dim = 0;
+        for (vtkIdType cid = 0; cid < nCells; ++cid)
+            if (vtkCell* c = m_importedGrid->GetCell(cid)) dim = qMax(dim, c->GetCellDimension());
+        for (int i = 0; i < binCount; ++i)
+        {
+            const int value = startValue + i;
+            pick.groupDisplayNames[QStringLiteral("%1/%2/%3")
+                .arg(targetArrayName.toUpper()).arg(dim).arg(value)] =
+                QStringLiteral("%1_%2").arg(groupPrefix).arg(value);
+        }
+        MeshGridIO::instance().setMeshMap(pick);
+    }
     syncPickMapGroupingFromGrid(m_importedGrid);
     displayCurrentGrid();
     return true;
@@ -6043,28 +6196,15 @@ bool MeshModuleController::groupByCoordinateRange(double xmin, double xmax, doub
         targetArr = newArr;
     }
 
-    auto* groupArr =
-        vtkStringArray::SafeDownCast(m_importedGrid->GetCellData()->GetAbstractArray("GroupName"));
-    if (!groupArr)
-    {
-        auto newGroup = vtkSmartPointer<vtkStringArray>::New();
-        newGroup->SetName("GroupName");
-        newGroup->SetNumberOfValues(nCells);
-        for (vtkIdType i = 0; i < nCells; ++i)
-            newGroup->SetValue(i, "");
-        m_importedGrid->GetCellData()->AddArray(newGroup);
-        groupArr = newGroup;
-    }
-    else if (groupArr->GetNumberOfValues() != nCells)
-    {
-        groupArr->SetNumberOfValues(nCells);
-    }
-
+    int highestDimension = 0;
+    for (vtkIdType cid = 0; cid < nCells; ++cid)
+        if (vtkCell* c = m_importedGrid->GetCell(cid))
+            highestDimension = qMax(highestDimension, c->GetCellDimension());
     int changed = 0;
     for (vtkIdType cid = 0; cid < nCells; ++cid)
     {
         auto* cell = m_importedGrid->GetCell(cid);
-        if (!cell)
+        if (!cell || highestDimension < 2 || cell->GetCellDimension() != highestDimension)
             continue;
         double b[6] = {0, 0, 0, 0, 0, 0};
         cell->GetBounds(b);
@@ -6074,7 +6214,6 @@ bool MeshModuleController::groupByCoordinateRange(double xmin, double xmax, doub
         if (cx >= xmin && cx <= xmax && cy >= ymin && cy <= ymax && cz >= zmin && cz <= zmax)
         {
             targetArr->SetValue(cid, value);
-            groupArr->SetValue(cid, groupName.toStdString());
             ++changed;
         }
     }
@@ -6088,6 +6227,87 @@ bool MeshModuleController::groupByCoordinateRange(double xmin, double xmax, doub
 
     m_importedGrid->GetCellData()->Modified();
     m_importedGrid->Modified();
+    {
+        MshPickMap pick = MeshGridIO::instance().getMeshMap();
+        int dim = 0;
+        for (vtkIdType cid = 0; cid < nCells; ++cid)
+            if (vtkCell* c = m_importedGrid->GetCell(cid))
+                dim = qMax(dim, c->GetCellDimension());
+        pick.groupDisplayNames[QStringLiteral("%1/%2/%3")
+            .arg(targetArrayName.toUpper()).arg(dim).arg(value)] = groupName.trimmed();
+        MeshGridIO::instance().setMeshMap(pick);
+    }
+    syncPickMapGroupingFromGrid(m_importedGrid);
+    displayCurrentGrid();
+    return true;
+}
+
+bool MeshModuleController::assignSelectedCellsToGroup(
+    const QVector<MeshIdType>& cellIds, const QString& attribute, int groupId,
+    const QString& displayName, QString* errMsg)
+{
+    const auto fail = [&](const QString& message) {
+        if (errMsg) *errMsg = message;
+        return false;
+    };
+    if (!m_importedGrid || m_importedGrid->GetNumberOfCells() == 0)
+        return fail(QStringLiteral("请先导入或生成网格。"));
+    const QString field = attribute.trimmed().toUpper();
+    if (field != QStringLiteral("MATYPE") && field != QStringLiteral("LAYER"))
+        return fail(QStringLiteral("仅允许修改 MATYPE 或 LAYER。"));
+    if (field == QStringLiteral("MATYPE") && (groupId < 3 || groupId > MAX_SOLVER_MATYPE))
+        return fail(QStringLiteral("新材料编号只能使用 3 至 300；1/2 为求解器保留编号。"));
+    if (field == QStringLiteral("LAYER") && (groupId < 1 || groupId > 1000000))
+        return fail(QStringLiteral("施工层号必须是 1 至 1000000；杆单元的负安装级次不可在此修改。"));
+    if (cellIds.isEmpty())
+        return fail(QStringLiteral("请先点选网格单元，或选择已有分组。"));
+
+    const vtkIdType nCells = m_importedGrid->GetNumberOfCells();
+    QSet<vtkIdType> uniqueIds;
+    int meshDim = 0;
+    for (vtkIdType cid = 0; cid < nCells; ++cid)
+        if (vtkCell* c = m_importedGrid->GetCell(cid))
+            meshDim = qMax(meshDim, c->GetCellDimension());
+    // Preflight the ENTIRE edit: no partial writes, and never edit rod cells.
+    for (MeshIdType raw : cellIds)
+    {
+        if (raw < 0 || raw >= nCells)
+            return fail(QStringLiteral("选区包含过期单元编号，请重新选择。"));
+        vtkCell* cell = m_importedGrid->GetCell(static_cast<vtkIdType>(raw));
+        if (!cell || cell->GetCellDimension() != meshDim || meshDim < 2)
+            return fail(QStringLiteral("选区包含杆单元或非最高维单元，请改选土体面/体单元。"));
+        uniqueIds.insert(static_cast<vtkIdType>(raw));
+    }
+    auto* cd = m_importedGrid->GetCellData();
+    vtkDataArray* existing = cd ? cd->GetArray(field.toUtf8().constData()) : nullptr;
+    if (!cd)
+        return fail(QStringLiteral("网格缺少单元属性表。"));
+    auto* target = vtkIntArray::SafeDownCast(existing);
+    if (!target || target->GetNumberOfTuples() != nCells)
+    {
+        vtkNew<vtkIntArray> converted;
+        converted->SetName(field.toUtf8().constData());
+        converted->SetNumberOfTuples(nCells);
+        for (vtkIdType cid = 0; cid < nCells; ++cid)
+            converted->SetValue(cid, existing && cid < existing->GetNumberOfTuples()
+                                         ? static_cast<int>(existing->GetTuple1(cid)) : 0);
+        cd->RemoveArray(field.toUtf8().constData());
+        cd->AddArray(converted);
+        target = vtkIntArray::SafeDownCast(cd->GetArray(field.toUtf8().constData()));
+    }
+    if (!target)
+        return fail(QStringLiteral("无法创建目标单元属性。"));
+    for (vtkIdType cid : uniqueIds)
+        target->SetValue(cid, groupId);
+    target->Modified();
+    cd->Modified();
+    m_importedGrid->Modified();
+    // Only this attribute changes: GroupName is not a solver grouping field.
+    MshPickMap pick = MeshGridIO::instance().getMeshMap();
+    const QString key = QStringLiteral("%1/%2/%3").arg(field).arg(meshDim).arg(groupId);
+    if (!displayName.trimmed().isEmpty())
+        pick.groupDisplayNames.insert(key, displayName.trimmed());
+    MeshGridIO::instance().setMeshMap(pick);
     syncPickMapGroupingFromGrid(m_importedGrid);
     displayCurrentGrid();
     return true;
@@ -7426,4 +7646,419 @@ QVector<FaceControlRule> MeshModuleController::faceControlRules() const
 QVector<VolumeControlRule> MeshModuleController::volumeControlRules() const
 {
     return m_volumeRules;
+}
+void MeshModuleController::bindSmeshPage(BasePage* page)
+{
+    if(auto* sub=dynamic_cast<MeshSmeshSubmeshWidget*>(page)) {
+        sub->setAvailableEntities([this,sub](int dim){return availableSubmeshEntities(sub->getUuid(),dim);});
+        sub->setReservedVolumeIds([this]{return sweptCadVolumeIds();});
+        connect(sub,&MeshSmeshSubmeshWidget::computeRequested,this,&MeshModuleController::generateSmeshSubmesh);
+        connect(sub,&MeshSmeshSubmeshWidget::configurationChanged,this,[sub]{
+            auto* pm=ServiceRegistry::instance().getService<ProjectManagerService>();
+            if(auto* node=pm?pm->findNodeByUuid(sub->getUuid()):nullptr)node->setText(0,sub->settings().name);
+        });
+    }
+    if(auto* sweep=dynamic_cast<MeshSmeshSweepWidget*>(page)) {
+        connect(sweep,&MeshSmeshSweepWidget::partitionRequested,this,&MeshModuleController::addSmeshPartition);
+        connect(sweep,&MeshSmeshSweepWidget::computeRequested,this,[this,sweep]{
+            auto* pm=ServiceRegistry::instance().getService<ProjectManagerService>();
+            auto* node=pm?pm->findNodeByUuid(sweep->getUuid()):nullptr;
+            if(auto* parent=node?dynamic_cast<ProjectNode*>(node->parent()):nullptr)
+                if(auto* global=dynamic_cast<MeshGlobalMeshingWidget*>(parent->getPage()))global->generateSubmesh();
+        });
+        connect(sweep,&MeshSmeshSweepWidget::configurationChanged,this,[this,sweep]{
+            auto* pm=ServiceRegistry::instance().getService<ProjectManagerService>();
+            if(auto* node=pm?pm->findNodeByUuid(sweep->getUuid()):nullptr)node->setText(0,sweep->settings().name);
+            refreshVolumeScopeOwnership();
+        });
+    }
+    if(auto* partition=dynamic_cast<MeshSmeshPartitionWidget*>(page)) {
+        connect(partition,&MeshSmeshPartitionWidget::logMessage,this,[](const QString& text){
+            if(auto* out=ServiceRegistry::instance().getService<OutputService>())out->outputLog(text);
+        });
+        connect(partition,&MeshSmeshPartitionWidget::partitionChanged,this,[this,partition]{
+            if(!m_gridNode)return;
+            for(auto* root:m_gridNode->getChildren())for(auto* child:root->getChildren())
+                if(auto* sweep=dynamic_cast<MeshSmeshSweepWidget*>(child->getPage()))
+                    sweep->invalidatePartitionTasks();
+        });
+    }
+}
+
+QSet<int> MeshModuleController::sweptCadVolumeIds() const
+{
+    QSet<int> ids;
+    auto* global=m_gridNode?findDirectChildByKind(m_gridNode,QStringLiteral("GlobalMeshing")):nullptr;
+    if (!global) return ids;
+    for (auto* child:global->getChildren()) {
+        if (auto* sweep=dynamic_cast<MeshSmeshSweepWidget*>(child->getPage()))
+            ids.unite(sweep->assignedCadVolumeIds());
+    }
+    return ids;
+}
+
+void MeshModuleController::refreshVolumeScopeOwnership()
+{
+    auto* global=m_gridNode?findDirectChildByKind(m_gridNode,QStringLiteral("GlobalMeshing")):nullptr;
+    if (!global) return;
+    for (auto* child:global->getChildren()) {
+        if (auto* sub=dynamic_cast<MeshSmeshSubmeshWidget*>(child->getPage()))
+            if (sub->settings().dimension==3) sub->refreshEntities();
+    }
+}
+
+QStringList MeshModuleController::availableSubmeshEntities(const QString& uuid,int dimension) const
+{
+    auto* pre=ServiceRegistry::instance().getService<PreProcessingService>();
+    auto* pm=ServiceRegistry::instance().getService<ProjectManagerService>();
+    auto* node=pm?pm->findNodeByUuid(uuid):nullptr;
+    if(!pre||!node)return {};
+    auto* parent=dynamic_cast<ProjectNode*>(node->parent());
+    if(auto* scope=parent?dynamic_cast<MeshSmeshSubmeshWidget*>(parent->getPage()):nullptr) {
+        const auto settings=scope->settings();QStringList ids;
+        for(int id:settings.entityIds)for(const auto& child:pre->entitySubshapeIds(settings.dimension,id,dimension))
+            if(!ids.contains(child))ids.push_back(child);
+        return ids;
+    }
+    if(auto* global=parent?dynamic_cast<MeshGlobalMeshingWidget*>(parent->getPage()):nullptr;
+       global && !global->usesAllGeometry()) {
+        QStringList ids;
+        for(int id:global->selectedGeometryIds()) {
+            if(dimension==global->meshingDimension()) ids.append(QString::number(id));
+            else for(const auto& child:pre->entitySubshapeIds(global->meshingDimension(),id,dimension))
+                if(!ids.contains(child))ids.append(child);
+        }
+        return ids;
+    }
+    return pre->listEntityIds(dimension);
+}
+
+void MeshModuleController::addSmeshSubmesh(int dimension,const QString& parentUuid)
+{
+    if(!m_gridNode||dimension<1||dimension>3)return;
+    auto* pm=ServiceRegistry::instance().getService<ProjectManagerService>();
+    auto* parent=pm?pm->findNodeByUuid(parentUuid):nullptr;
+    if(!parent)return;
+    int parentDimension=0;
+    if(auto* global=dynamic_cast<MeshGlobalMeshingWidget*>(parent->getPage()))parentDimension=global->meshingDimension()+1;
+    if(auto* sub=dynamic_cast<MeshSmeshSubmeshWidget*>(parent->getPage()))parentDimension=sub->settings().dimension;
+    if(parentDimension<=dimension)return;
+    auto* page=new MeshSmeshSubmeshWidget(dimension);
+    const QString kind=dimension==3?"SmeshVolumeSubmesh":dimension==2?"SmeshFaceSubmesh":"SmeshEdgeSubmesh";
+    const QString prefix=dimension==3?tr("体网格设置"):dimension==2?tr("面网格设置"):tr("边网格设置");
+    QSet<QString> names;
+    for(auto* child:parent->getChildren())names.insert(child->text(0));
+    int number=1;
+    while(names.contains(prefix+QStringLiteral("-%1").arg(number)))++number;
+    page->setDisplayName(prefix+QStringLiteral("-%1").arg(number));
+    bindSmeshPage(page);
+    auto* node=new ProjectNode(page->settings().name,QUuid::createUuid().toString(),page);
+    node->setData(0,ProjectNode::RoleUuid,node->getUuid());node->setData(0,ProjectNode::RoleKind,kind);node->setData(0,ProjectNode::RoleModule,"Mesh");parent->addChild(node);
+    parent->setExpanded(true);if(pm)pm->setCurrentItem(node);
+}
+
+void MeshModuleController::addSmeshSweep()
+{
+    if(!m_gridNode)return;
+    auto* global=findDirectChildByKind(m_gridNode,"GlobalMeshing");
+    if(!global){onMeshGlobal();global=findDirectChildByKind(m_gridNode,"GlobalMeshing");}
+    auto* globalPage=global?dynamic_cast<MeshGlobalMeshingWidget*>(global->getPage()):nullptr;
+    if(!globalPage)return;
+    if(globalPage->meshingDimension()!=3){QMessageBox::warning(nullptr,tr("扫掠网格"),tr("请先在整体剖分中选择三维体网格。"));return;}
+    auto* page=new MeshSmeshSweepWidget();
+    const QString prefix=tr("扫掠网格");
+    QSet<QString> names;
+    for(auto* child:global->getChildren())names.insert(child->text(0));
+    int number=1;
+    while(names.contains(prefix+QStringLiteral("-%1").arg(number)))++number;
+    page->setDisplayName(prefix+QStringLiteral("-%1").arg(number));
+    bindSmeshPage(page);
+    auto* node=new ProjectNode(page->settings().name,QUuid::createUuid().toString(),page);
+    node->setData(0,ProjectNode::RoleUuid,node->getUuid());node->setData(0,ProjectNode::RoleKind,"SmeshSweep");node->setData(0,ProjectNode::RoleModule,"Mesh");global->addChild(node);global->setExpanded(true);
+    page->setMeshPlanIdentity(node->getUuid(),node->text(0));
+    page->setPartitionPlanIdentity(global->getUuid());
+    if(auto* pm=ServiceRegistry::instance().getService<ProjectManagerService>())pm->setCurrentItem(node);
+}
+
+void MeshModuleController::addSmeshPartition()
+{
+    if(!m_gridNode)return;
+    auto* root=findDirectChildByKind(m_gridNode,"GlobalMeshing");
+    if(!root){onMeshGlobal();root=findDirectChildByKind(m_gridNode,"GlobalMeshing");}
+    auto* global=root?dynamic_cast<MeshGlobalMeshingWidget*>(root->getPage()):nullptr;
+    if(!global||global->meshingDimension()!=3)return;
+    auto* node=findDirectChildByKind(root,"SmeshPartition");
+    if(!node) {
+        auto* page=new MeshSmeshPartitionWidget();bindSmeshPage(page);
+        node=new ProjectNode(tr("扫掠分块"),QUuid::createUuid().toString(),page);
+        node->setData(0,ProjectNode::RoleUuid,node->getUuid());node->setData(0,ProjectNode::RoleKind,"SmeshPartition");
+        node->setData(0,ProjectNode::RoleModule,"Mesh");root->addChild(node);root->setExpanded(true);
+        page->setMeshPlanIdentity(root->getUuid(),root->text(0));
+    }
+    if(auto* pm=ServiceRegistry::instance().getService<ProjectManagerService>())pm->setCurrentItem(node);
+}
+
+void MeshModuleController::generateSmeshSubmesh(const QString& uuid)
+{
+    auto* pm=ServiceRegistry::instance().getService<ProjectManagerService>();auto* node=pm?pm->findNodeByUuid(uuid):nullptr;
+    const bool singleVolume=node && node->data(0,ProjectNode::RoleKind).toString()=="SmeshVolumeSubmesh";
+    for(auto* current=node;current;current=dynamic_cast<ProjectNode*>(current->parent()))
+        if(auto* global=dynamic_cast<MeshGlobalMeshingWidget*>(current->getPage())){
+            global->generateSubmesh(singleVolume?uuid:QString());
+            return;
+        }
+}
+
+void MeshModuleController::removeSmeshNode(const QString& uuid)
+{
+    auto* pm=ServiceRegistry::instance().getService<ProjectManagerService>();auto* node=pm?pm->findNodeByUuid(uuid):nullptr;
+    if(!node||!node->data(0,ProjectNode::RoleKind).toString().startsWith("Smesh"))return;
+    auto* parent=dynamic_cast<ProjectNode*>(node->parent());if(!parent)return;
+    if(node->data(0,ProjectNode::RoleKind).toString()=="SmeshSweep") {
+        // Each sweep node is an independent plan. Release its assignments
+        // when removed so other sweep nodes can claim the same regions.
+        MeshSmeshWorkflowState::replaceSweepTasksForPlan(node->getUuid(), {});
+    }
+    if(node->data(0,ProjectNode::RoleKind).toString()=="SmeshPartition") {
+        MeshSmeshWorkflowState::replacePartitionRulesForPlan(parent->getUuid(),{});
+        for(auto* sibling:parent->getChildren())if(auto* sweep=dynamic_cast<MeshSmeshSweepWidget*>(sibling->getPage()))
+            sweep->invalidatePartitionTasks();
+    }
+    const bool removedSweep=node->data(0,ProjectNode::RoleKind).toString()==QStringLiteral("SmeshSweep");
+    if(pm)pm->setCurrentItem(parent);parent->removeChild(node);
+    std::function<void(ProjectNode*)> destroy=[&](ProjectNode* item){const auto children=item->getChildren();for(auto* child:children){item->removeChild(child);destroy(child);}if(auto* page=item->getPage()){page->beforeUnload();item->setPage(nullptr);delete page;}delete item;};destroy(node);
+    if (removedSweep) refreshVolumeScopeOwnership();
+}
+
+bool MeshModuleController::collectSmeshWorkflow(const QString& meshUuid,SmeshWorkflowSettings& settings,QString& error) const
+{
+    settings={};settings.meshUuid=meshUuid;error.clear();
+    // The Mesh module owns the GlobalMeshing node.  During project restore the
+    // ProjectManager lookup tree can temporarily differ from the module's node
+    // tree.  Resolve from our own tree first instead of rejecting a valid mesh.
+    auto* pre=ServiceRegistry::instance().getService<PreProcessingService>();
+    if(!pre){error=tr("几何模块不可用，请重新打开工程。");return false;}
+    ProjectNode* root=nullptr;
+    if(m_gridNode) {
+        auto* candidate=findDirectChildByKind(m_gridNode, QStringLiteral("GlobalMeshing"));
+        // Only one GlobalMeshing page is allowed under the Mesh root.  The
+        // active module's node is more reliable than a cross-service UUID lookup.
+        if(candidate && dynamic_cast<MeshGlobalMeshingWidget*>(candidate->getPage()))
+            root=candidate;
+    }
+    if(!root) {
+        auto* pm=ServiceRegistry::instance().getService<ProjectManagerService>();
+        root=pm?pm->findNodeByUuid(meshUuid):nullptr;
+    }
+    if(!root || !dynamic_cast<MeshGlobalMeshingWidget*>(root->getPage())) {
+        error=tr("整体剖分设置已失效，请重新进入该节点。");
+        return false;
+    }
+    auto capture=[&](int dim,int id,SmeshEntityReference& ref){
+        ref.dimension=dim;ref.entityId=id;
+        if(id<=0||!pre->listEntityIds(dim).contains(QString::number(id))||!pre->entityCenter(dim,id,ref.center)||!pre->entityMeasure(dim,id,ref.measure)||ref.measure<=0.) {
+            error=tr("几何实体 %1（维度 %2）已失效，请重新选择。").arg(id).arg(dim);return false;
+        }return true;
+    };
+    const auto partitionRules=MeshSmeshWorkflowState::partitionRulesForPlan(root->getUuid());
+    for(const auto& rule:partitionRules)if(rule.enabled) {
+        SmeshPartitionSettings setting;setting.axis=rule.axis;setting.coordinate=rule.coordinate;
+        setting.origin=rule.origin;setting.normal=rule.normal;
+        setting.targetVolumeUiId=rule.targetVolumeUiId;setting.sourceFaceUiId=rule.sourceFaceUiId;
+        if(rule.targetVolumeUiId>0&&!capture(3,rule.targetVolumeUiId,setting.target))return false;
+        settings.partitions.push_back(setting);
+    }
+    QObject* geometryBridge=dynamic_cast<QObject*>(pre);
+    const auto planes=MeshSmeshWorkflowState::planePayload(partitionRules);
+    // Detect duplicate ownership before filtering out tasks with no valid
+    // direction. An unconfigured row must also belong to only one node.
+    QSet<QString> sweepAssignments;
+    std::function<bool(ProjectNode*,QString)> walk=[&](ProjectNode* node,QString parentUuid){
+        for(auto* child:node->getChildren()) {
+            if(auto* page=dynamic_cast<MeshSmeshSubmeshWidget*>(child->getPage())) {
+                auto sub=page->settings();sub.parentUuid=parentUuid;
+                if(sub.entityIds.isEmpty()){
+                    // An unused volume sizing node must not block a complete
+                    // sweep mesh. It has no effect until an eligible solid is selected.
+                    if(sub.dimension==3 && child->getChildren().isEmpty()) continue;
+                    error=tr("“%1”尚未选择几何实体。").arg(sub.name);return false;
+                }
+                for(int id:sub.entityIds){SmeshEntityReference ref;if(!capture(sub.dimension,id,ref))return false;sub.entities.push_back(ref);}
+                settings.submeshes.push_back(sub);if(!walk(child,sub.uuid))return false;
+            } else if(auto* page=dynamic_cast<MeshSmeshSweepWidget*>(child->getPage())) {
+                // All sweep nodes belong to the same conforming parent mesh.
+                // A newly created, still empty node does not invalidate
+                // other configured nodes. Per-node layer/size parameters are
+                // carried by each sweep task, not by a global setting.
+                settings.preferHex = true;
+                const auto stored = MeshSmeshWorkflowState::sweepTasksFromJson(
+                    page->saveJson().value(QStringLiteral("tasks")).toArray());
+                for (const auto& assignment : stored) {
+                    const QString regionName = assignment.partitionRegion
+                        ? tr("分块 %1").arg(assignment.objectId)
+                        : tr("几何体 %1").arg(assignment.objectId);
+                    const QString nodeName = page->settings().name;
+                    if (assignment.objectId <= 0) {
+                        error=tr("“%1”包含无效区域，请重新添加扫掠区域。").arg(nodeName);
+                        return false;
+                    }
+                    const QString key = QStringLiteral("%1:%2")
+                        .arg(assignment.partitionRegion ? 1 : 0).arg(assignment.objectId);
+                    if (sweepAssignments.contains(key)) {
+                        error=tr("%1 被重复加入扫掠网格，请从其中一个节点移除。")
+                            .arg(regionName);
+                        return false;
+                    }
+                    sweepAssignments.insert(key);
+                    // Check ALL task rows, not only page->tasks(), which
+                    // deliberately filters incomplete sweep assignments.
+                    // Incomplete rows must never silently become Tet regions.
+                    if (assignment.sourceFaceId <= 0 || assignment.targetFaceId <= 0 ||
+                        assignment.sourceFaceId == assignment.targetFaceId) {
+                        error=tr("“%1”的%2没有可用的扫掠方向，请调整区域或移除任务。")
+                            .arg(nodeName, regionName);
+                        return false;
+                    }
+                    if (assignment.partitionRegion != !planes.isEmpty()) {
+                        error=tr("“%1”的%2与当前分块状态不一致，请重新添加。")
+                            .arg(nodeName, regionName);
+                        return false;
+                    }
+                    if (assignment.layers <= 0 || !(assignment.sourceSize > 0.0)) {
+                        error=tr("“%1”的%2网格参数无效。").arg(nodeName, regionName);
+                        return false;
+                    }
+                    // Geometry can change without changing a numeric face ID.
+                    // Recheck the exact CAD/Partition source-target pair at
+                    // compute time, independent of any UI candidate cache.
+                    if (!geometryBridge) {
+                        error=tr("几何模块不可用，无法验证扫掠方向。");
+                        return false;
+                    }
+                    QVariantMap analysis;
+                    bool invoked = false;
+                    if (assignment.partitionRegion) {
+                        invoked = QMetaObject::invokeMethod(
+                            geometryBridge, "externalAnalyzePartitionSweepRegion", Qt::DirectConnection,
+                            Q_RETURN_ARG(QVariantMap, analysis), Q_ARG(QVariantList, planes),
+                            Q_ARG(int, assignment.objectId));
+                    } else {
+                        invoked = QMetaObject::invokeMethod(
+                            geometryBridge, "externalAnalyzeSweepVolume", Qt::DirectConnection,
+                            Q_RETURN_ARG(QVariantMap, analysis), Q_ARG(int, assignment.objectId));
+                    }
+                    if (!invoked || !analysis.value(QStringLiteral("valid")).toBool()) {
+                        error=tr("“%1”的%2无法识别扫掠方向，请检查几何。")
+                            .arg(nodeName, regionName);
+                        return false;
+                    }
+                    bool matched = false;
+                    for (const QVariant& value : analysis.value(QStringLiteral("candidates")).toList()) {
+                        const QVariantMap option = value.toMap();
+                        if (option.value(QStringLiteral("source")).toInt() == assignment.sourceFaceId &&
+                            option.value(QStringLiteral("target")).toInt() == assignment.targetFaceId) {
+                            matched = true;
+                            break;
+                        }
+                    }
+                    if (!matched) {
+                        error=tr("“%1”的%2扫掠方向已失效，请重新识别。")
+                            .arg(nodeName, regionName);
+                        return false;
+                    }
+                }
+                const auto tasks=page->tasks();
+                for(auto sweep:tasks) {
+                if(sweep.partitionRegion) {
+                    if(planes.isEmpty()||!geometryBridge){error=tr("扫掠分块已失效，请重新预览并选择区域。");return false;}
+                    QVariantMap volume,source,target;
+                    const bool ok=QMetaObject::invokeMethod(geometryBridge,"externalPartitionRegionInfo",Qt::DirectConnection,
+                        Q_RETURN_ARG(QVariantMap,volume),Q_ARG(QVariantList,planes),Q_ARG(int,sweep.volumeId)) &&
+                        QMetaObject::invokeMethod(geometryBridge,"externalPartitionFaceInfo",Qt::DirectConnection,
+                        Q_RETURN_ARG(QVariantMap,source),Q_ARG(QVariantList,planes),Q_ARG(int,sweep.volumeId),Q_ARG(int,sweep.sourceFaceId)) &&
+                        QMetaObject::invokeMethod(geometryBridge,"externalPartitionFaceInfo",Qt::DirectConnection,
+                        Q_RETURN_ARG(QVariantMap,target),Q_ARG(QVariantList,planes),Q_ARG(int,sweep.volumeId),Q_ARG(int,sweep.targetFaceId));
+                    if(!ok||!volume.value("valid").toBool()||!source.value("valid").toBool()||!target.value("valid").toBool()) {
+                        error=tr("分块 %1 或其扫掠端面已失效，请重新选择。").arg(sweep.volumeId);return false;
+                    }
+                    sweep.volume={3,0,volume.value("center").value<QVector3D>(),volume.value("volume").toDouble()};
+                    sweep.source={2,0,source.value("center").value<QVector3D>(),source.value("area").toDouble()};
+                    sweep.target={2,0,target.value("center").value<QVector3D>(),target.value("area").toDouble()};
+                    if(sweep.sourceFaceId==sweep.targetFaceId){error=tr("扫掠起始面和目标面不能相同。");return false;}
+                    settings.sweeps.push_back(sweep);continue;
+                }
+                if(!capture(3,sweep.volumeId,sweep.volume)||!capture(2,sweep.sourceFaceId,sweep.source)||!capture(2,sweep.targetFaceId,sweep.target))return false;
+                if(sweep.sourceFaceId==sweep.targetFaceId){error=tr("“%1”的起始面和目标面不能相同。").arg(sweep.name);return false;}
+                const auto faces=pre->entitySubshapeIds(3,sweep.volumeId,2);
+                if(!faces.contains(QString::number(sweep.sourceFaceId))||!faces.contains(QString::number(sweep.targetFaceId))){error=tr("“%1”的起始面和目标面必须属于所选体。").arg(sweep.name);return false;}
+                settings.sweeps.push_back(sweep);
+                }
+            }
+        }return true;
+    };
+    settings.meshUuid=root->getUuid();
+    if (!walk(root,root->getUuid())) return false;
+    // Catch saved configurations from older versions as well as selections
+    // made before the sweep node was created. Native meshing must never
+    // silently discard a conflicting volume sizing scope.
+    QSet<int> sweepCadIds;
+    for(const auto& sweep:settings.sweeps)
+        if(!sweep.partitionRegion) sweepCadIds.insert(sweep.volumeId);
+    for(const auto& sub:settings.submeshes) {
+        if(sub.dimension!=3) continue;
+        for(int id:sub.entityIds) {
+            if(sweepCadIds.contains(id)) {
+                error=tr("几何体 %1 已用于扫掠网格，不能同时加入“%2”。请打开体网格设置刷新选择。")
+                    .arg(id).arg(sub.name);
+                return false;
+            }
+        }
+    }
+    // A CAD face genuinely shared between two sweep volumes must have a
+    // compatible extrusion role. This is a conservative, topology-backed
+    // precheck only; OCC Partition may introduce additional shared faces,
+    // which the native backend validates again after Partition.
+    QHash<QString, QVector<const SmeshSweepSettings*>> ownersByFace;
+    for (const auto& sweep : settings.sweeps) {
+        if (sweep.partitionRegion) continue;
+        // Faces on the original unpartitioned geometry can be checked here;
+        // generated Partition faces are checked again by the native mesher.
+        QSet<QString> uniqueFaces;
+        for (const QString& face : pre->entitySubshapeIds(3, sweep.volumeId, 2))
+            uniqueFaces.insert(face);
+        for (const QString& face : uniqueFaces)
+            ownersByFace[face].push_back(&sweep);
+    }
+    for (auto it=ownersByFace.cbegin(); it!=ownersByFace.cend(); ++it) {
+        const auto& owners=it.value();
+        if (owners.size()<2) continue;
+        const int faceId=it.key().toInt();
+        for (int i=0; i<owners.size(); ++i) {
+            const auto& first=*owners[i];
+            const QVector3D dirA=first.target.center-first.source.center;
+            for (int j=i+1; j<owners.size(); ++j) {
+                const auto& second=*owners[j];
+                const QVector3D dirB=second.target.center-second.source.center;
+                const bool capA=faceId==first.sourceFaceId||faceId==first.targetFaceId;
+                const bool capB=faceId==second.sourceFaceId||faceId==second.targetFaceId;
+                if (dirA.lengthSquared()>1.e-12f && dirB.lengthSquared()>1.e-12f) {
+                    const double alignment=std::abs(double(QVector3D::dotProduct(dirA.normalized(),dirB.normalized())));
+                    if (alignment<0.98 || capA!=capB) {
+                        error=tr("扫掠区域 %1 与 %2 的共享面 %3 不兼容，请调整方向或分组。")
+                            .arg(first.volumeId).arg(second.volumeId).arg(faceId);
+                        return false;
+                    }
+                }
+                // On a shared side face, the along-sweep edge subdivision
+                // must agree. Stacked bodies sharing a cap can have different
+                // layer counts and therefore remain independent nodes.
+                if (!capA && !capB && first.layers!=second.layers) {
+                    error=tr("扫掠区域 %1 与 %2 共用侧面，请将扫掠层数设为一致。")
+                        .arg(first.volumeId).arg(second.volumeId);
+                    return false;
+                }
+            }
+        }
+    }
+    return true;
 }

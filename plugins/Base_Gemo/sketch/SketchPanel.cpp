@@ -1,4 +1,6 @@
 #include "SketchPanel.h"
+#include "SketchPlanarRegionBuilder.h"
+#include "SketchCurveTools.h"
 #include "../builders/ImportGeometryBuilder.h"
 #include "../panels/GeometryPanelUi.h"
 #include "../workbench/GeometryWorkbench.h"
@@ -22,6 +24,7 @@
 #include <QAction>
 #include <QApplication>
 #include <QButtonGroup>
+#include <QColor>
 #include <QBoxLayout>
 #include <QCheckBox>
 #include <QComboBox>
@@ -41,6 +44,7 @@
 #include <QKeyEvent>
 #include <QLabel>
 #include <QMessageBox>
+#include <QPalette>
 #include <QPushButton>
 #include <QShortcut>
 #include <QSignalBlocker>
@@ -52,6 +56,7 @@
 
 #include "ui_SketchPanel.h"
 
+#include <BRep_Builder.hxx>
 #include <BRepAdaptor_Curve.hxx>
 #include <BRepTools_WireExplorer.hxx>
 #include <BRep_Tool.hxx>
@@ -62,6 +67,7 @@
 #include <TopExp.hxx>
 #include <TopExp_Explorer.hxx>
 #include <TopoDS.hxx>
+#include <TopoDS_Compound.hxx>
 #include <TopoDS_Edge.hxx>
 #include <TopoDS_Shape.hxx>
 #include <TopoDS_Vertex.hxx>
@@ -92,6 +98,37 @@ VisualWidgetService* readyVisualService()
     return (vis && vis->renderer()) ? vis : nullptr;
 }
 
+// "分解"只对真正包含多条几何边的复合对象开放，单条直线/圆弧不展示无效操作。
+bool canDecomposeSketchObject(const SketchDocument& doc)
+{
+    if (!doc.isRenderable())
+        return false;
+    if (doc.kind() == SketchDocument::Kind::Profile)
+    {
+        if (doc.hasProfileSegments())
+            return doc.profileSegments().size() > 1;
+        return doc.points().size() > 2;
+    }
+    if (doc.kind() == SketchDocument::Kind::NativeCurve)
+    {
+        // DXF 原生曲线的采样点数不代表真实边数，必须查看 OCC 拓扑。
+        try
+        {
+            const TopoDS_Shape shape = GeometrySketch::SketchCurveTools::shape(doc);
+            TopExp_Explorer edge(shape, TopAbs_EDGE);
+            if (!edge.More())
+                return false;
+            edge.Next();
+            return edge.More();
+        }
+        catch (const Standard_Failure&)
+        {
+            return false;
+        }
+    }
+    return false;
+}
+
 QString commandText(Command command)
 {
     switch (command)
@@ -120,6 +157,8 @@ GeometrySketch::SketchDocument translatedDocument(const GeometrySketch::SketchDo
     Document result;
     auto moved = [du, dv](const Point& p) { return Point{p.u + du, p.v + dv}; };
 
+    if (source.kind() == Document::Kind::NativeCurve)
+        return GeometrySketch::SketchCurveTools::translated(source, du, dv);
     if (source.kind() == Document::Kind::Circle && !source.points().empty())
     {
         const Point center = moved(source.points().front());
@@ -1053,6 +1092,123 @@ DxfSketchConversion convertDxfShapeToSketch(const TopoDS_Shape& shape)
     return conversion;
 }
 
+
+// 草图以真实的几何边/曲线为选择和吸附依据，而不是仅比较对象包围盒。
+struct SketchStroke
+{
+    std::vector<Point2D> points;
+    bool closed = false;
+};
+
+std::vector<SketchStroke> sketchStrokes(const SketchDocument& doc)
+{
+    std::vector<SketchStroke> strokes;
+    const auto& p = doc.points();
+    if (doc.kind() == SketchDocument::Kind::Circle && !p.empty())
+        strokes.push_back({circleGuide(p.front(), doc.circleRadius()), true});
+    else if (doc.kind() == SketchDocument::Kind::Arc && p.size() == 3)
+        strokes.push_back({doc.arcKind() == SketchDocument::ArcKind::CenterAngle
+                               ? centerAngleArcGuide(p[0], p[1], p[2], doc.arcSweep())
+                               : arcGuide(p[0], p[1], p[2]), false});
+    else if (doc.kind() == SketchDocument::Kind::Curve && p.size() >= 3)
+        strokes.push_back({curveGuide(p), false});
+    else if (doc.kind() == SketchDocument::Kind::Profile && doc.hasProfileSegments())
+    {
+        for (const auto& seg : doc.profileSegments())
+        {
+            std::vector<Point2D> points;
+            if (seg.kind == SketchDocument::ProfileSegmentKind::Line)
+                points = {seg.start, seg.end};
+            else if (seg.kind == SketchDocument::ProfileSegmentKind::ArcThrough)
+                points = arcGuide(seg.start, seg.control, seg.end);
+            else
+                points = tangentArcGuide(seg.start, seg.control, seg.end);
+            strokes.push_back({std::move(points), false});
+        }
+    }
+    else if (doc.kind() == SketchDocument::Kind::Profile)
+        strokes.push_back({doc.displayPoints(), doc.isClosed()});
+    return strokes;
+}
+
+struct StraightPiece { Point2D start; Point2D end; };
+template <typename Callback>
+void forEachStraightSketchPiece(const SketchDocument& doc, Callback&& callback)
+{
+    if (doc.kind() != SketchDocument::Kind::Profile || doc.hasCustomDisplayPoints())
+        return;
+    if (doc.hasProfileSegments())
+    {
+        for (const auto& s : doc.profileSegments())
+            if (s.kind == SketchDocument::ProfileSegmentKind::Line)
+                callback(StraightPiece{s.start, s.end});
+        return;
+    }
+    const auto& points = doc.points();
+    for (std::size_t i = 1; i < points.size(); ++i)
+        callback(StraightPiece{points[i - 1], points[i]});
+    if (doc.isClosed() && points.size() > 2)
+        callback(StraightPiece{points.back(), points.front()});
+}
+
+bool isSingleStraightSketchLine(const SketchDocument& doc)
+{
+    return doc.kind() == SketchDocument::Kind::Profile && !doc.isClosed() &&
+           doc.points().size() == 2 && !doc.hasCustomDisplayPoints() &&
+           (!doc.hasProfileSegments() ||
+            (doc.profileSegments().size() == 1 &&
+             doc.profileSegments().front().kind == SketchDocument::ProfileSegmentKind::Line));
+}
+
+SketchDocument straightLineDocument(const Point2D& a, const Point2D& b, bool construction)
+{
+    SketchDocument doc;
+    doc.setProfile({a, b}, false, true);
+    doc.setConstruction(construction);
+    return doc;
+}
+
+// a--b 为直线（延长），c--d 为有限线段。
+// 返回 a+t(b-a) = c+s(d-c)，避免接近平行时误判。
+bool intersectionParameters(const Point2D& a, const Point2D& b,
+                            const Point2D& c, const Point2D& d,
+                            double& t, double& s)
+{
+    const double ax = b.u - a.u, ay = b.v - a.v;
+    const double bx = d.u - c.u, by = d.v - c.v;
+    const double denom = ax * by - ay * bx;
+    const double scale = std::hypot(ax, ay) * std::hypot(bx, by);
+    if (scale <= 1e-24 || std::abs(denom) <= 1e-12 * scale)
+        return false;
+    const double rx = c.u - a.u, ry = c.v - a.v;
+    t = (rx * by - ry * bx) / denom;
+    s = (rx * ay - ry * ax) / denom;
+    return std::isfinite(t) && std::isfinite(s);
+}
+
+Point2D interpolate(const Point2D& a, const Point2D& b, double t)
+{
+    return {a.u + (b.u - a.u) * t, a.v + (b.v - a.v) * t};
+}
+
+bool lineIntersectsBox(const Point2D& a, const Point2D& b,
+                       double minU, double maxU, double minV, double maxV)
+{
+    const double dx = b.u - a.u, dy = b.v - a.v;
+    double t0 = 0.0, t1 = 1.0;
+    const auto clip = [&t0, &t1](double p, double q)
+    {
+        if (std::abs(p) < 1e-18)
+            return q >= 0.0;
+        const double r = q / p;
+        if (p < 0.0) t0 = std::max(t0, r);
+        else t1 = std::min(t1, r);
+        return t0 <= t1;
+    };
+    return clip(-dx, a.u - minU) && clip(dx, maxU - a.u) &&
+           clip(-dy, a.v - minV) && clip(dy, maxV - a.v);
+}
+
 } // namespace
 
 Sketch2DDialog::Sketch2DDialog(QWidget* parent)
@@ -1065,6 +1221,9 @@ Sketch2DDialog::Sketch2DDialog(QWidget* parent)
     setCommand(Command::Select);
     updateActionButtons();
     GeometryPanelUi::apply(this);
+    // 通用参数页会把“生成...”改成“应用”；这里需要明确表示二维构面。
+    ui->planarRegionButton->setText(tr("生成二维面"));
+    ui->planarRegionButton->setProperty("preserveActionText", true);
     if (qApp)
         qApp->installEventFilter(this);
 }
@@ -1102,7 +1261,8 @@ bool Sketch2DDialog::eventFilter(QObject* watched, QEvent* event)
                        modifiers == (Qt::ControlModifier | Qt::ShiftModifier));
     const bool cancel = keyEvent->key() == Qt::Key_Escape && modifiers == Qt::NoModifier;
     const bool remove = keyEvent->key() == Qt::Key_Delete && modifiers == Qt::NoModifier;
-    if (!undo && !redo && !cancel && !remove)
+    const bool selectAll = keyEvent->key() == Qt::Key_A && modifiers == Qt::ControlModifier;
+    if (!undo && !redo && !cancel && !remove && !selectAll)
         return BasePage::eventFilter(watched, event);
 
     // 正在编辑文本或数值时，保留输入控件自己的撤销、删除等行为。
@@ -1121,6 +1281,8 @@ bool Sketch2DDialog::eventFilter(QObject* watched, QEvent* event)
             redoLast();
         else if (cancel)
             cancelCurrentCommand();
+        else if (selectAll)
+            selectAllObjects();
         else
             removeSelectedPoint();
     }
@@ -1158,6 +1320,8 @@ void Sketch2DDialog::beforeLoad()
 
 void Sketch2DDialog::beforeUnload()
 {
+    m_pendingGeometryEdit = SketchEditOperation::None;
+    m_geometryEditTarget = -1;
     // closeProject() 会对所有几何页面做一次兜底卸载。未激活的草图不能
     // 因此再次 finalize 或改写显隐状态，否则保存/切换工程时会出现状态漂移。
     if (!m_isCurrentPage)
@@ -1218,9 +1382,11 @@ QJsonObject Sketch2DDialog::saveJson()
 
     QJsonObject obj;
     obj["plane"] = ui->planeCombo ? ui->planeCombo->currentIndex() : 0;
-    obj["outputMode"] = static_cast<int>(outputMode());
+    // 保留旧工程字段；源草图始终为曲线，构面结果单独记录。
+    obj["outputMode"] = static_cast<int>(OutputMode::Curve);
     obj["offset"] = ui->offsetSpin ? ui->offsetSpin->value() : 0.0;
-    obj["snap"] = ui->snapCheck ? ui->snapCheck->isChecked() : true;
+    obj["snap"] = ui->objectSnapCheck->isChecked();
+    obj["objectSnapVersion"] = 2; // 老工程的“仅绘制时捕捉”开关迁移为通用对象吸附。
     obj["gridSnap"] = ui->gridSnapCheck ? ui->gridSnapCheck->isChecked() : true;
     obj["gridStep"] = ui->gridStepSpin ? ui->gridStepSpin->value() : 1.0;
     obj["gridSnapStep"] = gridSnapStep();
@@ -1240,6 +1406,12 @@ QJsonObject Sketch2DDialog::saveJson()
     for (const auto& document : m_committedDocuments)
         committed.append(document.toJson());
     obj["committedDocuments"] = committed;
+    // 线网构面仅在用户明确确认后启用，保存所用原始对象索引，
+    // 不在工程恢复时从 DXF 的外包框猜测土体范围。
+    obj["planarFaceMode"] = m_planarFaceMode;
+    QJsonArray faceRows;
+    for (int row : m_planarFaceRows) faceRows.append(row);
+    obj["planarFaceSourceRows"] = faceRows;
     obj["referencePoints"] = pointsToJson(m_referencePoints);
     return obj;
 }
@@ -1249,14 +1421,15 @@ void Sketch2DDialog::loadJson(const QJsonObject& obj)
     m_loadingJson = true;
     if (ui->planeCombo)
         ui->planeCombo->setCurrentIndex(obj.value("plane").toInt(0));
-    if (ui->outputModeCombo)
-        ui->outputModeCombo->setCurrentIndex(obj.value("outputMode").toInt(static_cast<int>(OutputMode::Entity)));
     if (ui->offsetSpin)
         ui->offsetSpin->setValue(obj.value("offset").toDouble(0.0));
-    if (ui->snapCheck)
-        ui->snapCheck->setChecked(obj.value("snap").toBool(true));
+    // 旧版本的 snap=false 经常是用户为了关闭“仅绘制时”的捕捉，
+    // 新版首次打开老工程默认开启通用对象吸附；之后尊重新开关状态。
+    const bool snapEnabled = obj.value("objectSnapVersion").toInt(0) >= 2
+                                 ? obj.value("snap").toBool(true) : true;
+    ui->objectSnapCheck->setChecked(snapEnabled);
     if (ui->gridSnapCheck)
-        ui->gridSnapCheck->setChecked(obj.value("gridSnap").toBool(true));
+        ui->gridSnapCheck->setChecked(obj.value("gridSnap").toBool(false));
     const double loadedGridStep = obj.value("gridStep").toDouble(1.0);
     if (ui->gridStepSpin)
         ui->gridStepSpin->setValue(loadedGridStep);
@@ -1306,6 +1479,16 @@ void Sketch2DDialog::loadJson(const QJsonObject& obj)
         m_committedDocuments.push_back(m_document);
         m_document.clear();
     }
+    m_planarFaceMode = obj.value("planarFaceMode").toBool(false);
+    m_planarFaceRows.clear();
+    for (const QJsonValue& value : obj.value("planarFaceSourceRows").toArray())
+    {
+        const int row = value.toInt(-1);
+        if (row >= 0 && row < static_cast<int>(m_committedDocuments.size()) &&
+            !m_planarFaceRows.contains(row)) m_planarFaceRows.push_back(row);
+    }
+    if (m_planarFaceRows.isEmpty()) m_planarFaceMode = false;
+    m_planarPreviewFace.Nullify();
     m_undoStack.clear();
     m_redoStack.clear();
     m_editingCommittedIndex = -1;
@@ -1360,24 +1543,31 @@ void Sketch2DDialog::initUi()
     // 保留一张紧凑的草图元素表；点坐标通过图形区控制点和 U/V 输入框编辑。
     ui->pointsTitleLabel->setVisible(false);
     ui->pointsTable->setVisible(false);
-    ui->editObjectButton->setVisible(false);
-    ui->deleteObjectButton->setVisible(false);
-    ui->objectsTitleLabel->setText(tr("草图元素"));
-    ui->objectsTitleLabel->setVisible(false);
+    ui->editObjectButton->setVisible(true);
+    ui->deleteObjectButton->setVisible(true);
+    ui->deleteButton->setVisible(false);
+    // 始终显示对象计数：尤其是框选和 Ctrl/Shift 多选后，用户需要
+    // 在操作删除前看清究竟选中了多少条线。
+    ui->objectsTitleLabel->setText(tr("草图对象"));
+    ui->objectsTitleLabel->setVisible(true);
     ui->pointCoordinateGroup->setVisible(false);
     ui->arcAngleRow->setVisible(false);
 
-    // 对象列表和绘图辅助保持常显，避免用户为了常用操作反复展开/收起。
+    // 对象列表及绘图辅助直接显示，常用控件无需展开更多设置。
     ui->tableGroup->setVisible(true);
+    ui->objectsTable->setVisible(true);
     ui->optionGroup->setVisible(true);
 
+    // 对象吸附为默认行为；已有工程明确保存的关闭偏好仍优先。
+    ui->objectSnapCheck->setChecked(true);
+    ui->objectSnapCheck->setText(tr("对象吸附"));
+    ui->objectSnapCheck->setToolTip(tr("靠近已有线条时自动精确贴合；画线和拖动端点均适用。"));
+    // DXF 坐标保持原值；网格吸附只在用户明确开启后生效。
     if (ui->gridSnapCheck)
-        ui->gridSnapCheck->setChecked(true);
-    if (ui->snapCheck)
-    {
-        ui->snapCheck->setText(tr("端点"));
-        ui->snapCheck->setToolTip(tr("吸附到已有端点和参考点。"));
-    }
+        ui->gridSnapCheck->setChecked(false);
+    ui->pointSnapSpin->setToolTip(tr("鼠标选择对象和控制点的范围，不改变绘制坐标。"));
+    connect(ui->objectSnapCheck, &QCheckBox::toggled, this, [this]
+        {m_view.updateSnapIndicator(false, {});resetCursorInfo();});
     if (ui->gridSnapCheck)
     {
         ui->gridSnapCheck->setText(tr("启用网格吸附"));
@@ -1429,13 +1619,6 @@ void Sketch2DDialog::initUi()
     ui->planeCombo->addItem(tr("XY 平面"), static_cast<int>(Plane::XY));
     ui->planeCombo->addItem(tr("XZ 平面"), static_cast<int>(Plane::XZ));
     ui->planeCombo->addItem(tr("YZ 平面"), static_cast<int>(Plane::YZ));
-    if (ui->outputModeCombo)
-    {
-        ui->outputModeCombo->clear();
-        ui->outputModeCombo->addItem(tr("实体"), static_cast<int>(OutputMode::Entity));
-        ui->outputModeCombo->addItem(tr("曲线"), static_cast<int>(OutputMode::Curve));
-        ui->outputModeCombo->setToolTip(tr("实体或曲线输出。"));
-    }
     if (ui->importDxfButton)
     {
         ui->importDxfButton->setText(tr("导入 DXF 到草图"));
@@ -1500,6 +1683,15 @@ void Sketch2DDialog::initUi()
         table->setAlternatingRowColors(true);
         table->setShowGrid(true);
         table->setGridStyle(Qt::SolidLine);
+        // Qt 在表格失去焦点（例如点击右侧“删除”）时可能改用 Inactive 调色板。
+        // 明确给两个状态设相同的高对比度，确保多选不会变成几乎看不见的灰蓝色。
+        QPalette palette = table->palette();
+        for (QPalette::ColorGroup group : {QPalette::Active, QPalette::Inactive})
+        {
+            palette.setColor(group, QPalette::Highlight, QColor(QStringLiteral("#1769aa")));
+            palette.setColor(group, QPalette::HighlightedText, Qt::white);
+        }
+        table->setPalette(palette);
         table->setStyleSheet(QStringLiteral(R"(
             QTableWidget {
                 background:#ffffff;
@@ -1507,13 +1699,20 @@ void Sketch2DDialog::initUi()
                 border:1px solid #cbd5e1;
                 border-radius:4px;
                 gridline-color:#d6dee8;
-                selection-background-color:#dbeafe;
-                selection-color:#000000;
+                selection-background-color:#1769aa;
+                selection-color:#ffffff;
                 outline:0;
             }
             QTableWidget::item {
                 padding:3px 6px;
                 border:0;
+            }
+            QTableWidget::item:selected,
+            QTableWidget::item:selected:active,
+            QTableWidget::item:selected:!active {
+                background:#1769aa;
+                color:#ffffff;
+                font-weight:600;
             }
             QHeaderView::section {
                 background:#f1f5f9;
@@ -1551,7 +1750,8 @@ void Sketch2DDialog::initUi()
     if (ui->objectsTitleLabel)
     {
         ui->objectsTitleLabel->setWordWrap(false);
-        ui->objectsTitleLabel->setStyleSheet("color:#000000; font-weight:600; margin-top:2px;");
+        ui->objectsTitleLabel->setStyleSheet("color:#334155; font-weight:600; margin-top:2px;");
+        ui->objectsTitleLabel->setToolTip(tr("单击选择；Ctrl/Shift 多选；左往右完全框选，右往左穿越框选。"));
     }
 
     ui->objectsTable->setColumnCount(4);
@@ -1572,14 +1772,51 @@ void Sketch2DDialog::initUi()
 
     if (ui->editObjectButton)
     {
+        // 将低频几何编辑命令统一收进一个菜单，保留常用的删除按钮。
         ui->editObjectButton->setText(tr("编辑"));
-        ui->editObjectButton->setToolTip(tr("把选中的草图对象载入坐标表编辑。"));
+        ui->editObjectButton->setToolTip(tr("修改选中对象：编辑控制点、分解、打断于点或延伸到边界。"));
+        auto* editMenu = new QMenu(ui->editObjectButton);
+        m_editControlPointsAction = editMenu->addAction(tr("编辑控制点"));
+        editMenu->addSeparator();
+        m_decomposeAction = editMenu->addAction(tr("分解"));
+        auto* splitNodes = editMenu->addAction(tr("按节点一键断开"));
+        splitNodes->setObjectName(QStringLiteral("sketchSplitAtNodes"));
+        splitNodes->setToolTip(tr("自动识别所选线条的端点、独立点和真实交点并分割；未选择时处理全部草图线条。支持撤销。"));
+        connect(splitNodes, &QAction::triggered, this, &Sketch2DDialog::splitObjectsAtNodes);
+        m_breakAtPointAction = editMenu->addAction(tr("打断于点"));
+        m_extendToBoundaryAction = editMenu->addAction(tr("延伸到边界"));
+        ui->editObjectButton->setMenu(editMenu);
+        // 只在用户展开菜单时计算复杂 DXF 原生曲线的 OCC 边数，
+        // 避免每次鼠标移动/框选刷新按钮状态都重建大量几何。
+        connect(editMenu, &QMenu::aboutToShow, this, [this]()
+        {
+            const QList<int> selected = selectedCommittedIndices();
+            bool canDecompose = false;
+            for (int row : selected)
+            {
+                if (canDecomposeSketchObject(documentForCommittedRow(row)))
+                {
+                    canDecompose = true;
+                    break;
+                }
+            }
+            if (m_decomposeAction)
+                m_decomposeAction->setEnabled(canDecompose);
+        });
+        connect(m_editControlPointsAction, &QAction::triggered, this, &Sketch2DDialog::editSelectedObject);
+        connect(m_decomposeAction, &QAction::triggered, this, &Sketch2DDialog::explodeSelectedObjects);
+        connect(m_breakAtPointAction, &QAction::triggered, this, &Sketch2DDialog::startSplitSelectedObject);
+        connect(m_extendToBoundaryAction, &QAction::triggered, this, &Sketch2DDialog::startExtendSelectedObject);
     }
+    connect(ui->splitAtNodesButton, &QPushButton::clicked, this, &Sketch2DDialog::splitObjectsAtNodes);
     if (ui->deleteObjectButton)
     {
-        ui->deleteObjectButton->setText(tr("删除"));
+        ui->deleteObjectButton->setText(tr("删除选中"));
         ui->deleteObjectButton->setToolTip(tr("删除选中的草图对象。"));
     }
+    ui->planarRegionButton->setText(tr("生成二维面"));
+    ui->planarRegionButton->setToolTip(tr("先框选土体边界和真实地层分界线，再生成可供二维网格剖分的几何面。\n"
+                                            "未选中的勘探线和辅助线保留为草图，不会自动形成材料区域；不自动封堵缺口。"));
 
     m_toolGroup = new QButtonGroup(this);
     m_toolGroup->setExclusive(true);
@@ -1592,8 +1829,6 @@ void Sketch2DDialog::initUi()
     m_toolGroup->addButton(ui->pointButton, static_cast<int>(Command::Point));
 
     connect(ui->planeCombo, QOverload<int>::of(&QComboBox::currentIndexChanged), this, &Sketch2DDialog::updatePlaneAndView);
-    if (ui->outputModeCombo)
-        connect(ui->outputModeCombo, QOverload<int>::of(&QComboBox::currentIndexChanged), this, &Sketch2DDialog::updatePlaneAndView);
     if (ui->importDxfButton)
         connect(ui->importDxfButton, &QPushButton::clicked, this, &Sketch2DDialog::importDxfToSketch);
     connect(ui->offsetSpin, QOverload<double>::of(&QDoubleSpinBox::valueChanged), this, &Sketch2DDialog::updatePlaneAndView);
@@ -1614,6 +1849,7 @@ void Sketch2DDialog::initUi()
     connect(ui->mergeEndpointsButton, &QPushButton::clicked, this, &Sketch2DDialog::mergeProfileEndpoints);
     connect(ui->checkClosureButton, &QPushButton::clicked, this, &Sketch2DDialog::checkProfileClosure);
     connect(ui->generateButton, &QPushButton::clicked, this, &Sketch2DDialog::generateGeometry);
+    connect(ui->planarRegionButton, &QPushButton::clicked, this, &Sketch2DDialog::createPlanarRegions);
     connect(ui->pointsTable, &QTableWidget::cellChanged, this, [this](int, int)
     {
         syncDocumentFromTable();
@@ -1622,9 +1858,8 @@ void Sketch2DDialog::initUi()
     connect(ui->pointsTable, &QTableWidget::itemSelectionChanged, this, &Sketch2DDialog::updateActionButtons);
     connect(ui->objectsTable, &QTableWidget::itemSelectionChanged, this, [this]() { updateActionButtons(); updateSelectionHighlight(); });
     connect(ui->objectsTable, &QTableWidget::cellDoubleClicked, this, [this](int, int) { editSelectedObject(); });
-    connect(ui->editObjectButton, &QPushButton::clicked, this, &Sketch2DDialog::editSelectedObject);
     connect(ui->deleteObjectButton, &QPushButton::clicked, this, &Sketch2DDialog::deleteSelectedObject);
-    connect(ui->snapCheck, &QCheckBox::toggled, this, [this](bool) { updatePreview(); refreshStatusLabel(); });
+    connect(ui->selectAllObjectsButton, &QPushButton::clicked, this, &Sketch2DDialog::selectAllObjects);
     connect(ui->gridSnapCheck, &QCheckBox::toggled, this, [this](bool enabled)
     {
         if (ui->gridSnapStepSpin)
@@ -1795,20 +2030,9 @@ PlaneSettings Sketch2DDialog::planeSettings() const
     settings.offset = ui->offsetSpin ? ui->offsetSpin->value() : 0.0;
     settings.gridStep = gridStep();
     settings.showAxes = ui->showAxesCheck && ui->showAxesCheck->isChecked();
-    settings.outputMode = outputMode();
+    // 草图、选中高亮和辅助线都只构建线条；二维面只由明确构面操作生成。
+    settings.outputMode = OutputMode::Curve;
     return settings;
-}
-
-OutputMode Sketch2DDialog::outputMode() const
-{
-    if (!ui->outputModeCombo)
-        return OutputMode::Entity;
-    return static_cast<OutputMode>(ui->outputModeCombo->currentIndex());
-}
-
-bool Sketch2DDialog::outputAsEntity() const
-{
-    return outputMode() == OutputMode::Entity;
 }
 
 Command Sketch2DDialog::currentCommand() const
@@ -1863,6 +2087,8 @@ QString Sketch2DDialog::currentModeText() const
 
 void Sketch2DDialog::setCommand(Command command)
 {
+    m_pendingGeometryEdit = SketchEditOperation::None;
+    m_geometryEditTarget = -1;
     if (command != Command::Polyline)
         resetProfileSegmentState();
     m_currentCommand = command;
@@ -1882,6 +2108,7 @@ void Sketch2DDialog::setCommand(Command command)
     }
 
     clearPendingPoint();
+    m_view.updateSnapIndicator(false, {});
     refreshPointTable();
 
     setStatus(currentModeText(), true);
@@ -1898,6 +2125,10 @@ void Sketch2DDialog::setStatus(const QString& text, bool ok)
 
 QString Sketch2DDialog::operationHintText() const
 {
+    if (m_pendingGeometryEdit == SketchEditOperation::Split)
+        return tr("点击要打断的位置；Esc 取消。");
+    if (m_pendingGeometryEdit == SketchEditOperation::Extend)
+        return tr("点击目标边界曲线；Esc 取消。");
     const Command command = currentCommand();
     if (command == Command::Select)
     {
@@ -1909,7 +2140,7 @@ QString Sketch2DDialog::operationHintText() const
             return tr("拖动控制点编辑；Ctrl/Shift 多选。");
         if (rows.size() > 1)
             return tr("已选择 %1 个对象；Delete 删除。").arg(rows.size());
-        return tr("单击选择，拖动框选。");
+        return tr("导入 DXF → 框选多余线并删除 → 全选保留线条 → 生成二维面，再进入二维网格划分。右键可绘图和修整。");
     }
 
     if (command == Command::Polyline)
@@ -1969,12 +2200,28 @@ void Sketch2DDialog::refreshStatusLabel()
 
 void Sketch2DDialog::updateCursorInfo(double u, double v, SketchSnapKind snapKind, bool nearFirstPoint, bool orthoApplied)
 {
-    Q_UNUSED(snapKind);
-    Q_UNUSED(nearFirstPoint);
-    Q_UNUSED(orthoApplied);
-
     m_cursorStatusText = QStringLiteral("U %1 mm   V %2 mm")
                              .arg(formatCoord(u), formatCoord(v));
+    QString hint;
+    if (nearFirstPoint)
+        hint = tr("闭合首点");
+    else
+    {
+        switch (snapKind)
+        {
+        case SketchSnapKind::Point:
+        case SketchSnapKind::Midpoint:
+        case SketchSnapKind::Intersection:
+        case SketchSnapKind::OnCurve:      hint = tr("已吸附"); break;
+        case SketchSnapKind::Grid:         hint = tr("网格吸附"); break;
+        default:
+            if (orthoApplied)
+                hint = tr("正交");
+            break;
+        }
+    }
+    if (!hint.isEmpty())
+        m_cursorStatusText += QStringLiteral("   |   ") + hint;
     refreshStatusLabel();
 }
 
@@ -2207,7 +2454,7 @@ void Sketch2DDialog::updatePlaneAndView()
     refreshObjectTable();
     updatePreview();
 
-    // 草图是参数化对象：平面、偏移或输出类型变化后，已应用几何也要同步重建。
+    // 草图是参数化对象：平面或偏移变化后，已应用几何也要同步重建。
     if (m_isCurrentPage && hasVisibleGeometryDocuments())
         updateGeometryFromDocuments(tr("草图设置已更新。"), false);
 }
@@ -2320,10 +2567,8 @@ void Sketch2DDialog::refreshObjectTable()
         ui->objectsTable->selectionModel()->select(index, QItemSelectionModel::Select | QItemSelectionModel::Rows);
     }
 
-    if (ui->objectsTitleLabel)
-        ui->objectsTitleLabel->setText(tr("已应用对象：%1 个").arg(static_cast<int>(m_committedDocuments.size())));
-
-
+    // 选中数量统一由 updateActionButtons() 根据当前 SelectionModel 更新，
+    // 不要在刷新行时覆盖为总量，从而避免程序框选后的计数不同步。
     updateActionButtons();
 }
 
@@ -2392,6 +2637,8 @@ void Sketch2DDialog::selectObjectRows(const QList<int>& rows, bool additive)
     if (!ui->objectsTable || !ui->objectsTable->selectionModel())
         return;
 
+    // 导入 DXF 后一次可能全选数百条线，只在整组选完后刷新一次预览。
+    const QSignalBlocker selectionGuard(ui->objectsTable->selectionModel());
     if (!additive)
         ui->objectsTable->clearSelection();
 
@@ -2409,6 +2656,22 @@ void Sketch2DDialog::selectObjectRows(const QList<int>& rows, bool additive)
     updateInfoPanel();
 }
 
+void Sketch2DDialog::selectAllObjects()
+{
+    syncDocumentFromTable();
+    finishActiveDocumentBeforeNewObject();
+    setCommand(Command::Select);
+    clearEndpointSelection();
+    QList<int> rows;
+    for (int row = 0; row < static_cast<int>(m_committedDocuments.size()); ++row)
+    {
+        const auto& document = documentForCommittedRow(row);
+        if (!document.isConstruction() && document.kind() != SketchDocument::Kind::PointsOnly)
+            rows.push_back(row);
+    }
+    selectObjectRows(rows);
+}
+
 void Sketch2DDialog::clearSketchSelection()
 {
     if (ui->objectsTable)
@@ -2424,17 +2687,23 @@ QString Sketch2DDialog::documentTypeText(const SketchDocument& document) const
     switch (document.kind())
     {
     case SketchDocument::Kind::Circle:
-        return outputAsEntity() ? tr("圆实体") : tr("圆曲线");
+        return tr("圆");
     case SketchDocument::Kind::Arc:
         return tr("圆弧");
     case SketchDocument::Kind::Curve:
         return tr("平滑样条");
+    case SketchDocument::Kind::NativeCurve:
+        return tr("精确曲线");
     case SketchDocument::Kind::Profile:
     {
-        const bool closed = documentEffectivelyClosed(document);
+        if (!documentEffectivelyClosed(document) && document.points().size() == 2 &&
+            (!document.hasProfileSegments() ||
+             (document.profileSegments().size() == 1 &&
+              document.profileSegments().front().kind == SketchDocument::ProfileSegmentKind::Line)))
+            return tr("直线");
         if (looksLikeRectangle(document))
-            return outputAsEntity() && closed ? tr("矩形实体") : tr("矩形曲线");
-        return outputAsEntity() && closed ? tr("实体") : tr("曲线");
+            return tr("矩形");
+        return documentEffectivelyClosed(document) ? tr("闭合轮廓") : tr("折线");
     }
     default:
         return tr("未知");
@@ -2458,7 +2727,7 @@ QString Sketch2DDialog::documentDetailText(const SketchDocument& document) const
     case SketchDocument::Kind::Profile:
         return tr("%1 点，%2")
             .arg(documentDisplayPointCount(document))
-            .arg(outputAsEntity() && documentEffectivelyClosed(document) ? tr("实体") : tr("曲线"));
+            .arg(documentEffectivelyClosed(document) ? tr("闭合曲线") : tr("开放曲线"));
     case SketchDocument::Kind::Arc:
         return document.arcKind() == SketchDocument::ArcKind::CenterAngle
                    ? tr("中心角：起点 / 中心 / 角度")
@@ -2523,79 +2792,16 @@ int Sketch2DDialog::documentDisplayPointCount(const SketchDocument& document) co
     return std::max(0, count);
 }
 
-double Sketch2DDialog::distanceToDocument(const SketchDocument& document, double u, double v) const
+double Sketch2DDialog::distanceToDocument(const SketchDocument& document,double u,double v) const
 {
-    const Point2D p{u, v};
-    if (document.kind() == SketchDocument::Kind::Circle && !document.points().empty())
-    {
-        const auto& c = document.points().front();
-        return std::abs(std::hypot(p.u - c.u, p.v - c.v) - document.circleRadius());
-    }
-
-    std::vector<Point2D> points;
-    if (document.kind() == SketchDocument::Kind::Arc && document.points().size() == 3)
-    {
-        const auto& src = document.points();
-        points = document.arcKind() == SketchDocument::ArcKind::CenterAngle
-                     ? centerAngleArcGuide(src[0], src[1], src[2], document.arcSweep())
-                     : arcGuide(src[0], src[1], src[2]);
-    }
-    else if (document.kind() == SketchDocument::Kind::Curve && document.points().size() >= 3)
-    {
-        points = curveGuide(document.points());
-    }
-    else if (document.kind() == SketchDocument::Kind::Profile)
-    {
-        if (document.hasProfileSegments())
-        {
-            for (const auto& segment : document.profileSegments())
-            {
-                if (segment.kind == SketchDocument::ProfileSegmentKind::Line)
-                {
-                    if (points.empty())
-                        points.push_back(segment.start);
-                    points.push_back(segment.end);
-                }
-                else if (segment.kind == SketchDocument::ProfileSegmentKind::ArcThrough)
-                {
-                    const auto sampled = arcGuide(segment.start, segment.control, segment.end);
-                    for (const auto& pt : sampled)
-                        points.push_back(pt);
-                }
-                else
-                {
-                    const auto sampled = tangentArcGuide(segment.start, segment.control, segment.end);
-                    for (const auto& pt : sampled)
-                        points.push_back(pt);
-                }
-            }
-        }
-        else
-        {
-            points = document.points();
-        }
-    }
-    else
-    {
-        return 1.0e100;
-    }
-
-    if (points.size() < 2)
-        return 1.0e100;
-
-    double best = 1.0e100;
-    for (std::size_t i = 1; i < points.size(); ++i)
-        best = std::min(best, distanceToSegment(p, points[i - 1], points[i]));
-    if (document.kind() == SketchDocument::Kind::Profile && document.isClosed() && points.size() >= 3)
-        best = std::min(best, distanceToSegment(p, points.back(), points.front()));
-    return best;
+    return GeometrySketch::SketchCurveTools::distance(document,{u,v});
 }
 
 int Sketch2DDialog::findNearestCommittedObject(double u, double v) const
 {
     // 视图区选择不能太苛刻，否则用户必须精确点在线上才选中。
     // 这里按网格步长给一个适中容差，同时仍然只按最近距离选择一个对象。
-    const double threshold = std::max(pointSnapTolerance(), precisionStep() * 0.35);
+    const double threshold = std::max(geometryTolerance()*10.0, m_view.screenToleranceUv(8));
     double best = threshold;
     int bestIndex = -1;
     for (int i = 0; i < static_cast<int>(m_committedDocuments.size()); ++i)
@@ -2623,7 +2829,9 @@ bool Sketch2DDialog::findNearestEndpoint(double u, double v, int& objectIndex, i
         return false;
     }
 
-    const double threshold = std::max(pointSnapTolerance() * 2.0, precisionStep() * 0.75);
+    // 与对象捕捉使用同一套屏幕容差，避免控制点已经高亮，
+    // 但在相同鼠标位置尚未进入捕捉范围。
+    const double threshold = std::max(pointSnapTolerance(), m_view.screenToleranceUv(12));
     double best = threshold;
     objectIndex = -1;
     pointIndex = -1;
@@ -2631,6 +2839,8 @@ bool Sketch2DDialog::findNearestEndpoint(double u, double v, int& objectIndex, i
     for (int row = selectedRow; row <= selectedRow; ++row)
     {
         const auto& document = documentForCommittedRow(row);
+        if (document.kind()==SketchDocument::Kind::NativeCurve)
+            continue; // 采样点用于显示，不是曲线的可拖动控制点。
         // 只把真正可编辑的控制点作为端点。displayPoints() 对圆、圆弧和
         // 样条可能包含大量采样点，不能把这些采样点误当成可编辑端点。
         const auto& points = document.points();
@@ -2650,63 +2860,14 @@ bool Sketch2DDialog::findNearestEndpoint(double u, double v, int& objectIndex, i
     return objectIndex >= 0;
 }
 
-bool Sketch2DDialog::documentSelectionBounds(const SketchDocument& document,
-                                             double& minU, double& maxU,
-                                             double& minV, double& maxV) const
+bool Sketch2DDialog::documentSelectionBounds(const SketchDocument& document, double& minU, double& maxU, double& minV, double& maxV) const
 {
-    std::vector<Point2D> points;
-    if (document.kind() == SketchDocument::Kind::Circle && !document.points().empty())
-    {
-        const auto& center = document.points().front();
-        const double radius = document.circleRadius();
-        minU = center.u - radius;
-        maxU = center.u + radius;
-        minV = center.v - radius;
-        maxV = center.v + radius;
-        return radius > geometryTolerance();
-    }
-    if (document.kind() == SketchDocument::Kind::Arc && document.points().size() == 3)
-    {
-        const auto& src = document.points();
-        points = document.arcKind() == SketchDocument::ArcKind::CenterAngle
-                     ? centerAngleArcGuide(src[0], src[1], src[2], document.arcSweep())
-                     : arcGuide(src[0], src[1], src[2]);
-    }
-    else if (document.kind() == SketchDocument::Kind::Curve && document.points().size() >= 3)
-    {
-        points = curveGuide(document.points());
-    }
-    else if (document.kind() == SketchDocument::Kind::Profile && document.hasProfileSegments())
-    {
-        for (const auto& segment : document.profileSegments())
-        {
-            std::vector<Point2D> sampled;
-            if (segment.kind == SketchDocument::ProfileSegmentKind::Line)
-                sampled = {segment.start, segment.end};
-            else if (segment.kind == SketchDocument::ProfileSegmentKind::ArcThrough)
-                sampled = arcGuide(segment.start, segment.control, segment.end);
-            else
-                sampled = tangentArcGuide(segment.start, segment.control, segment.end);
-            points.insert(points.end(), sampled.begin(), sampled.end());
-        }
-    }
-    else
-    {
-        points = document.displayPoints();
-    }
+    return GeometrySketch::SketchCurveTools::bounds(document,minU,maxU,minV,maxV);
+}
 
-    if (points.empty())
-        return false;
-    minU = maxU = points.front().u;
-    minV = maxV = points.front().v;
-    for (const auto& p : points)
-    {
-        minU = std::min(minU, p.u);
-        maxU = std::max(maxU, p.u);
-        minV = std::min(minV, p.v);
-        maxV = std::max(maxV, p.v);
-    }
-    return true;
+bool Sketch2DDialog::documentIntersectsBox(const SketchDocument& document,double minU,double maxU,double minV,double maxV) const
+{
+    return GeometrySketch::SketchCurveTools::intersectsBox(document,minU,maxU,minV,maxV);
 }
 
 Command Sketch2DDialog::preferredCommandForDocument(const SketchDocument& document) const
@@ -2769,6 +2930,8 @@ void Sketch2DDialog::editSelectedObject()
 
 void Sketch2DDialog::deleteSelectedObject()
 {
+    if (m_pendingGeometryEdit != SketchEditOperation::None)
+        cancelCurrentCommand();
     QList<int> rows = selectedCommittedIndices();
     if (rows.isEmpty())
     {
@@ -2777,6 +2940,14 @@ void Sketch2DDialog::deleteSelectedObject()
     }
 
     pushUndo();
+    // 先移除旧选择再修改对象数组。否则刷新列表会按旧行号恢复选择，
+    // 删除中间对象时会误选到后面补位的其它线条。
+    if (ui->objectsTable)
+    {
+        const QSignalBlocker blocker(ui->objectsTable);
+        ui->objectsTable->clearSelection();
+    }
+    clearEndpointSelection();
     std::sort(rows.begin(), rows.end(), std::greater<int>());
     for (int row : rows)
     {
@@ -2795,12 +2966,165 @@ void Sketch2DDialog::deleteSelectedObject()
     }
 
     clearPendingPoint();
-    clearEndpointSelection();
     refreshPointTable();
     refreshObjectTable();
     updatePreview();
     updateGeometryFromDocuments(tr("已删除选中的草图对象。"), false);
     setStatus(tr("已删除 %1 个对象。").arg(rows.size()), true);
+}
+
+
+void Sketch2DDialog::finishGeometryEdit(const QString& message, const QList<int>& rows)
+{
+    m_pendingGeometryEdit = SketchEditOperation::None;
+    m_geometryEditTarget = -1;
+    m_view.setBoxSelectionEnabled(true);
+    m_document.clear();
+    m_editingCommittedIndex = -1;
+    clearPendingPoint();
+    clearEndpointSelection();
+    refreshPointTable();
+    refreshObjectTable();
+    selectObjectRows(rows, false);
+    updatePreview();
+    updateGeometryFromDocuments(message, false);
+    setStatus(message, true);
+}
+
+void Sketch2DDialog::explodeSelectedObjects()
+{
+    const QList<int> selected = selectedCommittedIndices();
+    if (selected.isEmpty()) return;
+    std::vector<SketchDocument> replacements;
+    QList<int> decomposedRows;
+    for (int row : selected)
+    {
+        if (!canDecomposeSketchObject(documentForCommittedRow(row)))
+            continue; // 混合多选时保留独立直线/圆弧，不因一条线阻断整批分解。
+        std::vector<SketchDocument> pieces;
+        QString error;
+        if (!GeometrySketch::SketchCurveTools::explode(documentForCommittedRow(row), pieces, error))
+        {
+            setStatus(error, false);
+            return; // 任意异常不部分提交，保持撤销原子性。
+        }
+        replacements.insert(replacements.end(), pieces.begin(), pieces.end());
+        decomposedRows.push_back(row);
+    }
+    if (decomposedRows.isEmpty())
+    {
+        setStatus(tr("选中的对象均为独立曲线，无需分解。"), false);
+        return;
+    }
+    pushUndo();
+    for (auto it = decomposedRows.rbegin(); it != decomposedRows.rend(); ++it)
+        m_committedDocuments.erase(m_committedDocuments.begin() + *it);
+    QList<int> rows;
+    for (const auto& piece : replacements)
+    {
+        rows.push_back(static_cast<int>(m_committedDocuments.size()));
+        m_committedDocuments.push_back(piece);
+    }
+    finishGeometryEdit(tr("已分解 %1 个复合对象，得到 %2 条独立曲线。")
+                           .arg(decomposedRows.size()).arg(replacements.size()), rows);
+}
+
+void Sketch2DDialog::splitObjectsAtNodes()
+{
+    QList<int> rows = selectedCommittedIndices();
+    if (rows.isEmpty())
+        for (int i = 0; i < int(m_committedDocuments.size()); ++i) rows.push_back(i);
+    if (rows.isEmpty()) { setStatus(tr("请先绘制或导入线条。"), false); return; }
+    std::sort(rows.begin(), rows.end());
+    std::vector<SketchDocument> sources;
+    for (int row : rows) sources.push_back(documentForCommittedRow(row));
+    // Unselected curves and points remain intact, but still define cutting nodes.
+    std::vector<SketchDocument> references;
+    for (int i = 0; i < int(m_committedDocuments.size()); ++i)
+        if (!rows.contains(i)) references.push_back(documentForCommittedRow(i));
+    std::vector<std::vector<SketchDocument>> groups;
+    QString error;
+    QApplication::setOverrideCursor(Qt::WaitCursor);
+    const bool ok = GeometrySketch::SketchCurveTools::splitAtNodes(
+        sources, std::max(1.0e-9, geometryTolerance()), groups, error, references);
+    QApplication::restoreOverrideCursor();
+    if (!ok) { setStatus(error, false); return; }
+    int pieces = 0;
+    for (int i = 0; i < rows.size(); ++i) pieces += int(groups[i].size());
+    if (pieces == rows.size()) { setStatus(tr("未发现需要断开的内部节点或交点。"), true); return; }
+    pushUndo();
+    std::sort(rows.begin(), rows.end());
+    // selectedCommittedIndices() is ascending; source/output pairing stays stable.
+    for (auto it = rows.rbegin(); it != rows.rend(); ++it)
+        m_committedDocuments.erase(m_committedDocuments.begin() + *it);
+    QList<int> resultRows;
+    for (int i = 0; i < rows.size(); ++i)
+        for (const auto& piece : groups[i])
+        {
+            resultRows.push_back(int(m_committedDocuments.size()));
+            m_committedDocuments.push_back(piece);
+        }
+    finishGeometryEdit(tr("已按节点和交点断开 %1 个对象，得到 %2 个对象；可撤销。")
+                           .arg(rows.size()).arg(pieces), resultRows);
+}
+
+void Sketch2DDialog::startSplitSelectedObject()
+{
+    const int row = selectedCommittedIndex();
+    if (row < 0 || !documentForCommittedRow(row).isRenderable())
+    {
+        setStatus(tr("先单选需要打断的曲线。"), false);
+        return;
+    }
+    setCommand(Command::Select);
+    m_pendingGeometryEdit = SketchEditOperation::Split;
+    m_geometryEditTarget = row;
+    m_view.setBoxSelectionEnabled(false);
+    setStatus(tr("请在线条需要断开的位置单击，Esc 取消。"), true);
+}
+
+void Sketch2DDialog::startExtendSelectedObject()
+{
+    const int row = selectedCommittedIndex();
+    if (row < 0 || !documentForCommittedRow(row).isRenderable())
+    {
+        setStatus(tr("先单选需要延伸到边界的曲线。"), false);
+        return;
+    }
+    setCommand(Command::Select);
+    m_pendingGeometryEdit = SketchEditOperation::Extend;
+    m_geometryEditTarget = row;
+    m_view.setBoxSelectionEnabled(false);
+    setStatus(tr("请点击目标边界曲线，Esc 取消。"), true);
+}
+
+void Sketch2DDialog::handleGeometryEditClick(double u,double v,bool rightButton)
+{
+    if(rightButton){cancelCurrentCommand();return;}
+    const int row=m_geometryEditTarget;
+    if(row<0||row>=int(m_committedDocuments.size())){cancelCurrentCommand();return;}
+    const double tolerance=std::max(geometryTolerance()*10,m_view.screenToleranceUv(10));
+    QString message;
+    if(m_pendingGeometryEdit==SketchEditOperation::Split)
+    {
+        std::vector<SketchDocument> pieces;
+        if(!GeometrySketch::SketchCurveTools::split(documentForCommittedRow(row),{u,v},tolerance,pieces,message)){setStatus(message,false);return;}
+        pushUndo();m_committedDocuments[row]=pieces[0];const int next=int(m_committedDocuments.size());m_committedDocuments.push_back(pieces[1]);
+        finishGeometryEdit(tr("已在指定位置打断曲线。"),{row,next});
+    }
+    else if(m_pendingGeometryEdit==SketchEditOperation::Extend)
+    {
+        int boundary=-1;double closest=tolerance;
+        for(int i=0;i<int(m_committedDocuments.size());++i)if(i!=row)
+        {
+            const double distance=GeometrySketch::SketchCurveTools::distance(documentForCommittedRow(i),{u,v});
+            if(distance<closest){closest=distance;boundary=i;}
+        }
+        if(boundary<0){setStatus(tr("请点击另一条真实曲线作为目标边界。"),false);return;}
+        SketchDocument result;
+        if(!GeometrySketch::SketchCurveTools::extend(documentForCommittedRow(row),documentForCommittedRow(boundary),{u,v},result,message)){setStatus(message,false);return;}
+        pushUndo();m_committedDocuments[row]=result;finishGeometryEdit(message,{row});
+    }
 }
 
 void Sketch2DDialog::copySelectedObjects()
@@ -3134,22 +3458,29 @@ void Sketch2DDialog::finishActiveDocumentBeforeNewObject()
 
 void Sketch2DDialog::pushUndo()
 {
-    m_undoStack.push_back({m_committedDocuments, m_document, m_referencePoints, m_editingCommittedIndex});
+    m_undoStack.push_back({m_committedDocuments, m_document, m_referencePoints, m_editingCommittedIndex, m_planarFaceMode, m_planarFaceRows});
     if (m_undoStack.size() > 40)
         m_undoStack.erase(m_undoStack.begin());
     m_redoStack.clear();
+    // Any editing of source geometry invalidates the generated face topology.
+    // Rebuilding must be explicit; never leave a stale, potentially wrong mesh face.
+    m_planarFaceMode = false;
+    m_planarFaceRows.clear();
+    m_planarPreviewFace.Nullify();
     updateActionButtons();
 }
 
 void Sketch2DDialog::undoLast()
 {
+    if (m_pendingGeometryEdit != SketchEditOperation::None)
+        cancelCurrentCommand();
     if (m_undoStack.empty())
     {
         setStatus(tr("无可撤销。"), true);
         return;
     }
 
-    m_redoStack.push_back({m_committedDocuments, m_document, m_referencePoints, m_editingCommittedIndex});
+    m_redoStack.push_back({m_committedDocuments, m_document, m_referencePoints, m_editingCommittedIndex, m_planarFaceMode, m_planarFaceRows});
     if (m_redoStack.size() > 40)
         m_redoStack.erase(m_redoStack.begin());
 
@@ -3159,25 +3490,31 @@ void Sketch2DDialog::undoLast()
     m_document = snapshot.active;
     m_referencePoints = snapshot.referencePoints;
     m_editingCommittedIndex = snapshot.editingCommittedIndex;
+    m_planarFaceMode = snapshot.planarFaceMode;
+    m_planarFaceRows = snapshot.planarFaceRows;
+    m_planarPreviewFace.Nullify();
     resetProfileSegmentState();
     clearPendingPoint();
     refreshPointTable();
     refreshObjectTable();
     updatePreview();
     updateGeometryFromDocuments(tr("已撤销上一步。"), false);
+    if (m_planarFaceMode) updatePreview();
     updateActionButtons();
     setStatus(tr("已撤销上一步。"), true);
 }
 
 void Sketch2DDialog::redoLast()
 {
+    if (m_pendingGeometryEdit != SketchEditOperation::None)
+        cancelCurrentCommand();
     if (m_redoStack.empty())
     {
         setStatus(tr("无可重做。"), true);
         return;
     }
 
-    m_undoStack.push_back({m_committedDocuments, m_document, m_referencePoints, m_editingCommittedIndex});
+    m_undoStack.push_back({m_committedDocuments, m_document, m_referencePoints, m_editingCommittedIndex, m_planarFaceMode, m_planarFaceRows});
     if (m_undoStack.size() > 40)
         m_undoStack.erase(m_undoStack.begin());
 
@@ -3187,12 +3524,16 @@ void Sketch2DDialog::redoLast()
     m_document = snapshot.active;
     m_referencePoints = snapshot.referencePoints;
     m_editingCommittedIndex = snapshot.editingCommittedIndex;
+    m_planarFaceMode = snapshot.planarFaceMode;
+    m_planarFaceRows = snapshot.planarFaceRows;
+    m_planarPreviewFace.Nullify();
     resetProfileSegmentState();
     clearPendingPoint();
     refreshPointTable();
     refreshObjectTable();
     updatePreview();
     updateGeometryFromDocuments(tr("已重做上一步。"), false);
+    if (m_planarFaceMode) updatePreview();
     updateActionButtons();
     setStatus(tr("已重做上一步。"), true);
 }
@@ -3211,19 +3552,34 @@ void Sketch2DDialog::updateActionButtons()
                                 ? static_cast<int>(m_referencePoints.size())
                                 : activePointCount;
     const bool hasSelection = ui->pointsTable && ui->pointsTable->currentRow() >= 0;
-    const int selectedObjectRow = selectedCommittedIndex();
-    const bool hasObjectSelection = selectedObjectRow >= 0;
-    const bool selectedProfile = hasObjectSelection &&
+    const QList<int> selectedObjectRows = selectedCommittedIndices();
+    const bool hasObjectSelection = !selectedObjectRows.isEmpty();
+    ui->selectAllObjectsButton->setEnabled(!m_committedDocuments.empty() || m_document.isRenderable());
+    if (ui->objectsTitleLabel)
+    {
+        const int totalCount = static_cast<int>(m_committedDocuments.size());
+        const int selectedCount = selectedObjectRows.size();
+        ui->objectsTitleLabel->setText(selectedCount > 0
+            ? tr("已选择 %1 个 / 共 %2 个对象").arg(selectedCount).arg(totalCount)
+            : tr("草图对象：%1 个（Ctrl/Shift 多选）").arg(totalCount));
+        const QString summaryStyle = selectedCount > 0
+            ? QStringLiteral("color:#1769aa; font-weight:700; margin-top:2px;")
+            : QStringLiteral("color:#334155; font-weight:600; margin-top:2px;");
+        if (ui->objectsTitleLabel->styleSheet() != summaryStyle)
+            ui->objectsTitleLabel->setStyleSheet(summaryStyle);
+    }
+    const int selectedObjectRow = selectedObjectRows.size() == 1 ? selectedObjectRows.front() : -1;
+    const bool hasSingleObjectSelection = selectedObjectRow >= 0;
+    const bool selectedProfile = hasSingleObjectSelection &&
                                  documentForCommittedRow(selectedObjectRow).kind() == SketchDocument::Kind::Profile;
     const bool protectedSegmentProfile = isProfile && m_document.hasProfileSegments();
 
-    const bool entityMode = outputAsEntity();
     const bool profileCommand = currentCommand() == Command::Polyline || isProfile;
     const bool curveCommand = currentCommand() == Command::Curve || isCurve;
     if (ui->closeButton)
     {
         ui->closeButton->setText(tr("闭合"));
-        ui->closeButton->setVisible(entityMode && profileCommand);
+        ui->closeButton->setVisible(profileCommand);
         ui->closeButton->setEnabled(isProfile && activePointCount >= 3 && !m_document.isClosed());
     }
     if (ui->finishButton)
@@ -3237,7 +3593,8 @@ void Sketch2DDialog::updateActionButtons()
     {
         ui->deleteButton->setText(currentCommand() == Command::Select ? tr("删除对象") : tr("删除点"));
         const bool canDeletePoint = tablePointCount > 0 && hasSelection && !protectedSegmentProfile;
-        ui->deleteButton->setEnabled(canDeletePoint || (currentCommand() == Command::Select && hasObjectSelection));
+        ui->deleteButton->setEnabled(currentCommand() == Command::Select
+                                         ? hasObjectSelection : canDeletePoint);
     }
     if (ui->reverseButton)
     {
@@ -3256,77 +3613,75 @@ void Sketch2DDialog::updateActionButtons()
         ui->clearButton->setEnabled(hasAnySketchData());
     if (ui->generateButton)
         ui->generateButton->setEnabled(hasVisibleGeometryDocuments());
+    ui->splitAtNodesButton->setEnabled(!m_committedDocuments.empty());
     if (ui->editObjectButton)
         ui->editObjectButton->setEnabled(hasObjectSelection);
+    if (m_editControlPointsAction)
+        m_editControlPointsAction->setEnabled(hasSingleObjectSelection);
+    // 分解的精确可用性在展开菜单时检查，避免高频 UI 刷新引发 OCC 运算。
+    if (m_decomposeAction)
+        m_decomposeAction->setEnabled(hasObjectSelection);
+    if (m_breakAtPointAction)
+        m_breakAtPointAction->setEnabled(hasSingleObjectSelection &&
+            documentForCommittedRow(selectedObjectRow).isRenderable());
+    if (m_extendToBoundaryAction)
+        m_extendToBoundaryAction->setEnabled(hasSingleObjectSelection &&
+            documentForCommittedRow(selectedObjectRow).isRenderable() &&
+            !documentForCommittedRow(selectedObjectRow).isClosed() &&
+            documentForCommittedRow(selectedObjectRow).kind() != SketchDocument::Kind::Circle);
     if (ui->deleteObjectButton)
+    {
         ui->deleteObjectButton->setEnabled(hasObjectSelection);
+        ui->deleteObjectButton->setToolTip(hasObjectSelection
+            ? tr("删除当前选中的 %1 个草图对象。可使用 Delete 键。")
+                  .arg(selectedObjectRows.size())
+            : tr("先单击、Ctrl/Shift 多选或框选要删除的草图对象。"));
+    }
+    if (ui->planarRegionButton)
+        ui->planarRegionButton->setEnabled(hasObjectSelection);
 
     updatePointTableTitle();
     updateInfoPanel();
 }
 
-bool Sketch2DDialog::snap(double& u, double& v, int* snappedIndex, SketchSnapKind* snapKind) const
+bool Sketch2DDialog::snap(double& u, double& v, int* snappedIndex, SketchSnapKind* snapKind, int excludeCommittedRow) const
 {
-    if (snappedIndex)
-        *snappedIndex = -1;
-    if (snapKind)
-        *snapKind = SketchSnapKind::None;
+    if (snappedIndex) *snappedIndex = -1;
+    if (snapKind) *snapKind = SketchSnapKind::None;
 
-    if (ui->snapCheck && ui->snapCheck->isChecked())
+    if (ui->objectSnapCheck->isChecked())
     {
-        const double threshold = pointSnapTolerance();
-        double bestDistance = threshold;
-        int bestActiveIndex = -1;
-        Point2D bestPoint;
-        bool found = false;
-
-        auto tryPoint = [&](const Point2D& point, int activeIndex)
+        // 拖动控制点时不能捕捉正在编辑的对象：否则自身曲线就在
+        // 鼠标附近，端点容易被吸回原线或在拖动中反复跳动。
+        std::vector<SketchDocument> documents;
+        documents.reserve(m_committedDocuments.size() + 1);
+        for (int i = 0; i < static_cast<int>(m_committedDocuments.size()); ++i)
+            if (i != excludeCommittedRow && m_committedDocuments[static_cast<std::size_t>(i)].isRenderable())
+                documents.push_back(m_committedDocuments[static_cast<std::size_t>(i)]);
+        if (excludeCommittedRow < 0 && m_document.isRenderable())
+            documents.push_back(m_document);
+        auto references=m_referencePoints;
+        if(m_document.kind()!=SketchDocument::Kind::NativeCurve)
+            references.insert(references.end(),m_document.points().begin(),m_document.points().end());
+        const double pixels=m_view.screenToleranceUv(10);
+        const auto result=GeometrySketch::SketchCurveTools::snap(documents,references,{u,v},pixels>0?pixels:pointSnapRange());
+        if(result.hit)
         {
-            const double distance = std::hypot(point.u - u, point.v - v);
-            if (distance < bestDistance)
-            {
-                bestDistance = distance;
-                bestActiveIndex = activeIndex;
-                bestPoint = point;
-                found = true;
-            }
-        };
-
-        const auto& activePoints = m_document.displayPoints();
-        for (std::size_t i = 0; i < activePoints.size(); ++i)
-            tryPoint(activePoints[i], static_cast<int>(i));
-
-        for (const auto& point : m_referencePoints)
-            tryPoint(point, -1);
-
-        for (const auto& document : m_committedDocuments)
-        {
-            for (const auto& point : document.displayPoints())
-                tryPoint(point, -1);
-        }
-
-        if (found)
-        {
-            u = bestPoint.u;
-            v = bestPoint.v;
-            if (snappedIndex)
-                *snappedIndex = bestActiveIndex;
-            if (snapKind)
-                *snapKind = SketchSnapKind::Point;
+            u=result.point.u;v=result.point.v;if(snapKind)*snapKind=static_cast<SketchSnapKind>(result.kind);
+            if(snappedIndex)for(int i=0;i<int(m_document.points().size());++i)
+                if(dxfPointDistance(m_document.points()[i],result.point)<=geometryTolerance()){*snappedIndex=i;break;}
             return true;
         }
     }
-
+    // 仅保留用户主动开启的网格吸附，不投影到已有对象。
     if (ui->gridSnapCheck && ui->gridSnapCheck->isChecked())
     {
         const double step = gridSnapStep();
         u = std::round(u / step) * step;
         v = std::round(v / step) * step;
-        if (snapKind)
-            *snapKind = SketchSnapKind::Grid;
+        if (snapKind) *snapKind = SketchSnapKind::Grid;
         return true;
     }
-
     return false;
 }
 
@@ -3513,13 +3868,36 @@ void Sketch2DDialog::updateGeometryFromDocuments(const QString& message, bool sh
         return;
     }
 
-    const auto result = SketchShapeBuilder::buildMany(documents, planeSettings());
+    // 面域模式只使用用户明确选定的边界对象；未选中的线继续在草图编辑层中显示。
+    GeometrySketch::ShapeBuildResult result;
+    if (m_planarFaceMode)
+    {
+        std::vector<SketchDocument> boundaryDocs;
+        for (int row : m_planarFaceRows)
+            if (row >= 0 && row < static_cast<int>(m_committedDocuments.size()))
+                boundaryDocs.push_back(m_committedDocuments[static_cast<std::size_t>(row)]);
+        const auto region = GeometrySketch::SketchPlanarRegionBuilder::build(boundaryDocs, planeSettings());
+        result.ok = region.ok();
+        result.shape = region.shape;
+        result.message = region.error;
+    }
+    else
+        result = SketchShapeBuilder::buildMany(documents, planeSettings());
     if (!result.ok || result.shape.IsNull())
     {
+        // 已生成的面域一旦失效，必须撤销旧 CAD 几何，不能继续让网格模块
+        // 使用上一次成功但已过时的土体面。
+        if (m_planarFaceMode)
+        {
+            m_planarPreviewFace.Nullify();
+            cleanupGeneratedGeometry();
+        }
         if (showWarning)
             QMessageBox::warning(this, tr("无法更新草图"), result.message);
         return;
     }
+
+    m_planarPreviewFace = m_planarFaceMode ? result.shape : TopoDS_Shape();
 
     auto* manager = GeomManager::GeomManagerInstance::getInstance();
     if (!manager)
@@ -3673,14 +4051,6 @@ void Sketch2DDialog::showSketchContextMenu()
             threePointSegmentAction = arcSegmentMenu->addAction(tr("三点圆弧"));
             centerAngleSegmentAction = arcSegmentMenu->addAction(tr("中心角圆弧"));
             tangentSegmentAction = arcSegmentMenu->addAction(tr("切线圆弧"));
-            lineSegmentAction->setCheckable(true);
-            threePointSegmentAction->setCheckable(true);
-            centerAngleSegmentAction->setCheckable(true);
-            tangentSegmentAction->setCheckable(true);
-            lineSegmentAction->setChecked(m_profileSegmentMode == ProfileSegmentMode::Line);
-            threePointSegmentAction->setChecked(m_profileSegmentMode == ProfileSegmentMode::ArcThreePoint);
-            centerAngleSegmentAction->setChecked(m_profileSegmentMode == ProfileSegmentMode::ArcCenterAngle);
-            tangentSegmentAction->setChecked(m_profileSegmentMode == ProfileSegmentMode::ArcTangentEnd);
             menu.addSeparator();
         }
         else if (m_document.kind() == SketchDocument::Kind::Curve)
@@ -3769,6 +4139,26 @@ void Sketch2DDialog::showSketchContextMenu()
         }
         QAction* constructionAction = menu.addAction(allConstruction ? tr("转为普通线") : tr("设为构造线"));
         QAction* copyAction = menu.addAction(tr("复制"));
+        QAction* explodeAction = menu.addAction(tr("分解"));
+        QAction* splitNodesAction = menu.addAction(tr("按节点一键断开"));
+        QAction* splitAction = menu.addAction(tr("打断于点"));
+        QAction* extendAction = menu.addAction(tr("延伸到边界"));
+        bool hasDecomposable = false;
+        for (int row : selectedRows)
+        {
+            if (canDecomposeSketchObject(documentForCommittedRow(row)))
+            {
+                hasDecomposable = true;
+                break;
+            }
+        }
+        explodeAction->setEnabled(hasDecomposable);
+        const bool singleLine = selectedRows.size() == 1 &&
+            documentForCommittedRow(selectedRows.front()).isRenderable();
+        splitAction->setEnabled(singleLine);
+        extendAction->setEnabled(singleLine &&
+            !documentForCommittedRow(selectedRows.front()).isClosed() &&
+            documentForCommittedRow(selectedRows.front()).kind() != SketchDocument::Kind::Circle);
         QAction* deleteAction = menu.addAction(tr("删除"));
         QAction* clearSelectionAction = menu.addAction(tr("取消选择"));
 
@@ -3818,6 +4208,14 @@ void Sketch2DDialog::showSketchContextMenu()
             toggleSelectedConstruction();
         else if (picked == copyAction)
             copySelectedObjects();
+        else if (picked == explodeAction)
+            explodeSelectedObjects();
+        else if (picked == splitNodesAction)
+            splitObjectsAtNodes();
+        else if (picked == splitAction)
+            startSplitSelectedObject();
+        else if (picked == extendAction)
+            startExtendSelectedObject();
         else if (picked == deleteAction)
             deleteSelectedObject();
         else if (picked == clearSelectionAction)
@@ -3835,20 +4233,7 @@ void Sketch2DDialog::showSketchContextMenu()
     QAction* curveAction = menu.addAction(tr("平滑样条"));
     QAction* pointAction = menu.addAction(tr("辅助点"));
 
-    for (QAction* action : {selectAction, profileAction, rectAction, circleAction,
-                            arcThreeAction, arcCenterAction, curveAction, pointAction})
-        action->setCheckable(true);
-    selectAction->setChecked(activeCommand == Command::Select);
-    profileAction->setChecked(activeCommand == Command::Polyline);
-    rectAction->setChecked(activeCommand == Command::Rectangle);
-    circleAction->setChecked(activeCommand == Command::Circle);
-    arcThreeAction->setChecked(activeCommand == Command::Arc &&
-                               currentArcKind() == SketchDocument::ArcKind::Through);
-    arcCenterAction->setChecked(activeCommand == Command::Arc &&
-                                currentArcKind() == SketchDocument::ArcKind::CenterAngle);
-    curveAction->setChecked(activeCommand == Command::Curve);
-    pointAction->setChecked(activeCommand == Command::Point);
-
+    // 当前工具由操作文字显示，菜单命令不绘制选中勾或图标底色。
     QAction* picked = menu.exec(QCursor::pos());
     if (picked == selectAction)
     {
@@ -4027,14 +4412,17 @@ bool Sketch2DDialog::commitClosedActiveProfile()
 
     resetProfileSegmentState();
     m_document.setClosed(true);
-    return commitActiveDocument(outputAsEntity()
-                                    ? tr("实体已生成。")
-                                    : tr("闭合曲线已生成。"));
+    return commitActiveDocument(tr("闭合曲线已生成。"));
 }
 
 
 void Sketch2DDialog::handleSketchClick(double u, double v, bool rightButton)
 {
+    if (m_pendingGeometryEdit != SketchEditOperation::None)
+    {
+        handleGeometryEditClick(u, v, rightButton);
+        return;
+    }
     if (rightButton)
     {
         // 选择模式下，右键落在对象或端点上时先把它设为当前选择，
@@ -4121,10 +4509,11 @@ void Sketch2DDialog::handleSketchClick(double u, double v, bool rightButton)
     }
 
     int snappedIndex = -1;
-    const bool snapped = snap(u, v, &snappedIndex);
-    Q_UNUSED(snapped);
+    SketchSnapKind clickSnapKind = SketchSnapKind::None;
+    const bool snapped = snap(u, v, &snappedIndex, &clickSnapKind);
 
-    if (snappedIndex < 0)
+    // 对象捕捉优先于正交；否则第二步正交会把精确端点/交点再次移走。
+    if (snappedIndex < 0 && !(snapped && clickSnapKind != SketchSnapKind::Grid))
     {
         if (((command == Command::Polyline && m_profileSegmentMode == ProfileSegmentMode::Line) || command == Command::Arc) && !m_document.points().empty())
             applyOrthoFrom(m_document.points().back(), u, v);
@@ -4338,9 +4727,7 @@ void Sketch2DDialog::handleSketchClick(double u, double v, bool rightButton)
         pushUndo();
         m_document.setRectangle(m_pendingPoint.u, m_pendingPoint.v, opposite.u, opposite.v);
         clearPendingPoint();
-        commitActiveDocument(outputAsEntity()
-                                 ? tr("矩形实体已生成。")
-                                 : tr("矩形曲线已生成。"));
+        commitActiveDocument(tr("矩形曲线已生成。"));
         return;
     }
 
@@ -4365,9 +4752,7 @@ void Sketch2DDialog::handleSketchClick(double u, double v, bool rightButton)
         pushUndo();
         m_document.setCircle(m_pendingPoint.u, m_pendingPoint.v, radius);
         clearPendingPoint();
-        commitActiveDocument(outputAsEntity()
-                                 ? tr("圆实体已生成，R=%1。").arg(radius, 0, 'f', 3)
-                                 : tr("圆曲线已生成，R=%1。").arg(radius, 0, 'f', 3));
+        commitActiveDocument(tr("圆曲线已生成，R=%1。").arg(radius, 0, 'f', 3));
         return;
     }
 
@@ -4493,7 +4878,12 @@ void Sketch2DDialog::handleSketchMove(double u, double v)
     const Command command = currentCommand();
     if (command == Command::Select)
     {
-        updateCursorInfo(u, v, SketchSnapKind::None, false, false);
+        if (m_pendingGeometryEdit != SketchEditOperation::None)
+        {
+            m_view.updateSnapIndicator(false, {});
+            m_view.updateHoverPointText(false, {});
+            return;
+        }
         m_view.updateCursorText(std::numeric_limits<double>::quiet_NaN(),
                                 std::numeric_limits<double>::quiet_NaN(), false);
         int objectIndex = -1;
@@ -4502,7 +4892,15 @@ void Sketch2DDialog::handleSketchMove(double u, double v)
         const bool hoverPoint = findNearestEndpoint(u, v, objectIndex, pointIndex, point);
         m_view.updateHoverPointText(hoverPoint, point);
         m_view.updateRubberShape(false, {}, false);
-        m_view.updateSnapIndicator(hoverPoint, point);
+        // 选择模式也可预览贴线位置，但普通点击仍然只执行选中/框选。
+        SketchSnapKind hoverKind = SketchSnapKind::None;
+        double previewU = u, previewV = v;
+        const bool hoverSnap = ui->objectSnapCheck->isChecked() &&
+                               snap(previewU, previewV, nullptr, &hoverKind);
+        const bool onObject = hoverSnap && hoverKind != SketchSnapKind::Grid;
+        if (onObject) {u=previewU;v=previewV;} // 选择模式不接受网格吸附坐标。
+        updateCursorInfo(u, v, onObject ? hoverKind : SketchSnapKind::None, false, false);
+        m_view.updateSnapIndicator(onObject, {u, v});
         return;
     }
 
@@ -4511,7 +4909,7 @@ void Sketch2DDialog::handleSketchMove(double u, double v)
     const bool snapped = snap(u, v, &snappedIndex, &snapKind);
 
     bool orthoApplied = false;
-    if (snappedIndex < 0)
+    if (snappedIndex < 0 && !(snapped && snapKind != SketchSnapKind::Grid))
     {
         if (((command == Command::Polyline && m_profileSegmentMode == ProfileSegmentMode::Line) || command == Command::Arc) && !m_document.points().empty())
             orthoApplied = applyOrthoFrom(m_document.points().back(), u, v);
@@ -4529,7 +4927,7 @@ void Sketch2DDialog::handleSketchMove(double u, double v)
     const bool constrained = snapped || orthoApplied || nearFirstPoint;
     m_view.updateCursorText(u, v, constrained);
     updateCursorInfo(u, v, snapKind, nearFirstPoint, orthoApplied);
-    const bool showSnapIndicator = (snapped && snapKind == SketchSnapKind::Point) || nearFirstPoint;
+    const bool showSnapIndicator = (snapped && snapKind != SketchSnapKind::Grid) || nearFirstPoint;
     m_view.updateSnapIndicator(showSnapIndicator, {u, v});
     if (nearFirstPoint)
         setStatus(tr("可闭合。"), true);
@@ -4538,7 +4936,8 @@ void Sketch2DDialog::handleSketchMove(double u, double v)
 
 bool Sketch2DDialog::beginControlPointDrag(double u, double v)
 {
-    if (currentCommand() != Command::Select || m_draggingControlPoint)
+    if (currentCommand() != Command::Select || m_draggingControlPoint ||
+        m_pendingGeometryEdit != SketchEditOperation::None)
         return false;
 
     int objectIndex = -1;
@@ -4547,13 +4946,16 @@ bool Sketch2DDialog::beginControlPointDrag(double u, double v)
     if (!findNearestEndpoint(u, v, objectIndex, pointIndex, point))
         return false;
 
+    if(documentForCommittedRow(objectIndex).kind()==SketchDocument::Kind::NativeCurve)
+        return false; // 保留原始 CAD 参数；曲线端点通过分割/延伸操作编辑。
     m_draggingControlPoint = true;
     m_controlPointDragMoved = false;
     m_draggedPointObjectIndex = objectIndex;
     m_draggedPointIndex = pointIndex;
-    pushUndo();
+    m_dragStartCursor = {u, v};
+    // 点击端点但没有实际拖动时不应生成撤销项，也不能清空重做历史。
     selectEndpoint(objectIndex, pointIndex, point);
-    setStatus(tr("拖动控制点，松开鼠标完成。"), true);
+    setStatus(tr("拖动端点即可与已有线条精确连接。"), true);
     return true;
 }
 
@@ -4562,6 +4964,25 @@ void Sketch2DDialog::dragControlPointTo(double u, double v)
     if (!m_draggingControlPoint || m_draggedPointObjectIndex < 0 || m_draggedPointIndex < 0)
         return;
 
+    // 按住端点后的前几个像素视为点击，而不是马上被附近另一条线拉走。
+    if (!m_controlPointDragMoved &&
+        std::hypot(u-m_dragStartCursor.u, v-m_dragStartCursor.v) <=
+            std::max(geometryTolerance(), m_view.screenToleranceUv(4)))
+        return;
+
+    SketchSnapKind dragSnapKind = SketchSnapKind::None;
+    const bool snapped = snap(u, v, nullptr, &dragSnapKind, m_draggedPointObjectIndex);
+    const bool onObject = snapped && dragSnapKind != SketchSnapKind::Grid;
+    m_view.updateSnapIndicator(onObject, {u, v});
+
+    // 首次真正改变几何时才入撤销栈；一整次拖动只产生一条撤销记录。
+    const auto& previous = documentForCommittedRow(m_draggedPointObjectIndex).points();
+    if (m_draggedPointIndex >= static_cast<int>(previous.size()) ||
+        std::hypot(previous[static_cast<std::size_t>(m_draggedPointIndex)].u - u,
+                   previous[static_cast<std::size_t>(m_draggedPointIndex)].v - v) <= geometryTolerance())
+        return;
+    if (!m_controlPointDragMoved)
+        pushUndo();
     if (!updateCommittedPoint(m_draggedPointObjectIndex, m_draggedPointIndex, u, v))
         return;
 
@@ -4594,11 +5015,10 @@ void Sketch2DDialog::endControlPointDrag(double u, double v)
     m_controlPointDragMoved = false;
     m_draggedPointObjectIndex = -1;
     m_draggedPointIndex = -1;
+    m_view.updateSnapIndicator(false, {});
 
     if (!moved)
     {
-        if (!m_undoStack.empty())
-            m_undoStack.pop_back();
         updateActionButtons();
         setStatus(tr("已选择控制点。"), true);
         return;
@@ -4638,7 +5058,7 @@ void Sketch2DDialog::handleSketchBoxSelection(double u0, double v0, double u1, d
             continue;
 
         const bool hit = crossing
-            ? !(objectMaxU < minU || objectMinU > maxU || objectMaxV < minV || objectMinV > maxV)
+            ? documentIntersectsBox(documentForCommittedRow(i), minU, maxU, minV, maxV)
             : objectMinU >= minU && objectMaxU <= maxU && objectMinV >= minV && objectMaxV <= maxV;
         if (hit)
             rows.push_back(i);
@@ -4762,8 +5182,18 @@ bool Sketch2DDialog::updateCommittedPoint(int objectIndex, int pointIndex, doubl
         else if (document.hasCustomDisplayPoints())
         {
             std::vector<Point2D> display = document.displayPoints();
-            display[static_cast<std::size_t>(pointIndex)] = newPoint;
-            document.setProfileWithDisplayPoints(keyPoints, display, document.isClosed(), document.isFinished());
+            // 导入对象的显示控制点不一定与几何顶点一一对应。
+            // 不能用几何点索引直接访问较短的显示点列（会越界）。
+            if (display.size() == keyPoints.size())
+            {
+                display[static_cast<std::size_t>(pointIndex)] = newPoint;
+                document.setProfileWithDisplayPoints(keyPoints, display, document.isClosed(), document.isFinished());
+            }
+            else
+            {
+                // 修改后旧采样点不再代表新几何，使用几何点重建预览。
+                document.setProfile(keyPoints, document.isClosed(), document.isFinished());
+            }
         }
         else
         {
@@ -4810,6 +5240,14 @@ void Sketch2DDialog::applySelectedPointCoordinates()
 
 void Sketch2DDialog::cancelCurrentCommand()
 {
+    if (m_pendingGeometryEdit != SketchEditOperation::None)
+    {
+        m_pendingGeometryEdit = SketchEditOperation::None;
+        m_geometryEditTarget = -1;
+        m_view.setBoxSelectionEnabled(true);
+        setStatus(tr("已取消几何编辑。"), true);
+        return;
+    }
     clearPendingPoint();
     m_document.clear();
     m_editingCommittedIndex = -1;
@@ -5021,6 +5459,7 @@ void Sketch2DDialog::updatePreview()
 
     if (!m_editorPreviewVisible)
     {
+        m_view.updateSnapIndicator(false, {});
         m_view.clearPreview();
         updateActionButtons();
         return;
@@ -5058,8 +5497,22 @@ void Sketch2DDialog::updatePreview()
     else
     {
         const auto result = SketchShapeBuilder::buildMany(normalDocuments, planeSettings());
-        if (result.ok)
-            m_view.updatePreview(result.shape);
+        if (result.ok && !result.shape.IsNull())
+        {
+            if (m_planarFaceMode && !m_planarPreviewFace.IsNull())
+            {
+                // Keep all imported/open curves visible for further editing,
+                // while the faint filled face clearly indicates approved mesh regions.
+                BRep_Builder builder;
+                TopoDS_Compound preview;
+                builder.MakeCompound(preview);
+                builder.Add(preview, result.shape);
+                builder.Add(preview, m_planarPreviewFace);
+                m_view.updatePreview(preview);
+            }
+            else
+                m_view.updatePreview(result.shape);
+        }
         else
             m_view.updatePreview(TopoDS_Shape());
     }
@@ -5130,6 +5583,104 @@ void Sketch2DDialog::updateSelectionHighlight()
     updateInfoPanel();
 }
 
+bool Sketch2DDialog::buildApprovedMeshingFaces(TopoDS_Shape& faces, QString& diagnostic) const
+{
+    faces.Nullify();
+    diagnostic.clear();
+    if (!m_planarFaceMode || m_planarFaceRows.isEmpty())
+    {
+        diagnostic = tr("该草图尚未确认可用于网格的二维区域。");
+        return false;
+    }
+
+    // Use the source objects explicitly selected when the region was approved,
+    // not the current table selection (which may have changed since then).
+    std::vector<SketchDocument> boundaryDocuments;
+    boundaryDocuments.reserve(static_cast<std::size_t>(m_planarFaceRows.size()));
+    for (int row : m_planarFaceRows)
+    {
+        if (row < 0 || row >= static_cast<int>(m_committedDocuments.size()))
+        {
+            diagnostic = tr("已确认构面引用了不存在的草图对象（行号 %1）。请检查草图修改记录。")
+                             .arg(row + 1);
+            return false;
+        }
+        const SketchDocument& doc = m_committedDocuments[static_cast<std::size_t>(row)];
+        if (doc.isConstruction() || !doc.isRenderable())
+        {
+            diagnostic = tr("已确认构面中的第 %1 个对象已变成辅助线或无效对象，请重新检查构面。")
+                             .arg(row + 1);
+            return false;
+        }
+        boundaryDocuments.push_back(doc);
+    }
+
+    const auto result = GeometrySketch::SketchPlanarRegionBuilder::build(boundaryDocuments,
+                                                                           planeSettings());
+    if (!result.ok())
+    {
+        diagnostic = result.error.isEmpty() ? tr("已确认的草图线网不再形成有效二维面。") : result.error;
+        return false;
+    }
+    faces = result.shape;
+    diagnostic = tr("从 %1 条已确认的草图对象重新构建 %2 个二维面。")
+                     .arg(static_cast<int>(boundaryDocuments.size())).arg(result.faces);
+    return true;
+}
+
+void Sketch2DDialog::createPlanarRegions()
+{
+    // Selection is the authoritative boundary set. The system must not infer
+    // the physical soil region from the visual bounding box of the imported DXF.
+    const QList<int> rows = selectedCommittedIndices();
+    if (rows.isEmpty())
+    {
+        QMessageBox::information(this, tr("线网构面"),
+            tr("请先在绘图区框选或在列表中多选真实土体边界和地层分界线。\n"
+               "勘探线、裂隙符号、辅助线不要一起选中。"));
+        return;
+    }
+
+    std::vector<SketchDocument> candidates;
+    for (int row : rows)
+        if (row >= 0 && row < static_cast<int>(m_committedDocuments.size()))
+            candidates.push_back(documentForCommittedRow(row));
+    QApplication::setOverrideCursor(Qt::WaitCursor);
+    const GeometrySketch::PlanarRegionReport report =
+        GeometrySketch::SketchPlanarRegionBuilder::build(candidates, planeSettings());
+    QApplication::restoreOverrideCursor();
+    if (!report.ok())
+    {
+        QMessageBox::warning(this, tr("线网不能构面"),
+            report.error.isEmpty() ? tr("所选线段没有形成有效的闭合区域。") : report.error);
+        return;
+    }
+
+    const QString description =
+        tr("从 %1 个选中对象（%2 条原始直线段）中识别出 %3 个有效二维面。\n\n"
+           "真实交点：%4 处\n"
+           "重复/重叠短边：%5 条（已去重）\n"
+           "悬空支线：%6 条（不参与构面）\n"
+           "未参与的开放曲线：%7 个\n"
+           "无效候选面：%8 个\n\n"
+           "只有已选线参与本次构面，未选中的原始线条仍保留。\n"
+           "不自动延伸、猜测地层或补齐未闭合的线；请先确认区域符合土体实际范围。\n\n"
+           "确认将这些面作为当前草图的网格几何吗？")
+        .arg(report.sourceObjects).arg(report.sourceSegments).arg(report.faces)
+        .arg(report.splitIntersections).arg(report.duplicateSegments)
+        .arg(report.danglingSegments).arg(report.ignoredOpenCurves).arg(report.invalidFaces);
+    if (QMessageBox::question(this, tr("确认二维网格区域"), description,
+                              QMessageBox::Yes | QMessageBox::No, QMessageBox::No)
+        != QMessageBox::Yes) return;
+
+    pushUndo();
+    m_planarFaceRows = rows;
+    m_planarFaceMode = true;
+    updateGeometryFromDocuments(tr("已生成 %1 个二维面。原始线条仍保留，可继续编辑；"
+                                   "修改线条后需要重新检查并构面。").arg(report.faces), true);
+    updatePreview();
+}
+
 void Sketch2DDialog::generateGeometry()
 {
     syncDocumentFromTable();
@@ -5145,93 +5696,52 @@ void Sketch2DDialog::generateGeometry()
 
 void Sketch2DDialog::importDxfToSketch()
 {
-    const QString filePath = QFileDialog::getOpenFileName(
-        this, tr("导入 DXF 到草图"), QString(), tr("DXF 文件 (*.dxf)"));
-    if (filePath.isEmpty())
-        return;
+    const QString path=QFileDialog::getOpenFileName(this,tr("导入 DXF 到草图"),QString(),tr("DXF 文件 (*.dxf)"));
+    if(path.isEmpty())return;
+    QString diagnostic;
+    if(!importDxfFile(path,diagnostic))QMessageBox::warning(this,tr("DXF 导入失败"),diagnostic);
+}
 
-    TopoDS_Shape shape;
-    QString parserMessage;
-    QApplication::setOverrideCursor(Qt::WaitCursor);
-    const bool readOk = ImportGeometryBuilder::readDxfShape(filePath, shape, parserMessage);
-    QApplication::restoreOverrideCursor();
-    if (!readOk || shape.IsNull())
-    {
-        QMessageBox::warning(this, tr("DXF 导入失败"),
-                             parserMessage.isEmpty() ? tr("未读取到有效 DXF 几何。")
-                                                     : parserMessage);
-        return;
-    }
-
-    DxfSketchConversion conversion;
+bool Sketch2DDialog::importDxfFile(const QString& path,QString& diagnostic)
+{
+    QVector<DxfGeometryRecord> records;
+    if(!ImportGeometryBuilder::readDxfRecords(path,records,diagnostic))return false;
+    std::vector<SketchDocument> documents;std::vector<Point2D> references;int skipped=0;
     try
     {
-        conversion = convertDxfShapeToSketch(shape);
+        for(const auto& record:records)
+        {
+            if(record.type==QStringLiteral("POINT"))
+            {
+                for(TopExp_Explorer v(record.shape,TopAbs_VERTEX);v.More();v.Next())
+                    references.push_back(dxfSketchPoint(BRep_Tool::Pnt(TopoDS::Vertex(v.Current()))));
+                continue;
+            }
+            const auto document=GeometrySketch::SketchCurveTools::projected(record.shape);
+            if(document.isRenderable())documents.push_back(document);else ++skipped;
+        }
     }
-    catch (const Standard_Failure& failure)
-    {
-        const char* message = failure.GetMessageString();
-        QMessageBox::warning(this, tr("DXF 转换失败"),
-                             message ? QString::fromLocal8Bit(message)
-                                     : tr("DXF 几何无法转换为草图。"));
-        return;
-    }
-    catch (const std::exception& error)
-    {
-        QMessageBox::warning(this, tr("DXF 转换失败"),
-                             QString::fromLocal8Bit(error.what()));
-        return;
-    }
-
-    if (conversion.documents.empty())
-    {
-        QMessageBox::warning(this, tr("DXF 转换失败"),
-                             tr("DXF 已读取，但没有可转换的二维草图轮廓。"));
-        return;
-    }
-
-    // 先安全收尾用户正在绘制的对象，再把整次导入作为一步可撤销操作。
-    syncDocumentFromTable();
-    finishActiveDocumentBeforeNewObject();
-    pushUndo();
-
-    m_committedDocuments.insert(m_committedDocuments.end(),
-                                conversion.documents.begin(), conversion.documents.end());
-    m_document.clear();
-    m_editingCommittedIndex = -1;
-    resetProfileSegmentState();
-    clearPendingPoint();
-    setCommand(Command::Select);
-    // DXF 已有精确坐标，继续编辑时优先吸附已有端点，不再默认把点拉到网格上。
-    if (ui->gridSnapCheck)
-        ui->gridSnapCheck->setChecked(false);
-    refreshPointTable();
-    refreshObjectTable();
-    clearSketchSelection();
-
-
-    QString message = tr("已从 %1 导入 %2 个草图元素（%3 个精确直线/圆弧）。")
-                          .arg(QFileInfo(filePath).fileName())
-                          .arg(conversion.documents.size())
-                          .arg(conversion.exactCount);
-    if (conversion.approximatedCount > 0)
-    {
-        message += tr(" %1 个样条/椭圆已转为平滑可编辑曲线。")
-                       .arg(conversion.approximatedCount);
-    }
-    if (conversion.skippedCount > 0)
-        message += tr(" %1 条无效边已跳过。").arg(conversion.skippedCount);
-
-    updatePreview();
-    updateGeometryFromDocuments(message, false);
-    autoFitSketchView();
-    setStatus(message, true);
+    catch(const Standard_Failure& ex){diagnostic=QString::fromLocal8Bit(ex.GetMessageString());return false;}
+    catch(const std::exception& ex){diagnostic=QString::fromLocal8Bit(ex.what());return false;}
+    if(documents.empty()&&references.empty()){diagnostic=tr("文件投影到 XY 后没有有效线条或参考点。");return false;}
+    syncDocumentFromTable();finishActiveDocumentBeforeNewObject();pushUndo();
+    m_committedDocuments.insert(m_committedDocuments.end(),documents.begin(),documents.end());
+    m_referencePoints.insert(m_referencePoints.end(),references.begin(),references.end());
+    m_document.clear();m_editingCommittedIndex=-1;resetProfileSegmentState();clearPendingPoint();setCommand(Command::Select);
+    ui->gridSnapCheck->setChecked(false);
+    refreshPointTable();refreshObjectTable();clearSketchSelection();
+    diagnostic=tr("已按原始对象导入 %1 条可编辑曲线、%2 个参考点；%3 个对象投影后退化。草图使用 XY 投影，高程建模请使用“等高线地形”。")
+        .arg(documents.size()).arg(references.size()).arg(skipped);
+    updatePreview();updateGeometryFromDocuments(diagnostic,false);autoFitSketchView();setStatus(diagnostic,true);return true;
 }
 
 void Sketch2DDialog::clearSketch()
 {
     if (hasAnySketchData())
         pushUndo();
+    m_planarFaceMode = false;
+    m_planarFaceRows.clear();
+    m_planarPreviewFace.Nullify();
 
     m_committedDocuments.clear();
     m_referencePoints.clear();
@@ -5425,9 +5935,7 @@ void Sketch2DDialog::closeProfile()
 
     pushUndo();
     m_document.setClosed(true);
-    commitActiveDocument(outputAsEntity()
-                             ? tr("实体已生成。")
-                             : tr("闭合曲线已生成。"));
+    commitActiveDocument(tr("闭合曲线已生成。"));
 }
 
 void Sketch2DDialog::finishOpenProfile()
@@ -5458,14 +5966,10 @@ void Sketch2DDialog::finishOpenProfile()
     if (documentEffectivelyClosed(m_document))
     {
         m_document.setClosed(true);
-        commitActiveDocument(outputAsEntity()
-                                 ? tr("实体已生成。")
-                                 : tr("闭合曲线已生成。"));
+        commitActiveDocument(tr("闭合曲线已生成。"));
         return;
     }
 
     m_document.setClosed(false);
-    commitActiveDocument(outputAsEntity()
-                             ? tr("轮廓未闭合，已按曲线生成。")
-                             : tr("曲线已生成。"));
+    commitActiveDocument(tr("曲线已生成。"));
 }

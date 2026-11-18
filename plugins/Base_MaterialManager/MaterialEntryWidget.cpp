@@ -7,6 +7,7 @@
 #include <QBrush>
 #include <QButtonGroup>
 #include <QCheckBox>
+#include <QComboBox>
 #include <QColor>
 #include <QDoubleValidator>
 #include <QLocale>
@@ -219,12 +220,34 @@ bool isDamStaticMaterialModel(const QString& modelKey)
 // 这里只控制界面分组，不改变 MaterialEntry 的存储，也不改变 IMAT/CONMAT 输出。
 bool isBasicMaterialColumn(const QString& modelKey, const QString& column)
 {
+    if(modelKey==QStringLiteral("planar_elastic_beam"))return true;
+    // Hoek-Brown 的七项求解器输入均为日常必填材料参数。
+    // 仅调整表单分组，不改变属性键、数值、保存格式或 CONMAT 导出。
+    if (modelKey == QStringLiteral("hoek_brown_rock"))
+    {
+        static const QSet<QString> columns = {
+            QStringLiteral("变形模量E（GPa）"), QStringLiteral("泊松比μ"),
+            QStringLiteral("容重t/m3"), QStringLiteral("岩体常数mb"),
+            QStringLiteral("岩体常数a"), QStringLiteral("岩体常数s"),
+            QStringLiteral("完整岩石单轴抗压强度σci（MPa）")};
+        return columns.contains(column);
+    }
+
     if (modelKey == QStringLiteral("huangjinping_underground_plant"))
     {
         static const QSet<QString> columns = {
             QStringLiteral("变形模量E（GPa）"), QStringLiteral("泊松比μ"),
             QStringLiteral("容重t/m3"), QStringLiteral("抗剪断强度内摩擦系数"),
             QStringLiteral("凝聚力C‘（MPa）")};
+        return columns.contains(column);
+    }
+
+    if (modelKey == QStringLiteral("drucker_prager_rock"))
+    {
+        static const QSet<QString> columns = {
+            QStringLiteral("变形模量E（GPa）"), QStringLiteral("泊松比μ"),
+            QStringLiteral("容重t/m3"), QStringLiteral("内摩擦角φ（°）"),
+            QStringLiteral("凝聚力C‘（MPa）"), QStringLiteral("DP子类型")};
         return columns.contains(column);
     }
 
@@ -323,6 +346,7 @@ QString parameterUnit(const QString& modelKey, const QString& column)
         return QStringLiteral("t/m³");
 
     if (column == QStringLiteral("φ0(°)") || column == QStringLiteral("Δφ(°)") ||
+        column == QStringLiteral("内摩擦角φ（°）") ||
         column == QStringLiteral("FAI(°)") || column == QStringLiteral("剪胀角(°)") ||
         ((column == QStringLiteral("φ0") || column == QStringLiteral("Δφ")) &&
          modelKey == QStringLiteral("soil_nanshui")))
@@ -332,7 +356,8 @@ QString parameterUnit(const QString& modelKey, const QString& column)
         column == QStringLiteral("DRYK1(KPa)"))
         return QStringLiteral("kPa");
 
-    if (column == QStringLiteral("凝聚力C‘（MPa）") ||
+    if (column == QStringLiteral("完整岩石单轴抗压强度σci（MPa）") ||
+        column == QStringLiteral("凝聚力C‘（MPa）") ||
         column == QStringLiteral("抗拉（压）强度ft（MPa）") ||
         column == QStringLiteral("极限抗压强度Rc（MPa）") ||
         column == QStringLiteral("屈服抗拉强度Ryt（MPa）") ||
@@ -594,7 +619,7 @@ QString parameterHelpText(const QString& modelKey, const QString& column)
     else if (column == QStringLiteral("残余抗剪断强度内摩擦系数"))
         text = QStringLiteral("残余摩擦系数，无量纲。");
     else if (column == QStringLiteral("残余凝聚力C‘（MPa）"))
-        text = QStringLiteral("破坏后的残余凝聚力；填 0 时沿用峰值凝聚力。");
+        text = QStringLiteral("破坏后的残余凝聚力；是否沿用峰值由上方选项决定，单独设置可输入0。");
     else if (column == QStringLiteral("剪胀角(°)"))
         text = QStringLiteral("控制剪切破坏时的体积膨胀程度。");
     else if (column == QStringLiteral("Rf"))
@@ -677,7 +702,8 @@ QString parameterHelpText(const QString& modelKey, const QString& column)
     else if (column == QStringLiteral("岩类分区"))
         text = QStringLiteral("用于区分普通、开挖、再生和加固材料。");
     else if (column == QStringLiteral("半开挖区荷载释放系数"))
-        text = QStringLiteral("控制半开挖阶段释放的荷载比例。");
+        text = QStringLiteral("荷载释放比例，范围0～1，全释放取1。"
+                              "二维按开挖面计算时也直接使用此系数，取0将不产生卸荷。");
     else if (column == QStringLiteral("再生时对应开挖级"))
         text = QStringLiteral("指定再生材料对应的开挖阶段。");
     else if (column == QStringLiteral("洞室边缘松弛系数α0"))
@@ -873,6 +899,9 @@ void MaterialEntryWidget::beforeLoad()
             const int preDelete = m_materialManager->preDeleteMatypeForEntry(m_entryId);
             const bool hasHighlightState =
                 entry && (!entry->appliedMatypes.isEmpty() || preview >= 0 || preDelete >= 0);
+            // 即使是尚未分配任何网格组的新材料，也要启用视图域点选。
+            // 否则只有已施加材料才会初始化拾取，表现为新材料无法点击网格。
+            ensurePickInteractionReady();
             if (hasHighlightState)
             {
                 refreshMatypeHighlightSafe();
@@ -1039,6 +1068,19 @@ void MaterialEntryWidget::onValueEdited(const QString& text)
 
     const QString column = lineEdit->property("columnName").toString();
     entry->properties.insert(column, text);
+    // 残余凝聚力沿用峰值时，显示值跟随峰值变化，但不覆盖独立保存的残余值。
+    if (model->key == QStringLiteral("dagangshan_isotropic") &&
+        column == QStringLiteral("凝聚力C‘（MPa）") &&
+        entry->properties.value(QStringLiteral("残余凝聚力沿用峰值"),
+                                QStringLiteral("1")) != QStringLiteral("0"))
+    {
+        QLineEdit* residual = m_valueEdits.value(QStringLiteral("残余凝聚力C‘（MPa）"), nullptr);
+        if (residual)
+        {
+            const QSignalBlocker blocker(residual);
+            residual->setText(text);
+        }
+    }
     if (isFrictionCoefficientColumn(column))
         refreshFrictionAngleFields(entry);
     if (isDirectFrictionAngleColumn(model->key, column))
@@ -1059,6 +1101,8 @@ void MaterialEntryWidget::onOptionValueChanged(int)
 
     const QString column = combo->property("columnName").toString();
     entry->properties.insert(column, combo->currentData().toString());
+    if (column == QStringLiteral("残余摩擦系数沿用峰值"))
+        refreshFrictionAngleFields(entry);
     updateConditionalParameterVisibility(model->key, entry, m_advancedLayout, m_valueEdits);
     m_materialManager->notifyEntryUpdated(m_entryId, false);
 }
@@ -1075,6 +1119,16 @@ void MaterialEntryWidget::onSeepageModelChanged(int)
 
     const QString oldKey = entry->seepageModelKey;
     const QString newKey = m_seepageCombo->currentData().toString();
+    if (!newKey.isEmpty() && !entry->creepModelKey.isEmpty() &&
+        entry->creepModelKey != QStringLiteral("xiyuan_creep"))
+    {
+        const QSignalBlocker blocker(m_seepageCombo);
+        const int previousIndex = m_seepageCombo->findData(oldKey);
+        m_seepageCombo->setCurrentIndex(previousIndex >= 0 ? previousIndex : 0);
+        QMessageBox::warning(this, QStringLiteral("附加模型冲突"),
+                             QStringLiteral("当前流变与渗流不能同时设置在同一材料中。"));
+        return;
+    }
     const QString isotropicKey = QStringLiteral("jk_corewall_steady_seepage");
     const QString anisotropicKey = QStringLiteral("jk_corewall_anisotropic_seepage");
 
@@ -1120,7 +1174,21 @@ void MaterialEntryWidget::onCreepModelChanged(int)
     if (!entry || !model)
         return;
 
-    entry->creepModelKey = m_creepCombo->currentData().toString();
+    const QString newKey = m_creepCombo->currentData().toString();
+    // 西源流变仅使用独立的流变字段，不与渗流方向矩阵共用 CONMAT(14..22)。
+    // 其他三类流变与渗流仍按原有输入字段兼容性规则互斥。
+    if (!newKey.isEmpty() && !entry->seepageModelKey.isEmpty() &&
+        newKey != QStringLiteral("xiyuan_creep"))
+    {
+        const QSignalBlocker blocker(m_creepCombo);
+        const int previousIndex = m_creepCombo->findData(entry->creepModelKey);
+        m_creepCombo->setCurrentIndex(previousIndex >= 0 ? previousIndex : 0);
+        QMessageBox::warning(this, QStringLiteral("附加模型冲突"),
+                             QStringLiteral("当前流变与渗流不能同时设置在同一材料中。"));
+        return;
+    }
+
+    entry->creepModelKey = newKey;
     rebuildCreepFields(entry);
     m_materialManager->notifyEntryUpdated(m_entryId, false);
 }
@@ -1348,7 +1416,8 @@ void MaterialEntryWidget::rebuildForm(MaterialModel* model, MaterialEntry* entry
     m_matypeCombo->setSizeAdjustPolicy(QComboBox::AdjustToMinimumContentsLengthWithIcon);
     m_matypeCombo->setMinimumContentsLength(4);
     m_matypeCombo->setToolTip(
-        QStringLiteral("选择要分配的网格材料编号。编号 1 不参加计算；编号 2 兼容旧数据；新材料使用 3 至 300。"));
+        QStringLiteral("可在可视化窗口点击已有网格区域，或在这里选取材料编号。"
+                       "点击后再按“施加到网格”确认。编号 1 不参加计算；编号 2 为保留编号。"));
     m_matypeCombo->addItem(QStringLiteral("未选择"), QVariant());
     m_matypeOptionsLoaded = false;
     for (int value : appliedList)
@@ -1382,6 +1451,18 @@ void MaterialEntryWidget::rebuildForm(MaterialModel* model, MaterialEntry* entry
                              QStringLiteral("对应求解器 MATYPE，用于把材料与网格区域建立关联。"),
                              assignmentCard),
         matypeRowWidget);
+
+    m_viewPickCheck = new QCheckBox(QStringLiteral("启用视图点选"), assignmentCard);
+    m_viewPickCheck->setChecked(m_viewPickEnabled);
+    m_viewPickCheck->setToolTip(QStringLiteral("勾选后可在视图中点击一个网格材料区域，"
+        "自动选中其 MATYPE；仍需点击“施加到网格”才能完成材料关联。"));
+    assignmentForm->addRow(QString(), m_viewPickCheck);
+    connect(m_viewPickCheck, &QCheckBox::toggled, this, [this](bool enabled)
+    {
+        m_viewPickEnabled = enabled;
+        if (m_pickInteractionReady)
+            PickManager::instance().setClickPickEnabled(getPageType(), m_uuid, enabled);
+    });
 
     QWidget* appliedRowWidget = new QWidget(assignmentCard);
     appliedRowWidget->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
@@ -1567,6 +1648,22 @@ void MaterialEntryWidget::rebuildForm(MaterialModel* model, MaterialEntry* entry
         m_advancedLayout->addRow(createSubsectionLabel(QStringLiteral("模型参数"), advancedPage));
 
     // ===== 本构参数：常用参数进“基本参数”，其余进“高级参数” =====
+    const auto addResidualMode = [this, entry](QFormLayout* layout, QWidget* parent,
+                                                const QString& flag, const QString& title)
+    {
+        auto* option = new QComboBox(parent);
+        option->addItem(QStringLiteral("沿用峰值"), QStringLiteral("1"));
+        option->addItem(QStringLiteral("单独设置"), QStringLiteral("0"));
+        if (!entry->properties.contains(flag))
+            entry->properties.insert(flag, QStringLiteral("1"));
+        const int index = option->findData(entry->properties.value(flag));
+        option->setCurrentIndex(index >= 0 ? index : 0);
+        option->setProperty("columnName", flag);
+        option->setToolTip(QStringLiteral("单独设置时可输入0；沿用峰值时不修改已存储的残余值。"));
+        // 信号在创建具体输入框后连接，先更新控件状态，再通知外部数据模型。
+        layout->addRow(title, option);
+        return option;
+    };
     for (int columnIndex = 0; columnIndex < model->columns.size(); ++columnIndex)
     {
         const QString& column = model->columns.at(columnIndex);
@@ -1590,6 +1687,37 @@ void MaterialEntryWidget::rebuildForm(MaterialModel* model, MaterialEntry* entry
                                          : column;
         const QString unit = parameterUnit(model->key, column);
         const QString label = parameterDisplayName(displayLabel, unit);
+
+        // 继承选项与对应残余值放在一起展示，避免原来一项出现两套开关。
+        // 数据字段仍保留，以兼容已经保存的材料库/IMAT导入。
+        if (model->key == QStringLiteral("dagangshan_isotropic") &&
+            (column == QStringLiteral("残余摩擦系数沿用峰值") ||
+             column == QStringLiteral("残余凝聚力沿用峰值")))
+            continue;
+
+        if (model->key == QStringLiteral("drucker_prager_rock") &&
+            column == QStringLiteral("DP子类型"))
+        {
+            auto* optionBox = new QComboBox(targetParent);
+            optionBox->addItem(QStringLiteral("内接圆"), QStringLiteral("1"));
+            optionBox->addItem(QStringLiteral("DPAMC"), QStringLiteral("2"));
+            optionBox->addItem(QStringLiteral("扩展锥"), QStringLiteral("3"));
+            optionBox->addItem(QStringLiteral("压缩锥"), QStringLiteral("4"));
+            optionBox->addItem(QStringLiteral("平均锥"), QStringLiteral("5"));
+            optionBox->addItem(QStringLiteral("平面应变"), QStringLiteral("6"));
+            int index = optionBox->findData(entry->properties.value(column));
+            if (index < 0)
+            {
+                entry->properties.insert(column, QStringLiteral("1"));
+                index = 0;
+            }
+            optionBox->setCurrentIndex(index);
+            optionBox->setProperty("columnName", column);
+            connect(optionBox, QOverload<int>::of(&QComboBox::currentIndexChanged), this,
+                    &MaterialEntryWidget::onOptionValueChanged);
+            targetLayout->addRow(QStringLiteral("屈服面"), optionBox);
+            continue;
+        }
 
         if (model->key == QStringLiteral("dam_dynamic") &&
             column == QStringLiteral("是否液化"))
@@ -1664,6 +1792,29 @@ void MaterialEntryWidget::rebuildForm(MaterialModel* model, MaterialEntry* entry
 
         if (!frictionPair)
         {
+            if (model->key == QStringLiteral("dagangshan_isotropic") &&
+                column == QStringLiteral("残余凝聚力C‘（MPa）"))
+            {
+                QComboBox* option = addResidualMode(
+                    targetLayout, targetParent, QStringLiteral("残余凝聚力沿用峰值"),
+                    QStringLiteral("残余凝聚力"));
+                const auto syncResidualCohesion = [valueEdit, option, entry]()
+                {
+                    const bool independent =
+                        option->currentData().toString() == QStringLiteral("0");
+                    const QString displayColumn = independent
+                        ? QStringLiteral("残余凝聚力C‘（MPa）")
+                        : QStringLiteral("凝聚力C‘（MPa）");
+                    const QSignalBlocker blocker(valueEdit);
+                    valueEdit->setText(entry->properties.value(displayColumn));
+                    valueEdit->setEnabled(independent);
+                };
+                connect(option, QOverload<int>::of(&QComboBox::currentIndexChanged), this,
+                        [syncResidualCohesion](int) { syncResidualCohesion(); });
+                connect(option, QOverload<int>::of(&QComboBox::currentIndexChanged), this,
+                        &MaterialEntryWidget::onOptionValueChanged);
+                syncResidualCohesion();
+            }
             targetLayout->addRow(createParameterLabel(label, toolTip, targetParent),
                                  createParameterFieldWidget(valueEdit, unit, targetParent));
             continue;
@@ -1771,14 +1922,13 @@ void MaterialEntryWidget::rebuildForm(MaterialModel* model, MaterialEntry* entry
         angleEdit->setProperty("frictionCoefficientColumn", column);
         angleEdit->setToolTip(frictionAngleHelpText(column));
 
-        QCheckBox* inheritPeakCheck = nullptr;
         const bool residualFriction = isResidualFrictionCoefficientColumn(column);
-        if (residualFriction)
+        QComboBox* residualMode = nullptr;
+        if (model->key == QStringLiteral("dagangshan_isotropic") && residualFriction)
         {
-            inheritPeakCheck = new QCheckBox(QStringLiteral("摩擦参数沿用峰值"), targetParent);
-            inheritPeakCheck->setToolTip(QStringLiteral("残余摩擦参数与峰值一致。"));
-            inheritPeakCheck->setCursor(Qt::PointingHandCursor);
-            targetLayout->addRow(inheritPeakCheck);
+            residualMode = addResidualMode(
+                targetLayout, targetParent, QStringLiteral("残余摩擦系数沿用峰值"),
+                QStringLiteral("残余摩擦参数"));
         }
 
         connect(angleEdit, &QLineEdit::textEdited, this,
@@ -1846,9 +1996,10 @@ void MaterialEntryWidget::rebuildForm(MaterialModel* model, MaterialEntry* entry
         m_frictionAngleEdits.insert(column, angleEdit);
 
         const auto applyInputState =
-            [angleEdit, angleChoice, valueEdit, coefficientChoice, inheritPeakCheck]()
+            [angleEdit, angleChoice, valueEdit, coefficientChoice, residualMode]()
             {
-                const bool inherited = inheritPeakCheck && inheritPeakCheck->isChecked();
+                const bool inherited = residualMode &&
+                    residualMode->currentData().toString() == QStringLiteral("1");
                 setFrictionInputState(angleEdit, angleChoice, valueEdit, coefficientChoice,
                                       angleChoice->isChecked(), !inherited);
             };
@@ -1866,82 +2017,12 @@ void MaterialEntryWidget::rebuildForm(MaterialModel* model, MaterialEntry* entry
                         applyInputState();
                 });
 
-        if (inheritPeakCheck)
+        if (residualMode)
         {
-            bool residualOk = false;
-            const double storedResidual = entry->properties.value(column).toDouble(&residualOk);
-            inheritPeakCheck->setProperty("lastResidualCoefficient",
-                                          residualOk && storedResidual > 0.0
-                                              ? QVariant(storedResidual)
-                                              : QVariant());
-            inheritPeakCheck->setChecked(!residualOk || storedResidual <= 0.0);
-
-            connect(inheritPeakCheck, &QCheckBox::toggled, this,
-                    [this, inheritPeakCheck, angleEdit, angleChoice, valueEdit,
-                     coefficientChoice, column](bool checked)
-                    {
-                        if (m_isUpdating)
-                            return;
-
-                        MaterialModel* linkedModel = nullptr;
-                        MaterialEntry* linkedEntry = lookupEntry(&linkedModel);
-                        if (!linkedEntry || !linkedModel)
-                            return;
-
-                        if (checked)
-                        {
-                            bool currentOk = false;
-                            const double currentValue =
-                                linkedEntry->properties.value(column).toDouble(&currentOk);
-                            if (currentOk && currentValue > 0.0)
-                                inheritPeakCheck->setProperty("lastResidualCoefficient",
-                                                              currentValue);
-                            linkedEntry->properties.insert(column, QStringLiteral("0"));
-                        }
-                        else
-                        {
-                            bool restoreOk = false;
-                            double restoreValue =
-                                inheritPeakCheck->property("lastResidualCoefficient")
-                                    .toDouble(&restoreOk);
-                            if (!restoreOk || restoreValue <= 0.0)
-                            {
-                                bool peakOk = false;
-                                restoreValue =
-                                    linkedEntry->properties
-                                        .value(QStringLiteral("抗剪断强度内摩擦系数"))
-                                        .toDouble(&peakOk);
-                                if (!peakOk || restoreValue <= 0.0)
-                                    restoreValue = 0.000001;
-                            }
-                            linkedEntry->properties.insert(
-                                column, QString::number(restoreValue, 'g', 12));
-                        }
-
-                        refreshFrictionAngleFields(linkedEntry);
-                        setFrictionInputState(angleEdit, angleChoice, valueEdit,
-                                              coefficientChoice, angleChoice->isChecked(),
-                                              !checked);
-                        m_materialManager->notifyEntryUpdated(m_entryId, false);
-                    });
-
-            // 自定义残余值若最终确实为 0，则回到“沿用峰值”状态。
-            // 使用 editingFinished，避免用户输入 0.x 时在键入首个 0 就被打断。
-            const auto restoreInheritedStateIfZero = [inheritPeakCheck](QLineEdit* editor)
-            {
-                if (!inheritPeakCheck || inheritPeakCheck->isChecked() || !editor)
-                    return;
-                bool ok = false;
-                const double value = QLocale::c().toDouble(editor->text(), &ok);
-                if (ok && value <= 0.0)
-                    inheritPeakCheck->setChecked(true);
-            };
-            connect(angleEdit, &QLineEdit::editingFinished, this,
-                    [restoreInheritedStateIfZero, angleEdit]()
-                    { restoreInheritedStateIfZero(angleEdit); });
-            connect(valueEdit, &QLineEdit::editingFinished, this,
-                    [restoreInheritedStateIfZero, valueEdit]()
-                    { restoreInheritedStateIfZero(valueEdit); });
+            connect(residualMode, QOverload<int>::of(&QComboBox::currentIndexChanged), this,
+                    [applyInputState](int) { applyInputState(); });
+            connect(residualMode, QOverload<int>::of(&QComboBox::currentIndexChanged), this,
+                    &MaterialEntryWidget::onOptionValueChanged);
         }
 
         applyInputState();
@@ -2055,6 +2136,7 @@ void MaterialEntryWidget::clearForm()
     m_creepValueEdits.clear();
 
     m_matypeCombo = nullptr;
+    m_viewPickCheck = nullptr;
     m_applyButton = nullptr;
 
     m_appliedMatypesList = nullptr;
@@ -2097,12 +2179,11 @@ void MaterialEntryWidget::refreshFrictionAngleFields(const MaterialEntry* entry)
             continue;
         }
 
-        if (isResidualFrictionCoefficientColumn(coefficientColumn) && coefficient <= 0.0)
+        if (isResidualFrictionCoefficientColumn(coefficientColumn) &&
+            entry->properties.value(QStringLiteral("残余摩擦系数沿用峰值"),
+                                    QStringLiteral("1")) != QStringLiteral("0"))
         {
-            if (peakOk)
-                angleEdit->setText(formatLinkedNumber(peakAngleDeg));
-            else
-                angleEdit->clear();
+            angleEdit->setText(peakOk ? formatLinkedNumber(peakAngleDeg) : QString());
             angleEdit->setPlaceholderText(QStringLiteral("沿用峰值"));
 
             const auto coefficientIt = m_valueEdits.constFind(coefficientColumn);
@@ -2113,6 +2194,17 @@ void MaterialEntryWidget::refreshFrictionAngleFields(const MaterialEntry* entry)
                                                        : QString());
             }
             continue;
+        }
+
+        // 从“沿用峰值”切换为“单独设置”时恢复原来存储的值，包括真实的0。
+        if (isResidualFrictionCoefficientColumn(coefficientColumn))
+        {
+            const auto coefficientIt = m_valueEdits.constFind(coefficientColumn);
+            if (coefficientIt != m_valueEdits.constEnd() && coefficientIt.value())
+            {
+                const QSignalBlocker coefficientBlocker(coefficientIt.value());
+                coefficientIt.value()->setText(formatLinkedNumber(coefficient));
+            }
         }
 
         const double angleDeg = std::atan(qMax(0.0, coefficient)) * 180.0 / PI_VALUE;
@@ -2162,13 +2254,16 @@ void MaterialEntryWidget::ensurePickInteractionReady()
     if (!m_materialManager || m_pickInteractionReady)
         return;
 
-    // 材料页不做 Domain 鼠标点选，只使用 PickManager 的 Domain 高亮能力。
-    PickManager::instance().activate(getPageType(), m_uuid, PickMode::Domain);
-    PickManager::instance().setClickPickEnabled(getPageType(), m_uuid, false);
-    PickManager::instance().setBoxSelectEnabled(getPageType(), m_uuid, false);
+    // 材料页直接点选可见网格域：只选择已有 MATYPE，不立即修改网格分组或材料关联。
+    // 仍由“施加到网格”按钮确认关联，避免点击时误修改求解器数据。
+    auto& picker = PickManager::instance();
+    picker.activate(getPageType(), m_uuid, PickMode::Domain);
+    picker.setBoxSelectEnabled(getPageType(), m_uuid, false);
+    picker.setPreferredDomainCategory(getPageType(), m_uuid, QStringLiteral("MATYPE"));
+    picker.setClickPickEnabled(getPageType(), m_uuid, m_viewPickEnabled);
 
-    disconnect(&PickManager::instance(), &PickManager::domainSelected, this,
-               &MaterialEntryWidget::onDomainPicked);
+    connect(&picker, &PickManager::domainSelected, this,
+            &MaterialEntryWidget::onDomainPicked, Qt::UniqueConnection);
 
     m_pickInteractionReady = true;
 }
@@ -2498,14 +2593,18 @@ void MaterialEntryWidget::onRemoveMatypeClicked()
 
 void MaterialEntryWidget::onDomainPicked(const QString& domain, const QString& uuid, const DomainKey& key)
 {
-    if (!m_materialManager || !m_matypeCombo)
+    if (!m_materialManager || !m_matypeCombo || m_beforeUnloadHandled || !m_viewPickEnabled)
         return;
     if (domain != getPageType() || uuid != m_uuid)
+        return;
+    if (m_assignmentWidget && !m_assignmentWidget->isEnabled())
         return;
     if (key.category.compare(QStringLiteral("MATYPE"), Qt::CaseInsensitive) != 0 ||
         !isComputableMatype(key.id))
         return;
 
+    // 选项采用延迟加载，必须先补齐，否则用户点击未曾展开下拉框的材料组会被丢弃。
+    ensureMatypeOptionsLoaded();
     const int matype = key.id;
     const int comboIndex = m_matypeCombo->findData(matype);
     if (comboIndex < 0)

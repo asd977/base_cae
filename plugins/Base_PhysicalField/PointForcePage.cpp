@@ -62,6 +62,10 @@ PointForcePage::PointForcePage(QWidget* parent)
     : BasePage("PointForcePage"), ui(new Ui::PointForcePage)
 {
     ui->setupUi(this);
+    for(auto* field:{ui->spinFx,ui->spinFy,ui->spinFz,ui->spinMx,ui->spinMy,ui->spinMz})
+    {
+        field->setDecimals(6);field->setRange(-1.e15,1.e15);
+    }
     setupBatchGroupCombo();
 }
 
