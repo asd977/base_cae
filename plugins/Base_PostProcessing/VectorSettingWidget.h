@@ -13,6 +13,8 @@
 class vtkActor;
 class vtkArrowSource;
 class vtkDataArray;
+class QCheckBox;
+class QComboBox;
 
 namespace Ui
 {
@@ -46,9 +48,11 @@ class VectorSettingWidget : public BasePage
   private:
     bool ensureDataLoaded();
     void populateComponentCombos();
+    void updateComponentRowsVisibility();
     bool buildVectorArraysFromSelections(vtkUnstructuredGrid* grid, double& magMin,
                                          double& magMax);
     void rebuildPipeline();
+    void updateDisplayAppearance();
     void requestRender() const;
     static vtkDataArray* arrayByName(vtkUnstructuredGrid* grid, const QString& name);
     void loadFileName(QString dataPath);
@@ -70,9 +74,16 @@ class VectorSettingWidget : public BasePage
 
     double m_scaleFactor{1.0};
     double m_thicknessFactor{1.0};
+    double m_lastAutoMagMax{1.0};
+    double m_lastAutoMagMin{0.0};
+    QString m_cachedFilterSignature;
     int m_maskOnRatio{1};
+    bool m_scaleByMagnitude{false};
+    QComboBox* m_vectorCombo{nullptr};
+    QCheckBox* m_scaleByMagCheck{nullptr};
     QString m_dataPath;
     bool m_loadedOnce{false};
+    bool m_displayDirty{true};
     bool m_hasPendingState{false};
     bool m_updatingControls{false};
     QVariantMap m_pendingState;

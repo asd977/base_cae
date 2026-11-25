@@ -32,7 +32,8 @@ public:
     vtkNew<vtkRenderer> scene;
     vtkNew<vtkRenderWindow> window;
     TestVisual(){window->AddRenderer(scene);window->SetSize(950,700);window->SetOffScreenRendering(1);scene->SetBackground(.96,.97,.99);}
-    void render() override {}
+    int renderCalls=0;
+    void render() override {++renderCalls;}
     void resetCamera(bool=true) override {scene->ResetCamera();}
     vtkRenderer* renderer() const override {return scene;}
     vtkRenderWindow* renderWindow() const override {return window;}
@@ -154,6 +155,12 @@ int main(int argc,char** argv) {
   automatic->setChecked(false);const int selected=regions->child(0)->data(0,Qt::UserRole+2).toInt();
   {QSignalBlocker blocked(filters);for(int i=0;i<3;++i)regions->child(i)->setCheckState(0,i==0?Qt::Checked:Qt::Unchecked);}
   apply->click();
+  QElapsedTimer displayWait;displayWait.start();
+  while(frame.displayWidget->property("mesh.display.pending").toBool()
+      || frame.displayWidget->property("mesh.display.workerRunning").toBool()) {
+   if(displayWait.elapsed()>30000)return 34;
+   app.processEvents(QEventLoop::AllEvents,10);QThread::msleep(1);
+  }
   auto* actor=vtkActor::SafeDownCast(visual.getProp("mesh.imported.surface"));
   auto* visible=actor&&actor->GetMapper()?vtkDataSet::SafeDownCast(actor->GetMapper()->GetInputDataObject(0,0)):nullptr;
   auto* parts=visible?visible->GetCellData()->GetArray("src_part"):nullptr;if(!parts||parts->GetNumberOfTuples()==0)return 34;
@@ -286,20 +293,76 @@ int main(int argc,char** argv) {
     if(auto* ds=vtkDataSet::SafeDownCast(a->GetMapper()->GetInputDataObject(0,0)))
      if(auto* data=ds->GetCellData()->GetArray(name))for(vtkIdType i=0;i<data->GetNumberOfTuples();++i)values.insert(int(data->GetTuple1(i)));
    return values;};
-  QJsonArray checks;
+  const auto waitView=[&] {
+   QElapsedTimer elapsed;elapsed.start();
+   do {app.processEvents(QEventLoop::AllEvents,10);if(elapsed.elapsed()>30000)return false;QThread::msleep(1);}
+   while(page->property("mesh.display.pending").toBool()||page->property("mesh.display.workerRunning").toBool());
+   return true;
+  };
+  auto* sourceGrid=mesh->getVtkUnstructuredGrid().GetPointer();
+  const auto sourceTime=sourceGrid->GetMTime();
+  auto* surfaceActor=vtkActor::SafeDownCast(visual.getProp("mesh.imported.surface"));
+  auto* unchangedView=surfaceActor->GetMapper()->GetInputDataObject(0,0);
+  const int unchangedRenders=visual.renderCalls;
+  apply->click();if(!waitView()||visual.renderCalls!=unchangedRenders)return 36;
+  auto* colors=page->findChild<QComboBox*>("comboBoxColorMode");if(!colors)return 37;
+  for(int i=0;i<colors->count();++i) { colors->setCurrentIndex(i);
+   if(surfaceActor->GetMapper()->GetInputDataObject(0,0)!=unchangedView)return 37; }
+  page->beforeLoad();
+  if(surfaceActor->GetMapper()->GetInputDataObject(0,0)!=unchangedView)return 38;
+  int timerTicks=0;QTimer responsiveness;
+  QObject::connect(&responsiveness,&QTimer::timeout,[&]{++timerTicks;});responsiveness.start(1);
+  QJsonArray checks{{QJsonObject{{"same_filter_does_not_render",true},{"color_reuses_topology",true},{"same_grid_reentry_reuses_display",true}}}};
   for(int i=0;i<filters->topLevelItemCount();++i){auto* group=filters->topLevelItem(i);const auto category=group->data(0,Qt::UserRole+1).toString();
    QJsonArray labels;for(int j=0;j<group->childCount();++j)labels.append(group->child(j)->text(0));
    checks.append(QJsonObject{{"category",category},{"values",labels}});
   }
-  for(const QString category:{QStringLiteral("MATYPE"),QStringLiteral("LAYER")}){
+  for(const QString category:{QStringLiteral("MATYPE"),QStringLiteral("LAYER"),QStringLiteral("REGION")}){
    QTreeWidgetItem* group=nullptr;for(int i=0;i<filters->topLevelItemCount();++i)if(filters->topLevelItem(i)->data(0,Qt::UserRole+1).toString()==category)group=filters->topLevelItem(i);
    if(!group||!group->childCount())continue;
-   reset->click();const int target=group->child(0)->data(0,Qt::UserRole+2).toInt();
+   reset->click();if(!waitView())return 39;const int target=group->child(0)->data(0,Qt::UserRole+2).toInt();
    {QSignalBlocker blocked(filters);for(int j=0;j<group->childCount();++j)group->child(j)->setCheckState(0,j==0?Qt::Checked:Qt::Unchecked);}
-   apply->click();const auto visible=visibleValues(category.toLatin1().constData());
+   auto* previousInput=surfaceActor->GetMapper()->GetInputDataObject(0,0);
+   apply->click();
+   if(page->property("mesh.display.pending").toBool()
+      && surfaceActor->GetMapper()->GetInputDataObject(0,0)!=previousInput)return 40;
+   if(!waitView())return 39;
+   const auto visible=visibleValues(category=="REGION"?"src_part":category.toLatin1().constData());
    if(visible!=QSet<int>{target}){std::cerr<<"FILTER_FAILED "<<category.toStdString()<<" target="<<target<<" visible=";for(auto v:visible)std::cerr<<v<<",";return 17;}
-   checks.append(QJsonObject{{"filtered_category",category},{"only_visible",target},{"passed",true}});reset->click();
+   checks.append(QJsonObject{{"filtered_category",category},{"only_visible",target},{"passed",true}});reset->click();if(!waitView())return 39;
   }
+  const int beforeAuto=visual.renderCalls;
+  automatic->setChecked(true);if(!waitView()||visual.renderCalls!=beforeAuto)return 43;
+  QTreeWidgetItem* materialsGroup=nullptr;
+  for(int i=0;i<filters->topLevelItemCount();++i)
+   if(filters->topLevelItem(i)->data(0,Qt::UserRole+1).toString()=="MATYPE")materialsGroup=filters->topLevelItem(i);
+  if(materialsGroup&&materialsGroup->childCount()>1) {
+   const int beforeCheck=visual.renderCalls;
+   materialsGroup->child(0)->setCheckState(0,Qt::Unchecked);
+   if(visual.renderCalls!=beforeCheck)return 44;
+   app.processEvents(QEventLoop::AllEvents,1);
+   materialsGroup->child(1)->setCheckState(0,Qt::Unchecked);
+   app.processEvents(QEventLoop::AllEvents,1);
+   reset->click();if(!waitView())return 39;
+   if(PublicVariables::instance().get("mesh.display.filter.custom").toBool())return 45;
+   checks.append(QJsonObject{{"checkbox_callback_does_not_render",true},{"newest_selection_wins",true},{"cancelled_results_discarded",true}});
+   // Changing the scene while a view is queued must leave the committed view intact.
+   auto* committedInput=surfaceActor->GetMapper()->GetInputDataObject(0,0);
+   const int beforeLeave=visual.renderCalls;
+   materialsGroup->child(0)->setCheckState(0,Qt::Unchecked);
+   app.processEvents(QEventLoop::AllEvents,1);
+   EventManager::instance().sendEvent(QStringLiteral("scene.mesh.visibility.changed"),{{"visible",false}});
+   if(!waitView() || surfaceActor->GetMapper()->GetInputDataObject(0,0)!=committedInput
+      || visual.renderCalls!=beforeLeave || apply->text()!=QStringLiteral("应用筛选"))return 46;
+   EventManager::instance().sendEvent(QStringLiteral("scene.mesh.visibility.changed"),{{"visible",true}});
+   if(!waitView())return 39;
+   if(visibleValues("MATYPE").contains(materialsGroup->child(0)->data(0,Qt::UserRole+2).toInt()))return 47;
+   reset->click();if(!waitView())return 39;
+   checks.append(QJsonObject{{"leaving_scene_cancels_pending_view",true},{"returning_scene_applies_latest_selection",true}});
+  }
+  if(mesh->getVtkUnstructuredGrid().GetPointer()!=sourceGrid||sourceGrid->GetMTime()!=sourceTime)return 41;
+  if(timerTicks<1)return 42;
+  checks.append(QJsonObject{{"gui_timer_ticks",timerTicks},{"authoritative_grid_preserved",true}});
   if(!mesh->loadProject())return 17;
   if(filters->topLevelItemCount()==0){std::cerr<<"FILTER_RELOAD_EMPTY: visible persistent panel lost entries after loading project without MeshEdit node";return 18;}
   checks.append(QJsonObject{{"persistent_panel_refresh_after_project_load",true},{"filter_groups",filters->topLevelItemCount()}});
@@ -312,23 +375,30 @@ int main(int argc,char** argv) {
  if(args[4]=="roundtrip-loads")return physical->saveProject()?0:11;
  if(args[4]=="check-slope-excavation"){
   auto* owner=tree.findNodeByUuid(args[2]);if(!owner || !owner->getPage())return 20;
-  auto* page=owner->getPage();auto* tabs=page->findChild<QTabWidget*>("slopeExcavationStages");
+  auto countChildrenOfType=[](ProjectNode* parent,const QString& type){
+   int n=0;for(auto* child:parent->getChildren())if(child&&child->getPage()&&child->getPage()->getPageType()==type)++n;return n;
+  };
+  auto* page=owner->getPage();
   auto* enabled=page->findChild<QCheckBox*>("slopeExcavationEnabled");
   auto* add=page->findChild<QPushButton*>("slopeAddExcavationStage");
   auto* remove=page->findChild<QPushButton*>("slopeRemoveExcavationStage");
-  if(!tabs||!enabled||!add||!remove||tabs->count()!=2||!enabled->isChecked())return 21;
-  const auto original=page->saveJson();add->click();if(tabs->count()!=3)return 22;remove->click();if(tabs->count()!=2)return 23;
+  if(!enabled||!add||!remove||countChildrenOfType(owner,"SlopeExcavationStage")!=2||!enabled->isChecked())return 21;
+  const auto original=page->saveJson();
+  add->click();if(countChildrenOfType(owner,"SlopeExcavationStage")!=3)return 22;
+  remove->click();if(countChildrenOfType(owner,"SlopeExcavationStage")!=2)return 23;
   page->loadJson(original);if(page->saveJson()["excavation"]!=original["excavation"])return 24;
   auto values=page->saveJson()["base_values"].toArray();if(values[20].toString()!="-1"||values[21].toString()!="-2"||values[22].toString()!="1"||values[23].toString()!="0")return 25;
   page->findChild<QComboBox*>("slopeExcavationSupportMode")->setCurrentIndex(1);
+  if(countChildrenOfType(owner,"SlopeReinforcementField")!=1)return 26;
   values=page->saveJson()["base_values"].toArray();if(values[22].toString()!="0"||values[23].toString()!="1")return 26;
   page->loadJson(original);page->findChild<QPushButton*>("slopeInitialStressButton")->click();
-  bool initial=false;for(auto* child:owner->getChildren())if(child->getPage()&&child->getPage()->getPageType()=="GeoStressRegressionAnalysis")initial=true;
-  if(!initial||!solver->saveProject()||!solver->loadProject())return 27;
-  owner=tree.findNodeByUuid(args[2]);if(!owner||owner->getPage()->saveJson()["excavation"]!=original["excavation"])return 28;
+  if(countChildrenOfType(owner,"GeoStressRegressionAnalysis")<1||!solver->saveProject()||!solver->loadProject())return 27;
+  owner=tree.findNodeByUuid(args[2]);
+  if(!owner||owner->getPage()->saveJson()["excavation"]!=original["excavation"]||countChildrenOfType(owner,"SlopeExcavationStage")!=2)return 28;
   enabled=owner->getPage()->findChild<QCheckBox*>("slopeExcavationEnabled");enabled->setChecked(false);
-  values=owner->getPage()->saveJson()["base_values"].toArray();if(values[22].toString()!="0"||values[23].toString()!="0")return 29;
-  std::cout<<"PASS: actual slope UI stages, support flags, initial-stress node, save/reload and legacy disabled mode"<<std::endl;return 0;
+  values=owner->getPage()->saveJson()["base_values"].toArray();
+  if(values[22].toString()!="0"||values[23].toString()!="0"||countChildrenOfType(owner,"SlopeExcavationStage")!=0)return 29;
+  std::cout<<"PASS: actual slope UI tree stages, reinforcement node, support flags, initial-stress node, save/reload and legacy disabled mode"<<std::endl;return 0;
  }
  QSettings settings;settings.setValue("Solver/ComputeDevice",args[3]);settings.setValue("Solver/GpuDeviceMode",2);settings.sync();
  auto* node=tree.findNodeByUuid(args[2]);if(!node)return 5;

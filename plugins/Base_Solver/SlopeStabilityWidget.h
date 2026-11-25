@@ -39,6 +39,7 @@ class SlopeStabilityWidget : public BasePage
     void loadJson(const QJsonObject& obj) override;
     void openStandardMethodDialog();
     bool excavationEnabled() const;
+    SlopeExcavationSettings* excavationSettings() const { return m_excavation; }
     bool prepareExcavationFiles(const QString& inputDirectory, const QString& stressDirectory, QString* error);
 
   signals:
@@ -46,6 +47,9 @@ class SlopeStabilityWidget : public BasePage
     void stopRequested();
     void limitEquilibriumRequested();
     void initialStressRequested();
+    void excavationStructureChanged();
+    void navigateToExcavationStageRequested(int index);
+    void navigateToReinforcementRequested();
 
 
   private slots:

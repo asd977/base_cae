@@ -1,5 +1,12 @@
 #include "GravityDamDialog.h"
 
+#include "../builders/BooleanBuilder.h"
+#include "../builders/GeometryBuildUtils.h"
+#include "../core/CadDocument.h"
+#include "../core/CadBody.h"
+#include <BRepBuilderAPI_Transform.hxx>
+#include <Bnd_Box.hxx>
+#include <BRepBndLib.hxx>
 #include <GeomManagerInstance.h>
 #include <GeometryCleanup.h>
 #include <GeometryServiceAccess.h>
@@ -33,6 +40,9 @@
 #include <TopoDS_Wire.hxx>
 #include <gp_Pnt.hxx>
 #include <gp_Vec.hxx>
+#include <services/PreProcessingService.h>
+#include <GeometryWorkbench.h>
+#include <GeometryDisplayManager.h>
 
 namespace
 {
@@ -48,6 +58,37 @@ void setScaledDiagram(QLabel* label, const QPixmap& pixmap)
         targetSize = QSize(640, 240);
 
     label->setPixmap(pixmap.scaled(targetSize, Qt::KeepAspectRatio, Qt::SmoothTransformation));
+}
+
+TopoDS_Shape makePrismFromProfile(const QVector<QPointF>& profile, double length)
+{
+    if (profile.size() < 3 || length <= kEps)
+        return TopoDS_Shape();
+
+    BRepBuilderAPI_MakePolygon polygon;
+    QPointF lastPoint;
+    bool hasLast = false;
+    int validCount = 0;
+
+    for (const QPointF& point : profile)
+    {
+        if (hasLast && qAbs(point.x() - lastPoint.x()) < kEps && qAbs(point.y() - lastPoint.y()) < kEps)
+            continue;
+        polygon.Add(gp_Pnt(point.x(), 0.0, point.y()));
+        lastPoint = point;
+        hasLast = true;
+        ++validCount;
+    }
+
+    if (validCount < 3)
+        return TopoDS_Shape();
+
+    polygon.Close();
+    BRepBuilderAPI_MakeFace faceMaker(polygon.Wire());
+    if (!faceMaker.IsDone())
+        return TopoDS_Shape();
+
+    return BRepPrimAPI_MakePrism(faceMaker.Face(), gp_Vec(0.0, length, 0.0)).Shape();
 }
 
 }
@@ -75,6 +116,8 @@ QJsonObject GravityDamDialog::saveJson()
     state["x"] = xEdit->text().toDouble();
     state["y"] = yEdit->text().toDouble();
     state["z"] = zEdit->text().toDouble();
+    state["linkGeology"] = m_linkGeology ? m_linkGeology->isChecked() : false;
+    state["targetGeology"] = m_geologyCombo ? m_geologyCombo->currentData().toString() : QString();
     return state;
 }
 
@@ -98,6 +141,18 @@ void GravityDamDialog::loadJson(const QJsonObject& state)
         yEdit->setText(QString::number(state["y"].toDouble()));
     if (state.contains("z"))
         zEdit->setText(QString::number(state["z"].toDouble()));
+
+    if (m_linkGeology && state.contains("linkGeology"))
+    {
+        m_linkGeology->setChecked(state["linkGeology"].toBool());
+        onLinkGeologyToggled(m_linkGeology->isChecked());
+    }
+    if (m_geologyCombo && state.contains("targetGeology"))
+    {
+        const QString target = state["targetGeology"].toString();
+        int idx = m_geologyCombo->findData(target);
+        if (idx >= 0) m_geologyCombo->setCurrentIndex(idx);
+    }
 
     onPreview2DClicked();
 }
@@ -164,6 +219,19 @@ void GravityDamDialog::initUI()
     form->addRow("基点 Y", yEdit);
     form->addRow("基点 Z", zEdit);
 
+    auto* geoGroup = new QGroupBox("河谷地形贴合联动", this);
+    auto* geoForm = new QFormLayout(geoGroup);
+    m_linkGeology = new QCheckBox("关联目标地质体进行河谷坝底贴合", this);
+    m_geologyCombo = new QComboBox(this);
+    m_geologyCombo->setEnabled(false);
+    geoForm->addRow(m_linkGeology);
+    geoForm->addRow("目标地质体", m_geologyCombo);
+
+    connect(m_linkGeology, &QCheckBox::toggled, this, &GravityDamDialog::onLinkGeologyToggled);
+    connect(m_geologyCombo, QOverload<int>::of(&QComboBox::currentIndexChanged), this, [this](int) {
+        applyTargetGeologyDefaults();
+    });
+
     auto* btnLayout = new QHBoxLayout();
     btnLayout->setContentsMargins(0, 0, 0, 0);
 
@@ -178,6 +246,7 @@ void GravityDamDialog::initUI()
     diagramLabel->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Ignored);
 
     contentLayout->addWidget(inputGroup);
+    contentLayout->addWidget(geoGroup);
     contentLayout->addLayout(btnLayout);
     contentLayout->addWidget(diagramLabel, 2);
     contentLayout->addStretch(1);
@@ -185,6 +254,84 @@ void GravityDamDialog::initUI()
     connect(generateBtn, &QPushButton::clicked, this, &GravityDamDialog::onGenerate3DClicked);
 
     onPreview2DClicked();
+}
+
+void GravityDamDialog::applyTargetGeologyDefaults()
+{
+    if (!m_geologyCombo) return;
+    const QString uuid = m_geologyCombo->currentData().toString();
+    if (uuid.isEmpty()) return;
+    auto* doc = GeomManager::CadDocument::getInstance();
+    if (!doc) return;
+    CadBody* b = doc->getGeomShapeObject(uuid);
+    if (!b || !b->getShape() || b->getShape()->IsNull()) return;
+    Bnd_Box box;
+    BRepBndLib::Add(*(b->getShape()), box);
+    if (box.IsVoid()) return;
+    double xmin, ymin, zmin, xmax, ymax, zmax;
+    box.Get(xmin, ymin, zmin, xmax, ymax, zmax);
+
+    const double cx = (xmin + xmax) * 0.5;
+    const double cy = (ymin + ymax) * 0.5;
+    const double cz = zmin + 10.0;
+    if (xEdit) xEdit->setText(QString::number(cx, 'f', 1));
+    if (yEdit) yEdit->setText(QString::number(cy, 'f', 1));
+    if (zEdit) zEdit->setText(QString::number(cz, 'f', 1));
+
+    const double targetH = (zmax - cz) * 1.05;
+    if (heightEdit && heightEdit->text().toDouble() < targetH * 0.5)
+        heightEdit->setText(QString::number(targetH, 'f', 1));
+    const double targetL = (lengthEdit && lengthEdit->text().toDouble() < (ymax - ymin) * 0.3)
+        ? (ymax - ymin) * 0.6 : (lengthEdit ? lengthEdit->text().toDouble() : 400.0);
+    if (lengthEdit) lengthEdit->setText(QString::number(targetL, 'f', 1));
+}
+
+void GravityDamDialog::refreshGeologyCombo()
+{
+    if (!m_geologyCombo) return;
+    const QString currentUuid = m_geologyCombo->currentData().toString();
+    const QSignalBlocker blocker(m_geologyCombo);
+    m_geologyCombo->clear();
+    auto* doc = GeomManager::CadDocument::getInstance();
+    if (!doc) return;
+    const auto map = doc->getShapMap();
+    int defaultIdx = -1;
+    for (auto it = map.cbegin(); it != map.cend(); ++it)
+    {
+        if (it.key() == m_uuid) continue;
+        CadBody* b = it.value();
+        if (!b || !b->getShape() || b->getShape()->IsNull()) continue;
+        m_geologyCombo->addItem(b->getName().isEmpty() ? it.key() : b->getName(), it.key());
+        if (b->getName().contains("地形") || b->getName().contains("地质") || !b->faceGroups().isEmpty())
+            defaultIdx = m_geologyCombo->count() - 1;
+    }
+    if (!currentUuid.isEmpty())
+    {
+        int idx = m_geologyCombo->findData(currentUuid);
+        if (idx >= 0) m_geologyCombo->setCurrentIndex(idx);
+    }
+    else if (defaultIdx >= 0)
+    {
+        m_geologyCombo->setCurrentIndex(defaultIdx);
+    }
+}
+
+void GravityDamDialog::onLinkGeologyToggled(bool checked)
+{
+    if (m_geologyCombo) m_geologyCombo->setEnabled(checked);
+    if (checked)
+    {
+        refreshGeologyCombo();
+        applyTargetGeologyDefaults();
+    }
+}
+
+void GravityDamDialog::showEvent(QShowEvent* event)
+{
+    BasePage::showEvent(event);
+    refreshGeologyCombo();
+    if (m_linkGeology && m_linkGeology->isChecked())
+        applyTargetGeologyDefaults();
 }
 
 bool GravityDamDialog::readParameters(double& damHeight, double& crestWidth, double& upSlope,
@@ -307,6 +454,87 @@ void GravityDamDialog::onGenerate3DClicked()
     }
 
     updateIllustration(H, Bt, mu, md, N, type);
+
+    if (m_linkGeology && m_linkGeology->isChecked())
+    {
+        const QString targetUuid = m_geologyCombo ? m_geologyCombo->currentData().toString() : QString();
+        if (targetUuid.isEmpty())
+        {
+            QMessageBox::warning(this, tr("参数提示"), tr("请选择要关联的目标地质体。"));
+            return;
+        }
+
+        auto* doc = GeomManager::CadDocument::getInstance();
+        CadBody* targetBody = doc ? doc->getGeomShapeObject(targetUuid) : nullptr;
+        if (targetBody && targetBody->getShape())
+        {
+            Bnd_Box geoBox;
+            BRepBndLib::Add(*(targetBody->getShape()), geoBox);
+            if (!geoBox.IsVoid())
+            {
+                double xmin, ymin, zmin, xmax, ymax, zmax;
+                geoBox.Get(xmin, ymin, zmin, xmax, ymax, zmax);
+                if (qAbs(x) < 1.0 && qAbs(y) < 1.0 && (xmin > 10.0 || xmax < -10.0))
+                {
+                    applyTargetGeologyDefaults();
+                }
+            }
+        }
+
+        const double actualX = xEdit ? xEdit->text().toDouble() : x;
+        const double actualY = yEdit ? yEdit->text().toDouble() : y;
+        const double actualZ = zEdit ? zEdit->text().toDouble() : z;
+        const double actualH = heightEdit ? heightEdit->text().toDouble() : H;
+        const double actualL = lengthEdit ? lengthEdit->text().toDouble() : L;
+
+        const auto section = buildSectionPoints(actualH, Bt, mu, md, type);
+        TopoDS_Shape rawDam = makePrismFromProfile(section, actualL);
+        if (rawDam.IsNull())
+        {
+            QMessageBox::warning(this, tr("生成失败"), tr("无法构建重力坝基础实体。"));
+            return;
+        }
+
+        const double actualBottomW = Bt + actualH * (mu + md);
+        gp_Trsf trsf;
+        trsf.SetTranslation(gp_Vec(actualX - actualBottomW * 0.5, actualY - actualL * 0.5, actualZ));
+        BRepBuilderAPI_Transform xform(rawDam, trsf);
+        TopoDS_Shape placedDam = xform.Shape();
+
+        TopoDS_Shape fittedDam;
+        QVector<int> contactFaces;
+        QString errorMsg;
+        if (!BooleanBuilder::fitDamToValley(targetUuid, placedDam, fittedDam, contactFaces, errorMsg))
+        {
+            QMessageBox::warning(this, tr("贴合失败"), tr("重力坝与河谷贴合布尔裁剪失败：%1").arg(errorMsg));
+            return;
+        }
+
+        GeometryBuildUtils::registerShape(m_uuid, getDisplayName(), new TopoDS_Shape(fittedDam));
+        if (auto* body = doc ? doc->getGeomShapeObject(m_uuid) : nullptr)
+        {
+            body->addFaceGroup({QStringLiteral("重力坝基底接触面组"), QStringLiteral("Contact"), contactFaces});
+        }
+
+        // 同步树节点状态、勾选并提交历史
+        if (auto* pre = ServiceRegistry::instance().getService<PreProcessingService>())
+        {
+            if (auto* workbench = dynamic_cast<GeometryWorkbench*>(pre))
+            {
+                workbench->refreshTreePresentation(m_uuid);
+                workbench->refreshTreePresentation(targetUuid);
+            }
+        }
+
+        if (auto* vis = ServiceRegistry::instance().getService<VisualWidgetService>())
+            vis->render();
+
+        QMessageBox::information(this, tr("贴合完成"),
+            tr("重力坝已严丝合缝贴合起伏河谷地形，削掉地下掩埋与两岸插入部分，生成基底贴合面 %1 个，已自动归入【重力坝基底接触面组】。")
+            .arg(contactFaces.size()));
+        return;
+    }
+
     IGeometryService* service = requireGeometryService(this);
     if (!service)
         return;

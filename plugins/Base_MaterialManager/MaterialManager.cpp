@@ -71,7 +71,7 @@ bool isDamStaticModel(const QString& modelKey)
     static const QSet<QString> keys = {
         QStringLiteral("soil_eb"), QStringLiteral("soil_kg"),
         QStringLiteral("soil_emu"), QStringLiteral("soil_nanshui"),
-        QStringLiteral("soil_emu_crush")};
+        QStringLiteral("soil_emu_crush"), QStringLiteral("linear_elastic")};
     return keys.contains(modelKey);
 }
 
@@ -2721,7 +2721,7 @@ bool MaterialManager::generateCaculateFile(
             if (residualFriction <= 1.0e-5 && residualCohesion <= 1.0e-9)
                 return invalid(QStringLiteral("残余摩擦系数和残余凝聚力不能同时为0。"));
         }
-        if (isDamStaticModel(modelKey))
+        if (isDamStaticModel(modelKey) && modelKey != QStringLiteral("linear_elastic"))
         {
             if (number(QStringLiteral("干容重(t/m3)")) <= 0.0 ||
                 number(QStringLiteral("天然容重(t/m3)")) <= 0.0 ||
@@ -3070,6 +3070,43 @@ bool MaterialManager::generateCaculateFile(
 
         const int matIndex = matype - 1;
 
+        if (info.model->key == QStringLiteral("linear_elastic"))
+        {
+            bool youngOk = false, poissonOk = false, densityOk = false;
+            const double youngGpa = info.entry->properties.value(QStringLiteral("变形模量E（GPa）")).toDouble(&youngOk);
+            const double poisson = info.entry->properties.value(QStringLiteral("泊松比μ")).toDouble(&poissonOk);
+            const double density = info.entry->properties.value(QStringLiteral("容重t/m3")).toDouble(&densityOk);
+            if (!youngOk || !poissonOk || !densityOk || !std::isfinite(youngGpa) ||
+                !std::isfinite(poisson) || !std::isfinite(density) || youngGpa <= 0 ||
+                poisson <= -1 || poisson >= 0.5 || density < 0)
+            {
+                QMessageBox::warning(nullptr, QStringLiteral("请完善线弹性材料"),
+                    QStringLiteral("材料“%1”需要正的弹性模量、-1至0.5之间的泊松比和非负容重。")
+                        .arg(info.entry->name));
+                return false;
+            }
+            const double young = youngGpa * 1.0e9;
+            values[0][matIndex] = 0.0; // Native IBUCK=0: pure elastic continuum.
+            values[1][matIndex] = young;
+            values[2][matIndex] = young;
+            values[3][matIndex] = poisson;
+            values[4][matIndex] = poisson;
+            values[5][matIndex] = young / (2.0 * (1.0 + poisson));
+            values[6][matIndex] = density * 1.0e3;
+            values[7][matIndex] = 1.0;
+            // Solver's CANYU_CF rejects materials whose DRYFAI_P (row 94) and DRYCO_P (row 95)
+            // are both < 0.001 even for pure elastic IBUCK=0 materials; provide large
+            // non-yielding nominal strengths matching solver default IMAT=1.
+            values[8][matIndex] = 2.0e9;
+            values[9][matIndex] = 2.0e8;
+            values[10][matIndex] = 78.0;
+            values[11][matIndex] = 2.0e8;
+            values[93][matIndex] = 78.0;
+            values[94][matIndex] = 2.0e8;
+            values[83][matIndex] = matype;
+            applySupplementalModels(info.entry, matIndex);
+            continue;
+        }
         if (info.model->key == QStringLiteral("hoek_brown_rock"))
         {
             const double ee = valueOf(info.entry, QStringLiteral("变形模量E（GPa）")) * 1.0e9;
@@ -4476,6 +4513,8 @@ bool MaterialManager::importIMATFile(const QString& filePath, int* importedCount
             return findModel(QStringLiteral("nine_param_creep"));
         if (creepType == 4)
             return findModel(QStringLiteral("xiyuan_creep"));
+        if (ib == 0)
+            return findModel(QStringLiteral("linear_elastic"));
         return nullptr;
     };
 
@@ -4580,7 +4619,14 @@ bool MaterialManager::importIMATFile(const QString& filePath, int* importedCount
         }
 
         const int ib = static_cast<int>(std::llround(rowValue(matIndex, 1)));
-        if (model->key == QStringLiteral("hoek_brown_rock"))
+        if (model->key == QStringLiteral("linear_elastic"))
+        {
+            setProperty(entry, QStringLiteral("序号"), matype);
+            setProperty(entry, QStringLiteral("变形模量E（GPa）"), rowValue(matIndex, 2) / 1.0e9);
+            setProperty(entry, QStringLiteral("泊松比μ"), rowValue(matIndex, 4));
+            setProperty(entry, QStringLiteral("容重t/m3"), rowValue(matIndex, 7) / 1.0e3);
+        }
+        else if (model->key == QStringLiteral("hoek_brown_rock"))
         {
             setProperty(entry, QStringLiteral("序号"), matype);
             setProperty(entry, QStringLiteral("变形模量E（GPa）"), rowValue(matIndex, 2) / 1.0e9);

@@ -28,6 +28,7 @@
 #include <QJsonObject>
 #include <QRegularExpression>
 #include <QSignalBlocker>
+#include <QScopedValueRollback>
 
 #include "PostFieldUtils.h"
 #include "ResultDisplayNames.h"
@@ -113,23 +114,10 @@ IsosurfaceSegmentationWidget::IsosurfaceSegmentationWidget(
     ui->interfaceOpacitySpinBox->setEnabled(false);
 
     // 信号（如用 Qt Designer 的自动连接，也可以省略）
-    connect(ui->scalarComboBox, QOverload<int>::of(&QComboBox::currentIndexChanged), this,
-            &IsosurfaceSegmentationWidget::on_scalarComboBox_currentIndexChanged);
+
     connect(ui->percentModeRadioButton, &QRadioButton::toggled, this,
             &IsosurfaceSegmentationWidget::on_percentCheckBox_toggled);
-    connect(ui->valueModeRadioButton, &QRadioButton::toggled, this,
-            &IsosurfaceSegmentationWidget::on_percentCheckBox_toggled);
-    connect(ui->isoSlider, &QSlider::valueChanged, this,
-            &IsosurfaceSegmentationWidget::on_isoSlider_valueChanged);
-    connect(ui->isoSpin, QOverload<double>::of(&QDoubleSpinBox::valueChanged), this,
-            &IsosurfaceSegmentationWidget::on_isoSpin_valueChanged);
-
-    connect(ui->showLowCheckBox, &QCheckBox::toggled, this,
-            &IsosurfaceSegmentationWidget::on_showLowCheckBox_toggled);
-    connect(ui->showHighCheckBox, &QCheckBox::toggled, this,
-            &IsosurfaceSegmentationWidget::on_showHighCheckBox_toggled);
-    connect(ui->showInterfaceCheckBox, &QCheckBox::toggled, this,
-            &IsosurfaceSegmentationWidget::on_showInterfaceCheckBox_toggled);
+    // percentModeRadioButton 的开关信号已覆盖两种互斥模式。
 
     connect(ui->lowOpacitySpinBox, QOverload<int>::of(&QSpinBox::valueChanged), this,
             &IsosurfaceSegmentationWidget::on_lowOpacitySlider_valueChanged);
@@ -137,17 +125,6 @@ IsosurfaceSegmentationWidget::IsosurfaceSegmentationWidget(
             &IsosurfaceSegmentationWidget::on_highOpacitySlider_valueChanged);
     connect(ui->interfaceOpacitySpinBox, QOverload<int>::of(&QSpinBox::valueChanged), this,
             &IsosurfaceSegmentationWidget::on_ifaceOpacitySlider_valueChanged);
-
-    connect(ui->stepComboBox, QOverload<int>::of(&QComboBox::currentIndexChanged), this,
-            &IsosurfaceSegmentationWidget::on_stepComboBox_currentIndexChanged);
-    connect(ui->analysisComboBox,
-            QOverload<int>::of(&QComboBox::currentIndexChanged), this,
-            &IsosurfaceSegmentationWidget::on_analysisComboBox_currentIndexChanged);
-    connect(ui->resultDirComboBox, QOverload<int>::of(&QComboBox::currentIndexChanged), this,
-            &IsosurfaceSegmentationWidget::on_resultDirComboBox_currentIndexChanged);
-    connect(ui->resultTimeComboBox,
-            QOverload<int>::of(&QComboBox::currentIndexChanged), this,
-            &IsosurfaceSegmentationWidget::on_resultTimeComboBox_currentIndexChanged);
 
     EventManager::instance().registerHandler(
         postDisplaySettingsChangedEvent(), this,
@@ -175,38 +152,38 @@ IsosurfaceSegmentationWidget::~IsosurfaceSegmentationWidget()
 
 void IsosurfaceSegmentationWidget::beforeLoad()
 {
-    setProperty("postDisplayActive", true);
-    showPostProcessingOnly(m_visualService, false);
-    ui->showScalarBarCheckBox->setChecked(postScalarBarStyle().visible);
-    refreshResultGroups();
-    if (m_dataPath.isEmpty())
     {
-        const QString projectDir =
-            PublicVariables::instance().get(PublicConstants::kProjectDirectoryKey).toString();
+        QScopedValueRollback<bool> defer(m_deferRender,true);
+        const QSignalBlocker legendBlocker(ui->showScalarBarCheckBox);
+        setProperty("postDisplayActive", true);
+        showPostProcessingOnly(m_visualService, false);
+        ui->showScalarBarCheckBox->setChecked(postScalarBarStyle().visible);
+        refreshResultGroups();
         if (m_dataPath.isEmpty())
-            m_dataPath = PostResultAutoPrepare::firstResultDirectory(projectDir);
-    }
+        {
+            const QString projectDir =
+                PublicVariables::instance().get(PublicConstants::kProjectDirectoryKey).toString();
+            if (m_dataPath.isEmpty())
+                m_dataPath = PostResultAutoPrepare::firstResultDirectory(projectDir);
+        }
 
-    if (ui->stepComboBox->count() == 0)
-    {
-        // 首次进入：列步号 -> 读取 -> 建管线 -> 绑定色标/阈值/显隐
-        loadFileName(m_dataPath);
-        buildPipelineIfNeeded();
-        updateColoringFromUI();
-        updateIsoFromUI();
-        updateVisibilityFromUI();
-        m_loadedOnce = true;
+        if (ui->stepComboBox->count() == 0)
+        {
+            // 首次进入：列步号 -> 读取 -> 建管线 -> 绑定色标/阈值/显隐
+            loadFileName(m_dataPath);
+            m_loadedOnce = true;
+        }
+        else
+        {
+            // 非首次：把 actor 挂回，并确保与当前 UI 同步
+            attachActorsIfNeeded();
+            buildPipelineIfNeeded();
+            updateColoringFromUI();
+            updateIsoFromUI();
+            updateVisibilityFromUI();
+        }
+        applyPendingState();
     }
-    else
-    {
-        // 非首次：把 actor 挂回，并确保与当前 UI 同步
-        attachActorsIfNeeded();
-        buildPipelineIfNeeded();
-        updateColoringFromUI();
-        updateIsoFromUI();
-        updateVisibilityFromUI();
-    }
-    applyPendingState();
     renderNow();
 }
 
@@ -508,6 +485,7 @@ bool IsosurfaceSegmentationWidget::readTecplot(const QString& file)
 
 void IsosurfaceSegmentationWidget::fillScalarCombo()
 {
+    const QSignalBlocker scalarBlocker(ui->scalarComboBox);
     PostFieldUtils::fillCombo(ui->scalarComboBox, m_grid);
     const int sharedFieldIndex = PostResultSelectionUtils::findSharedField(
         ui->scalarComboBox, PostFieldUtils::NameRole, PostFieldUtils::AssociationRole);
@@ -523,7 +501,7 @@ void IsosurfaceSegmentationWidget::buildPipelineIfNeeded()
     if (m_threshLow)
         return; // 已构建
 
-    vtkSmartPointer<vtkUnstructuredGrid> displayGrid = postFilteredResultGrid(m_grid);
+    vtkSmartPointer<vtkUnstructuredGrid> displayGrid = postFilteredResultGrid(m_grid, true);
 
     // 低值侧
     m_threshLow = vtkSmartPointer<vtkThreshold>::New();
@@ -587,7 +565,7 @@ void IsosurfaceSegmentationWidget::setIsoSpinRangeFromScalar()
 {
     if (!m_grid)
         return;
-    vtkSmartPointer<vtkUnstructuredGrid> displayGrid = postFilteredResultGrid(m_grid);
+    vtkSmartPointer<vtkUnstructuredGrid> displayGrid = postFilteredResultGrid(m_grid, true);
     if (!displayGrid || displayGrid->GetNumberOfCells() <= 0)
         return;
     const PostFieldUtils::Field field = PostFieldUtils::selectedField(ui->scalarComboBox);
@@ -617,7 +595,7 @@ void IsosurfaceSegmentationWidget::updateIsoFromUI()
     if (!m_grid || !m_threshLow || !m_threshHigh || !m_contourIso)
         return;
 
-    vtkSmartPointer<vtkUnstructuredGrid> displayGrid = postFilteredResultGrid(m_grid);
+    vtkSmartPointer<vtkUnstructuredGrid> displayGrid = postFilteredResultGrid(m_grid, true);
     if (!displayGrid || displayGrid->GetNumberOfCells() <= 0)
         return;
     m_threshLow->SetInputData(displayGrid);
@@ -706,7 +684,7 @@ void IsosurfaceSegmentationWidget::updateColoringFromUI()
     if (!m_grid || !m_mapperLow || !m_mapperHigh || !m_mapperIso)
         return;
 
-    vtkSmartPointer<vtkUnstructuredGrid> displayGrid = postFilteredResultGrid(m_grid);
+    vtkSmartPointer<vtkUnstructuredGrid> displayGrid = postFilteredResultGrid(m_grid, true);
     if (!displayGrid || displayGrid->GetNumberOfCells() <= 0)
     {
         clearPostDisplayContext();
@@ -812,6 +790,7 @@ void IsosurfaceSegmentationWidget::updateVisibilityFromUI()
 
 void IsosurfaceSegmentationWidget::renderNow()
 {
+    if(m_deferRender)return;
     if (!m_visualService)
         return;
     if (auto* rw = m_visualService->renderWindow())

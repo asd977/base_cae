@@ -1,3 +1,4 @@
+#include <CompactDoubleSpinBox.h>
 #include "MeshSmeshSubmeshWidget.h"
 #include <ServiceRegistry.h>
 #include <services/PreProcessingService.h>
@@ -19,7 +20,7 @@
 
 namespace {
 QDoubleSpinBox* sizeEditor(QWidget* owner, const char* name, double value=0.) {
-    auto* field=new QDoubleSpinBox(owner); field->setObjectName(name);
+    auto* field=new CompactDoubleSpinBox(owner); field->setObjectName(name);
     field->setDecimals(8); field->setRange(0,1.e12); field->setSpecialValueText(QObject::tr("继承父级"));
     field->setValue(value); field->setKeyboardTracking(false); return field;
 }
@@ -70,7 +71,7 @@ MeshSmeshSubmeshWidget::MeshSmeshSubmeshWidget(int dimension, QWidget* parent)
     } else {
         m_segments=new QSpinBox(this); m_segments->setObjectName("submeshEdgeSegments"); m_segments->setRange(0,1000000);
         m_segments->setSpecialValueText(tr("按尺寸继承 / 计算")); form->addRow(tr("固定分段数"),m_segments);
-        m_bias=new QDoubleSpinBox(this); m_bias->setObjectName("submeshEdgeBias"); m_bias->setRange(.001,1000); m_bias->setValue(1);
+        m_bias=new CompactDoubleSpinBox(this); m_bias->setObjectName("submeshEdgeBias"); m_bias->setRange(.001,1000); m_bias->setValue(1);
         form->addRow(tr("分段比例"),m_bias); m_bias->setEnabled(false);
         connect(m_segments,QOverload<int>::of(&QSpinBox::valueChanged),this,[this](int value){m_bias->setEnabled(value>0);m_max->setEnabled(value==0);});
     }

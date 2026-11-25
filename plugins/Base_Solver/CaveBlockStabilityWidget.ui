@@ -132,7 +132,7 @@
           </widget>
          </item>
          <item row="0" column="1">
-          <widget class="QDoubleSpinBox" name="weightEdit">
+          <widget class="CompactDoubleSpinBox" name="weightEdit">
            <property name="minimumSize">
             <size>
              <width>10</width>
@@ -209,7 +209,7 @@
           </widget>
          </item>
          <item row="0" column="1">
-          <widget class="QDoubleSpinBox" name="xMinEdit">
+          <widget class="CompactDoubleSpinBox" name="xMinEdit">
            <property name="minimumSize">
             <size>
              <width>10</width>
@@ -253,7 +253,7 @@
           </widget>
          </item>
          <item row="1" column="1">
-          <widget class="QDoubleSpinBox" name="xMaxEdit">
+          <widget class="CompactDoubleSpinBox" name="xMaxEdit">
            <property name="minimumSize">
             <size>
              <width>10</width>
@@ -297,7 +297,7 @@
           </widget>
          </item>
          <item row="2" column="1">
-          <widget class="QDoubleSpinBox" name="yMinEdit">
+          <widget class="CompactDoubleSpinBox" name="yMinEdit">
            <property name="minimumSize">
             <size>
              <width>10</width>
@@ -341,7 +341,7 @@
           </widget>
          </item>
          <item row="3" column="1">
-          <widget class="QDoubleSpinBox" name="yMaxEdit">
+          <widget class="CompactDoubleSpinBox" name="yMaxEdit">
            <property name="minimumSize">
             <size>
              <width>10</width>
@@ -385,7 +385,7 @@
           </widget>
          </item>
          <item row="4" column="1">
-          <widget class="QDoubleSpinBox" name="zMinEdit">
+          <widget class="CompactDoubleSpinBox" name="zMinEdit">
            <property name="minimumSize">
             <size>
              <width>10</width>
@@ -429,7 +429,7 @@
           </widget>
          </item>
          <item row="5" column="1">
-          <widget class="QDoubleSpinBox" name="zMaxEdit">
+          <widget class="CompactDoubleSpinBox" name="zMaxEdit">
            <property name="minimumSize">
             <size>
              <width>10</width>
@@ -509,7 +509,7 @@
           </widget>
          </item>
          <item row="0" column="1">
-          <widget class="QDoubleSpinBox" name="fxEdit">
+          <widget class="CompactDoubleSpinBox" name="fxEdit">
            <property name="minimumSize">
             <size>
              <width>10</width>
@@ -553,7 +553,7 @@
           </widget>
          </item>
          <item row="1" column="1">
-          <widget class="QDoubleSpinBox" name="fyEdit">
+          <widget class="CompactDoubleSpinBox" name="fyEdit">
            <property name="minimumSize">
             <size>
              <width>10</width>
@@ -597,7 +597,7 @@
           </widget>
          </item>
          <item row="2" column="1">
-          <widget class="QDoubleSpinBox" name="fzEdit">
+          <widget class="CompactDoubleSpinBox" name="fzEdit">
            <property name="minimumSize">
             <size>
              <width>10</width>
@@ -1000,6 +1000,9 @@
    </property>
   </layout>
  </widget>
+  <customwidgets>
+  <customwidget><class>CompactDoubleSpinBox</class><extends>QDoubleSpinBox</extends><header>CompactDoubleSpinBox.h</header></customwidget>
+ </customwidgets>
  <resources />
  <connections />
 </ui>

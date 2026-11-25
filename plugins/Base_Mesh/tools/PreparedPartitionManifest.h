@@ -23,8 +23,6 @@ namespace CaePreparedPartition
 {
 struct Mapping
 {
-    std::string sourceFingerprint;
-    std::string preparedFingerprint;
     double fuzzyTolerance = -1.0;
     int sourceSolidCount = 0;
     int preparedSolidCount = 0;
@@ -75,11 +73,8 @@ inline Mapping load(const std::filesystem::path& manifestPath)
     Mapping result;
     if (tree.get<int>("format") != 2)
         throw std::runtime_error("Prepared CAD manifest version is unsupported");
-    result.sourceFingerprint = tree.get<std::string>("sourceFingerprint");
-    result.preparedFingerprint = tree.get<std::string>("preparedFingerprint");
     result.fuzzyTolerance = tree.get<double>("fuzzyTolerance");
-    if (result.sourceFingerprint.empty() || result.preparedFingerprint.empty() ||
-        !std::isfinite(result.fuzzyTolerance) || result.fuzzyTolerance < 0.0)
+    if (!std::isfinite(result.fuzzyTolerance) || result.fuzzyTolerance < 0.0)
         throw std::runtime_error("Invalid prepared CAD manifest identity");
     result.sourceSolidCount = tree.get<int>("inputSolidCount");
     result.preparedSolidCount = tree.get<int>("outputSolidCount");

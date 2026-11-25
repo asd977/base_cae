@@ -1,6 +1,7 @@
 #include "NephogramSettingWidget.h"
 #include "PostThresholdDisplay.h"
 #include "PostComboBoxPerformance.h"
+#include "PostSurfacePipeline.h"
 
 #include <PublicConstants.h>
 #include <PublicVariables.h>
@@ -8,7 +9,6 @@
 #include <services/VisualWidgetService.h>
 
 #include <vtkActor.h>
-#include <vtkAppendFilter.h>
 #include <vtkCamera.h>
 #include <vtkCell.h>
 #include <vtkCellData.h>
@@ -19,14 +19,12 @@
 #include <vtkDataSet.h>
 #include <vtkDataSetMapper.h>
 #include <vtkGeometryFilter.h>
-#include <vtkExtractCells.h>
 #include <vtkFieldData.h>
 #include <vtkIdList.h>
 #include <vtkDoubleArray.h>
 #include <vtkLabeledDataMapper.h>
 #include <vtkLookupTable.h>
 #include <vtkMapper.h>
-#include <vtkMultiBlockDataSet.h>
 #include <vtkPointData.h>
 #include <vtkPoints.h>
 #include <vtkPolyData.h>
@@ -34,18 +32,14 @@
 #include <vtkFeatureEdges.h>
 #include <vtkStaticCleanUnstructuredGrid.h>
 #include <vtkProperty.h>
+
 #include <vtkRenderer.h>
-#include <vtkRendererCollection.h>
 #include <vtkRenderWindow.h>
-#include <vtkRenderWindowInteractor.h>
 #include <vtkScalarBarActor.h>
 #include <vtkSmartPointer.h>
 #include <vtkStripper.h>
-#include <vtkTecplotReader.h>
 #include <vtkTextProperty.h>
 #include <vtkUnstructuredGrid.h>
-#include <vtkXMLPolyDataReader.h>
-#include <vtkXMLUnstructuredGridReader.h>
 
 #include <QByteArray>
 #include <QCheckBox>
@@ -58,9 +52,10 @@
 #include <QJsonObject>
 #include <QScopedValueRollback>
 #include <QSignalBlocker>
-#include <QSpinBox>
 #include <QStringList>
 #include <QVector>
+#include <QLabel>
+#include <QVBoxLayout>
 
 #include <algorithm>
 #include <cmath>
@@ -151,9 +146,6 @@ bool scalarArrayMatchesSurface(vtkPolyData* surface, const QString& scalarName,
     return expected > 0 && array->GetNumberOfTuples() == expected;
 }
 
-
-
-
 } // namespace
 
 NephogramSettingWidget::NephogramSettingWidget(VisualWidgetService* postProcessingWidget,
@@ -161,6 +153,19 @@ NephogramSettingWidget::NephogramSettingWidget(VisualWidgetService* postProcessi
     : BasePage(PublicConstants::kPagePostProcessNephogram), ui(new Ui::NephogramSettingWidget)
 {
     ui->setupUi(this);
+    m_preparationStatus=new QLabel(QStringLiteral("正在准备结果显示…"),this);
+    m_preparationStatus->setObjectName(QStringLiteral("postPreparationStatus"));
+    m_preparationStatus->setWordWrap(true);m_preparationStatus->hide();
+    if(auto* layout=qobject_cast<QVBoxLayout*>(this->layout()))layout->insertWidget(0,m_preparationStatus);
+    m_surfacePipeline=new PostSurfacePipeline(this);
+    m_surfacePipeline->stateChanged=[this]{updatePreparationStatus();};
+    m_surfacePipeline->ready=[this](const PostPreparedSurface& result) {
+        if(!property("postDisplayActive").toBool())return;
+        if(!result.fileName.isEmpty())finishReadTecplot(result);
+        else if(!result.error.isEmpty())qWarning().noquote()<<result.error;
+        else refreshCurrentVisualization();
+        updatePreparationStatus();
+    };
     // 色标、等值线和显示范围统一由“结果显示”窗口控制。
     ui->displayGroupBox->setVisible(false);
 
@@ -181,18 +186,7 @@ NephogramSettingWidget::NephogramSettingWidget(VisualWidgetService* postProcessi
     ui->rangeMinSpinBox->setDecimals(8);
     ui->rangeMaxSpinBox->setDecimals(8);
 
-    connect(ui->stepComboBox, QOverload<int>::of(&QComboBox::currentIndexChanged), this,
-            &NephogramSettingWidget::on_stepComboBox_currentIndexChanged);
-    connect(ui->scalarComboBox, QOverload<int>::of(&QComboBox::currentIndexChanged), this,
-            &NephogramSettingWidget::on_scalarComboBox_currentIndexChanged);
-    connect(ui->analysisComboBox,
-            QOverload<int>::of(&QComboBox::currentIndexChanged), this,
-            &NephogramSettingWidget::on_analysisComboBox_currentIndexChanged);
-    connect(ui->resultDirComboBox, QOverload<int>::of(&QComboBox::currentIndexChanged), this,
-            &NephogramSettingWidget::on_resultDirComboBox_currentIndexChanged);
-    connect(ui->resultTimeComboBox,
-            QOverload<int>::of(&QComboBox::currentIndexChanged), this,
-            &NephogramSettingWidget::on_resultTimeComboBox_currentIndexChanged);
+    // setupUi() 已按 on_<对象名>_<信号> 自动连接结果选择槽。
     connect(ui->showExcavatedCheckBox, &QCheckBox::toggled, this, [this](bool) {
         if (m_loadingState)
             return;
@@ -209,7 +203,7 @@ NephogramSettingWidget::NephogramSettingWidget(VisualWidgetService* postProcessi
     });
     connect(ui->rangeMinSpinBox, QOverload<double>::of(&QDoubleSpinBox::valueChanged), this,
             [this](double value) {
-                if (m_updatingRangeControls || ui->autoRangeCheckBox->isChecked())
+                if (ui->autoRangeCheckBox->isChecked())
                     return;
                 if (value >= ui->rangeMaxSpinBox->value())
                 {
@@ -221,7 +215,7 @@ NephogramSettingWidget::NephogramSettingWidget(VisualWidgetService* postProcessi
             });
     connect(ui->rangeMaxSpinBox, QOverload<double>::of(&QDoubleSpinBox::valueChanged), this,
             [this](double value) {
-                if (m_updatingRangeControls || ui->autoRangeCheckBox->isChecked())
+                if (ui->autoRangeCheckBox->isChecked())
                     return;
                 if (value <= ui->rangeMinSpinBox->value())
                 {
@@ -278,6 +272,30 @@ NephogramSettingWidget::NephogramSettingWidget(VisualWidgetService* postProcessi
             if (!property("postDisplayActive").toBool())
                 return;
             const QString reason = data.value(QStringLiteral("reason")).toString();
+            if(reason==QStringLiteral("surface-normals") || reason==QStringLiteral("domain-filter")
+               || reason==QStringLiteral("mesh-filter")) {
+                m_surfacePipeline->cancel();
+                if(!m_grid && !m_loadedFileName.isEmpty()) {readTecplot(m_loadedFileName);return;}
+            }
+            if(reason==QStringLiteral("surface-lighting")) {
+                applyPostSurfaceLighting(m_actor);
+                applyPostSurfaceLighting(m_belowThresholdActor);
+                if(m_visualService)m_visualService->render();
+                return;
+            }
+            if (reason == QStringLiteral("surface-outline"))
+            {
+                if (!m_loadingState && m_actorAttached && m_mapper && m_visualService)
+                {
+                    vtkUnstructuredGrid* activeGrid =
+                        m_retainedThresholdGrid
+                            ? m_retainedThresholdGrid.GetPointer()
+                            : m_visibleVolumeGrid.GetPointer();
+                    updateSurfaceOutline(activeGrid);
+                    m_visualService->render();
+                }
+                return;
+            }
             if (reason == QStringLiteral("mesh-filter") ||
                 reason == QStringLiteral("domain-filter"))
             {
@@ -296,6 +314,10 @@ NephogramSettingWidget::NephogramSettingWidget(VisualWidgetService* postProcessi
             refreshCurrentVisualization();
         });
 
+    EventManager::instance().registerHandler(
+        PublicConstants::kEventSolverFinished, this,
+        [this](const QVariantMap&) { m_resultOptionsReady = false; });
+
     updateRangeEditorState();
     // 工程恢复阶段只创建页面，不在构造函数里扫描结果目录。
     // 首次真正进入页面或恢复该页 JSON 状态时再初始化结果选项。
@@ -303,7 +325,14 @@ NephogramSettingWidget::NephogramSettingWidget(VisualWidgetService* postProcessi
 
 NephogramSettingWidget::~NephogramSettingWidget()
 {
+    m_surfacePipeline->ready={};m_surfacePipeline->stateChanged={};delete m_surfacePipeline;
     delete ui;
+}
+
+void NephogramSettingWidget::updatePreparationStatus()
+{
+    const bool pending=m_surfacePipeline->pending();
+    setProperty("post.preparation.pending",pending);m_preparationStatus->setVisible(pending && property("postDisplayActive").toBool());
 }
 
 void NephogramSettingWidget::clearThresholdDisplay()
@@ -311,26 +340,38 @@ void NephogramSettingWidget::clearThresholdDisplay()
     if (m_visualService)
         removeActorByService(m_visualService, postActorId(getUuid(), QStringLiteral("threshold-below")), false);
     m_belowThresholdActor = nullptr;
-    if (m_retainedThresholdGrid) invalidateDisplaySurface();
-    m_retainedThresholdGrid = nullptr;
 }
 
-void NephogramSettingWidget::applyThresholdDisplay(vtkUnstructuredGrid* grid, bool usePointData)
+bool NephogramSettingWidget::applyThresholdDisplay(vtkUnstructuredGrid* grid, bool usePointData, bool prepareOnly)
 {
-    clearThresholdDisplay();
     const auto& style = postFieldDisplayStyle(m_currentArrayName);
     if (!style.thresholdEnabled || !grid)
     {
-        m_mapper->SetInputData(grid);
-        return;
+        vtkDataSet* display=surfaceDisplayData(grid);
+        if(grid && !display)return false;
+        if(prepareOnly)return true;
+        clearThresholdDisplay();m_visibleVolumeGrid=grid;
+        m_retainedThresholdGrid=nullptr;m_belowThresholdGrid=nullptr;m_thresholdSource=nullptr;
+        if (m_mapper->GetInput() != display)
+            m_mapper->SetInputData(display);
+        return true;
     }
-    const auto parts = splitPostThreshold(grid, m_currentArrayName, usePointData, style.threshold);
-    m_retainedThresholdGrid = parts.retained;
-    m_mapper->SetInputData(parts.retained);
-    invalidateDisplaySurface();
-    if (!parts.below || parts.below->GetNumberOfCells() == 0 || style.belowTransparency == 100) return;
+    if(m_thresholdSource!=grid || m_thresholdSourceTime!=grid->GetMTime()
+       || m_thresholdField!=m_currentArrayName || m_thresholdPointData!=usePointData || m_thresholdValue!=style.threshold) {
+        const auto parts=splitPostThreshold(grid,m_currentArrayName,usePointData,style.threshold);
+        m_retainedThresholdGrid=parts.retained;m_belowThresholdGrid=parts.below;
+        m_thresholdSource=grid;m_thresholdSourceTime=grid->GetMTime();m_thresholdField=m_currentArrayName;
+        m_thresholdPointData=usePointData;m_thresholdValue=style.threshold;invalidateDisplaySurface();
+    }
+    auto* retained=surfaceDisplayData(m_retainedThresholdGrid);
+    const bool showBelow=m_belowThresholdGrid && m_belowThresholdGrid->GetNumberOfCells()>0 && style.belowTransparency!=100;
+    auto* below=showBelow?surfaceDisplayData(m_belowThresholdGrid):nullptr;
+    if(!retained || (showBelow && !below))return false;
+    if(prepareOnly)return true;
+    clearThresholdDisplay();m_visibleVolumeGrid=m_retainedThresholdGrid;m_mapper->SetInputData(retained);
+    if(!showBelow)return true;
     auto mapper = vtkSmartPointer<vtkDataSetMapper>::New();
-    mapper->SetInputData(parts.below);
+    mapper->SetInputData(below);
     auto* lut = vtkLookupTable::SafeDownCast(m_visualService->scalarBarActor()->GetLookupTable());
     double range[2]; lut->GetTableRange(range);
     configureMapper(mapper, m_currentArrayName, usePointData, range[0], range[1], lut);
@@ -341,11 +382,22 @@ void NephogramSettingWidget::applyThresholdDisplay(vtkUnstructuredGrid* grid, bo
         mapper->ScalarVisibilityOff();
         m_belowThresholdActor->GetProperty()->SetColor(0.97, 0.97, 0.97);
     }
-    m_belowThresholdActor->GetProperty()->LightingOff();
+    applyPostSurfaceLighting(m_belowThresholdActor);
     m_belowThresholdActor->GetProperty()->SetOpacity(1.0 - style.belowTransparency / 100.0);
     applyPostActorRepresentation(m_belowThresholdActor);
     addActorByService(m_visualService, postActorId(getUuid(), QStringLiteral("threshold-below")),
                       m_belowThresholdActor, QStringLiteral("阈值以下区域"), false);
+    return true;
+}
+
+vtkDataSet* NephogramSettingWidget::surfaceDisplayData(vtkUnstructuredGrid* grid)
+{
+    if(!grid)return nullptr;
+    const PostSurfaceOptions options{postSceneStyle().computePointNormals,postSceneStyle().splitSharpEdges,postSceneStyle().normalsFeatureAngle};
+    if(const auto* prepared=m_surfacePipeline->find(grid,options)) {
+        return prepared->surface;
+    }
+    m_surfacePipeline->request(grid,options);return nullptr;
 }
 
 void NephogramSettingWidget::ensureActorAttached()
@@ -369,50 +421,66 @@ void NephogramSettingWidget::ensureActorAttached()
                                         QStringLiteral("云图"), false);
 }
 
-void NephogramSettingWidget::clearSurfaceOutline()
+void NephogramSettingWidget::detachSurfaceOutline()
 {
     if (m_visualService)
         removeActorByService(m_visualService,
                              postActorId(getUuid(), QStringLiteral("surface-outline")), false);
+}
+
+void NephogramSettingWidget::clearSurfaceOutline()
+{
+    detachSurfaceOutline();
     m_outlineActor = nullptr;
-    m_outlineOriginalGrid = nullptr;
     m_outlineFilterKey.clear();
-    m_outlineOriginalMTime = 0;
 }
 
 void NephogramSettingWidget::updateSurfaceOutline(vtkUnstructuredGrid* displayGrid)
 {
     if (!m_visualService || !m_actorAttached || !displayGrid ||
-        displayGrid->GetNumberOfCells() == 0 ||
-        !postSceneStyle().visible || !postSceneStyle().showSurfaceOutline ||
-        postSceneStyle().representationMode != 0)
+        displayGrid->GetNumberOfCells() == 0)
     {
         clearSurfaceOutline();
         return;
     }
+    if (!postSceneStyle().visible || !postSceneStyle().showSurfaceOutline ||
+        postSceneStyle().representationMode != 0)
+    {
+        detachSurfaceOutline();
+        return;
+    }
 
     // 结果 VTM 由各 MATYPE block 以 MergePointsOff() 方式拼接：相邻域的界面
-    // 即便几何重合也可能使用不同点 ID。直接 SurfaceFilter 会把该界面当外表面。
-    // 仅在轮廓管线上精确合并重合点，绝不改云图源网格/结果数值/材料筛选。
-    // 零值隐藏会修改可见拓扑；这种情况下将字段纳入缓存签名。
-    const bool hidesZero = !m_currentArrayName.isEmpty() &&
-                           postFieldDisplayStyle(m_currentArrayName).zeroDisplayMode == 2;
-    const QString filterKey = QStringLiteral("%1|%2|%3|%4")
-        .arg(postSceneStyle().followMeshFilter ? postMeshFilterSignature() : QString())
+    // 即便几何重合也可能使用不同点 ID。仅在轮廓管线上精确合并重合点并提取外表面。
+    // 同分析工况与时步下的位移/应力/破坏区等结果共享同一套网格拓扑，按可见几何签名缓存
+    // 可避免切换物理量或结果类别时对大型体网格重复执行提面与特征线提取。
+    const auto& fieldStyle = postFieldDisplayStyle(m_currentArrayName);
+    const bool hidesZero = !m_currentArrayName.isEmpty() && fieldStyle.zeroDisplayMode == 2;
+    const bool usesThreshold = !m_currentArrayName.isEmpty() && fieldStyle.thresholdEnabled;
+    double b[6]{0.0, 0.0, 0.0, 0.0, 0.0, 0.0};
+    displayGrid->GetBounds(b);
+    const QString filterKey = QStringLiteral("%1|%2|%3|%4|%5|%6,%7,%8,%9,%10,%11|%12|%13|%14")
+        .arg(selectedResultDirectoryPath())
+        .arg(ui->resultTimeComboBox->currentData().toString())
+        .arg(isExcavatedResultFile(m_loadedFileName) ? 1 : 0)
+        .arg(displayGrid->GetNumberOfPoints())
         .arg(displayGrid->GetNumberOfCells())
+        .arg(b[0], 0, 'g', 12)
+        .arg(b[1], 0, 'g', 12)
+        .arg(b[2], 0, 'g', 12)
+        .arg(b[3], 0, 'g', 12)
+        .arg(b[4], 0, 'g', 12)
+        .arg(b[5], 0, 'g', 12)
+        .arg(postSceneStyle().followMeshFilter ? postMeshFilterSignature() : QString())
         .arg(hidesZero ? m_currentArrayName : QString())
-        .arg(hidesZero ? 1 : 0);
-    const bool inputChanged = !m_outlineActor ||
-                              m_outlineOriginalGrid.GetPointer() != m_grid.GetPointer() ||
-                              m_outlineOriginalMTime != (m_grid ? m_grid->GetMTime() : 0) ||
-                              m_outlineFilterKey != filterKey;
+        .arg(usesThreshold ? QStringLiteral("%1:%2").arg(m_currentArrayName).arg(fieldStyle.threshold, 0, 'g', 12) : QString());
+    const bool inputChanged = !m_outlineActor || m_outlineFilterKey != filterKey;
     if (inputChanged)
     {
         QElapsedTimer timer;
         timer.start();
 
-        // 仅合并坐标完全重合的点 (tolerance = 0)：不跨越真实的几何间隙，
-        // 避免将相邻但不连接的薄层/裂隙错误焊接。
+        // 仅合并坐标完全重合的点 (tolerance = 0)：不跨越真实的几何间隙。
         auto geometryOnly = vtkSmartPointer<vtkUnstructuredGrid>::New();
         geometryOnly->ShallowCopy(displayGrid);
         // 只要点坐标和单元拓扑，避免清理/提面过程中复制大型结果数组。
@@ -425,17 +493,18 @@ void NephogramSettingWidget::updateSurfaceOutline(vtkUnstructuredGrid* displayGr
         weld->SetTolerance(0.0);
         weld->Update();
 
-        auto surface = vtkSmartPointer<vtkDataSetSurfaceFilter>::New();
+        // 使用 VTK 9 多线程 vtkGeometryFilter 替代旧版单线程 vtkDataSetSurfaceFilter。
+        auto surface = vtkSmartPointer<vtkGeometryFilter>::New();
         surface->SetInputConnection(weld->GetOutputPort());
         surface->Update();
 
-        // 与 ParaView Feature Edges 一致：只保留真实开放边界与几何折角。
-        // 不要混入视角剪影、普通三角网格边或非流形边。
+        // 直接使用 VTK 原生 vtkFeatureEdges（与 ParaView Feature Edges 一致）：
+        // 保留二维/薄壳开放边界边 (BoundaryEdges) 与明显几何折角 (FeatureEdges)，不使用自研过滤算法。
         auto edges = vtkSmartPointer<vtkFeatureEdges>::New();
         edges->SetInputConnection(surface->GetOutputPort());
         edges->BoundaryEdgesOn();
         edges->FeatureEdgesOn();
-        edges->SetFeatureAngle(55.0);
+        edges->SetFeatureAngle(50.0);
         edges->ManifoldEdgesOff();
         edges->NonManifoldEdgesOff();
         edges->ColoringOff();
@@ -448,18 +517,19 @@ void NephogramSettingWidget::updateSurfaceOutline(vtkUnstructuredGrid* displayGr
         auto mapper = vtkSmartPointer<vtkPolyDataMapper>::New();
         mapper->SetInputData(lines);
         mapper->ScalarVisibilityOff();
+        // 大地坐标（如 X~510000m）下云图体网格与轮廓线包围盒不同，VTK OpenGL2 的
+        // AUTO_SHIFT_SCALE 会产生细微 float32 量化深度差；显式施加微量线偏移消除断续虚线。
+        mapper->SetRelativeCoincidentTopologyLineOffsetParameters(0.0, 0.0);
+        mapper->StaticOn();
 
         // 不保留体网格的临时副本或整张三角表面，只缓存少量特征线。
         // 视角旋转只需渲染，不再触发昂贵的轮廓重新提取。
         m_outlineActor = vtkSmartPointer<vtkActor>::New();
         m_outlineActor->SetMapper(mapper);
         m_outlineActor->GetProperty()->SetColor(0.17, 0.21, 0.25);
-        m_outlineActor->GetProperty()->SetLineWidth(1.25);
+        m_outlineActor->GetProperty()->SetLineWidth(1.0);
         m_outlineActor->GetProperty()->LightingOff();
         m_outlineActor->PickableOff();
-
-        m_outlineOriginalGrid = m_grid;
-        m_outlineOriginalMTime = m_grid ? m_grid->GetMTime() : 0;
         m_outlineFilterKey = filterKey;
         qInfo() << "[PostOutline] FeatureEdges" << "inputCells=" << displayGrid->GetNumberOfCells()
                 << "weldedPoints=" << (weld->GetOutput() ? weld->GetOutput()->GetNumberOfPoints() : 0)
@@ -474,57 +544,6 @@ void NephogramSettingWidget::updateSurfaceOutline(vtkUnstructuredGrid* displayGr
         addActorByService(m_visualService, actorId, m_outlineActor,
                           QStringLiteral("几何轮廓/折角线"), false);
     }
-}
-
-void NephogramSettingWidget::syncScalarBarFromCurrent()
-{
-    if (m_currentArrayName.isEmpty() || !m_visualService || !m_grid)
-        return;
-
-    // 普通云图直接使用完整/筛选后的 vtkUnstructuredGrid。
-    // 材料或分层被隐藏后，vtkDataSetMapper 会自然显示剩余体单元的新外边界，
-    // 不需要 domains.vtp，也不需要每次先把体网格转换成 PolyData。
-    vtkSmartPointer<vtkUnstructuredGrid> displayGrid = postFilteredResultGrid(m_grid);
-    displayGrid = postApplyZeroHideFilter(displayGrid, m_currentArrayName);
-    if (!displayGrid || displayGrid->GetNumberOfCells() <= 0)
-    {
-        clearThresholdDisplay();
-        clearPostDisplayContext();
-        if (m_mapper)
-        {
-            m_mapper->SetInputData(displayGrid);
-            m_mapper->ScalarVisibilityOff();
-        }
-        m_visualService->showScalarBar(false, false);
-        clearContourOverlay();
-        return;
-    }
-
-    bool usePointData = true;
-    vtkDataArray* arr = findScalarArray(displayGrid, m_currentArrayName, usePointData);
-    if (!arr || arr->GetNumberOfTuples() <= 0)
-    {
-        clearThresholdDisplay();
-        clearPostDisplayContext();
-        if (m_mapper)
-            m_mapper->ScalarVisibilityOff();
-        m_visualService->showScalarBar(false, false);
-        clearContourOverlay();
-        return;
-    }
-
-    double dataRange[2]{0.0, 1.0};
-    arr->GetRange(dataRange);
-    if (!syncScalarBarFromResolved(displayGrid, arr, usePointData,
-                                   dataRange[0], dataRange[1]))
-        return;
-
-    applyThresholdDisplay(displayGrid, usePointData);
-    m_actor->SetMapper(m_mapper);
-    double minV = dataRange[0];
-    double maxV = dataRange[1];
-    resolvePostDisplayRange(m_currentArrayName, dataRange[0], dataRange[1], minV, maxV);
-    updateContourOverlay(m_currentArrayName, usePointData, minV, maxV);
 }
 
 bool NephogramSettingWidget::syncScalarBarFromResolved(vtkUnstructuredGrid* displayGrid,
@@ -578,9 +597,9 @@ bool NephogramSettingWidget::syncScalarBarFromResolved(vtkUnstructuredGrid* disp
         lut = newLut;
     }
 
-    updateLookupTableRange(lut, minV, maxV);
-    // Apply custom tick positions only after LUT range is updated.
-    applyLegendAppearance(scalarBar, minV, maxV);
+    applyPostFieldLookupTable(lut, m_currentArrayName, minV, maxV);
+    // 色标样式在 LUT 范围更新后应用。
+    applyStandardPostScalarBar(scalarBar);
     const QString legendTitle = resolvedPostScalarBarTitle(currentScalarDisplayName());
     m_visualService->setScalarBarTitle(legendTitle, false);
     scalarBar->Modified();
@@ -627,18 +646,39 @@ void NephogramSettingWidget::beforeLoad()
     // 立即选择正确的体网格或透明域界面 Mapper，不依赖已经错过的事件。
     ensureActorAttached();
 
+    const QString projectDir =
+        PublicVariables::instance().get(PublicConstants::kProjectDirectoryKey).toString();
+    const bool sameProject = m_resultOptionsReady &&
+                             QDir(projectDir).absolutePath() == m_cachedProjectDir;
     if (m_resultOptionsPreparedByLoadJson)
     {
         // applyDeferredLoadJson() 刚刚已经完成了一次结果目录初始化，
         // beforeLoad() 不再紧接着重复扫描同一目录。
         m_resultOptionsPreparedByLoadJson = false;
     }
-    else
+    else if (!sameProject)
     {
         initResultDirectoryOptions();
     }
-    m_dataPath = selectedResultDirectoryPath();
-    loadFileName(m_dataPath);
+
+    const QString source = selectedResultDirectoryPath();
+    const QFileInfo selectedFile(m_loadedFileName);
+    const bool unchangedFrame = m_grid && !m_loadedFileName.isEmpty() &&
+                                selectedFile.isFile() &&
+                                selectedFile.size() == m_loadedFileSize &&
+                                selectedFile.lastModified().toMSecsSinceEpoch() == m_loadedFileModified &&
+                                QDir::cleanPath(source) == QDir::cleanPath(m_dataPath) &&
+                                sameResultFile(ui->stepComboBox->currentData().toString(), m_loadedFileName);
+    if (!unchangedFrame)
+    {
+        m_dataPath = source;
+        loadFileName(m_dataPath);
+    }
+    else if (!currentScalarName().isEmpty())
+    {
+        // 切换页面回到同一个未变化的结果文件时，不再扫描目录或重读磁盘，直接恢复显示与缓存轮廓。
+        updateNephogram(currentScalarName());
+    }
 
     if (ui->stepComboBox->currentIndex() == -1)
         m_initialized = false;
@@ -666,7 +706,7 @@ void NephogramSettingWidget::beforeLoad()
     }
 
     ensureActorAttached();
-    syncScalarBarFromCurrent();
+    updateNephogram(m_currentArrayName, false);
     m_actor->SetMapper(m_mapper);
 
     if (auto* rw = m_visualService->renderWindow())
@@ -675,6 +715,7 @@ void NephogramSettingWidget::beforeLoad()
 
 void NephogramSettingWidget::beforeUnload()
 {
+    m_surfacePipeline->cancel();
     setPostViewActive(false);
     setProperty("postDisplayActive", false);
     clearPostDisplayContext();
@@ -682,7 +723,7 @@ void NephogramSettingWidget::beforeUnload()
         return;
 
     clearContourOverlay();
-    clearSurfaceOutline();
+    detachSurfaceOutline();
     clearThresholdDisplay();
 
     if (m_actorAttached)
@@ -714,19 +755,17 @@ void NephogramSettingWidget::on_stepComboBox_currentIndexChanged(int index)
 
     // 同一个结果文件在页面重入、目录下拉重新填充时不要重复读取。
     // m_grid 和 m_displaySurface 会跨 beforeUnload()/beforeLoad() 保留。
-    if (m_grid && sameResultFile(filePath, m_loadedFileName))
+    const QFileInfo selectedInfo(filePath);
+    if (m_grid && sameResultFile(filePath, m_loadedFileName)
+        && selectedInfo.size()==m_loadedFileSize
+        && selectedInfo.lastModified().toMSecsSinceEpoch()==m_loadedFileModified)
     {
         if (!m_loadingState && !currentScalarName().isEmpty())
             updateNephogram(currentScalarName());
         return;
     }
 
-    const QString suffix = QFileInfo(filePath).suffix().toLower();
-    if (suffix == QStringLiteral("vtu") || suffix == QStringLiteral("vtm"))
-    {
-        readVtu(filePath);
-        return;
-    }
+    // VTU、VTM、Tecplot 共用同一后台读取入口。
     readTecplot(filePath);
 }
 
@@ -878,7 +917,6 @@ void NephogramSettingWidget::loadFileName(const QString& dataPath)
     }
 }
 
-
 void NephogramSettingWidget::on_analysisComboBox_currentIndexChanged(int)
 {
     PostResultSelectionUtils::rememberBasicSelection(ui->analysisComboBox, ui->resultDirComboBox,
@@ -922,27 +960,27 @@ void NephogramSettingWidget::on_scalarComboBox_currentIndexChanged(int)
 
 void NephogramSettingWidget::readTecplot(const QString& fileName)
 {
-    QElapsedTimer loadTimer;
-    loadTimer.start();
-    invalidateDisplaySurface();
-    m_grid = nullptr;
-    m_loadedFileName = fileName;
-
-    // VTM/VTU/Tecplot 统一适配成标准 vtkUnstructuredGrid。新内部结果是按
-    // MATYPE 分块的二进制 VTM；旧格式仍兼容，普通云图不读任何 Surface 旁路缓存。
-    QString gridError;
-    m_grid = PostTecplotUtils::readGrid(fileName, &gridError);
-    const qint64 gridReadMs = loadTimer.elapsed();
-    if (gridReadMs >= 100)
-        qInfo() << "[PostPerf] result grid read" << gridReadMs << "ms" << fileName;
-    if (!gridError.isEmpty())
-        qWarning().noquote() << gridError;
-    if (!m_grid)
-    {
-        ui->scalarComboBox->clear();
-        return;
+    if(!property("postDisplayActive").toBool()) {
+        m_loadedFileName=fileName;m_grid=nullptr;m_loadedFileSize=-1;m_loadedFileModified=-1;return;
     }
+    m_frameCameraOnReady=m_frameCameraOnReady || !m_mapper->GetInput() || m_mapper->GetInput()->GetNumberOfCells()==0;
+    invalidateDisplaySurface();
+    m_grid=nullptr;m_visibleVolumeGrid=nullptr;m_thresholdSource=nullptr;
+    m_retainedThresholdGrid=nullptr;m_belowThresholdGrid=nullptr;
+    m_loadedFileName=fileName;
+    const QFileInfo info(fileName);m_loadedFileSize=info.size();m_loadedFileModified=info.lastModified().toMSecsSinceEpoch();
+    const PostSurfaceOptions options{postSceneStyle().computePointNormals,postSceneStyle().splitSharpEdges,postSceneStyle().normalsFeatureAngle};
+    m_surfacePipeline->requestFile(fileName,options);
+}
 
+void NephogramSettingWidget::finishReadTecplot(const PostPreparedSurface& prepared)
+{
+    if(!sameResultFile(prepared.fileName,m_loadedFileName))return;
+    if(!prepared.error.isEmpty())qWarning().noquote()<<prepared.error;
+    if(!prepared.source || !prepared.surface) {ui->scalarComboBox->clear();return;}
+    m_grid=prepared.source;
+    qInfo()<<"[PostPerf] background result preparation"<<prepared.prepareMs<<"ms"
+           <<"cells="<<m_grid->GetNumberOfCells()<<"surface="<<prepared.surface->GetNumberOfCells();
     QStringList scalarNames;
     auto collectArrays = [&](vtkPointData* pointData, vtkCellData* cellData)
     {
@@ -980,10 +1018,12 @@ void NephogramSettingWidget::readTecplot(const QString& fileName)
     collectArrays(m_grid->GetPointData(), m_grid->GetCellData());
 
     const QString previousScalar = currentScalarName();
-    const QString preferredScalar = !PostResultSelectionUtils::sharedResultSelection().fieldName.isEmpty()
+    const QString preferredScalar = !m_pendingScalar.isEmpty()?m_pendingScalar:
+                                    !PostResultSelectionUtils::sharedResultSelection().fieldName.isEmpty()
                                         ? PostResultSelectionUtils::sharedResultSelection().fieldName
                                         : previousScalar;
     ResultDisplayNames::populateCombo(ui->scalarComboBox, scalarNames, preferredScalar);
+    m_pendingScalar.clear();
     PostResultSelectionUtils::rememberFieldSelection(ui->scalarComboBox);
     updateNephogram(currentScalarName());
 }
@@ -994,21 +1034,11 @@ void NephogramSettingWidget::updateNephogram(const QString& selectedScalarName,
     if (m_loadingState || selectedScalarName.isEmpty() || m_loadedFileName.isEmpty())
         return;
 
-    if (!m_grid)
-    {
-        QString gridError;
-        QElapsedTimer loadTimer;
-        loadTimer.start();
-        m_grid = PostTecplotUtils::readGrid(m_loadedFileName, &gridError);
-        const qint64 loadMs = loadTimer.elapsed();
-        if (loadMs >= 100)
-            qInfo() << "[PostPerf] result grid read" << loadMs << "ms" << m_loadedFileName;
-        if (!gridError.isEmpty())
-            qWarning().noquote() << gridError;
-    }
+    if(!m_grid) {readTecplot(m_loadedFileName);return;}
+    m_pendingScalar.clear();
 
-    vtkSmartPointer<vtkUnstructuredGrid> displayGrid = postFilteredResultGrid(m_grid);
-    displayGrid = postApplyZeroHideFilter(displayGrid, selectedScalarName);
+    vtkSmartPointer<vtkUnstructuredGrid> displayGrid = postFilteredResultGrid(m_grid, true);
+    displayGrid = postApplyZeroHideFilter(displayGrid, selectedScalarName, true);
     if (!displayGrid || displayGrid->GetNumberOfCells() <= 0)
     {
         clearThresholdDisplay();
@@ -1062,34 +1092,15 @@ void NephogramSettingWidget::updateNephogram(const QString& selectedScalarName,
         return;
     }
 
-    if (property("postDisplayActive").toBool())
-        publishPostDisplayContext(selectedScalarName, dataRange[0], dataRange[1], true, true);
-
-    PostFieldRangeStyle& rangeStyle = postFieldRangeStyle(selectedScalarName,
-                                                          dataRange[0], dataRange[1]);
-    {
-        const QSignalBlocker autoBlocker(ui->autoRangeCheckBox);
-        const QSignalBlocker minBlocker(ui->rangeMinSpinBox);
-        const QSignalBlocker maxBlocker(ui->rangeMaxSpinBox);
-        ui->autoRangeCheckBox->setChecked(rangeStyle.automatic);
-        ui->rangeMinSpinBox->setValue(rangeStyle.initialized ? rangeStyle.minimum : dataRange[0]);
-        ui->rangeMaxSpinBox->setValue(rangeStyle.initialized ? rangeStyle.maximum : dataRange[1]);
-    }
-    double minV = dataRange[0];
-    double maxV = dataRange[1];
-    resolvePostDisplayRange(selectedScalarName, dataRange[0], dataRange[1], minV, maxV);
-
+    // Commit geometry, field and legend together once the native display
+    // surface is ready. Pending work leaves the previous frame consistent.
+    if(!applyThresholdDisplay(displayGrid,usePointData,true))return;
     if (!syncScalarBarFromResolved(displayGrid, scalarArray, usePointData,
                                    dataRange[0], dataRange[1]))
         return;
 
-    // 域拓扑已经由结果 VTM Block 保留。云图、透明度、切面和切块都消费同一份
-    // vtkUnstructuredGrid，不再因透明度变化构造/切换另一张域 Surface。
-    applyThresholdDisplay(displayGrid, usePointData);
-    configureMapper(m_mapper, selectedScalarName, usePointData,
-                    minV, maxV,
-                    vtkLookupTable::SafeDownCast(
-                        m_visualService->scalarBarActor()->GetLookupTable()));
+    // 复用已准备好的完整显示面；透明度变化不重建外表面。
+    if(!applyThresholdDisplay(displayGrid, usePointData))return;
     m_actor->SetMapper(m_mapper);
     auto* surfaceProperty = m_actor->GetProperty();
     const bool monochromeContours = postContourStyle().enabled && postContourStyle().monochrome;
@@ -1104,28 +1115,27 @@ void NephogramSettingWidget::updateNephogram(const QString& selectedScalarName,
         surfaceProperty->SetColor(1.0, 1.0, 1.0);
     }
     applyPostActorRepresentation(m_actor);
-    surfaceProperty->SetInterpolationToFlat();
-    surfaceProperty->LightingOff();
-    surfaceProperty->SetAmbient(1.0);
-    surfaceProperty->SetDiffuse(0.0);
-    surfaceProperty->SetSpecular(0.0);
+    applyPostSurfaceLighting(m_actor);
     ensureActorAttached();
     updateSurfaceOutline(m_retainedThresholdGrid ? m_retainedThresholdGrid.GetPointer() : displayGrid.GetPointer());
 
-    // 等值线明确需要一张 PolyData 表面时才在这里按需提取并缓存。
+    double minV = dataRange[0];
+    double maxV = dataRange[1];
+    resolvePostDisplayRange(selectedScalarName, dataRange[0], dataRange[1], minV, maxV);
     updateContourOverlay(selectedScalarName, usePointData, minV, maxV);
 
-    if (m_initialized && renderNow)
+    if(m_frameCameraOnReady && m_visualService && m_visualService->renderer()) {
+        m_visualService->renderer()->ResetCamera();m_frameCameraOnReady=false;
+    }
+
+    if (m_initialized && renderNow && m_visualService)
     {
-        if (auto* rw = m_visualService ? m_visualService->renderWindow() : nullptr)
-        {
-            QElapsedTimer renderTimer;
-            renderTimer.start();
-            rw->Render();
-            const qint64 renderMs = renderTimer.elapsed();
-            if (renderMs >= 100)
-                qInfo() << "[PostPerf] cloud render" << renderMs << "ms";
-        }
+        QElapsedTimer renderTimer;
+        renderTimer.start();
+        m_visualService->render();
+        const qint64 renderMs = renderTimer.elapsed();
+        if (renderMs >= 100)
+            qInfo() << "[PostPerf] cloud render" << renderMs << "ms";
     }
 }
 
@@ -1135,6 +1145,8 @@ void NephogramSettingWidget::initResultDirectoryOptions()
         PublicVariables::instance().get(PublicConstants::kProjectDirectoryKey).toString();
     const QVector<PostResultAutoPrepare::ResultGroup> groups =
         PostResultAutoPrepare::resultGroups(projectDir);
+    m_cachedProjectDir = QDir(projectDir).absolutePath();
+    m_resultOptionsReady = true;
     QString previousAnalysis = ui->analysisComboBox->currentData().toString();
     QString previousDir = ui->resultDirComboBox->currentData().toString();
     const auto& sharedSelection = PostResultSelectionUtils::sharedResultSelection();
@@ -1153,7 +1165,6 @@ void NephogramSettingWidget::initResultDirectoryOptions()
         PostResultSelectionUtils::selectedAnalysisKey(ui->analysisComboBox),
         previousDir);
 }
-
 
 QString NephogramSettingWidget::selectedResultDirectoryPath() const
 {
@@ -1196,54 +1207,6 @@ void NephogramSettingWidget::updateRangeEditorState()
     ui->rangeMaxLabel->setEnabled(custom);
 }
 
-void NephogramSettingWidget::setRangeControls(double minV, double maxV)
-{
-    if (!std::isfinite(minV) || !std::isfinite(maxV))
-        return;
-    if (std::abs(maxV - minV) < 1e-12)
-        maxV = minV + 1.0;
-
-    QScopedValueRollback<bool> guard(m_updatingRangeControls, true);
-    const QSignalBlocker minBlocker(ui->rangeMinSpinBox);
-    const QSignalBlocker maxBlocker(ui->rangeMaxSpinBox);
-    ui->rangeMinSpinBox->setValue(minV);
-    ui->rangeMaxSpinBox->setValue(maxV);
-}
-
-bool NephogramSettingWidget::displayRange(double dataMin, double dataMax, double& minV,
-                                           double& maxV) const
-{
-    if (!isValidScalarRange(dataMin, dataMax))
-    {
-        minV = 0.0;
-        maxV = 1.0;
-        return false;
-    }
-
-    minV = ui->autoRangeCheckBox->isChecked() ? dataMin : ui->rangeMinSpinBox->value();
-    maxV = ui->autoRangeCheckBox->isChecked() ? dataMax : ui->rangeMaxSpinBox->value();
-    if (!std::isfinite(minV) || !std::isfinite(maxV) || minV >= maxV)
-    {
-        minV = dataMin;
-        maxV = dataMax;
-        if (std::abs(maxV - minV) < 1e-12)
-            maxV = minV + 1.0;
-        return false;
-    }
-    return true;
-}
-
-void NephogramSettingWidget::applyLegendAppearance(vtkScalarBarActor* scalarBar, double minV,
-                                                    double maxV) const
-{
-    Q_UNUSED(minV);
-    Q_UNUSED(maxV);
-    if (!scalarBar)
-        return;
-
-    applyStandardPostScalarBar(scalarBar);
-}
-
 vtkDataArray* NephogramSettingWidget::findScalarArray(vtkUnstructuredGrid* grid,
                                                       const QString& scalarName,
                                                       bool& usePointData) const
@@ -1278,22 +1241,12 @@ vtkDataArray* NephogramSettingWidget::findScalarArray(vtkUnstructuredGrid* grid,
     return nullptr;
 }
 
-void NephogramSettingWidget::updateLookupTableRange(vtkLookupTable* lut, double minV,
-                                                    double maxV) const
-{
-    applyPostFieldLookupTable(lut, m_currentArrayName, minV, maxV);
-}
-
 bool NephogramSettingWidget::prepareDisplaySurface(vtkUnstructuredGrid* sourceGrid,
                                                     const QString& scalarName,
-                                                    bool sourceUsePointData,
-                                                    bool& mapperUsePointData)
+                                                    bool usePointData)
 {
-    mapperUsePointData = sourceUsePointData;
     if (!sourceGrid || scalarName.isEmpty())
         return false;
-
-    mapperUsePointData = sourceUsePointData;
 
     // Surface 缓存必须同时绑定当前网格筛选状态。即使筛选是在云图页面之外修改的，
     // 再次进入页面也不能误用旧 Surface。
@@ -1306,7 +1259,7 @@ bool NephogramSettingWidget::prepareDisplaySurface(vtkUnstructuredGrid* sourceGr
     {
         // 不能只判断“数组存在”。多块/旧 Tecplot 路径中曾出现数组存在但 tuple
         // 数量不足的情况，Mapper 会把缺失 tuple 当成 NaN，表现为大片灰色。
-        if (scalarArrayMatchesSurface(m_displaySurface, scalarName, mapperUsePointData))
+        if (scalarArrayMatchesSurface(m_displaySurface, scalarName, usePointData))
             return true;
 
         invalidateDisplaySurface();
@@ -1323,9 +1276,7 @@ bool NephogramSettingWidget::prepareDisplaySurface(vtkUnstructuredGrid* sourceGr
     surfaceFilter->PassThroughCellIdsOn();
     surfaceFilter->Update();
 
-    vtkSmartPointer<vtkPolyData> surface = vtkSmartPointer<vtkPolyData>::New();
-    if (surfaceFilter->GetOutput())
-        surface->ShallowCopy(surfaceFilter->GetOutput());
+    vtkPolyData* surface = surfaceFilter->GetOutput();
 
     const qint64 extractMs = surfaceTimer.elapsed();
     if (extractMs >= 100)
@@ -1339,10 +1290,9 @@ bool NephogramSettingWidget::prepareDisplaySurface(vtkUnstructuredGrid* sourceGr
     if (!m_displaySurface)
         m_displaySurface = vtkSmartPointer<vtkPolyData>::New();
     m_displaySurface->ShallowCopy(surface);
-    m_displaySurfaceUsePointData = mapperUsePointData;
     m_displaySurfaceFilterSignature = filterSignature;
 
-    if (!scalarArrayMatchesSurface(m_displaySurface, scalarName, mapperUsePointData))
+    if (!scalarArrayMatchesSurface(m_displaySurface, scalarName, usePointData))
     {
         // 不保留半有效 Surface，避免后续切换字段继续命中坏缓存。
         invalidateDisplaySurface();
@@ -1354,7 +1304,6 @@ bool NephogramSettingWidget::prepareDisplaySurface(vtkUnstructuredGrid* sourceGr
 void NephogramSettingWidget::invalidateDisplaySurface()
 {
     m_displaySurface = nullptr;
-    m_displaySurfaceUsePointData = true;
     m_displaySurfaceFilterSignature.clear();
     invalidateContourCache();
 }
@@ -1386,7 +1335,7 @@ void NephogramSettingWidget::configureMapper(vtkDataSetMapper* mapper, const QSt
     {
         mapper->SetScalarModeToUsePointFieldData();
         // 节点结果继续在单元表面平滑插值，保持云图视觉连续。
-        mapper->InterpolateScalarsBeforeMappingOn();
+        mapper->SetInterpolateScalarsBeforeMapping(postSceneStyle().interpolateScalarsBeforeMapping);
     }
     else
     {
@@ -1399,11 +1348,10 @@ void NephogramSettingWidget::configureMapper(vtkDataSetMapper* mapper, const QSt
     mapper->StaticOn();
 }
 
-
 QJsonObject NephogramSettingWidget::saveJson()
 {
     QJsonObject obj;
-    obj[QStringLiteral("scalar")] = currentScalarName();
+    obj[QStringLiteral("scalar")] = m_pendingScalar.isEmpty()?currentScalarName():m_pendingScalar;
     obj[QStringLiteral("analysisKey")] = ui->analysisComboBox->currentData().toString();
     obj[QStringLiteral("resultDir")] = ui->resultDirComboBox->currentData().toString();
     obj[QStringLiteral("resultTime")] = ui->resultTimeComboBox->currentData().toString();
@@ -1453,15 +1401,12 @@ void NephogramSettingWidget::loadJson(const QJsonObject& obj)
         barStyle.tickCount = obj.value(QStringLiteral("legendTickCount")).toInt(barStyle.tickCount);
         barStyle.widthPercent = obj.value(QStringLiteral("legendWidth")).toInt(barStyle.widthPercent);
         barStyle.heightPercent = obj.value(QStringLiteral("legendHeight")).toInt(barStyle.heightPercent);
-        m_hasLegendPosition = obj.contains(QStringLiteral("legendPositionX")) &&
-                              obj.contains(QStringLiteral("legendPositionY"));
-        if (m_hasLegendPosition)
+        if (obj.contains(QStringLiteral("legendPositionX")) &&
+            obj.contains(QStringLiteral("legendPositionY")))
         {
-            m_legendPositionX = obj.value(QStringLiteral("legendPositionX")).toDouble();
-            m_legendPositionY = obj.value(QStringLiteral("legendPositionY")).toDouble();
             barStyle.hasCustomPosition = true;
-            barStyle.positionX = m_legendPositionX;
-            barStyle.positionY = m_legendPositionY;
+            barStyle.positionX = obj.value(QStringLiteral("legendPositionX")).toDouble();
+            barStyle.positionY = obj.value(QStringLiteral("legendPositionY")).toDouble();
         }
         contourStyle.enabled = obj.value(QStringLiteral("contourEnabled")).toBool(contourStyle.enabled);
         contourStyle.levels = obj.value(QStringLiteral("contourLevels")).toInt(contourStyle.levels);
@@ -1478,6 +1423,7 @@ void NephogramSettingWidget::loadJson(const QJsonObject& obj)
     const QString resultTime = obj.value(QStringLiteral("resultTime")).toString();
     const QString step = obj.value(QStringLiteral("step")).toString();
     const QString scalar = obj.value(QStringLiteral("scalar")).toString();
+    m_pendingScalar=scalar;
     const bool showExcavatedRegion =
         obj.contains(QStringLiteral("showExcavatedRegion"))
             ? obj.value(QStringLiteral("showExcavatedRegion")).toBool(false)
@@ -1562,13 +1508,6 @@ void NephogramSettingWidget::loadJson(const QJsonObject& obj)
     m_currentArrayName = currentScalarName();
 }
 
-void NephogramSettingWidget::readVtu(const QString& fileName)
-{
-    // VTM/VTU/Tecplot 都走 PostTecplotUtils 的统一入口：统一内存缓存、中文路径兼容、
-    // TOPOLOGY_TYPE 和旧退化单元修复，避免不同页面对同一结果读出不同的数据。
-    readTecplot(fileName);
-}
-
 void NephogramSettingWidget::clearContourOverlay()
 {
     if (!m_visualService)
@@ -1596,15 +1535,13 @@ void NephogramSettingWidget::updateContourOverlay(const QString& scalarName,
     if (scalarName.isEmpty())
         return;
 
-    // 普通云图不提面；只有用户打开等值线时才按当前筛选结果生成一张
-    // PolyData 表面，并复用 prepareDisplaySurface() 自身的签名缓存。
-    bool mapperUsePointData = usePointData;
+    // 等值线使用未按法向分裂的独立表面，保留跨折角的拓扑连续性。
     if (m_grid)
     {
-        vtkSmartPointer<vtkUnstructuredGrid> displayGrid = postFilteredResultGrid(m_grid);
-        displayGrid = postApplyZeroHideFilter(displayGrid, scalarName);
+        vtkSmartPointer<vtkUnstructuredGrid> displayGrid = postFilteredResultGrid(m_grid, true);
+        displayGrid = postApplyZeroHideFilter(displayGrid, scalarName, true);
         if (m_retainedThresholdGrid) displayGrid = m_retainedThresholdGrid;
-        prepareDisplaySurface(displayGrid, scalarName, usePointData, mapperUsePointData);
+        prepareDisplaySurface(displayGrid, scalarName, usePointData);
     }
     vtkPolyData* surface = m_displaySurface;
     if (!surface || surface->GetNumberOfPoints() <= 0 || surface->GetNumberOfCells() <= 0)

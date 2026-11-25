@@ -1,3 +1,4 @@
+#include <CompactDoubleSpinBox.h>
 #include "MeshQualityCheckWidget.h"
 
 #include <QCheckBox>
@@ -40,7 +41,7 @@ QDoubleSpinBox* createDoubleSpin(QWidget* parent,
                                  double maximum,
                                  int decimals)
 {
-    auto* spin = new QDoubleSpinBox(parent);
+    auto* spin = new CompactDoubleSpinBox(parent);
     spin->setRange(minimum, maximum);
     spin->setDecimals(decimals);
     spin->setKeyboardTracking(false);

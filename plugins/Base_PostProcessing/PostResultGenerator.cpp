@@ -697,7 +697,7 @@ void markNormalizedTopology(vtkUnstructuredGrid* grid)
     auto marker = vtkSmartPointer<vtkIntArray>::New();
     marker->SetName("CAE_POST_TOPOLOGY_NORMALIZED");
     marker->SetNumberOfComponents(1);
-    marker->InsertNextValue(4);
+    marker->InsertNextValue(5);
     grid->GetFieldData()->AddArray(marker);
 }
 

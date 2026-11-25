@@ -58,6 +58,8 @@ class FillStorageCyclePage : public BasePage
     // 父级“计算类型”只决定当前工况显示静力设置、动力设置或两者。
     // 1=仅静力，2=仅动力（复用已有静力结果），3=先静力后动力。
     void setAnalysisMode(int calculationType);
+    // 4=均质坝（求解器固定忽略 IFIIWL_SEEP）；1=混凝土面板堆石坝（支持 0/1/2）。
+    void setDamType(int damType);
     void setDynamicOptionsAvailable(bool available);
     // 动力分析现在由同一土石坝工况下的“动力分析”子节点维护。
     // 计算前将该节点状态同步到本页隐藏的求解器字段，以保持 IFILL.DAT 格式不变。
@@ -159,6 +161,7 @@ class FillStorageCyclePage : public BasePage
     QTableWidget* m_activeMaterialTable = nullptr;
     bool m_staticOptionsAvailable = true;
     bool m_dynamicOptionsAvailable = true;
+    int m_damType = 4;
     bool m_materialHighlightActive = false;
     QString m_savedSeepageSourceUuid;
     QString m_savedSeepageSourceName;

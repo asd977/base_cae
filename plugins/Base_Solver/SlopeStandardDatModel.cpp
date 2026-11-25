@@ -5,6 +5,8 @@
 #include <QTextStream>
 
 #include <cmath>
+#include <algorithm>
+#include <limits>
 
 namespace
 {
@@ -314,6 +316,40 @@ bool SlopeStandardDatModel::validate(QString* errorMessage) const
         return fail(errorMessage, QStringLiteral("地震组合模式无效。"));
     if (std::abs(earthquakeDirectionH) > 1 || std::abs(earthquakeDirectionV) > 1)
         return fail(errorMessage, QStringLiteral("地震方向必须为 -1、0 或 1。"));
+    return true;
+}
+
+bool SlopeStandardDatModel::ensureSearchCircleNearSection()
+{
+    if (mode != 1 || nodes.isEmpty())
+        return false;
+    double xmin = std::numeric_limits<double>::max();
+    double xmax = std::numeric_limits<double>::lowest();
+    double ymin = xmin;
+    double ymax = xmax;
+    for (const auto& node : nodes)
+    {
+        if (!std::isfinite(node.x) || !std::isfinite(node.y))
+            return false;
+        xmin = std::min(xmin, node.x);
+        xmax = std::max(xmax, node.x);
+        ymin = std::min(ymin, node.y);
+        ymax = std::max(ymax, node.y);
+    }
+    const double scale = std::max({xmax - xmin, ymax - ymin, 1.0});
+    // The native search clips seeds to these bounds, then explores locally.
+    // A retained example circle (5, 12, R=12.8) cannot seed a GIS section.
+    const bool usable = std::isfinite(radius) && std::isfinite(circleX)
+        && std::isfinite(circleY) && radius >= 0.15 * scale && radius <= 8.0 * scale
+        && circleX >= xmin - 2.5 * scale && circleX <= xmax + 2.5 * scale
+        && circleY >= ymin - 2.0 * scale && circleY <= ymax + 4.0 * scale
+        && circleX + radius >= xmin && circleX - radius <= xmax
+        && circleY + radius >= ymin && circleY - radius <= ymax;
+    if (usable)
+        return false;
+    circleX = xmin + 0.5 * (xmax - xmin);
+    circleY = ymax + 0.1 * scale;
+    radius = 0.6 * scale;
     return true;
 }
 

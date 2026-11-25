@@ -13,28 +13,15 @@
 
 extern "C" {
 
-struct CaeSMESHPoint3
-{
-    double x;
-    double y;
-    double z;
-};
-
 struct CaeSMESHSweepRequest
 {
     const char* brepPathUtf8;
     const char* vtkPathUtf8;
-    CaeSMESHPoint3 volumeCenter;
-    double volumeMeasure;
-    CaeSMESHPoint3 sourceCenter;
-    double sourceMeasure;
-    CaeSMESHPoint3 targetCenter;
-    double targetMeasure;
     std::int32_t layers;
     double sourceSize;
     std::int32_t quadrangleSource;
     double tolerance;
-    // Index in TopExp::MapShapes(ExportedModel.brep, ...); 0 means legacy selection.
+    // Index in TopExp::MapShapes(ExportedModel.brep, ...); zero is invalid.
     std::int32_t volumeShapeIndex;
     std::int32_t sourceShapeIndex;
     std::int32_t targetShapeIndex;
@@ -81,12 +68,10 @@ struct CaeSMESHBodyFittedResult
 
 
 // SALOME/SMESH native 3D viscous layers on top of NETGEN 1D-2D-3D.
-// Explicit BREP face indices are preferred; legacy requests may use signatures;
+// Explicit BREP face indices are required;
 // an empty wall list with automaticWall!=0 means all topological external faces.
 struct CaeSMESHViscousFace
 {
-    CaeSMESHPoint3 center;
-    double measure;
     std::int32_t shapeIndex; // Face index in the input BREP
 };
 
@@ -124,21 +109,17 @@ struct CaeSMESHViscousResult
 };
 
 // Generic native SMESH/NETGEN tetrahedral meshing. Local controls are mapped
-// from Base_Geometry BREP topology indices (legacy signatures remain accepted) and assigned as native
+// from Base_Geometry BREP topology indices and assigned as native
 // SMESH SubMeshes/Hypotheses before the first Compute().
 struct CaeSMESHLocalSizeControl
 {
     std::int32_t dimension; // 2=Face, 3=Solid
-    CaeSMESHPoint3 center;
-    double measure;
     double targetSize;
     std::int32_t shapeIndex; // index in the input BREP for dimension
 };
 
 struct CaeSMESHEdgeSegmentsControl
 {
-    CaeSMESHPoint3 center;
-    double measure;
     std::int32_t divisions;
     double bias; // 1=uniform, otherwise NumberOfSegments DT_Scale
     std::int32_t shapeIndex; // Edge index in the input BREP
@@ -181,8 +162,10 @@ struct CaeSMESHNetgenRequest
     double growthRate;
     double nbSegPerEdge;
     double nbSegPerRadius;
-    // If automaticWall!=0, selected wall signatures are exclusions when this is non-zero.
+    // If automaticWall!=0, selected wall indices are exclusions when this is non-zero.
     std::int32_t selectedWallsToIgnore;
+    // ABI v16: export file status and explicit preparation settings, no content hash.
+    const char* geometryGenerationUtf8;
 };
 
 // ABI v6 additive request. Legacy NETGEN entries retain their original layout.

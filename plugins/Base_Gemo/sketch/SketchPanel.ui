@@ -87,7 +87,7 @@
          </widget>
         </item>
         <item row="1" column="1">
-         <widget class="QDoubleSpinBox" name="offsetSpin">
+         <widget class="CompactDoubleSpinBox" name="offsetSpin">
           <property name="decimals">
            <number>4</number>
           </property>
@@ -628,7 +628,7 @@
          </widget>
         </item>
         <item row="1" column="1">
-         <widget class="QDoubleSpinBox" name="pointUSpin">
+         <widget class="CompactDoubleSpinBox" name="pointUSpin">
           <property name="decimals">
            <number>4</number>
           </property>
@@ -657,7 +657,7 @@
          </widget>
         </item>
         <item row="2" column="1">
-         <widget class="QDoubleSpinBox" name="pointVSpin">
+         <widget class="CompactDoubleSpinBox" name="pointVSpin">
           <property name="decimals">
            <number>4</number>
           </property>
@@ -720,7 +720,7 @@
          </widget>
         </item>
         <item row="0" column="1">
-         <widget class="QDoubleSpinBox" name="pointSnapSpin">
+         <widget class="CompactDoubleSpinBox" name="pointSnapSpin">
           <property name="decimals">
            <number>3</number>
           </property>
@@ -746,7 +746,7 @@
          </widget>
         </item>
         <item row="1" column="1">
-         <widget class="QDoubleSpinBox" name="gridStepSpin">
+         <widget class="CompactDoubleSpinBox" name="gridStepSpin">
           <property name="decimals">
            <number>3</number>
           </property>
@@ -782,7 +782,7 @@
          </widget>
         </item>
         <item row="3" column="1">
-         <widget class="QDoubleSpinBox" name="gridSnapStepSpin">
+         <widget class="CompactDoubleSpinBox" name="gridSnapStepSpin">
           <property name="decimals">
            <number>3</number>
           </property>
@@ -811,7 +811,7 @@
          </widget>
         </item>
         <item row="4" column="1">
-         <widget class="QDoubleSpinBox" name="autoCloseToleranceSpin">
+         <widget class="CompactDoubleSpinBox" name="autoCloseToleranceSpin">
           <property name="decimals">
            <number>3</number>
           </property>
@@ -885,7 +885,7 @@
             </widget>
            </item>
            <item>
-            <widget class="QDoubleSpinBox" name="arcAngleSpin">
+            <widget class="CompactDoubleSpinBox" name="arcAngleSpin">
              <property name="decimals">
               <number>2</number>
              </property>
@@ -942,6 +942,9 @@
    </item>
   </layout>
  </widget>
+  <customwidgets>
+  <customwidget><class>CompactDoubleSpinBox</class><extends>QDoubleSpinBox</extends><header>CompactDoubleSpinBox.h</header></customwidget>
+ </customwidgets>
  <resources />
  <connections />
 </ui>

@@ -27,12 +27,7 @@
 static void check(bool ok,const char* message) { if(!ok) throw std::runtime_error(message); }
 static SmeshEntityReference ref(const TopoDS_Shape& shape,int dimension,int id)
 {
-    TopTools_IndexedMapOfShape shapes; TopExp::MapShapes(shape,dimension==3?TopAbs_SOLID:TopAbs_FACE,shapes);
-    GProp_GProps properties;
-    if(dimension==3)BRepGProp::VolumeProperties(shapes(id),properties);
-    else BRepGProp::SurfaceProperties(shapes(id),properties);
-    const auto p=properties.CentreOfMass();
-    return {dimension,id,QVector3D(p.X(),p.Y(),p.Z()),std::abs(properties.Mass())};
+    Q_UNUSED(shape); return {dimension,id};
 }
 static SmeshMeshingResult generate(const SmeshMeshingRequest& request)
 {

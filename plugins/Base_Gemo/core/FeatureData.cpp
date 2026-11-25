@@ -79,6 +79,23 @@ QJsonObject FeatureData::toJson() const
     obj[QStringLiteral("visible")] = visible;
     obj[QStringLiteral("state")] = state;
     obj[QStringLiteral("cachedBrep")] = cachedBrep;
+    if (!cachedBrepAsset.isEmpty())
+        obj[QStringLiteral("cachedBrepAsset")] = cachedBrepAsset;
+    if (!faceGroups.isEmpty())
+    {
+        QJsonArray fgArr;
+        for (const auto& fg : faceGroups)
+        {
+            QJsonObject fgo;
+            fgo[QStringLiteral("name")] = fg.name;
+            fgo[QStringLiteral("role")] = fg.role;
+            QJsonArray fidxArr;
+            for (int idx : fg.faceIndices) fidxArr.append(idx);
+            fgo[QStringLiteral("faceIndices")] = fidxArr;
+            fgArr.append(fgo);
+        }
+        obj[QStringLiteral("faceGroups")] = fgArr;
+    }
 
     // New FeatureData schema：统一保存特征关系、缓存和参数摘要。
     QJsonObject feature;
@@ -90,6 +107,21 @@ QJsonObject FeatureData::toJson() const
     feature[QStringLiteral("kind")] = canonicalKind;
     feature[QStringLiteral("visible")] = visible;
     feature[QStringLiteral("state")] = state;
+    if (!faceGroups.isEmpty())
+    {
+        QJsonArray fgArr;
+        for (const auto& fg : faceGroups)
+        {
+            QJsonObject fgo;
+            fgo[QStringLiteral("name")] = fg.name;
+            fgo[QStringLiteral("role")] = fg.role;
+            QJsonArray fidxArr;
+            for (int idx : fg.faceIndices) fidxArr.append(idx);
+            fgo[QStringLiteral("faceIndices")] = fidxArr;
+            fgArr.append(fgo);
+        }
+        feature[QStringLiteral("faceGroups")] = fgArr;
+    }
     feature[QStringLiteral("inputUuids")] = toJsonArray(inputUuids);
     feature[QStringLiteral("missingInputUuids")] = toJsonArray(missingInputUuids);
     feature[QStringLiteral("parameterSummary")] = parameterSummary(canonicalType, canonicalKind, state);
@@ -115,6 +147,22 @@ FeatureData FeatureData::fromJson(const QJsonObject& obj)
                        : obj.value(QStringLiteral("visible")).toBool(true);
     data.state = src.value(QStringLiteral("state")).toObject(obj.value(QStringLiteral("state")).toObject());
     data.cachedBrep = src.value(QStringLiteral("cachedBrep")).toString(obj.value(QStringLiteral("cachedBrep")).toString());
+    data.cachedBrepAsset = src.value(QStringLiteral("cachedBrepAsset")).toString(obj.value(QStringLiteral("cachedBrepAsset")).toString());
+
+    const QJsonArray fgArr = src.contains(QStringLiteral("faceGroups"))
+                                 ? src.value(QStringLiteral("faceGroups")).toArray()
+                                 : obj.value(QStringLiteral("faceGroups")).toArray();
+    for (const auto& v : fgArr)
+    {
+        const QJsonObject fgo = v.toObject();
+        CadBody::FaceGroup fg;
+        fg.name = fgo.value(QStringLiteral("name")).toString();
+        fg.role = fgo.value(QStringLiteral("role")).toString();
+        const QJsonArray fidxArr = fgo.value(QStringLiteral("faceIndices")).toArray();
+        for (const auto& idxVal : fidxArr)
+            fg.faceIndices.append(idxVal.toInt());
+        data.faceGroups.append(fg);
+    }
 
     const QJsonArray inputArr = src.value(QStringLiteral("inputUuids")).toArray();
     for (const auto& v : inputArr)
@@ -136,6 +184,7 @@ QStringList FeatureData::collectInputUuids(const QJsonObject& state, const QStri
     appendUuid(inputs, state.value(QStringLiteral("profileUuid")).toString(), selfUuid);
     appendUuid(inputs, state.value(QStringLiteral("pathUuid")).toString(), selfUuid);
     appendUuid(inputs, state.value(QStringLiteral("targetUuid")).toString(), selfUuid);
+    appendUuid(inputs, state.value(QStringLiteral("targetGeology")).toString(), selfUuid);
     appendUuid(inputs, state.value(QStringLiteral("toolUuid")).toString(), selfUuid);
     appendUuid(inputs, state.value(QStringLiteral("importUuid")).toString(), selfUuid);
     appendUuid(inputs, state.value(QStringLiteral("splitUuid")).toString(), selfUuid);

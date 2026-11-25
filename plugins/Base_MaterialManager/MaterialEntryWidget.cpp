@@ -14,11 +14,11 @@
 #include <QPointer>
 #include <QFontDatabase>
 #include <QFrame>
+#include <QGroupBox>
 #include <QHBoxLayout>
 #include <QLabel>
 #include <QMessageBox>
 #include <QPainter>
-#include <QPainterPath>
 #include <QMetaObject>
 #include <QMouseEvent>
 #include <QResizeEvent>
@@ -31,7 +31,6 @@
 #include <QSignalBlocker>
 #include <QSpinBox>
 #include <QTimer>
-#include <QToolButton>
 #include <QVBoxLayout>
 #include <QVariant>
 #include <algorithm>
@@ -47,81 +46,6 @@ namespace
 {
 
 
-
-class CollapsibleSectionButton final : public QToolButton
-{
-  public:
-    explicit CollapsibleSectionButton(const QString& title, bool expanded, QWidget* parent = nullptr)
-        : QToolButton(parent)
-    {
-        setText(title);
-        setCheckable(true);
-        setChecked(expanded);
-        setAutoRaise(true);
-        setFocusPolicy(Qt::NoFocus);
-        setCursor(Qt::PointingHandCursor);
-        setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
-        setMinimumHeight(34);
-        setToolButtonStyle(Qt::ToolButtonTextOnly);
-    }
-
-    QSize sizeHint() const override
-    {
-        QSize hint = QToolButton::sizeHint();
-        hint.setHeight(qMax(34, hint.height()));
-        return hint;
-    }
-
-  protected:
-    void paintEvent(QPaintEvent*) override
-    {
-        QPainter painter(this);
-        painter.setRenderHint(QPainter::Antialiasing, true);
-
-        if (underMouse())
-        {
-            QColor hover = palette().color(QPalette::AlternateBase);
-            hover.setAlpha(80);
-            painter.fillRect(rect(), hover);
-        }
-
-        const QColor divider = palette().color(QPalette::Midlight);
-        painter.setPen(divider);
-        painter.drawLine(0, height() - 1, width(), height() - 1);
-
-        QPen arrowPen(palette().color(QPalette::Text));
-        arrowPen.setWidthF(1.5);
-        arrowPen.setCapStyle(Qt::RoundCap);
-        arrowPen.setJoinStyle(Qt::RoundJoin);
-        painter.setPen(arrowPen);
-        painter.setBrush(Qt::NoBrush);
-
-        const qreal centerY = height() / 2.0;
-        QPainterPath arrow;
-        if (isChecked())
-        {
-            arrow.moveTo(7.5, centerY - 2.5);
-            arrow.lineTo(11.5, centerY + 1.5);
-            arrow.lineTo(15.5, centerY - 2.5);
-        }
-        else
-        {
-            arrow.moveTo(9.0, centerY - 4.0);
-            arrow.lineTo(13.0, centerY);
-            arrow.lineTo(9.0, centerY + 4.0);
-        }
-        painter.drawPath(arrow);
-
-        QFont titleFont = font();
-        titleFont.setWeight(QFont::DemiBold);
-        painter.setFont(titleFont);
-        const QPalette::ColorGroup textGroup =
-            isEnabled() ? QPalette::Active : QPalette::Disabled;
-        painter.setPen(palette().color(textGroup, QPalette::Text));
-        painter.drawText(rect().adjusted(24, 0, -4, 0),
-                         Qt::AlignLeft | Qt::AlignVCenter, text());
-    }
-};
 
 class AppliedRegionListWidget final : public QListWidget
 {
@@ -146,7 +70,7 @@ class AppliedRegionListWidget final : public QListWidget
         painter.setPen(muted);
         painter.drawText(viewport()->rect().adjusted(10, 0, -10, 0),
                          Qt::AlignLeft | Qt::AlignVCenter,
-                         QStringLiteral("暂无已施加区域"));
+                         QStringLiteral("暂无区域"));
     }
 };
 
@@ -220,6 +144,7 @@ bool isDamStaticMaterialModel(const QString& modelKey)
 // 这里只控制界面分组，不改变 MaterialEntry 的存储，也不改变 IMAT/CONMAT 输出。
 bool isBasicMaterialColumn(const QString& modelKey, const QString& column)
 {
+    if (modelKey == QStringLiteral("linear_elastic")) return true;
     if(modelKey==QStringLiteral("planar_elastic_beam"))return true;
     // Hoek-Brown 的七项求解器输入均为日常必填材料参数。
     // 仅调整表单分组，不改变属性键、数值、保存格式或 CONMAT 导出。
@@ -418,8 +343,7 @@ QWidget* createParameterFieldWidget(QLineEdit* editor, const QString& unit, QWid
 
     auto* unitLabel = new QLabel(unit, field);
     unitLabel->setObjectName(QStringLiteral("materialUnitLabel"));
-    unitLabel->setMinimumWidth(48);
-    unitLabel->setMaximumWidth(58);
+    unitLabel->setSizePolicy(QSizePolicy::Minimum, QSizePolicy::Preferred);
     unitLabel->setAlignment(Qt::AlignLeft | Qt::AlignVCenter);
 
     // 单位属于辅助信息，但不能淡到看不清。根据当前主题在正文色和底色之间取中间色。
@@ -454,8 +378,7 @@ QWidget* createFrictionFieldWidget(QLineEdit* editor, const QString& unit, QWidg
 
     auto* unitLabel = new QLabel(unit, field);
     unitLabel->setObjectName(QStringLiteral("materialUnitLabel"));
-    unitLabel->setMinimumWidth(48);
-    unitLabel->setMaximumWidth(58);
+    unitLabel->setSizePolicy(QSizePolicy::Minimum, QSizePolicy::Preferred);
     unitLabel->setAlignment(Qt::AlignLeft | Qt::AlignVCenter);
     layout->addWidget(unitLabel, 0);
 
@@ -751,17 +674,6 @@ QString parameterHelpText(const QString& modelKey, const QString& column)
     return text;
 }
 
-QAbstractScrollArea* findParentScrollArea(QWidget* widget)
-{
-    for (QWidget* parent = widget ? widget->parentWidget() : nullptr; parent;
-         parent = parent->parentWidget())
-    {
-        if (auto* scrollArea = qobject_cast<QAbstractScrollArea*>(parent))
-            return scrollArea;
-    }
-    return nullptr;
-}
-
 QLabel* createParameterLabel(const QString& text, const QString& toolTip, QWidget* parent)
 {
     auto* label = new QLabel(text, parent);
@@ -834,7 +746,7 @@ MaterialEntryWidget::MaterialEntryWidget(MaterialManager* manager, QWidget* pare
 {
     setAttribute(Qt::WA_StyledBackground, true);
 
-    m_formLayout->setContentsMargins(16, 12, 16, 14);
+    m_formLayout->setContentsMargins(9, 9, 9, 9);
     m_formLayout->setHorizontalSpacing(14);
     m_formLayout->setVerticalSpacing(9);
     m_formLayout->setFieldGrowthPolicy(QFormLayout::AllNonFixedFieldsGrow);
@@ -842,7 +754,7 @@ MaterialEntryWidget::MaterialEntryWidget(MaterialManager* manager, QWidget* pare
     m_formLayout->setLabelAlignment(Qt::AlignLeft | Qt::AlignVCenter);
     m_formLayout->setFormAlignment(Qt::AlignTop);
 
-    // 材料页使用轻量分区：不套 GroupBox，折叠标题由控件自身绘制。
+    // 与约束、荷载和分析页面共用原生分组框；折叠只影响可见性。
     setStyleSheet(QStringLiteral(
         "QLabel#materialSectionTitle {"
         "  font-weight: 600;"
@@ -852,12 +764,6 @@ MaterialEntryWidget::MaterialEntryWidget(MaterialManager* manager, QWidget* pare
         "}"
         "QLabel#materialUnitLabel {"
         "  padding-left: 1px;"
-        "}"
-        "QPushButton#materialCompactAction {"
-        "  min-width: 64px;"
-        "  min-height: 28px;"
-        "  padding-left: 10px;"
-        "  padding-right: 10px;"
         "}"
         "QListWidget#appliedMatypesList {"
         "  border: 1px solid palette(mid);"
@@ -1358,13 +1264,19 @@ void MaterialEntryWidget::rebuildForm(MaterialModel* model, MaterialEntry* entry
         return;
     }
 
+    auto* infoGroup=new QGroupBox(QStringLiteral("材料信息"),this);
+    infoGroup->setObjectName(QStringLiteral("materialInfoGroup"));
+    auto* infoForm=new QFormLayout(infoGroup);
+    configureParameterFormLayout(infoForm);
+    m_formLayout->addRow(infoGroup);
+
     // ===== 通用信息：不属于“基本/高级参数”，始终显示 =====
     m_nameEdit = new QLineEdit(entry->name, this);
     m_nameEdit->setMinimumWidth(10);
     connect(m_nameEdit, &QLineEdit::textEdited, this, &MaterialEntryWidget::onNameEdited);
     connect(m_nameEdit, &QLineEdit::editingFinished, this,
             &MaterialEntryWidget::onNameEditingFinished);
-    m_formLayout->addRow(QStringLiteral("材料名称"), m_nameEdit);
+    infoForm->addRow(QStringLiteral("材料名称"), m_nameEdit);
 
     m_modelCombo = new QComboBox(this);
     m_modelCombo->setMinimumWidth(10);
@@ -1379,20 +1291,20 @@ void MaterialEntryWidget::rebuildForm(MaterialModel* model, MaterialEntry* entry
         QStringLiteral("切换材料本构模型；已有材料名称和关联关系保持不变。"));
     connect(m_modelCombo, QOverload<int>::of(&QComboBox::activated), this,
             &MaterialEntryWidget::onMaterialModelActivated);
-    m_formLayout->addRow(QStringLiteral("材料模型"), m_modelCombo);
+    infoForm->addRow(QStringLiteral("材料模型"), m_modelCombo);
 
     QList<int> appliedList = entry->appliedMatypes.values();
     std::sort(appliedList.begin(), appliedList.end());
 
-    // ===== 材料与网格关联：直接呈现内容，不额外显示分区标题或分隔线 =====
-    auto* assignmentCard = new QWidget(this);
+    // ===== 材料与网格关联 =====
+    auto* assignmentCard = new QGroupBox(QStringLiteral("网格关联"),this);
     assignmentCard->setObjectName(QStringLiteral("materialAssignmentSection"));
     assignmentCard->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Maximum);
     assignmentCard->setToolTip(QStringLiteral("将当前材料与网格材料编号建立关联。"));
     m_assignmentWidget = assignmentCard;
 
     auto* assignmentLayout = new QVBoxLayout(assignmentCard);
-    assignmentLayout->setContentsMargins(0, 4, 0, 4);
+    assignmentLayout->setContentsMargins(10, 10, 10, 10);
     assignmentLayout->setSpacing(8);
 
     auto* assignmentForm = new QFormLayout;
@@ -1405,13 +1317,12 @@ void MaterialEntryWidget::rebuildForm(MaterialModel* model, MaterialEntry* entry
     assignmentForm->setFormAlignment(Qt::AlignTop);
     assignmentLayout->addLayout(assignmentForm);
 
-    QWidget* matypeRowWidget = new QWidget(assignmentCard);
-    auto* rowLayout = new QHBoxLayout(matypeRowWidget);
+    QWidget* actionRowWidget = new QWidget(assignmentCard);
+    auto* rowLayout = new QHBoxLayout(actionRowWidget);
     rowLayout->setContentsMargins(0, 0, 0, 0);
     rowLayout->setSpacing(8);
 
-    m_matypeCombo = new CustomComboBox(matypeRowWidget);
-    m_matypeCombo->setMinimumWidth(120);
+    m_matypeCombo = new CustomComboBox(assignmentCard);
     m_matypeCombo->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
     m_matypeCombo->setSizeAdjustPolicy(QComboBox::AdjustToMinimumContentsLengthWithIcon);
     m_matypeCombo->setMinimumContentsLength(4);
@@ -1438,25 +1349,26 @@ void MaterialEntryWidget::rebuildForm(MaterialModel* model, MaterialEntry* entry
     connect(m_matypeCombo, QOverload<int>::of(&QComboBox::activated), this,
             &MaterialEntryWidget::onMatypeActivated);
 
-    m_applyButton = new QPushButton(QStringLiteral("施加到网格"), matypeRowWidget);
+    m_applyButton = new QPushButton(QStringLiteral("施加到网格"), actionRowWidget);
     m_applyButton->setObjectName(QStringLiteral("materialCompactAction"));
     m_applyButton->setToolTip(QStringLiteral("将当前材料施加到所选网格区域。"));
     connect(m_applyButton, &QPushButton::clicked, this,
             &MaterialEntryWidget::onApplyMatypeClicked);
 
-    rowLayout->addWidget(m_matypeCombo, 1);
-    rowLayout->addWidget(m_applyButton, 0);
     assignmentForm->addRow(
         createParameterLabel(QStringLiteral("材料编号"),
                              QStringLiteral("对应求解器 MATYPE，用于把材料与网格区域建立关联。"),
                              assignmentCard),
-        matypeRowWidget);
+        m_matypeCombo);
 
     m_viewPickCheck = new QCheckBox(QStringLiteral("启用视图点选"), assignmentCard);
     m_viewPickCheck->setChecked(m_viewPickEnabled);
     m_viewPickCheck->setToolTip(QStringLiteral("勾选后可在视图中点击一个网格材料区域，"
         "自动选中其 MATYPE；仍需点击“施加到网格”才能完成材料关联。"));
-    assignmentForm->addRow(QString(), m_viewPickCheck);
+    rowLayout->addWidget(m_viewPickCheck);
+    rowLayout->addStretch();
+    rowLayout->addWidget(m_applyButton);
+    assignmentForm->addRow(actionRowWidget);
     connect(m_viewPickCheck, &QCheckBox::toggled, this, [this](bool enabled)
     {
         m_viewPickEnabled = enabled;
@@ -1478,9 +1390,9 @@ void MaterialEntryWidget::rebuildForm(MaterialModel* model, MaterialEntry* entry
     // 这里既是当前分配结果，也是用户检查材料施加是否正确的主要区域。
     // 保留足够可视高度；数量较多时再在列表内部滚动。
     const int appliedListHeight =
-        appliedList.isEmpty() ? 88 : qBound(88, 34 + appliedList.size() * 24, 136);
+        qBound(2,appliedList.size(),4)*(fontMetrics().lineSpacing()+6)+8;
     m_appliedMatypesList->setFixedHeight(appliedListHeight);
-    m_appliedMatypesList->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+    m_appliedMatypesList->setHorizontalScrollBarPolicy(Qt::ScrollBarAsNeeded);
     m_appliedMatypesList->setVerticalScrollMode(QAbstractItemView::ScrollPerPixel);
     m_appliedMatypesList->setUniformItemSizes(true);
     m_appliedMatypesList->setToolTip(QStringLiteral("当前材料已经关联的网格区域。"));
@@ -1511,7 +1423,7 @@ void MaterialEntryWidget::rebuildForm(MaterialModel* model, MaterialEntry* entry
 
     m_formLayout->addRow(assignmentCard);
 
-    // ===== 参数区域：保留展开/收起，不使用 Tab，也不使用 GroupBox =====
+    // ===== 参数区域：使用与其他页面一致的原生 GroupBox =====
     auto* parameterContainer = new QWidget(this);
     parameterContainer->setObjectName(QStringLiteral("materialParameterContainer"));
     parameterContainer->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Maximum);
@@ -1520,73 +1432,38 @@ void MaterialEntryWidget::rebuildForm(MaterialModel* model, MaterialEntry* entry
     parameterLayout->setContentsMargins(0, 4, 0, 0);
     parameterLayout->setSpacing(12);
 
-    const auto createCollapsibleSection =
-        [parameterContainer, parameterLayout](const QString& title, bool expanded,
+    const auto createParameterGroup =
+        [parameterContainer, parameterLayout](const QString& title, const QString& name,
                                               QWidget*& content, QFormLayout*& formLayout) {
-            auto* section = new QWidget(parameterContainer);
-            section->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Maximum);
-
-            auto* sectionLayout = new QVBoxLayout(section);
-            sectionLayout->setContentsMargins(0, 0, 0, 0);
-            sectionLayout->setSpacing(6);
-
-            // 整个标题栏都可点击；使用细线 Chevron，不显示“展开/收起”文字。
-            auto* toggle = new CollapsibleSectionButton(title, expanded, section);
-
-            content = new QWidget(section);
-            content->setObjectName(QStringLiteral("materialSectionContent"));
-            content->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Maximum);
-            content->setVisible(expanded);
-            formLayout = new QFormLayout(content);
+            auto* group=new QGroupBox(title,parameterContainer);
+            group->setObjectName(name);
+            group->setSizePolicy(QSizePolicy::Expanding,QSizePolicy::Maximum);
+            auto* outer=new QVBoxLayout(group);
+            content=new QWidget(group);
+            outer->addWidget(content);
+            formLayout=new QFormLayout(content);
             configureParameterFormLayout(formLayout);
-            formLayout->setContentsMargins(10, 6, 8, 2);
-
-            QObject::connect(toggle, &QToolButton::toggled, section,
-                             [content, toggle, parameterContainer](bool checked) {
-                                 QAbstractScrollArea* scrollArea =
-                                     findParentScrollArea(parameterContainer);
-                                 QPointer<QScrollBar> vBar =
-                                     scrollArea ? scrollArea->verticalScrollBar() : nullptr;
-                                 const int oldScrollValue = vBar ? vBar->value() : 0;
-
-                                 toggle->setToolTip(checked ? QStringLiteral("点击收起")
-                                                            : QStringLiteral("点击展开"));
-
-                                 parameterContainer->setUpdatesEnabled(false);
-                                 content->setVisible(checked);
-                                 parameterContainer->updateGeometry();
-                                 parameterContainer->setUpdatesEnabled(true);
-                                 parameterContainer->update();
-
-                                 if (vBar)
-                                 {
-                                     QTimer::singleShot(
-                                         0, parameterContainer,
-                                         [vBar, oldScrollValue]() {
-                                             if (!vBar)
-                                                 return;
-                                             const QSignalBlocker blocker(vBar);
-                                             vBar->setValue(qBound(vBar->minimum(), oldScrollValue,
-                                                                   vBar->maximum()));
-                                         });
-                                 }
-                             });
-
-            sectionLayout->addWidget(toggle);
-            sectionLayout->addWidget(content);
-            parameterLayout->addWidget(section);
-            return toggle;
+            formLayout->setContentsMargins(0,0,0,0);
+            if(name==QStringLiteral("materialAdvancedGroup")) {
+                group->setCheckable(true);
+                QObject::connect(group,&QGroupBox::toggled,content,&QWidget::setVisible);
+                group->setChecked(false);
+                content->hide();
+            }
+            parameterLayout->addWidget(group);
+            return group;
         };
 
     QWidget* basicPage = nullptr;
     QWidget* advancedPage = nullptr;
-    auto* basicToggle = createCollapsibleSection(
-        QStringLiteral("基本参数"), true, basicPage, m_basicLayout);
-    auto* advancedToggle = createCollapsibleSection(
-        QStringLiteral("高级参数"), false, advancedPage, m_advancedLayout);
-    basicToggle->setToolTip(QStringLiteral("常用材料参数，主要控制强度、刚度和自重等基本响应。"));
-    advancedToggle->setToolTip(
-        QStringLiteral("低频专业参数，主要用于特定本构、开挖、动力、渗流或流变计算。"));
+    auto* basicGroup = createParameterGroup(
+        QStringLiteral("基本参数"), QStringLiteral("materialBasicGroup"), basicPage, m_basicLayout);
+    auto* advancedGroup = createParameterGroup(
+        QStringLiteral("高级参数"), QStringLiteral("materialAdvancedGroup"), advancedPage, m_advancedLayout);
+    basicGroup->setToolTip(QStringLiteral("常用材料参数，主要控制强度、刚度和自重等基本响应。"));
+    advancedGroup->setToolTip(
+        QStringLiteral("勾选仅展开高级参数，不影响已有参数的使用。\n"
+                       "主要用于特定本构、开挖、动力、渗流或流变计算。"));
 
     m_formLayout->addRow(parameterContainer);
 

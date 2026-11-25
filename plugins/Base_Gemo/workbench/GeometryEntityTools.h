@@ -5,11 +5,13 @@
 #include <QStringList>
 #include <QVector3D>
 #include <QVariantMap>
+#include <QJsonObject>
 #include <QVariant>
 #include <TopoDS_Shape.hxx>
 
 namespace GeometryEntityTools
 {
+QJsonObject meshingShapeIndexMap(const QStringList& geometryUuids, const TopoDS_Shape& exported);
 QStringList listEntityIds(const QStringList& geometryUuids, int dim);
 bool entityCenter(const QStringList& geometryUuids, int dim, int id, QVector3D& center);
 bool entityNormal(const QStringList& geometryUuids, int dim, int id, QVector3D& normal);

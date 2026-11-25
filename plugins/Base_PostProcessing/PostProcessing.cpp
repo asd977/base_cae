@@ -2305,6 +2305,7 @@ bool PostProcessing::loadProject()
 
 void PostProcessing::closeProject()
 {
+    PostMeshEdges::clear(m_visualService);
     if (!m_root)
         return;
 

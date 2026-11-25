@@ -1,4 +1,6 @@
 #include "ImportGeometryBuilder.h"
+#include "DxfReader.h"
+#include <BRepBuilderAPI_MakePolygon.hxx>
 
 #include "GeometryBuildUtils.h"
 #include <GeometryDisplayManager.h>
@@ -6,13 +8,7 @@
 #include <GeomManagerInstance.h>
 #include <GeomShapeObject.h>
 
-#include <BRepBuilderAPI_MakeEdge.hxx>
 #include <BRepBuilderAPI_MakeVertex.hxx>
-#include <BRepBuilderAPI_GTransform.hxx>
-#include <gp_GTrsf.hxx>
-#include <gp_Mat.hxx>
-#include <functional>
-#include <QLibrary>
 #include <BRepBuilderAPI_MakeFace.hxx>
 #include <BRepClass_FaceClassifier.hxx>
 #include <BRepGProp.hxx>
@@ -28,14 +24,6 @@
 #include <TopAbs_State.hxx>
 #include <TopExp.hxx>
 #include <TopoDS_Vertex.hxx>
-#include <GC_MakeArcOfCircle.hxx>
-#include <GeomAPI_Interpolate.hxx>
-#include <Geom_BSplineCurve.hxx>
-#include <Geom_TrimmedCurve.hxx>
-#include <TColgp_HArray1OfPnt.hxx>
-#include <TColgp_Array1OfPnt.hxx>
-#include <TColStd_Array1OfReal.hxx>
-#include <TColStd_Array1OfInteger.hxx>
 #include <BRepTools.hxx>
 #include <BRep_Builder.hxx>
 #include <IGESControl_Reader.hxx>
@@ -59,11 +47,6 @@
 #include <TopoDS_Compound.hxx>
 #include <TopoDS_Iterator.hxx>
 #include <TopoDS_Shape.hxx>
-#include <gp_Ax2.hxx>
-#include <gp_Circ.hxx>
-#include <gp_Elips.hxx>
-#include <gp_Vec.hxx>
-#include <gp_Dir.hxx>
 #include <gp_Pnt.hxx>
 
 #include <QColor>
@@ -75,7 +58,6 @@
 #include <QFile>
 #include <QFileInfo>
 #include <QObject>
-#include <QTextStream>
 #include <QVector>
 
 #include <algorithm>
@@ -558,506 +540,6 @@ void applyActorColor(GeomShapeObject* object, const QColor& color)
     object->setDisplayColor(color);
 }
 
-struct DxfPair
-{
-    int code = -1;
-    QString value;
-};
-
-struct DxfEntity
-{
-    QString type;
-    QVector<DxfPair> pairs;
-};
-
-struct DxfVertex
-{
-    double x = 0.0;
-    double y = 0.0;
-    double z = 0.0;
-    double bulge = 0.0;
-};
-
-constexpr double kDxfPi = 3.14159265358979323846;
-
-double dxfValue(const QVector<DxfPair>& pairs, int code, double fallback = 0.0)
-{
-    for (const DxfPair& pair : pairs)
-    {
-        if (pair.code == code)
-            return pair.value.toDouble();
-    }
-    return fallback;
-}
-
-int dxfIntValue(const QVector<DxfPair>& pairs, int code, int fallback = 0)
-{
-    for (const DxfPair& pair : pairs)
-    {
-        if (pair.code == code)
-            return pair.value.toInt();
-    }
-    return fallback;
-}
-
-QVector<double> dxfValues(const QVector<DxfPair>& pairs, int code)
-{
-    QVector<double> values;
-    for (const DxfPair& pair : pairs)
-    {
-        if (pair.code == code)
-            values.push_back(pair.value.toDouble());
-    }
-    return values;
-}
-
-gp_Dir dxfNormal(const QVector<DxfPair>& pairs)
-{
-    const double nx = dxfValue(pairs, 210, 0.0);
-    const double ny = dxfValue(pairs, 220, 0.0);
-    const double nz = dxfValue(pairs, 230, 1.0);
-    const gp_Vec n(nx, ny, nz);
-    if (n.Magnitude() <= Precision::Confusion())
-        return gp_Dir(0.0, 0.0, 1.0);
-    return gp_Dir(n);
-}
-
-gp_Dir dxfOcsXAxis(const gp_Dir& normal)
-{
-    gp_Vec n(normal);
-    gp_Vec x;
-    if (std::abs(normal.X()) < (1.0 / 64.0) && std::abs(normal.Y()) < (1.0 / 64.0))
-        x = gp_Vec(0.0, 1.0, 0.0).Crossed(n);
-    else
-        x = gp_Vec(0.0, 0.0, 1.0).Crossed(n);
-    if (x.Magnitude() <= Precision::Confusion())
-        return gp_Dir(1.0, 0.0, 0.0);
-    return gp_Dir(x);
-}
-
-gp_Pnt dxfOcsPoint(double x, double y, double z, const gp_Dir& normal)
-{
-    gp_Vec axisX(dxfOcsXAxis(normal));
-    gp_Vec axisY = gp_Vec(normal).Crossed(axisX);
-    axisX.Multiply(x);
-    axisY.Multiply(y);
-    gp_Vec axisZ(normal);
-    axisZ.Multiply(z);
-    gp_Vec world = axisX.Added(axisY).Added(axisZ);
-    return gp_Pnt(world.X(), world.Y(), world.Z());
-}
-
-gp_Pnt dxfPoint(const QVector<DxfPair>& pairs,
-                int xCode,
-                int yCode,
-                int zCode,
-                double fallbackZ = 0.0)
-{
-    return gp_Pnt(dxfValue(pairs, xCode),
-                  dxfValue(pairs, yCode),
-                  dxfValue(pairs, zCode, fallbackZ));
-}
-
-bool addDxfLine(BRep_Builder& builder,
-                TopoDS_Compound& compound,
-                const gp_Pnt& p1,
-                const gp_Pnt& p2)
-{
-    if (p1.Distance(p2) <= Precision::Confusion())
-        return false;
-
-    BRepBuilderAPI_MakeEdge makeEdge(p1, p2);
-    if (!makeEdge.IsDone())
-        return false;
-
-    builder.Add(compound, makeEdge.Edge());
-    return true;
-}
-
-bool addDxfCircle(BRep_Builder& builder,
-                  TopoDS_Compound& compound,
-                  const gp_Pnt& center,
-                  const gp_Dir& normal,
-                  double radius)
-{
-    if (radius <= Precision::Confusion())
-        return false;
-
-    BRepBuilderAPI_MakeEdge makeEdge(
-        gp_Circ(gp_Ax2(center, normal, dxfOcsXAxis(normal)), radius));
-    if (!makeEdge.IsDone())
-        return false;
-
-    builder.Add(compound, makeEdge.Edge());
-    return true;
-}
-
-bool addDxfArc(BRep_Builder& builder,
-               TopoDS_Compound& compound,
-               const gp_Pnt& center,
-               const gp_Dir& normal,
-               double radius,
-               double startDegree,
-               double endDegree)
-{
-    if (radius <= Precision::Confusion())
-        return false;
-
-    const double startRad = startDegree * kDxfPi / 180.0;
-    double endRad = endDegree * kDxfPi / 180.0;
-    while (endRad <= startRad)
-        endRad += 2.0 * kDxfPi;
-
-    BRepBuilderAPI_MakeEdge makeEdge(
-        gp_Circ(gp_Ax2(center, normal, dxfOcsXAxis(normal)), radius), startRad, endRad);
-    if (!makeEdge.IsDone())
-        return false;
-
-    builder.Add(compound, makeEdge.Edge());
-    return true;
-}
-
-bool addDxfEllipse(BRep_Builder& builder,
-                   TopoDS_Compound& compound,
-                   const QVector<DxfPair>& pairs)
-{
-    const gp_Pnt center = dxfPoint(pairs, 10, 20, 30);
-    const gp_Vec majorVector(dxfValue(pairs, 11), dxfValue(pairs, 21), dxfValue(pairs, 31));
-    const double majorRadius = majorVector.Magnitude();
-    const double ratio = dxfValue(pairs, 40, 1.0);
-    const double minorRadius = majorRadius * ratio;
-    if (majorRadius <= Precision::Confusion() || minorRadius <= Precision::Confusion() ||
-        ratio <= 0.0 || ratio > 1.0 + Precision::Confusion())
-    {
-        return false;
-    }
-
-    const gp_Dir normal = dxfNormal(pairs);
-    const gp_Vec normalVector(normal);
-    gp_Vec planarMajor = majorVector.Subtracted(normalVector.Multiplied(majorVector.Dot(normalVector)));
-    if (planarMajor.Magnitude() <= Precision::Confusion())
-        planarMajor = gp_Vec(dxfOcsXAxis(normal));
-    const gp_Dir majorDirection(planarMajor);
-    const gp_Elips ellipse(gp_Ax2(center, normal, majorDirection), majorRadius, minorRadius);
-    const double start = dxfValue(pairs, 41, 0.0);
-    double end = dxfValue(pairs, 42, 2.0 * kDxfPi);
-    while (end <= start)
-        end += 2.0 * kDxfPi;
-
-    TopoDS_Edge edge;
-    if (end - start >= 2.0 * kDxfPi - 1.0e-9)
-    {
-        BRepBuilderAPI_MakeEdge makeEdge(ellipse);
-        if (!makeEdge.IsDone())
-            return false;
-        edge = makeEdge.Edge();
-    }
-    else
-    {
-        BRepBuilderAPI_MakeEdge makeEdge(ellipse, start, end);
-        if (!makeEdge.IsDone())
-            return false;
-        edge = makeEdge.Edge();
-    }
-    if (edge.IsNull())
-        return false;
-    builder.Add(compound, edge);
-    return true;
-}
-
-QVector<DxfVertex> dxfLwVertices(const QVector<DxfPair>& pairs)
-{
-    QVector<DxfVertex> vertices;
-    DxfVertex current;
-    bool active = false;
-    for (const DxfPair& pair : pairs)
-    {
-        if (pair.code == 10)
-        {
-            if (active)
-                vertices.push_back(current);
-            current = DxfVertex{};
-            current.x = pair.value.toDouble();
-            active = true;
-        }
-        else if (active && pair.code == 20)
-            current.y = pair.value.toDouble();
-        else if (active && pair.code == 30)
-            current.z = pair.value.toDouble();
-        else if (active && pair.code == 42)
-            current.bulge = pair.value.toDouble();
-    }
-    if (active)
-        vertices.push_back(current);
-    return vertices;
-}
-
-QVector<DxfVertex> dxfPointSequence(const QVector<DxfPair>& pairs,
-                                    int xCode, int yCode, int zCode)
-{
-    QVector<DxfVertex> vertices;
-    DxfVertex current;
-    bool active = false;
-    for (const DxfPair& pair : pairs)
-    {
-        if (pair.code == xCode)
-        {
-            if (active)
-                vertices.push_back(current);
-            current = DxfVertex{};
-            current.x = pair.value.toDouble();
-            active = true;
-        }
-        else if (active && pair.code == yCode)
-            current.y = pair.value.toDouble();
-        else if (active && pair.code == zCode)
-            current.z = pair.value.toDouble();
-    }
-    if (active)
-        vertices.push_back(current);
-    return vertices;
-}
-
-bool addDxfBulgeSegment(BRep_Builder& builder,
-                        TopoDS_Compound& compound,
-                        const DxfVertex& a,
-                        const DxfVertex& b,
-                        const gp_Dir& normal,
-                        bool useOcs)
-{
-    if (std::abs(a.bulge) <= 1.0e-12)
-    {
-        const gp_Pnt p1 = useOcs ? dxfOcsPoint(a.x, a.y, a.z, normal) : gp_Pnt(a.x, a.y, a.z);
-        const gp_Pnt p2 = useOcs ? dxfOcsPoint(b.x, b.y, b.z, normal) : gp_Pnt(b.x, b.y, b.z);
-        return addDxfLine(builder, compound, p1, p2);
-    }
-
-    const double dx = b.x - a.x;
-    const double dy = b.y - a.y;
-    const double chord = std::sqrt(dx * dx + dy * dy);
-    if (chord <= Precision::Confusion())
-        return false;
-
-    const double bulge = a.bulge;
-    const double theta = 4.0 * std::atan(bulge);
-    const double midX = 0.5 * (a.x + b.x);
-    const double midY = 0.5 * (a.y + b.y);
-    const double leftX = -dy / chord;
-    const double leftY = dx / chord;
-    const double centerOffset = chord * (1.0 - bulge * bulge) / (4.0 * bulge);
-    const double centerX = midX + leftX * centerOffset;
-    const double centerY = midY + leftY * centerOffset;
-    const double radius = chord * (1.0 + bulge * bulge) / (4.0 * std::abs(bulge));
-    if (radius <= Precision::Confusion())
-        return false;
-
-    const double startAngle = std::atan2(a.y - centerY, a.x - centerX);
-    const double middleAngle = startAngle + 0.5 * theta;
-    const double middleZ = 0.5 * (a.z + b.z);
-    const DxfVertex middle{centerX + radius * std::cos(middleAngle),
-                           centerY + radius * std::sin(middleAngle),
-                           middleZ,
-                           0.0};
-
-    const gp_Pnt p1 = useOcs ? dxfOcsPoint(a.x, a.y, a.z, normal) : gp_Pnt(a.x, a.y, a.z);
-    const gp_Pnt pm = useOcs ? dxfOcsPoint(middle.x, middle.y, middle.z, normal)
-                             : gp_Pnt(middle.x, middle.y, middle.z);
-    const gp_Pnt p2 = useOcs ? dxfOcsPoint(b.x, b.y, b.z, normal) : gp_Pnt(b.x, b.y, b.z);
-    GC_MakeArcOfCircle arcMaker(p1, pm, p2);
-    if (!arcMaker.IsDone())
-        return false;
-    BRepBuilderAPI_MakeEdge edgeMaker(arcMaker.Value());
-    if (!edgeMaker.IsDone())
-        return false;
-    builder.Add(compound, edgeMaker.Edge());
-    return true;
-}
-
-int addDxfPolylineVertices(BRep_Builder& builder,
-                           TopoDS_Compound& compound,
-                           QVector<DxfVertex> vertices,
-                           bool closed,
-                           const gp_Dir& normal,
-                           bool useOcs,
-                           double elevation)
-{
-    if (vertices.size() < 2)
-        return 0;
-    if (useOcs)
-    {
-        for (DxfVertex& vertex : vertices)
-        {
-            if (std::abs(vertex.z) <= Precision::Confusion())
-                vertex.z = elevation;
-        }
-    }
-
-    int edgeCount = 0;
-    for (int i = 1; i < vertices.size(); ++i)
-    {
-        if (addDxfBulgeSegment(builder, compound, vertices.at(i - 1), vertices.at(i), normal, useOcs))
-            ++edgeCount;
-    }
-    if (closed && vertices.size() > 2 &&
-        addDxfBulgeSegment(builder, compound, vertices.last(), vertices.first(), normal, useOcs))
-    {
-        ++edgeCount;
-    }
-    return edgeCount;
-}
-
-int addDxfLwPolyline(BRep_Builder& builder,
-                     TopoDS_Compound& compound,
-                     const QVector<DxfPair>& pairs)
-{
-    return addDxfPolylineVertices(builder,
-                                  compound,
-                                  dxfLwVertices(pairs),
-                                  (dxfIntValue(pairs, 70) & 1) != 0,
-                                  dxfNormal(pairs),
-                                  true,
-                                  dxfValue(pairs, 38, 0.0));
-}
-
-bool addDxfSpline(BRep_Builder& builder,
-                  TopoDS_Compound& compound,
-                  const QVector<DxfPair>& pairs)
-{
-    const QVector<DxfVertex> controlPoints = dxfPointSequence(pairs, 10, 20, 30);
-    const QVector<double> fullKnots = dxfValues(pairs, 40);
-    const QVector<double> weights = dxfValues(pairs, 41);
-    const int degree = std::max(1, dxfIntValue(pairs, 71, 3));
-    const int flags = dxfIntValue(pairs, 70);
-    const bool periodic = (flags & 2) != 0;
-
-    // 优先按 DXF 的控制点、节点矢量和权重构造真实 B 样条。
-    if (controlPoints.size() >= degree + 1 && fullKnots.size() >= 2)
-    {
-        try
-        {
-            QVector<double> uniqueKnots;
-            QVector<int> multiplicities;
-            for (double knot : fullKnots)
-            {
-                if (uniqueKnots.isEmpty() || std::abs(uniqueKnots.last() - knot) > 1.0e-12)
-                {
-                    uniqueKnots.push_back(knot);
-                    multiplicities.push_back(1);
-                }
-                else
-                {
-                    ++multiplicities.last();
-                }
-            }
-
-            if (uniqueKnots.size() >= 2)
-            {
-                TColgp_Array1OfPnt poles(1, controlPoints.size());
-                for (int i = 0; i < controlPoints.size(); ++i)
-                {
-                    const DxfVertex& point = controlPoints.at(i);
-                    poles.SetValue(i + 1, gp_Pnt(point.x, point.y, point.z));
-                }
-
-                TColStd_Array1OfReal knots(1, uniqueKnots.size());
-                TColStd_Array1OfInteger mults(1, multiplicities.size());
-                for (int i = 0; i < uniqueKnots.size(); ++i)
-                {
-                    knots.SetValue(i + 1, uniqueKnots.at(i));
-                    mults.SetValue(i + 1, multiplicities.at(i));
-                }
-
-                Handle(Geom_BSplineCurve) curve;
-                if (weights.size() == controlPoints.size())
-                {
-                    TColStd_Array1OfReal occWeights(1, weights.size());
-                    for (int i = 0; i < weights.size(); ++i)
-                        occWeights.SetValue(i + 1, std::max(weights.at(i), Precision::Confusion()));
-                    curve = new Geom_BSplineCurve(poles, occWeights, knots, mults,
-                                                  degree, periodic ? Standard_True : Standard_False);
-                }
-                else
-                {
-                    curve = new Geom_BSplineCurve(poles, knots, mults,
-                                                  degree, periodic ? Standard_True : Standard_False);
-                }
-
-                if (!curve.IsNull())
-                {
-                    BRepBuilderAPI_MakeEdge edgeMaker(curve);
-                    if (edgeMaker.IsDone() && !edgeMaker.Edge().IsNull())
-                    {
-                        builder.Add(compound, edgeMaker.Edge());
-                        return true;
-                    }
-                }
-            }
-        }
-        catch (...)
-        {
-            // 某些 DXF 的节点/次数数据不完整，下面使用拟合点兼容导入。
-        }
-    }
-
-    QVector<DxfVertex> fitPoints = dxfPointSequence(pairs, 11, 21, 31);
-    if (fitPoints.size() < 2)
-        fitPoints = controlPoints;
-    if (fitPoints.size() < 2)
-        return false;
-
-    if (periodic && fitPoints.size() > 2)
-    {
-        const DxfVertex& first = fitPoints.first();
-        const DxfVertex& last = fitPoints.last();
-        const double distance = std::sqrt((first.x - last.x) * (first.x - last.x) +
-                                          (first.y - last.y) * (first.y - last.y) +
-                                          (first.z - last.z) * (first.z - last.z));
-        if (distance <= Precision::Confusion())
-            fitPoints.removeLast();
-    }
-    if (fitPoints.size() < (periodic ? 3 : 2))
-        return false;
-
-    Handle(TColgp_HArray1OfPnt) points = new TColgp_HArray1OfPnt(1, fitPoints.size());
-    for (int i = 0; i < fitPoints.size(); ++i)
-        points->SetValue(i + 1, gp_Pnt(fitPoints.at(i).x, fitPoints.at(i).y, fitPoints.at(i).z));
-
-    GeomAPI_Interpolate interpolation(points, periodic ? Standard_True : Standard_False,
-                                      Precision::Confusion());
-    interpolation.Perform();
-    if (!interpolation.IsDone() || interpolation.Curve().IsNull())
-        return false;
-    BRepBuilderAPI_MakeEdge edgeMaker(interpolation.Curve());
-    if (!edgeMaker.IsDone())
-        return false;
-    builder.Add(compound, edgeMaker.Edge());
-    return true;
-}
-QVector<DxfEntity> dxfEntities(const QVector<DxfPair>& allPairs)
-{
-    QVector<DxfEntity> entities;
-    DxfEntity current;
-    bool active = false;
-    for (const DxfPair& pair : allPairs)
-    {
-        if (pair.code == 0)
-        {
-            if (active)
-                entities.push_back(current);
-            current = DxfEntity{};
-            current.type = pair.value.trimmed().toUpper();
-            active = true;
-        }
-        else if (active)
-        {
-            current.pairs.push_back(pair);
-        }
-    }
-    if (active)
-        entities.push_back(current);
-    return entities;
-}
-
 bool buildConnectedDxfShape(const TopoDS_Compound& edgeCompound,
                             TopoDS_Shape& result,
                             int& closedProfileCount,
@@ -1205,190 +687,69 @@ bool buildConnectedDxfShape(const TopoDS_Compound& edgeCompound,
     return true;
 }
 
-QString dxfText(const QVector<DxfPair>& pairs, int code, const QString& fallback = {})
-{
-    for (const auto& pair : pairs) if (pair.code == code) return pair.value;
-    return fallback;
-}
-
 bool readDxfRecordsImpl(const QString& path, QVector<DxfGeometryRecord>& records, QString& message)
 {
     records.clear();
-    QFile file(path);
-    if (!file.open(QIODevice::ReadOnly)) {message=QObject::tr("无法打开 DXF：%1").arg(file.errorString());return false;}
-    const QByteArray bytes=file.readAll();
-    if (bytes.startsWith("AutoCAD Binary DXF")) {message=QObject::tr("请将二进制 DXF 另存为 ASCII DXF 后导入。");return false;}
-    QString content=QString::fromUtf8(bytes);
-#ifdef Q_OS_WIN
-    if (bytes.contains("ANSI_936"))
+    QVector<GeometryDxf::Entity> entities;
+    if (!GeometryDxf::read(path, entities, message))
+        return false;
+
+    for (const auto& entity : entities)
     {
-        using DecodeFunction=int (__stdcall *)(unsigned int,unsigned long,const char*,int,wchar_t*,int);
-        const auto decode=reinterpret_cast<DecodeFunction>(QLibrary::resolve(QStringLiteral("kernel32"),"MultiByteToWideChar"));
-        const int count=decode?decode(936,0,bytes.constData(),int(bytes.size()),nullptr,0):0;
-        if (count>0) {std::wstring wide(count,L'\0');decode(936,0,bytes.constData(),int(bytes.size()),wide.data(),count);content=QString::fromStdWString(wide);}
-        else content=QString::fromLocal8Bit(bytes);
-    }
-#endif
-    QTextStream stream(&content);
-    QVector<DxfPair> pairs;
-    while (!stream.atEnd())
-    {
-        const QString code=stream.readLine().trimmed();
-        if (stream.atEnd()) {message=QObject::tr("DXF 组码缺少对应值。");return false;}
-        const QString value=stream.readLine().trimmed();
-        bool ok=false;const int number=code.toInt(&ok);
-        if (!ok) {message=QObject::tr("DXF 包含无效组码。");return false;}
-        pairs.push_back({number,value});
-    }
-    struct Block {gp_Pnt base;QVector<DxfEntity> entities;};
-    QHash<QString,Block> blocks;
-    QVector<DxfEntity> model;
-    QString section,blockName;
-    const auto raw=dxfEntities(pairs);
-    for (const auto& entity:raw)
-    {
-        if (entity.type=="SECTION") {section=dxfText(entity.pairs,2).toUpper();continue;}
-        if (entity.type=="ENDSEC") {section.clear();continue;}
-        if (section=="BLOCKS")
+        TopoDS_Shape shape;
+        if (entity.points.size() == 1)
+            shape = BRepBuilderAPI_MakeVertex(entity.points.first()).Vertex();
+        else
         {
-            if (entity.type=="BLOCK") {blockName=dxfText(entity.pairs,2);blocks[blockName].base=dxfPoint(entity.pairs,10,20,30);}
-            else if (entity.type=="ENDBLK") blockName.clear();
-            else if (!blockName.isEmpty()) blocks[blockName].entities.push_back(entity);
-        }
-        else if (section=="ENTITIES" && dxfIntValue(entity.pairs,67)==0)
-            model.push_back(entity);
-    }
-    bool valid=true;int ignored=0;
-    std::function<void(const QVector<DxfEntity>&,const gp_GTrsf&,const QString&,int)> append;
-    append=[&](const QVector<DxfEntity>& sequence,const gp_GTrsf& transform,const QString& inheritedLayer,int depth)
-    {
-        if (!valid) return;
-        if (depth>24) {valid=false;message=QObject::tr("DXF 图块循环引用或嵌套超过 24 层。");return;}
-        for (int i=0;i<sequence.size() && valid;++i)
-        {
-            const auto& entity=sequence[i];
-            QString layer=dxfText(entity.pairs,8,"0");
-            if (layer=="0" && !inheritedLayer.isEmpty()) layer=inheritedLayer;
-            if (entity.type=="INSERT")
+            BRepBuilderAPI_MakePolygon polygon;
+            for (const auto& p : entity.points) polygon.Add(p);
+            if (entity.closed) polygon.Close();
+            if (!polygon.IsDone())
             {
-                const QString name=dxfText(entity.pairs,2);
-                if (!blocks.contains(name)) {valid=false;message=QObject::tr("DXF 引用了缺失的图块：%1").arg(name);return;}
-                const auto& block=blocks[name];
-                const double sx=dxfValue(entity.pairs,41,1),sy=dxfValue(entity.pairs,42,1),sz=dxfValue(entity.pairs,43,1);
-                if (std::min({std::abs(sx),std::abs(sy),std::abs(sz)})<1e-12) {valid=false;message=QObject::tr("图块缩放比例为零。");return;}
-                const int columns=std::max(1,dxfIntValue(entity.pairs,70,1)),rows=std::max(1,dxfIntValue(entity.pairs,71,1));
-                if (static_cast<long long>(columns)*rows>10000) {valid=false;message=QObject::tr("图块阵列过大，请拆分后导入。");return;}
-                const double angle=dxfValue(entity.pairs,50)*kDxfPi/180.0,c=std::cos(angle),sn=std::sin(angle);
-                const gp_Dir normal=dxfNormal(entity.pairs);
-                const auto insert=dxfPoint(entity.pairs,10,20,30);
-                const gp_Pnt origin=dxfOcsPoint(insert.X(),insert.Y(),insert.Z(),normal);
-                const gp_Pnt x=dxfOcsPoint(c*sx,sn*sx,0,normal), y=dxfOcsPoint(-sn*sy,c*sy,0,normal),z=dxfOcsPoint(0,0,sz,normal);
-                gp_Mat matrix(x.X(),y.X(),z.X(),x.Y(),y.Y(),z.Y(),x.Z(),y.Z(),z.Z());
-                for(int row=0;row<rows;++row) for(int column=0;column<columns;++column)
-                {
-                    // MINSERT spacing is applied before rotation, independently of block scale.
-                    const double dx=column*dxfValue(entity.pairs,44),dy=row*dxfValue(entity.pairs,45);
-                    const gp_Pnt shift=dxfOcsPoint(c*dx-sn*dy,sn*dx+c*dy,0,normal);
-                    gp_XYZ translation=origin.XYZ()+shift.XYZ()-matrix*block.base.XYZ();
-                    gp_GTrsf local(matrix,translation);
-                    append(block.entities,transform.Multiplied(local),layer,depth+1);
-                }
-                continue;
+                records.clear();
+                message = QObject::tr("DXF 对象 %1 无法构造有效线框。").arg(entity.handle);
+                return false;
             }
-            TopoDS_Compound compound;BRep_Builder builder;builder.MakeCompound(compound);int edgeCount=0;
-        if (entity.type == QStringLiteral("LINE"))
-        {
-            if (addDxfLine(builder, compound,
-                           dxfPoint(entity.pairs, 10, 20, 30),
-                           dxfPoint(entity.pairs, 11, 21, 31)))
-                ++edgeCount;
+            shape = polygon.Wire();
         }
-        else if (entity.type == QStringLiteral("CIRCLE"))
-        {
-            const gp_Dir normal = dxfNormal(entity.pairs);
-            const gp_Pnt center = dxfOcsPoint(dxfValue(entity.pairs, 10),
-                                              dxfValue(entity.pairs, 20),
-                                              dxfValue(entity.pairs, 30), normal);
-            if (addDxfCircle(builder, compound, center, normal, dxfValue(entity.pairs, 40)))
-                ++edgeCount;
-        }
-        else if (entity.type == QStringLiteral("ARC"))
-        {
-            const gp_Dir normal = dxfNormal(entity.pairs);
-            const gp_Pnt center = dxfOcsPoint(dxfValue(entity.pairs, 10),
-                                              dxfValue(entity.pairs, 20),
-                                              dxfValue(entity.pairs, 30), normal);
-            if (addDxfArc(builder, compound, center, normal,
-                          dxfValue(entity.pairs, 40),
-                          dxfValue(entity.pairs, 50),
-                          dxfValue(entity.pairs, 51)))
-                ++edgeCount;
-        }
-        else if (entity.type == QStringLiteral("ELLIPSE"))
-        {
-            if (addDxfEllipse(builder, compound, entity.pairs))
-                ++edgeCount;
-        }
-        else if (entity.type == QStringLiteral("SPLINE"))
-        {
-            if (addDxfSpline(builder, compound, entity.pairs))
-                ++edgeCount;
-        }
-        else if (entity.type == QStringLiteral("LWPOLYLINE"))
-        {
-            edgeCount += addDxfLwPolyline(builder, compound, entity.pairs);
-        }
-        else if (entity.type == QStringLiteral("POLYLINE"))
-        {
-            QVector<DxfVertex> vertices;
-            int j = i + 1;
-            for (; j < sequence.size() && sequence.at(j).type != QStringLiteral("SEQEND"); ++j)
-            {
-                if (sequence.at(j).type != QStringLiteral("VERTEX"))
-                    continue;
-                const QVector<DxfPair>& vertexPairs = sequence.at(j).pairs;
-                vertices.push_back({dxfValue(vertexPairs, 10),
-                                    dxfValue(vertexPairs, 20),
-                                    dxfValue(vertexPairs, 30),
-                                    dxfValue(vertexPairs, 42)});
-            }
-            const int flags = dxfIntValue(entity.pairs, 70);
-            // 16/64 分别表示多边形网格和多面体网格，不应误当作二维折线导入。
-            if ((flags & (16 | 64)) == 0)
-            {
-                const bool useOcs = (flags & 8) == 0;
-                edgeCount += addDxfPolylineVertices(builder, compound, vertices,
-                                                    (flags & 1) != 0,
-                                                    dxfNormal(entity.pairs), useOcs,
-                                                    dxfValue(entity.pairs, 30, 0.0));
-            }
-            i = std::min<int>(j, static_cast<int>(sequence.size() - 1));
-        }
-            else if (entity.type=="POINT") {builder.Add(compound,BRepBuilderAPI_MakeVertex(dxfPoint(entity.pairs,10,20,30)).Vertex());++edgeCount;}
-            else {if(entity.type!="SEQEND" && entity.type!="VERTEX") ++ignored;continue;}
-            if (edgeCount==0) continue;
-            TopoDS_Shape result=compound;
-            if (transform.Form()!=gp_Identity) result=BRepBuilderAPI_GTransform(compound,transform,Standard_True).Shape();
-            records.push_back({layer,dxfText(entity.pairs,5),entity.type,result});
-            if(records.size()>100000) {valid=false;message=QObject::tr("展开后的对象超过 100000 个。");return;}
-        }
-    };
-    append(model,gp_GTrsf(),QString(),0);
-    if (!valid) {records.clear();return false;}
-    if(records.empty()) {message=QObject::tr("DXF 中没有可导入的曲线或高程点。");return false;}
-    message=QObject::tr("读取 %1 个对象，保留图层和 XYZ；%2 个非曲线对象未导入。").arg(records.size()).arg(ignored);
-    return true;
+        records.push_back({entity.layer, entity.handle,
+                           entity.points.size() == 1 ? QStringLiteral("POINT") : QStringLiteral("POLYLINE"),
+                           shape});
+    }
+    return !records.isEmpty();
 }
 
 bool readDxfFile(const QString& path, TopoDS_Shape& shape, QString& message)
 {
     QVector<DxfGeometryRecord> records;
     if(!readDxfRecordsImpl(path,records,message)) return false;
-    TopoDS_Compound compound;BRep_Builder builder;builder.MakeCompound(compound);
-    for(const auto& record:records) for(TopExp_Explorer e(record.shape,TopAbs_EDGE);e.More();e.Next()) builder.Add(compound,e.Current());
-    int closed=0,open=0;
-    if(!buildConnectedDxfShape(compound,shape,closed,open)) {message=QObject::tr("未找到可连接的有效曲线。");return false;}
-    message+=QObject::tr(" 连接为 %1 个闭合轮廓、%2 条开放线框。").arg(closed).arg(open);
+    TopoDS_Compound compound;
+    BRep_Builder builder;
+    builder.MakeCompound(compound);
+    bool hasEdges = false;
+    for (const auto& record : records)
+        for (TopExp_Explorer edge(record.shape, TopAbs_EDGE); edge.More(); edge.Next())
+        {
+            builder.Add(compound, edge.Current());
+            hasEdges = true;
+        }
+    TopoDS_Shape connected;
+    int closed = 0, open = 0;
+    if (hasEdges)
+    {
+        if (!buildConnectedDxfShape(compound, connected, closed, open))
+        {
+            message = QObject::tr("未找到可连接的有效曲线。");
+            return false;
+        }
+        // Curves are connected to wires/faces; standalone survey points survive too.
+        builder.MakeCompound(compound);
+        builder.Add(compound, connected);
+    }
+    for (const auto& record : records)
+        if (record.type == QStringLiteral("POINT")) builder.Add(compound, record.shape);
+    shape = compound;
+    message += QObject::tr(" 连接为 %1 个闭合轮廓、%2 条开放线框。").arg(closed).arg(open);
     return true;
 }
 

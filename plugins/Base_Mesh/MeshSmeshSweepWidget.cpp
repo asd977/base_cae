@@ -1,4 +1,4 @@
-#include "MeshCompactDoubleSpinBox.h"
+#include "CompactDoubleSpinBox.h"
 #include "MeshSmeshSweepWidget.h"
 #include "MeshSmeshSubmeshWidget.h"
 #include "core/MeshSettingsUi.h"
@@ -132,7 +132,7 @@ MeshSmeshSweepWidget::MeshSmeshSweepWidget(QWidget* parent)
     m_targetFace = new QSpinBox(this); m_targetFace->setRange(0, 1000000); m_targetFace->hide();
     m_objectDisplay = new QLabel(tr("未选择"), this);
     m_layers = new QSpinBox(this); m_layers->setRange(1, 10000); m_layers->setValue(10);
-    m_sourceSize = new MeshCompactDoubleSpinBox(this); m_sourceSize->setRange(1.0e-9, 1.0e12); m_sourceSize->setDecimals(8); m_sourceSize->setValue(5.0);
+    m_sourceSize = new CompactDoubleSpinBox(this); m_sourceSize->setRange(1.0e-9, 1.0e12); m_sourceSize->setDecimals(8); m_sourceSize->setValue(5.0);
     m_quadSource = new QCheckBox(tr("优先四边形"), this); m_quadSource->setChecked(true);
     m_layers->setObjectName("sweepLayers");
     m_sourceSize->setObjectName("sweepSourceSize");

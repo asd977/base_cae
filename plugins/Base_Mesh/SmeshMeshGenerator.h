@@ -14,8 +14,6 @@ struct SmeshLocalSizeControl
 {
     int dimension = 3;
     int entityId = 0;
-    QVector3D center;
-    double characteristicLength = 0.0;
     double targetSize = 0.0;
 };
 

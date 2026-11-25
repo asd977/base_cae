@@ -7,6 +7,7 @@
 #include <QJsonArray>
 #include <QJsonObject>
 #include <QProcess>
+#include <QSet>
 #include <QStringList>
 #include <QVector>
 #include <QWidget>
@@ -33,6 +34,7 @@ class QTreeWidget;
 class vtkActor;
 class vtkCallbackCommand;
 class vtkPolyData;
+class vtkProp;
 
 class QTreeWidget;
 class QTreeWidgetItem;
@@ -155,10 +157,12 @@ class SlopeStandardAnalysisWidget final : public BasePage
     void clearVisualization(bool renderNow = true);
     void setOriginalModelVisible(bool visible);
     void restoreOriginalModelVisibility();
+    void setSectionAntialiasing(bool enabled);
     void saveSectionOnlyCameraState();
     void applySectionOnlyCamera();
     void restoreSectionOnlyCameraState();
-    QTreeWidget* findHostDisplayFilterTree() const;
+    void updateMaterialRegionHighlight(int row);
+    bool hasAvailableGeometrySection() const;
     void markCaseDirty();
     void updateRequiredFactorConclusion(double factor = -1.0);
     void focusErrorField(const QString& error);
@@ -262,7 +266,8 @@ class SlopeStandardAnalysisWidget final : public BasePage
     QCheckBox* m_showOriginalModelCheck{nullptr};
     QCheckBox* m_showSectionFillCheck{nullptr};
     QCheckBox* m_showSurfaceCheck{nullptr};
-    QHash<QString, int> m_savedHostDisplayStates;
+    QHash<QString, bool> m_savedPropVisibilities;
+    QVector<vtkProp*> m_savedRendererProps;
     bool m_originalModelHiddenByPage{false};
     bool m_sectionOnlyCameraSaved{false};
     double m_savedCameraPosition[3]{0.0, 0.0, 1.0};
@@ -340,6 +345,8 @@ class SlopeStandardAnalysisWidget final : public BasePage
     QPushButton* m_openDirectoryButton{nullptr};
     QJsonObject m_lastPlot;
     bool m_pageActive{false};
+    bool m_sectionAntialiasingActive{false};
+    bool m_savedUseFXAA{false};
     SectionInteractionMode m_sectionInteractionMode{SectionInteractionMode::None};
     vtkSmartPointer<vtkActor> m_sectionPickActor;
     vtkSmartPointer<vtkActor> m_sectionFillPickActor;

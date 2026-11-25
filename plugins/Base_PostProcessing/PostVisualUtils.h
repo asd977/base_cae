@@ -1,6 +1,7 @@
 #pragma once
 
 #include <services/VisualWidgetService.h>
+#include "PostMeshEdges.h"
 #include <EventManager.h>
 #include <PublicVariables.h>
 #include <PublicConstants.h>
@@ -17,6 +18,9 @@
 #include <vtkExtractCells.h>
 #include <vtkIdList.h>
 #include <vtkLookupTable.h>
+#include <vtkLight.h>
+#include <vtkLightCollection.h>
+#include <vtkLightKit.h>
 #include <vtkMapper.h>
 #include <vtkUnstructuredGrid.h>
 #include <vtkPolyData.h>
@@ -39,7 +43,7 @@
 #include <QDebug>
 #include <QDialogButtonBox>
 #include <QDoubleSpinBox>
-#include "CompactPostDoubleSpinBox.h"
+#include "CompactDoubleSpinBox.h"
 #include <QFormLayout>
 #include <QGroupBox>
 #include <QHash>
@@ -111,9 +115,14 @@ struct PostSceneStyle
     bool followMeshFilter{true};
     // 0=表面，1=表面+单元边线，2=线框。
     int representationMode{0};
-    bool showSurfaceOutline{true};
-    // 网格线强度百分比；越小越接近背景色。
-    int gridLineStrength{35};
+    static constexpr bool showSurfaceOutline=false; // Temporarily unavailable, including saved projects.
+    int surfaceInterpolation{1}; // 0=Flat, 1=Gouraud (ParaView default).
+    bool interpolateScalarsBeforeMapping{true};
+    bool computePointNormals{false}; // ParaView Surface Normals defaults.
+    bool splitSharpEdges{true};
+    double normalsFeatureAngle{30.0};
+    double meshEdgeWidth{1.0};
+    double meshEdgeOpacity{1.0};
 };
 
 struct PostDisplayFieldContext
@@ -271,6 +280,11 @@ struct PostCoincidentTopologyState
     bool applied{false};
     int previousMode{0};
     int previousOffsetFaces{1};
+    double previousFactor{0.0};
+    double previousUnits{0.0};
+    double previousLineFactor{0.0};
+    double previousLineUnits{0.0};
+    double previousPointUnits{0.0};
 };
 
 inline PostCoincidentTopologyState& postCoincidentTopologyState()
@@ -281,7 +295,7 @@ inline PostCoincidentTopologyState& postCoincidentTopologyState()
 
 // ParaView 将“面与线/点共面”的处理作为 RenderView 级策略，而不是让每个
 // Contour/Edge Actor 自己写 shader 或反复调局部 depth 参数。
-// 进入后处理时统一启用“Offset faces relative to lines and points”；退出后处理时
+// 使用 ParaView 6.0 RenderViewSettings 默认的全局原生偏移；退出后处理时
 // 恢复进入前的 VTK 全局状态，避免影响几何、网格等其他工作台。
 inline void setPostCoincidentTopologyActive(bool active)
 {
@@ -295,9 +309,16 @@ inline void setPostCoincidentTopologyActive(bool active)
         state.previousMode = vtkMapper::GetResolveCoincidentTopology();
         state.previousOffsetFaces =
             vtkMapper::GetResolveCoincidentTopologyPolygonOffsetFaces();
+        vtkMapper::GetResolveCoincidentTopologyPolygonOffsetParameters(
+            state.previousFactor, state.previousUnits);
+        vtkMapper::GetResolveCoincidentTopologyLineOffsetParameters(state.previousLineFactor,state.previousLineUnits);
+        vtkMapper::GetResolveCoincidentTopologyPointOffsetParameter(state.previousPointUnits);
 
         vtkMapper::SetResolveCoincidentTopologyToPolygonOffset();
         vtkMapper::SetResolveCoincidentTopologyPolygonOffsetFaces(1);
+        vtkMapper::SetResolveCoincidentTopologyPolygonOffsetParameters(0.0, 0.0);
+        vtkMapper::SetResolveCoincidentTopologyLineOffsetParameters(0.0, -4.0);
+        vtkMapper::SetResolveCoincidentTopologyPointOffsetParameter(-8.0);
         state.applied = true;
         return;
     }
@@ -308,7 +329,68 @@ inline void setPostCoincidentTopologyActive(bool active)
     vtkMapper::SetResolveCoincidentTopology(state.previousMode);
     vtkMapper::SetResolveCoincidentTopologyPolygonOffsetFaces(
         state.previousOffsetFaces);
+    vtkMapper::SetResolveCoincidentTopologyPolygonOffsetParameters(
+        state.previousFactor, state.previousUnits);
+    vtkMapper::SetResolveCoincidentTopologyLineOffsetParameters(state.previousLineFactor,state.previousLineUnits);
+    vtkMapper::SetResolveCoincidentTopologyPointOffsetParameter(state.previousPointUnits);
     state.applied = false;
+}
+
+struct PostLightingState
+{
+    vtkWeakPointer<vtkRenderer> renderer;
+    vtkSmartPointer<vtkLightKit> kit;
+    QVector<vtkSmartPointer<vtkLight>> previousLights;
+    bool previousAutomaticLightCreation{true};
+};
+
+inline PostLightingState& postLightingState()
+{
+    static PostLightingState state;
+    return state;
+}
+
+inline void setPostLightingActive(bool active)
+{
+    auto& state=postLightingState();
+    auto* service=ServiceRegistry::instance().getService<VisualWidgetService>();
+    vtkRenderer* renderer=service?service->renderer():nullptr;
+    if(active && state.kit && state.renderer==renderer)return;
+    if(state.kit) {
+        if(state.renderer) {
+            state.kit->RemoveLightsFromRenderer(state.renderer);
+            for(const auto& light:state.previousLights)state.renderer->AddLight(light);
+            state.renderer->SetAutomaticLightCreation(state.previousAutomaticLightCreation);
+        }
+        state.kit=nullptr;state.renderer=nullptr;state.previousLights.clear();
+    }
+    if(!active || !renderer)return;
+    state.renderer=renderer;
+    state.previousAutomaticLightCreation=renderer->GetAutomaticLightCreation();
+    auto* lights=renderer->GetLights();lights->InitTraversal();
+    while(auto* light=lights->GetNextItem())state.previousLights.append(light);
+    renderer->RemoveAllLights();renderer->AutomaticLightCreationOff();
+    state.kit=vtkSmartPointer<vtkLightKit>::New();
+    // ParaView 6.0 views_remotingviews.xml: native key/fill/back/head lights.
+    state.kit->SetKeyLightWarmth(.60);state.kit->SetKeyLightIntensity(.75);
+    state.kit->SetKeyLightElevation(50);state.kit->SetKeyLightAzimuth(10);
+    state.kit->SetFillLightWarmth(.40);state.kit->SetKeyToFillRatio(3);
+    state.kit->SetFillLightElevation(-75);state.kit->SetFillLightAzimuth(-10);
+    state.kit->SetBackLightWarmth(.50);state.kit->SetKeyToBackRatio(3.5);
+    state.kit->SetBackLightElevation(0);state.kit->SetBackLightAzimuth(110);
+    state.kit->SetHeadLightWarmth(.50);state.kit->SetKeyToHeadRatio(3);
+    state.kit->SetMaintainLuminance(0);
+    state.kit->AddLightsToRenderer(renderer);
+}
+
+inline void applyPostSurfaceLighting(vtkActor* actor)
+{
+    if(!actor)return;
+    auto* property=actor->GetProperty();
+    property->LightingOn();
+    property->SetInterpolation(postSceneStyle().surfaceInterpolation==0?VTK_FLAT:VTK_GOURAUD);
+    property->SetAmbient(0.0);property->SetDiffuse(1.0);
+    property->SetSpecular(0.0);property->SetSpecularPower(100.0);
 }
 
 struct PostSceneVisibilitySnapshot
@@ -355,7 +437,9 @@ inline void isolatePostProcessingScene(VisualWidgetService* service)
             if (vtkProp* prop = service->getProp(id))
                 state.visibility.insert(id, prop->GetVisibility() != 0);
         }
-        service->setVisible(id, false, false);
+        // A module mask may already hide this prop. Do not turn that effective
+        // hidden state into a persistent object choice when isolating results.
+        service->setTemporaryVisible(id, false, false);
     }
 }
 
@@ -371,7 +455,7 @@ inline void restoreSceneAfterPostProcessing()
         for (auto it = state.visibility.cbegin(); it != state.visibility.cend(); ++it)
         {
             if (service->getProp(it.key()))
-                service->setVisible(it.key(), it.value(), false);
+                service->setTemporaryVisible(it.key(), it.value(), false);
         }
     }
 
@@ -384,6 +468,7 @@ inline void setPostViewActive(bool active)
     // 必须先切换渲染策略，再广播“后处理视图状态变化”，这样事件处理器如果立即
     // Render，也会使用正确的 RenderView 级共面策略。
     setPostCoincidentTopologyActive(active);
+    setPostLightingActive(active);
 
     const bool previous = PublicVariables::instance().get(postViewActiveKey()).toBool();
     PublicVariables::instance().set(postViewActiveKey(), active,
@@ -477,8 +562,14 @@ inline QJsonObject savePostDisplaySettings()
     obj[QStringLiteral("postVisible")] = scene.visible;
     obj[QStringLiteral("followMeshFilter")] = scene.followMeshFilter;
     obj[QStringLiteral("representationMode")] = scene.representationMode;
+    obj[QStringLiteral("meshEdgeWidth")] = scene.meshEdgeWidth;
+    obj[QStringLiteral("meshEdgeOpacity")] = scene.meshEdgeOpacity;
     obj[QStringLiteral("showSurfaceOutline")] = scene.showSurfaceOutline;
-    obj[QStringLiteral("gridLineStrength")] = scene.gridLineStrength;
+    obj[QStringLiteral("surfaceInterpolation")] = PostSceneStyle{}.surfaceInterpolation;
+    obj[QStringLiteral("interpolateScalarsBeforeMapping")] = PostSceneStyle{}.interpolateScalarsBeforeMapping;
+    obj[QStringLiteral("computePointNormals")] = PostSceneStyle{}.computePointNormals;
+    obj[QStringLiteral("splitSharpEdges")] = PostSceneStyle{}.splitSharpEdges;
+    obj[QStringLiteral("normalsFeatureAngle")] = PostSceneStyle{}.normalsFeatureAngle;
     obj[QStringLiteral("scalarBarVisible")] = bar.visible;
     obj[QStringLiteral("scalarBarReverseColors")] = bar.reverseColors;
     obj[QStringLiteral("scalarBarCustomTitle")] = bar.customTitle;
@@ -534,8 +625,18 @@ inline void loadPostDisplaySettings(const QJsonObject& obj)
     scene.visible = obj.value(QStringLiteral("postVisible")).toBool(scene.visible);
     scene.followMeshFilter = obj.value(QStringLiteral("followMeshFilter")).toBool(scene.followMeshFilter);
     scene.representationMode = qBound(0, obj.value(QStringLiteral("representationMode")).toInt(scene.representationMode), 2);
-    scene.showSurfaceOutline = obj.value(QStringLiteral("showSurfaceOutline")).toBool(scene.showSurfaceOutline);
-    scene.gridLineStrength = qBound(0, obj.value(QStringLiteral("gridLineStrength")).toInt(scene.gridLineStrength), 100);
+    // These are application defaults, not project/user settings. Ignore older
+    // projects that persisted the advanced controls while they were available.
+    const PostSceneStyle defaults;
+    scene.surfaceInterpolation=defaults.surfaceInterpolation;
+    scene.interpolateScalarsBeforeMapping=defaults.interpolateScalarsBeforeMapping;
+    scene.computePointNormals=defaults.computePointNormals;
+    scene.splitSharpEdges=defaults.splitSharpEdges;
+    scene.normalsFeatureAngle=defaults.normalsFeatureAngle;
+    const double edgeWidth=obj.value(QStringLiteral("meshEdgeWidth")).toDouble(1.0);
+    const double edgeOpacity=obj.value(QStringLiteral("meshEdgeOpacity")).toDouble(1.0);
+    scene.meshEdgeWidth=std::isfinite(edgeWidth)?qBound(1.0,edgeWidth,5.0):1.0;
+    scene.meshEdgeOpacity=std::isfinite(edgeOpacity)?qBound(0.0,edgeOpacity,1.0):1.0;
     bar.visible = obj.value(QStringLiteral("scalarBarVisible")).toBool(bar.visible);
     bar.reverseColors = obj.value(QStringLiteral("scalarBarReverseColors")).toBool(bar.reverseColors);
     bar.customTitle = obj.value(QStringLiteral("scalarBarCustomTitle")).toString(bar.customTitle);
@@ -690,11 +791,6 @@ inline void postPublishResultFilterSource(vtkUnstructuredGrid* source)
     if (!matype && !layer)
         return;
 
-    const QVariantMap matypeCounts = postCellValueCounts(matype);
-    const QVariantMap layerCounts = postCellValueCounts(layer);
-    const QSet<int> allMatypes = postIntSetFromCountMap(matypeCounts);
-    const QSet<int> allLayers = postIntSetFromCountMap(layerCounts);
-
     const QString project = PublicVariables::instance()
                                 .get(PublicConstants::kProjectDirectoryKey)
                                 .toString()
@@ -708,6 +804,27 @@ inline void postPublishResultFilterSource(vtkUnstructuredGrid* source)
                         PublicVariables::instance()
                             .get(QStringLiteral("post.result.filter.custom"))
                             .toBool();
+
+    struct PublishedFilterSourceCache
+    {
+        vtkWeakPointer<vtkUnstructuredGrid> grid;
+        vtkMTimeType mtime{0};
+        QString project;
+        bool custom{false};
+    };
+    static PublishedFilterSourceCache lastPublished;
+    if (lastPublished.grid.GetPointer() == source &&
+        lastPublished.mtime == source->GetMTime() &&
+        lastPublished.project == project &&
+        lastPublished.custom == custom)
+    {
+        return;
+    }
+
+    const QVariantMap matypeCounts = postCellValueCounts(matype);
+    const QVariantMap layerCounts = postCellValueCounts(layer);
+    const QSet<int> allMatypes = postIntSetFromCountMap(matypeCounts);
+    const QSet<int> allLayers = postIntSetFromCountMap(layerCounts);
 
     QSet<int> checkedMatypes =
         postIntSetFromString(PublicVariables::instance()
@@ -761,6 +878,11 @@ inline void postPublishResultFilterSource(vtkUnstructuredGrid* source)
     PublicVariables::instance().set(
         QStringLiteral("post.result.filter.source.signature"), sourceSignature,
         QStringLiteral("project_dir"));
+
+    lastPublished.grid = source;
+    lastPublished.mtime = source->GetMTime();
+    lastPublished.project = project;
+    lastPublished.custom = custom;
 
     if (previousSignature != sourceSignature)
     {
@@ -838,7 +960,7 @@ inline quint64& postFilteredResultCacheSerial()
 
 inline vtkSmartPointer<vtkUnstructuredGrid> postCachedFilteredResult(
     vtkUnstructuredGrid* source, const QString& signature,
-    PostMeshFilterReport& report)
+    PostMeshFilterReport& report, bool readOnly = false)
 {
     auto& cache = postFilteredResultCache();
     for (int i = cache.size() - 1; i >= 0; --i)
@@ -856,7 +978,7 @@ inline vtkSmartPointer<vtkUnstructuredGrid> postCachedFilteredResult(
         {
             entry.accessSerial = ++postFilteredResultCacheSerial();
             report = entry.report;
-            return postShallowGrid(entry.output);
+            return readOnly ? entry.output : postShallowGrid(entry.output);
         }
     }
     return {};
@@ -892,7 +1014,8 @@ inline void postStoreFilteredResult(vtkUnstructuredGrid* source,
     }
 }
 
-inline vtkSmartPointer<vtkUnstructuredGrid> postFilteredResultGrid(vtkUnstructuredGrid* source)
+inline vtkSmartPointer<vtkUnstructuredGrid> postFilteredResultGrid(
+    vtkUnstructuredGrid* source, bool readOnly = false)
 {
     PostMeshFilterReport report;
     report.requested = postSceneStyle().followMeshFilter;
@@ -911,10 +1034,16 @@ inline vtkSmartPointer<vtkUnstructuredGrid> postFilteredResultGrid(vtkUnstructur
     // 退化单元拆分/规范化也会同步复制 CellData，因此不需要、也不应该再映射回 Mesh。
     postPublishResultFilterSource(source);
 
+    auto passthrough = [source, readOnly]() -> vtkSmartPointer<vtkUnstructuredGrid>
+    {
+        return readOnly ? vtkSmartPointer<vtkUnstructuredGrid>(source)
+                        : postShallowGrid(source);
+    };
+
     if (!report.requested || !postMeshFilterIsCustom())
     {
         postMeshFilterReport() = report;
-        return postShallowGrid(source);
+        return passthrough();
     }
 
     vtkDataArray* matype =
@@ -933,7 +1062,7 @@ inline vtkSmartPointer<vtkUnstructuredGrid> postFilteredResultGrid(vtkUnstructur
         report.fullyResolved = false;
         report.message = QStringLiteral("当前结果文件没有材料/分层分组信息");
         postMeshFilterReport() = report;
-        return postShallowGrid(source);
+        return passthrough();
     }
 
     const QSet<int> allMatypes = hasMatype ? postUniqueCellValues(matype) : QSet<int>{};
@@ -951,13 +1080,13 @@ inline vtkSmartPointer<vtkUnstructuredGrid> postFilteredResultGrid(vtkUnstructur
     {
         report.applied = true;
         postMeshFilterReport() = report;
-        return postShallowGrid(source);
+        return passthrough();
     }
 
     const QString filterSignature = postMeshFilterSignature();
     PostMeshFilterReport cachedReport;
     if (auto cached =
-            postCachedFilteredResult(source, filterSignature, cachedReport))
+            postCachedFilteredResult(source, filterSignature, cachedReport, readOnly))
     {
         postMeshFilterReport() = cachedReport;
         return cached;
@@ -1014,11 +1143,16 @@ inline vtkSmartPointer<vtkUnstructuredGrid> postFilteredResultGrid(vtkUnstructur
 }
 
 inline vtkSmartPointer<vtkUnstructuredGrid> postApplyZeroHideFilter(
-    vtkUnstructuredGrid* source, const QString& fieldName)
+    vtkUnstructuredGrid* source, const QString& fieldName, bool readOnly = false)
 {
+    auto passthrough = [source, readOnly]() -> vtkSmartPointer<vtkUnstructuredGrid>
+    {
+        return readOnly ? vtkSmartPointer<vtkUnstructuredGrid>(source)
+                        : postShallowGrid(source);
+    };
     if (!source || fieldName.isEmpty() ||
         postFieldDisplayStyle(fieldName).zeroDisplayMode != 2)
-        return postShallowGrid(source);
+        return passthrough();
 
     const QByteArray encoded = fieldName.toUtf8();
     vtkDataArray* cellArray = source->GetCellData()
@@ -1029,7 +1163,7 @@ inline vtkSmartPointer<vtkUnstructuredGrid> postApplyZeroHideFilter(
                                    : nullptr;
     if ((!cellArray || cellArray->GetNumberOfTuples() < source->GetNumberOfCells()) &&
         (!pointArray || pointArray->GetNumberOfTuples() < source->GetNumberOfPoints()))
-        return postShallowGrid(source);
+        return passthrough();
 
     double range[2]{0.0, 0.0};
     if (cellArray)
@@ -1217,6 +1351,7 @@ inline bool postActorSupportsRepresentationControl(const QString& id)
            !lower.contains(QStringLiteral("vector")) &&
            !lower.contains(QStringLiteral("glyph")) &&
            !lower.contains(QStringLiteral("probe")) &&
+           !lower.contains(QStringLiteral("mesh-edges")) &&
            !lower.contains(QStringLiteral("outline"));
 }
 
@@ -1226,21 +1361,18 @@ inline void applyPostActorRepresentation(vtkActor* actor)
         return;
 
     vtkProperty* property = actor->GetProperty();
-    const double lineStrength = qBound(0, postSceneStyle().gridLineStrength, 100) / 100.0;
-    const double lineGray = 1.0 - 0.88 * lineStrength;
     switch (qBound(0, postSceneStyle().representationMode, 2))
     {
     case 1:
         property->SetRepresentationToSurface();
-        property->EdgeVisibilityOn();
-        property->SetEdgeColor(lineGray, lineGray, lineGray);
-        property->SetLineWidth(0.5 + 0.7 * lineStrength);
+        property->SetEdgeVisibility(postSceneStyle().meshEdgeOpacity>=1.0);
+        property->SetEdgeColor(0.0,0.0,0.0);
+        property->SetLineWidth(postSceneStyle().meshEdgeWidth);
         break;
     case 2:
         property->SetRepresentationToWireframe();
         property->EdgeVisibilityOff();
-        property->SetColor(lineGray, lineGray, lineGray);
-        property->SetLineWidth(0.6 + 0.8 * lineStrength);
+        property->SetLineWidth(postSceneStyle().meshEdgeWidth);
         break;
     default:
         property->SetRepresentationToSurface();
@@ -1253,12 +1385,17 @@ inline void applyPostSceneRepresentation(VisualWidgetService* service, bool rend
 {
     if (!service)
         return;
+    PostMeshEdges::prune(service);
     for (const QString& id : service->allIds())
     {
         if (!isPostRegistryPropId(id) || !postActorSupportsRepresentationControl(id))
             continue;
-        if (auto* actor = vtkActor::SafeDownCast(service->getProp(id)))
+        if (auto* actor = vtkActor::SafeDownCast(service->getProp(id))) {
             applyPostActorRepresentation(actor);
+            const auto& style=postSceneStyle();
+            PostMeshEdges::update(service,id,actor,style.representationMode==1 && style.meshEdgeOpacity>0 && style.meshEdgeOpacity<1,
+                                  style.meshEdgeOpacity,style.meshEdgeWidth);
+        }
     }
     if (renderNow)
         service->render();
@@ -1452,8 +1589,8 @@ inline bool editPostDisplaySettings(QWidget* parent, VisualWidgetService* servic
         auto* rangeForm = new QFormLayout(rangeGroup);
         automaticRange = new QCheckBox(QStringLiteral("自动使用数据范围"), rangeGroup);
         automaticRange->setChecked(rangeStyle.automatic);
-        rangeMinSpin = new CompactPostDoubleSpinBox(rangeGroup);
-        rangeMaxSpin = new CompactPostDoubleSpinBox(rangeGroup);
+        rangeMinSpin = new CompactDoubleSpinBox(rangeGroup);
+        rangeMaxSpin = new CompactDoubleSpinBox(rangeGroup);
         rangeMinSpin->setRange(-1.0e100, 1.0e100);
         rangeMaxSpin->setRange(-1.0e100, 1.0e100);
         rangeMinSpin->setDecimals(8);
@@ -1497,7 +1634,7 @@ inline bool editPostDisplaySettings(QWidget* parent, VisualWidgetService* servic
     tickMode->addItem(QStringLiteral("等分数量"), 1);
     tickMode->addItem(QStringLiteral("固定步长"), 2);
     tickMode->setCurrentIndex(bar.tickMode);
-    auto* tickStep = new CompactPostDoubleSpinBox(scalarBarGroup);
+    auto* tickStep = new CompactDoubleSpinBox(scalarBarGroup);
     tickStep->setRange(1.0e-12, 1.0e100);
     tickStep->setDecimals(12);
     tickStep->setValue(bar.tickStep);
@@ -1718,19 +1855,25 @@ inline bool addPostPropByService(VisualWidgetService* service, const QString& id
         return false;
 
     vtkProp* existing = service->getProp(id);
-    if (existing && existing != prop.GetPointer())
+    if (existing && existing != prop.GetPointer()) {
+        PostMeshEdges::remove(service,id);
         service->removeProp(id, false);
+    }
 
     const bool ok = service->addProp(id, prop, QStringLiteral("post"), displayName,
                                      false, false);
     const bool attached = ok || service->getProp(id) == prop.GetPointer();
     if (attached && postActorSupportsRepresentationControl(id))
     {
-        if (auto* actor = vtkActor::SafeDownCast(service->getProp(id)))
+        if (auto* actor = vtkActor::SafeDownCast(service->getProp(id))) {
             applyPostActorRepresentation(actor);
+            const auto& style=postSceneStyle();
+            PostMeshEdges::update(service,id,actor,style.representationMode==1 && style.meshEdgeOpacity>0 && style.meshEdgeOpacity<1,
+                                  style.meshEdgeOpacity,style.meshEdgeWidth);
+        }
     }
     if (attached && !postSceneStyle().visible)
-        service->setVisible(id, false, false);
+        service->setTemporaryVisible(id, false, false);
     if (renderNow)
         service->render();
     return attached;
@@ -1744,6 +1887,7 @@ inline bool removePostPropByService(VisualWidgetService* service, const QString&
     if (!service || id.isEmpty())
         return false;
     vtkProp* existing = service->getProp(id);
+    if(existing && (!prop.GetPointer() || existing==prop.GetPointer()))PostMeshEdges::remove(service,id);
     const bool ok = existing && (!prop.GetPointer() || existing == prop.GetPointer())
                         ? service->removeProp(id, false)
                         : false;
@@ -1770,6 +1914,7 @@ inline bool removeActorByService(VisualWidgetService* service, const QString& id
 {
     if (!service || id.isEmpty())
         return false;
+    PostMeshEdges::remove(service,id);
     const bool ok = service->removeProp(id, false);
     if (renderNow)
         service->render();

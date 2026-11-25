@@ -1,3 +1,4 @@
+#include <CompactDoubleSpinBox.h>
 #include "SeepageBoundaryPage.h"
 
 #include <PickManager.h>
@@ -816,23 +817,14 @@ void SeepageBoundaryPage::setupBatchGroupCombo()
                     if (!meshSvc)
                         return;
 
-                    const MshPickMap& map = meshSvc->mshPickMapSolid();
-                    const int physId = ui->comboBoxGroup->itemData(row).toInt();
-                    const int dim = map.physicalDim(physId);
-                    QVector<int> source;
-                    if (dim == 0)
-                        source = map.physicalPointIds(physId, 0);
-                    else if (dim == 1)
-                        source = map.physicalPointIds(physId, 1);
-                    else if (dim == 2)
-                        source = map.physicalPointIds(physId, 2);
-                    else
-                        return;
-
+                    const MeshTagKey key{
+                        ui->comboBoxGroup->itemData(row, Qt::UserRole + 1).toString(),
+                        ui->comboBoxGroup->itemData(row, Qt::UserRole + 2).toInt(),
+                        ui->comboBoxGroup->itemData(row).toInt()};
+                    const QVector<MeshIdType> source = meshSvc->pointIdsOfTag(key);
                     QVector<vtkIdType> ids;
                     ids.reserve(source.size());
-                    for (int id : source)
-                        ids.push_back(vtkIdType(id));
+                    for (MeshIdType id : source) ids.push_back(static_cast<vtkIdType>(id));
                     PickManager::instance().setPreviewPointIds(
                         pickDomain(), m_uuid, GridKind::Solid, ids);
                 }, Qt::UniqueConnection);
@@ -856,25 +848,28 @@ void SeepageBoundaryPage::refreshGroupCombo()
     if (!meshSvc || !ui)
         return;
 
-    const int previousPhysId = ui->comboBoxGroup->currentData().toInt();
-    const MshPickMap& map = meshSvc->mshPickMapSolid();
+    const int previousId = ui->comboBoxGroup->currentData().toInt();
+    const QString previousCategory = ui->comboBoxGroup->currentData(Qt::UserRole + 1).toString();
+    const int previousDim = ui->comboBoxGroup->currentData(Qt::UserRole + 2).toInt();
     const int dimFilter = ui->comboBoxDim->currentData().toInt();
 
     const QSignalBlocker blocker(ui->comboBoxGroup);
     ui->comboBoxGroup->clear();
-    const auto nameMap = map.physicalNameMap();
-    for (auto it = nameMap.constBegin(); it != nameMap.constEnd(); ++it)
+    for (const MeshTagSet& set : meshSvc->boundaryTagSets(dimFilter))
     {
-        const int physId = it.key();
-        const int dim = map.physicalDim(physId);
-        if (dim < 0 || dim > 2 || (dimFilter >= 0 && dim != dimFilter))
-            continue;
-        ui->comboBoxGroup->addItem(it.value(), physId);
+        if (set.pointIds.isEmpty()) continue;
+        const QString text = set.name.trimmed().isEmpty()
+            ? QStringLiteral("%1 %2").arg(set.key.category).arg(set.key.id) : set.name;
+        ui->comboBoxGroup->addItem(text, set.key.id);
+        const int row = ui->comboBoxGroup->count() - 1;
+        ui->comboBoxGroup->setItemData(row, set.key.category, Qt::UserRole + 1);
+        ui->comboBoxGroup->setItemData(row, set.key.dim, Qt::UserRole + 2);
     }
-
-    const int restoredIndex = ui->comboBoxGroup->findData(previousPhysId);
-    if (restoredIndex >= 0)
-        ui->comboBoxGroup->setCurrentIndex(restoredIndex);
+    for (int row = 0; row < ui->comboBoxGroup->count(); ++row)
+        if (ui->comboBoxGroup->itemData(row).toInt() == previousId
+            && ui->comboBoxGroup->itemData(row, Qt::UserRole + 1).toString() == previousCategory
+            && ui->comboBoxGroup->itemData(row, Qt::UserRole + 2).toInt() == previousDim)
+        { ui->comboBoxGroup->setCurrentIndex(row); break; }
 }
 
 void SeepageBoundaryPage::onDimChanged(int)
@@ -892,23 +887,14 @@ void SeepageBoundaryPage::onGroupChanged(int index)
     if (!meshSvc)
         return;
 
-    const MshPickMap& map = meshSvc->mshPickMapSolid();
-    const int physId = ui->comboBoxGroup->itemData(index).toInt();
-    const int dim = map.physicalDim(physId);
-    QVector<int> source;
-    if (dim == 0)
-        source = map.physicalPointIds(physId, 0);
-    else if (dim == 1)
-        source = map.physicalPointIds(physId, 1);
-    else if (dim == 2)
-        source = map.physicalPointIds(physId, 2);
-    else
-        return;
-
+    const MeshTagKey key{
+        ui->comboBoxGroup->itemData(index, Qt::UserRole + 1).toString(),
+        ui->comboBoxGroup->itemData(index, Qt::UserRole + 2).toInt(),
+        ui->comboBoxGroup->itemData(index).toInt()};
+    const QVector<MeshIdType> source = meshSvc->pointIdsOfTag(key);
     QVector<vtkIdType> ids;
     ids.reserve(source.size());
-    for (int id : source)
-        ids.push_back(vtkIdType(id));
+    for (MeshIdType id : source) ids.push_back(static_cast<vtkIdType>(id));
 
     PickManager::instance().setSelectedPointIds(
         pickDomain(), m_uuid, GridKind::Solid, ids, false);
@@ -1826,13 +1812,13 @@ void SeepageBoundaryPage::appendWaterLevelCurveRow(double time, double level)
     const int row = ui->tableWaterLevelCurve->rowCount();
     ui->tableWaterLevelCurve->insertRow(row);
 
-    auto* timeSpin = new QDoubleSpinBox(ui->tableWaterLevelCurve);
+    auto* timeSpin = new CompactDoubleSpinBox(ui->tableWaterLevelCurve);
     timeSpin->setDecimals(6);
     timeSpin->setRange(-1.0e12, 1.0e12);
     timeSpin->setKeyboardTracking(false);
     timeSpin->setValue(time);
 
-    auto* levelSpin = new QDoubleSpinBox(ui->tableWaterLevelCurve);
+    auto* levelSpin = new CompactDoubleSpinBox(ui->tableWaterLevelCurve);
     levelSpin->setDecimals(4);
     levelSpin->setRange(-1.0e6, 1.0e6);
     levelSpin->setKeyboardTracking(false);
@@ -2007,7 +1993,9 @@ QJsonObject SeepageBoundaryPage::saveJson()
 {
     QJsonObject obj;
     obj[QStringLiteral("dim_index")] = ui->comboBoxDim->currentIndex();
-    obj[QStringLiteral("group_phys_id")] = ui->comboBoxGroup->currentData().toInt();
+    obj[QStringLiteral("group_phys_id")] = ui->comboBoxGroup->currentData().toInt(); // legacy key
+    obj[QStringLiteral("group_tag_category")] = ui->comboBoxGroup->currentData(Qt::UserRole + 1).toString();
+    obj[QStringLiteral("group_tag_dim")] = ui->comboBoxGroup->currentData(Qt::UserRole + 2).toInt();
 
     auto toJson = [](const QVector<vtkIdType>& ids)
     {
@@ -2058,7 +2046,12 @@ void SeepageBoundaryPage::loadJson(const QJsonObject& obj)
     const int physId = obj.value(QStringLiteral("group_phys_id")).toInt(-1);
     for (int i = 0; i < ui->comboBoxGroup->count(); ++i)
     {
-        if (ui->comboBoxGroup->itemData(i).toInt() == physId)
+        if (ui->comboBoxGroup->itemData(i).toInt() == physId
+            && (obj.value(QStringLiteral("group_tag_category")).toString().isEmpty()
+                || (ui->comboBoxGroup->itemData(i, Qt::UserRole + 1).toString()
+                    == obj.value(QStringLiteral("group_tag_category")).toString()
+                    && ui->comboBoxGroup->itemData(i, Qt::UserRole + 2).toInt()
+                    == obj.value(QStringLiteral("group_tag_dim")).toInt())))
         {
             const QSignalBlocker blocker(ui->comboBoxGroup);
             ui->comboBoxGroup->setCurrentIndex(i);

@@ -175,7 +175,7 @@
 </widget>
          </item>
          <item row="1" column="1">
-          <widget class="QDoubleSpinBox" name="doubleSpinBoxA">
+          <widget class="CompactDoubleSpinBox" name="doubleSpinBoxA">
            <property name="decimals">
             <number>6</number>
            </property>
@@ -213,7 +213,7 @@
 </widget>
          </item>
          <item row="2" column="1">
-          <widget class="QDoubleSpinBox" name="doubleSpinBoxP">
+          <widget class="CompactDoubleSpinBox" name="doubleSpinBoxP">
            <property name="decimals">
             <number>6</number>
            </property>
@@ -456,6 +456,8 @@
    <extends>QComboBox</extends>
    <header>CustomComboBox.h</header>
   </customwidget>
+ 
+  <customwidget><class>CompactDoubleSpinBox</class><extends>QDoubleSpinBox</extends><header>CompactDoubleSpinBox.h</header></customwidget>
  </customwidgets>
  <resources />
  <connections />

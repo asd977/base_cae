@@ -2,6 +2,20 @@
 
 namespace
 {
+MaterialModel createLinearElasticModel()
+{
+    MaterialModel model;
+    model.key = QStringLiteral("linear_elastic");
+    model.displayName = QStringLiteral("线弹性实体材料");
+    model.ib = 0;
+    model.columns << QStringLiteral("序号") << QStringLiteral("变形模量E（GPa）")
+                  << QStringLiteral("泊松比μ") << QStringLiteral("容重t/m3");
+    model.displayColumns << QStringLiteral("材料编号") << QStringLiteral("弹性模量（GPa）")
+                         << QStringLiteral("泊松比") << QStringLiteral("容重（t/m³）");
+    model.columnOutputRows = QVector<int>(model.columns.size(), -1);
+    return model;
+}
+
 MaterialModel createHoekBrownModel()
 {
     MaterialModel model;
@@ -315,7 +329,7 @@ MaterialModel createSoilKgModel()
                          << QStringLiteral("加载剪切刚度参数 Gi（10⁵ Pa）")
                          << QStringLiteral("加载剪切刚度系数 αG")
                          << QStringLiteral("加载剪切修正系数 βG")
-                         << QStringLiteral("强度参数 a（10⁵ Pa）")
+                         << QStringLiteral("强度参数 a（kPa）")
                          << QStringLiteral("强度参数 b")
                          << QStringLiteral("卸载体积刚度参数 Kie（10⁵ Pa）")
                          << QStringLiteral("卸载体积刚度系数 αke")
@@ -436,6 +450,11 @@ MaterialModel createSoilEbModel()
 
 QString defaultMaterialPropertyValue(const QString& modelKey, const QString& column)
 {
+    if (modelKey == QStringLiteral("linear_elastic"))
+    {
+        if (column == QStringLiteral("泊松比μ")) return QStringLiteral("0.25");
+        return QString();
+    }
     if(modelKey==QStringLiteral("planar_elastic_beam"))
     {
         if(column==QStringLiteral("弹性模量E（GPa）"))return QStringLiteral("200");
@@ -749,7 +768,7 @@ QString defaultMaterialPropertyValue(const QString& modelKey, const QString& col
 
 QVector<MaterialModel> createDefaultMaterialModels()
 {
-    return {createHoekBrownModel(), createDruckerPragerModel(), createHuangjinpingModel(), createSoilEbModel(), createSoilEmuModel(),
+    return {createLinearElasticModel(), createHoekBrownModel(), createDruckerPragerModel(), createHuangjinpingModel(), createSoilEbModel(), createSoilEmuModel(),
             createSoilEmuCrushModel(),
             createDamDynamicModel(), createHuangjinpingBarModel(), createDagangshanIsotropicModel(),
             createNanshuiModel(), createSoilKgModel(),createPlanarElasticBeamModel()};

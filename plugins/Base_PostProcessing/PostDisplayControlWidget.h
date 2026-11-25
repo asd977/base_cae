@@ -12,6 +12,7 @@ class QGroupBox;
 class QComboBox;
 class QSpinBox;
 class QDoubleSpinBox;
+class QFormLayout;
 
 namespace Ui
 {
@@ -55,8 +56,16 @@ class PostDisplayControlWidget : public QWidget
     QCheckBox* m_thresholdEnabled{nullptr};
     QDoubleSpinBox* m_thresholdValue{nullptr};
     QSpinBox* m_belowTransparency{nullptr};
-    QSpinBox* m_gridLineStrengthSpinBox{nullptr};
+    QWidget* m_meshEdgeSettings{nullptr};
+    QFormLayout* m_meshEdgeForm{nullptr};
+    QDoubleSpinBox* m_meshEdgeWidth{nullptr};
+    QSpinBox* m_meshEdgeOpacity{nullptr};
     QCheckBox* m_showOutlineCheckBox{nullptr};
+    QComboBox* m_surfaceInterpolationComboBox{nullptr};
+    QCheckBox* m_scalarInterpolationCheckBox{nullptr};
+    QCheckBox* m_computeNormalsCheckBox{nullptr};
+    QCheckBox* m_splitSharpEdgesCheckBox{nullptr};
+    QDoubleSpinBox* m_normalsFeatureAngleSpinBox{nullptr};
     QComboBox* m_tickModeComboBox{nullptr};
     QDoubleSpinBox* m_tickStepSpinBox{nullptr};
     QCheckBox* m_reverseColorsCheckBox{nullptr};

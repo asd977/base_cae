@@ -16,11 +16,11 @@
    <item><widget class="QGroupBox" name="optionGroup"><property name="title"><string>检查设置</string></property>
     <layout class="QGridLayout" name="optionLayout">
      <item row="0" column="0"><widget class="QLabel" name="smallEdgeLabel"><property name="text"><string>小边阈值</string></property></widget></item>
-     <item row="0" column="1"><widget class="QDoubleSpinBox" name="smallEdgeSpin"><property name="decimals"><number>8</number></property><property name="minimum"><double>0.000000001</double></property><property name="maximum"><double>1000000.0</double></property><property name="value"><double>0.001</double></property><property name="suffix"><string> mm</string></property><property name="keyboardTracking"><bool>false</bool></property></widget></item>
+     <item row="0" column="1"><widget class="CompactDoubleSpinBox" name="smallEdgeSpin"><property name="decimals"><number>8</number></property><property name="minimum"><double>0.000000001</double></property><property name="maximum"><double>1000000.0</double></property><property name="value"><double>0.001</double></property><property name="suffix"><string> mm</string></property><property name="keyboardTracking"><bool>false</bool></property></widget></item>
      <item row="0" column="2"><widget class="QLabel" name="smallFaceLabel"><property name="text"><string>小面阈值</string></property></widget></item>
-     <item row="0" column="3"><widget class="QDoubleSpinBox" name="smallFaceSpin"><property name="decimals"><number>8</number></property><property name="minimum"><double>0.000000000001</double></property><property name="maximum"><double>1000000000000.0</double></property><property name="value"><double>0.0001</double></property><property name="suffix"><string> mm²</string></property><property name="keyboardTracking"><bool>false</bool></property></widget></item>
+     <item row="0" column="3"><widget class="CompactDoubleSpinBox" name="smallFaceSpin"><property name="decimals"><number>8</number></property><property name="minimum"><double>0.000000000001</double></property><property name="maximum"><double>1000000000000.0</double></property><property name="value"><double>0.0001</double></property><property name="suffix"><string> mm²</string></property><property name="keyboardTracking"><bool>false</bool></property></widget></item>
      <item row="1" column="0"><widget class="QLabel" name="toleranceLabel"><property name="text"><string>修复精度</string></property></widget></item>
-     <item row="1" column="1"><widget class="QDoubleSpinBox" name="toleranceSpin"><property name="decimals"><number>9</number></property><property name="minimum"><double>0.0000000001</double></property><property name="maximum"><double>1.0</double></property><property name="value"><double>0.000001</double></property><property name="suffix"><string> mm</string></property><property name="keyboardTracking"><bool>false</bool></property></widget></item>
+     <item row="1" column="1"><widget class="CompactDoubleSpinBox" name="toleranceSpin"><property name="decimals"><number>9</number></property><property name="minimum"><double>0.0000000001</double></property><property name="maximum"><double>1.0</double></property><property name="value"><double>0.000001</double></property><property name="suffix"><string> mm</string></property><property name="keyboardTracking"><bool>false</bool></property></widget></item>
      <item row="1" column="2"><widget class="QCheckBox" name="sewCheck"><property name="text"><string>尝试闭合开放曲面</string></property><property name="checked"><bool>true</bool></property></widget></item>
      <item row="1" column="3"><widget class="QCheckBox" name="unifyCheck"><property name="text"><string>合并重复面和边</string></property><property name="toolTip"><string>修复后部分边、面编号可能变化</string></property></widget></item>
     </layout>
@@ -28,5 +28,8 @@
    <item><widget class="QLabel" name="summaryLabel"><property name="minimumHeight"><number>34</number></property><property name="text"><string>选择对象后点击“检查”。</string></property><property name="wordWrap"><bool>true</bool></property></widget></item>
    <item><widget class="QTableWidget" name="reportTable"/></item>
   </layout>
- </widget><resources/><connections/>
+ </widget> <customwidgets>
+  <customwidget><class>CompactDoubleSpinBox</class><extends>QDoubleSpinBox</extends><header>CompactDoubleSpinBox.h</header></customwidget>
+ </customwidgets>
+ <resources/><connections/>
 </ui>

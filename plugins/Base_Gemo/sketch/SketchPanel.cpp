@@ -1,4 +1,5 @@
 #include "SketchPanel.h"
+#include <CompactNumberDelegate.h>
 #include "SketchPlanarRegionBuilder.h"
 #include "SketchCurveTools.h"
 #include "../builders/ImportGeometryBuilder.h"
@@ -1515,6 +1516,7 @@ void Sketch2DDialog::loadJson(const QJsonObject& obj)
 void Sketch2DDialog::initUi()
 {
     ui->setupUi(this);
+    ui->pointsTable->setItemDelegate(new CompactNumberDelegate(ui->pointsTable));
     setStyleSheet(QStringLiteral(R"(
         QWidget#Sketch2DDialog,
         QWidget#Sketch2DDialog QLabel,
@@ -1623,7 +1625,7 @@ void Sketch2DDialog::initUi()
     {
         ui->importDxfButton->setText(tr("导入 DXF 到草图"));
         ui->importDxfButton->setToolTip(
-            tr("将 DXF 中的直线、圆、圆弧和样条转为可继续编辑的草图元素。"));
+            tr("使用 GDAL 导入 DXF 曲线和参考点；圆、圆弧和样条按离散折线导入，可继续编辑。"));
     }
 
     ui->lineButton->setText(tr("折线轮廓"));

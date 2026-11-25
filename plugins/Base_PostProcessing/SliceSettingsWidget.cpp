@@ -314,26 +314,6 @@ SliceSettingsWidget::SliceSettingsWidget(VisualWidgetService* postProcessingWidg
     ui->modeStackedWidget->setCurrentIndex(0);
 
     connect(ui->sliceSlider, &QSlider::valueChanged, this, &SliceSettingsWidget::showCutPlane);
-    connect(ui->slicePositionSpin, QOverload<double>::of(&QDoubleSpinBox::valueChanged), this,
-            &SliceSettingsWidget::on_slicePositionSpin_valueChanged);
-    connect(ui->planeComboBox, QOverload<int>::of(&QComboBox::currentIndexChanged), this,
-            &SliceSettingsWidget::on_planeComboBox_currentIndexChanged);
-    connect(ui->analysisComboBox,
-            QOverload<int>::of(&QComboBox::currentIndexChanged), this,
-            &SliceSettingsWidget::on_analysisComboBox_currentIndexChanged);
-    connect(ui->resultDirComboBox, QOverload<int>::of(&QComboBox::currentIndexChanged), this,
-            &SliceSettingsWidget::on_resultDirComboBox_currentIndexChanged);
-    connect(ui->resultTimeComboBox,
-            QOverload<int>::of(&QComboBox::currentIndexChanged), this,
-            &SliceSettingsWidget::on_resultTimeComboBox_currentIndexChanged);
-    connect(ui->confirmButton, &QPushButton::clicked, this,
-            &SliceSettingsWidget::on_confirmButton_clicked);
-    connect(ui->singleSliceRadioButton, &QRadioButton::toggled, this,
-            &SliceSettingsWidget::on_singleSliceRadioButton_toggled);
-    connect(ui->scalarComboBox, QOverload<int>::of(&QComboBox::currentIndexChanged), this,
-            &SliceSettingsWidget::on_scalarComboBox_currentIndexChanged);
-    connect(ui->stepComboBox, QOverload<int>::of(&QComboBox::currentIndexChanged), this,
-            &SliceSettingsWidget::on_stepComboBox_currentIndexChanged);
 
     EventManager::instance().registerHandler(
         postDisplaySettingsChangedEvent(), this,
@@ -363,6 +343,8 @@ SliceSettingsWidget::~SliceSettingsWidget()
 
 void SliceSettingsWidget::beforeLoad()
 {
+    const QSignalBlocker legendBlocker(ui->showScalarBarCheckBox);
+    const QSignalBlocker contourBlocker(ui->showContourCheckBox);
     setProperty("postDisplayActive", true);
     showPostProcessingOnly(m_visualService, false);
     ui->showScalarBarCheckBox->setChecked(postScalarBarStyle().visible);
@@ -620,7 +602,6 @@ void SliceSettingsWidget::on_resultTimeComboBox_currentIndexChanged(int)
         on_stepComboBox_currentIndexChanged(ui->stepComboBox->currentIndex());
 }
 
-
 void SliceSettingsWidget::beforeUnload()
 {
     setPostViewActive(false);
@@ -692,16 +673,20 @@ void SliceSettingsWidget::on_stepComboBox_currentIndexChanged(int idx)
     m_ZRange[0] = b[4];
     m_ZRange[1] = b[5];
 
-    // 同名节点/单元变量分别显示，避免选错数据关联。
-    PostFieldUtils::fillCombo(ui->scalarComboBox, m_grid);
-    const int sharedFieldIndex = PostResultSelectionUtils::findSharedField(
-        ui->scalarComboBox, PostFieldUtils::NameRole, PostFieldUtils::AssociationRole);
-    if (sharedFieldIndex >= 0)
-        ui->scalarComboBox->setCurrentIndex(sharedFieldIndex);
+    {
+        const QSignalBlocker scalarBlocker(ui->scalarComboBox);
+        const QSignalBlocker planeBlocker(ui->planeComboBox);
+        // 同名节点/单元变量分别显示，避免选错数据关联。
+        PostFieldUtils::fillCombo(ui->scalarComboBox, m_grid);
+        const int sharedFieldIndex = PostResultSelectionUtils::findSharedField(
+            ui->scalarComboBox, PostFieldUtils::NameRole, PostFieldUtils::AssociationRole);
+        if (sharedFieldIndex >= 0)
+            ui->scalarComboBox->setCurrentIndex(sharedFieldIndex);
 
-    // UI 不自动出结果
-    ui->planeComboBox->setCurrentIndex(0);
-    updatePositionControls(0.5);
+        // UI 不自动出结果
+        ui->planeComboBox->setCurrentIndex(0);
+        updatePositionControls(0.5);
+    }
 
     // 切步后：默认只显示整体云图
     m_singleDisplayed = false;
@@ -714,7 +699,10 @@ void SliceSettingsWidget::on_stepComboBox_currentIndexChanged(int idx)
 
     // 上色整体云图
     if (ui->scalarComboBox->count() > 0)
+    {
         on_scalarComboBox_currentIndexChanged(ui->scalarComboBox->currentIndex());
+        return;
+    }
 
     reattachAccordingToDisplayState();
     if (m_visualService)
@@ -731,7 +719,7 @@ void SliceSettingsWidget::on_scalarComboBox_currentIndexChanged(int)
                                                      ui->resultTimeComboBox, ui->stepComboBox);
     if (!m_grid)
         return;
-    vtkSmartPointer<vtkUnstructuredGrid> displayGrid = postFilteredResultGrid(m_grid);
+    vtkSmartPointer<vtkUnstructuredGrid> displayGrid = postFilteredResultGrid(m_grid, true);
     if (!displayGrid || displayGrid->GetNumberOfCells() <= 0)
     {
         clearPostDisplayContext();
@@ -741,7 +729,7 @@ void SliceSettingsWidget::on_scalarComboBox_currentIndexChanged(int)
         return;
     }
     const PostFieldUtils::Field field = PostFieldUtils::selectedField(ui->scalarComboBox);
-    displayGrid = postApplyZeroHideFilter(displayGrid, field.name);
+    displayGrid = postApplyZeroHideFilter(displayGrid, field.name, true);
     if (!displayGrid || displayGrid->GetNumberOfCells() <= 0)
         return;
     vtkDataArray* arr = PostFieldUtils::array(displayGrid, field);
@@ -809,7 +797,7 @@ void SliceSettingsWidget::on_scalarComboBox_currentIndexChanged(int)
     // 没有在显示结果时，才把整体云图挂上
     if (!m_singleDisplayed && !m_multiDisplayed)
         addActorByService(m_visualService, postActorId(getUuid(), QStringLiteral("surface")),
-                          m_actor, QStringLiteral("结果表面"));
+                          m_actor, QStringLiteral("结果表面"), false);
 
     // 若已经在显示结果，重建结果以复用新 LUT
     if (m_singleDisplayed)
@@ -929,6 +917,7 @@ void SliceSettingsWidget::on_singleSliceRadioButton_toggled(bool checked)
         hideMultiSlicesFromScene();
         m_multiDisplayed = false;
         showCutPlane();
+        return;
     }
     else
     {
@@ -1003,11 +992,11 @@ void SliceSettingsWidget::buildSingleSliceResult()
     if (!m_grid || !m_visualService)
         return;
 
-    vtkSmartPointer<vtkUnstructuredGrid> displayGrid = postFilteredResultGrid(m_grid);
+    vtkSmartPointer<vtkUnstructuredGrid> displayGrid = postFilteredResultGrid(m_grid, true);
     if (!displayGrid || displayGrid->GetNumberOfCells() <= 0)
         return;
     const PostFieldUtils::Field field = PostFieldUtils::selectedField(ui->scalarComboBox);
-    displayGrid = postApplyZeroHideFilter(displayGrid, field.name);
+    displayGrid = postApplyZeroHideFilter(displayGrid, field.name, true);
     if (!displayGrid || displayGrid->GetNumberOfCells() <= 0)
         return;
     vtkDataArray* arr = PostFieldUtils::array(displayGrid, field);
@@ -1121,11 +1110,11 @@ void SliceSettingsWidget::buildMultiSliceResult()
     const bool includeEnds = ui->includeEndsCheck && ui->includeEndsCheck->isChecked();
     const int planeIndex = ui->planeComboBox->currentIndex();
 
-    vtkSmartPointer<vtkUnstructuredGrid> displayGrid = postFilteredResultGrid(m_grid);
+    vtkSmartPointer<vtkUnstructuredGrid> displayGrid = postFilteredResultGrid(m_grid, true);
     if (!displayGrid || displayGrid->GetNumberOfCells() <= 0)
         return;
     const PostFieldUtils::Field field = PostFieldUtils::selectedField(ui->scalarComboBox);
-    displayGrid = postApplyZeroHideFilter(displayGrid, field.name);
+    displayGrid = postApplyZeroHideFilter(displayGrid, field.name, true);
     if (!displayGrid || displayGrid->GetNumberOfCells() <= 0)
         return;
     vtkDataArray* arr = PostFieldUtils::array(displayGrid, field);
@@ -1346,7 +1335,7 @@ void SliceSettingsWidget::reattachAccordingToDisplayState()
     // 默认：整体云图
     if (m_actor)
         addActorByService(m_visualService, postActorId(getUuid(), QStringLiteral("surface")),
-                          m_actor, QStringLiteral("结果表面"));
+                          m_actor, QStringLiteral("结果表面"), false);
 
     // 单切面模式没有单独预览状态，直接恢复/生成真实切面结果。
     if (singleMode && !m_singleDisplayed)

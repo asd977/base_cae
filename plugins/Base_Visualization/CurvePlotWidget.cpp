@@ -6,6 +6,7 @@
 #include <QFile>
 #include <QFileInfo>
 #include <QFrame>
+#include <QHash>
 #include <QHBoxLayout>
 #include <QLabel>
 #include <QRegularExpression>
@@ -109,9 +110,72 @@ QString canonicalFieldName(QString field)
 {
     field = field.trimmed().toUpper();
     field.replace(QRegularExpression(QStringLiteral("\\s+")), QStringLiteral(" "));
-    if (field == QStringLiteral("MAXUR"))
+    if (field == QStringLiteral("SRF"))
+        return QStringLiteral("FOS");
+    if (field == QStringLiteral("MAXUR") || field == QStringLiteral("MAX_UR") ||
+        field == QStringLiteral("MAXVAL_UR"))
         return QStringLiteral("MAX UR");
     return field;
+}
+
+bool parseTraceHeader(const QString& line, QHash<QString, int>& columnIndices)
+{
+    if (line.contains(QLatin1Char('=')))
+        return false;
+
+    const QStringList tokens =
+        line.split(QRegularExpression(QStringLiteral("\\s+")), Qt::SkipEmptyParts);
+    if (tokens.size() < 2)
+        return false;
+
+    QHash<QString, int> detected;
+    for (int i = 0; i < tokens.size(); ++i)
+    {
+        const QString canonical = canonicalFieldName(tokens.at(i));
+        if (canonical == QStringLiteral("ISTEP") || canonical == QStringLiteral("FOS") ||
+            canonical == QStringLiteral("PTOT") || canonical == QStringLiteral("MAX UR") ||
+            canonical == QStringLiteral("LOOP"))
+        {
+            detected.insert(canonical, i);
+        }
+    }
+
+    if (detected.size() < 2)
+        return false;
+
+    columnIndices = detected;
+    return true;
+}
+
+bool parseTraceTableRow(const QString& line, const QHash<QString, int>& columnIndices,
+                        QVector<double>& parsedValues, QStringList& parsedFields)
+{
+    if (columnIndices.isEmpty() || line.contains(QLatin1Char('=')))
+        return false;
+
+    const QStringList tokens =
+        line.split(QRegularExpression(QStringLiteral("\\s+")), Qt::SkipEmptyParts);
+    if (tokens.size() < 2)
+        return false;
+
+    parsedValues.clear();
+    parsedFields.clear();
+    for (auto it = columnIndices.constBegin(); it != columnIndices.constEnd(); ++it)
+    {
+        const int col = it.value();
+        if (col < 0 || col >= tokens.size())
+            return false;
+
+        bool ok = false;
+        const double value = tokens.at(col).toDouble(&ok);
+        if (!ok)
+            return false;
+
+        parsedFields.push_back(it.key());
+        parsedValues.push_back(value);
+    }
+
+    return !parsedFields.isEmpty();
 }
 } // namespace
 
@@ -222,6 +286,9 @@ bool CurvePlotWidget::loadDataFromTraceFile(const QString& filePath, const QStri
 
     QVector<TracePoint> parsed;
     parsed.reserve(1024);
+    QHash<QString, int> tableColumns;
+    QVector<double> rowValues;
+    QStringList rowFields;
 
     while (!file.atEnd())
     {
@@ -229,9 +296,50 @@ bool CurvePlotWidget::loadDataFromTraceFile(const QString& filePath, const QStri
         if (line.isEmpty())
             continue;
 
+        if (parseTraceHeader(line, tableColumns))
+            continue;
+
         TracePoint point;
         if (parseTraceLine(line, point))
+        {
             parsed.push_back(point);
+            continue;
+        }
+
+        if (parseTraceTableRow(line, tableColumns, rowValues, rowFields))
+        {
+            for (int i = 0; i < rowFields.size(); ++i)
+            {
+                const QString& key = rowFields.at(i);
+                const double value = rowValues.at(i);
+                if (key == QStringLiteral("ISTEP"))
+                {
+                    point.istep = value;
+                    point.hasIstep = true;
+                }
+                else if (key == QStringLiteral("FOS"))
+                {
+                    point.fos = value;
+                    point.hasFos = true;
+                }
+                else if (key == QStringLiteral("PTOT"))
+                {
+                    point.ptot = value;
+                    point.hasPtot = true;
+                }
+                else if (key == QStringLiteral("MAX UR"))
+                {
+                    point.maxUr = value;
+                    point.hasMaxUr = true;
+                }
+                else if (key == QStringLiteral("LOOP"))
+                {
+                    point.loop = value;
+                    point.hasLoop = true;
+                }
+            }
+            parsed.push_back(point);
+        }
     }
 
     if (parsed.isEmpty())
@@ -283,7 +391,7 @@ bool CurvePlotWidget::loadDataFromTraceFile(const QString& filePath, const QStri
 bool CurvePlotWidget::parseTraceLine(const QString& line, TracePoint& point) const
 {
     static const QRegularExpression pairPattern(
-        QStringLiteral("(ISTEP|FOS|PTOT|MAX\\s*UR|LOOP)\\s*=\\s*"
+        QStringLiteral("(ISTEP|FOS|SRF|PTOT|MAX\\s*UR|MAX_UR|MAXVAL_UR|LOOP)\\s*=\\s*"
                        "([+-]?(?:\\d+(?:\\.\\d*)?|\\.\\d+)(?:[Ee][+-]?\\d+)?)"),
         QRegularExpression::CaseInsensitiveOption);
 

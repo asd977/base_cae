@@ -203,9 +203,9 @@ QVector<int> CaveCraneBeamAreaPage::selectedMaterialIds(QString* errorMessage)
     if (!meshService)
         return fail(QStringLiteral("无法读取当前网格。"));
 
-    vtkUnstructuredGrid* grid = meshService->getVtkUnstructuredGridSolid();
+    vtkUnstructuredGrid* grid = meshService->getVtkUnstructuredGrid();
     if (!grid)
-        grid = meshService->getVtkUnstructuredGrid();
+        grid = meshService->getVtkUnstructuredGridSolid();
     if (!grid || !grid->GetCellData())
         return fail(QStringLiteral("当前网格没有可用于吊车梁设置的实体单元。"));
 
@@ -447,9 +447,9 @@ QVector<vtkIdType> CaveCraneBeamAreaPage::groupCellIds(int groupId)
     auto* meshService = ServiceRegistry::instance().getService<MeshModuleControllerService>();
     if (!meshService)
         return result;
-    vtkUnstructuredGrid* grid = meshService->getVtkUnstructuredGridSolid();
+    vtkUnstructuredGrid* grid = meshService->getVtkUnstructuredGrid();
     if (!grid)
-        grid = meshService->getVtkUnstructuredGrid();
+        grid = meshService->getVtkUnstructuredGridSolid();
     const MeshTagKey key{selectionGroupCategory(), domainDimension(), groupId};
     for (MeshIdType sourceId : meshService->cellIdsOfTag(key))
     {
@@ -472,9 +472,9 @@ QVector<int> CaveCraneBeamAreaPage::elementIdsFromCells(
 {
     QVector<int> result;
     auto* meshService = ServiceRegistry::instance().getService<MeshModuleControllerService>();
-    vtkUnstructuredGrid* grid = meshService ? meshService->getVtkUnstructuredGridSolid() : nullptr;
+    vtkUnstructuredGrid* grid = meshService ? meshService->getVtkUnstructuredGrid() : nullptr;
     if (!grid && meshService)
-        grid = meshService->getVtkUnstructuredGrid();
+        grid = meshService->getVtkUnstructuredGridSolid();
     if (!grid)
         return result;
     vtkDataArray* elementIds = grid->GetCellData()
@@ -548,26 +548,8 @@ QString CaveCraneBeamAreaPage::selectionGroupCategory()
     auto* meshService = ServiceRegistry::instance().getService<MeshModuleControllerService>();
     if (!meshService)
         return QStringLiteral("MATYPE");
-    const int dim = domainDimension();
-    const QVector<MeshTagSet> sets = meshService->domainTagSets();
-    const auto usable = [&](const QString& category)
-    {
-        return std::any_of(sets.cbegin(), sets.cend(), [&](const MeshTagSet& set)
-        {
-            return set.key.category.compare(category, Qt::CaseInsensitive) == 0
-                && set.key.dim == dim && set.key.id != 0
-                && !meshService->cellIdsOfTag(set.key).isEmpty();
-        });
-    };
-    for (const QString& category : {QStringLiteral("Physical"),
-                                    QStringLiteral("REGION"),
-                                    QStringLiteral("MATYPE"),
-                                    QStringLiteral("LAYER")})
-    {
-        if (usable(category))
-            return category;
-    }
-    return QStringLiteral("MATYPE");
+    const QString category = meshService->domainCategoryForUse(MeshDomainUse::ExcavationRegion);
+    return category.isEmpty() ? QStringLiteral("MATYPE") : category;
 }
 
 int CaveCraneBeamAreaPage::domainDimension()

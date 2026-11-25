@@ -27,8 +27,8 @@ namespace
 constexpr char kLegacyPostResultRoot[] = "post";
 constexpr char kManifestName[] = "manifest.json";
 constexpr char kLegacyAnalysisManifestFileName[] = "analysis.json";
-// v27: 补充 NODCMM 的 FUN 原始结果；旧缓存升级后可直接选择新结果。
-constexpr int kManifestVersion = 27;
+// v28: 规范化退化三棱柱/四面体/金字塔单元的外法线朝向，消除特征线提取的内部伪轮廓。
+constexpr int kManifestVersion = 28;
 
 bool resultPackageExists(const QFileInfo& info)
 {
@@ -1853,17 +1853,19 @@ QVector<ResultFile> resultFiles(const QString& projectDir, const QString& source
     if (!preparedPath.isEmpty())
     {
         const QDir preparedDir(preparedPath);
-        QVector<ResultFile> files = filterBareGrid(readManifestFiles(preparedDir));
-        if (!files.isEmpty())
-            return files;
+        if (isRecentlyValidatedFresh(preparedDir) ||
+            !manifestMissingOrStale(project, source, preparedDir))
+        {
+            markRecentlyValidatedFresh(preparedDir);
+            QVector<ResultFile> files = filterBareGrid(readManifestFiles(preparedDir));
+            if (!files.isEmpty())
+                return files;
+        }
 
-        // 已经存在 manifest 但版本不兼容/文件不完整时，说明这是一次缓存格式升级。
-        // 只在这种情况下同步重建一次，避免继续读取旧拓扑缓存；重建完成以后仍然
-        // 走上面的纯读取快路径，不会影响后续正常加载速度。
         if (QFileInfo::exists(preparedDir.filePath(QString::fromLatin1(kManifestName))))
         {
             prepareDirectory(project.absolutePath(), source.absolutePath());
-            files = filterBareGrid(readManifestFiles(preparedDir));
+            QVector<ResultFile> files = filterBareGrid(readManifestFiles(preparedDir));
             if (!files.isEmpty())
                 return files;
         }

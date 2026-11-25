@@ -549,7 +549,9 @@ QVector<vtkIdType> CaveExcavationBodyPage::groupCellIds(int groupId) const
     if (src.isEmpty())
         return out;
 
-    vtkUnstructuredGrid* grid = meshSvc->getVtkUnstructuredGridSolid();
+    vtkUnstructuredGrid* grid = meshSvc->getVtkUnstructuredGrid();
+    if (!grid)
+        grid = meshSvc->getVtkUnstructuredGridSolid();
     if (!grid)
         grid = PickManager::instance().solidGrid();
 
@@ -592,7 +594,9 @@ QVector<vtkIdType> CaveExcavationBodyPage::visibleBoundaryFaceKeys(
 
     auto* meshSvc = ServiceRegistry::instance().getService<MeshModuleControllerService>();
 
-    vtkUnstructuredGrid* grid = meshSvc ? meshSvc->getVtkUnstructuredGridSolid() : nullptr;
+    vtkUnstructuredGrid* grid = meshSvc ? meshSvc->getVtkUnstructuredGrid() : nullptr;
+    if (!grid && meshSvc)
+        grid = meshSvc->getVtkUnstructuredGridSolid();
     if (!grid)
         grid = PickManager::instance().solidGrid();
 
@@ -688,7 +692,9 @@ QVector<int> CaveExcavationBodyPage::elementIdsFromCells(
 
     auto* meshSvc = ServiceRegistry::instance().getService<MeshModuleControllerService>();
 
-    vtkUnstructuredGrid* grid = meshSvc ? meshSvc->getVtkUnstructuredGridSolid() : nullptr;
+    vtkUnstructuredGrid* grid = meshSvc ? meshSvc->getVtkUnstructuredGrid() : nullptr;
+    if (!grid && meshSvc)
+        grid = meshSvc->getVtkUnstructuredGridSolid();
     if (!grid)
         grid = PickManager::instance().solidGrid();
 
@@ -841,35 +847,8 @@ QString CaveExcavationBodyPage::selectionGroupCategory() const
     auto* meshSvc = ServiceRegistry::instance().getService<MeshModuleControllerService>();
     if (!meshSvc)
         return QStringLiteral("LAYER");
-
-    const int targetDim = layerDomainDim();
-    const QVector<MeshTagSet> sets = meshSvc->domainTagSets();
-
-    auto hasUsableCategory = [&](const QString& category)
-    {
-        for (const MeshTagSet& set : sets)
-        {
-            if (set.key.category.compare(category, Qt::CaseInsensitive) != 0)
-                continue;
-            if (set.key.dim != targetDim || set.key.id == 0)
-                continue;
-            if (!meshSvc->cellIdsOfTag(set.key).isEmpty())
-                return true;
-        }
-        return false;
-    };
-
-    // 由网格导入/生成流程明确写入，不再由求解页面根据 MATYPE 等标签自行猜测。
-    const QString configuredCategory =
-        meshSvc->excavationGroupCategory();
-    if (!configuredCategory.isEmpty() && hasUsableCategory(configuredCategory))
-        return configuredCategory;
-
-    // 兼容没有用途元数据的旧工程：
-    // SMESH 用 REGION，Abaqus/Flac3D 用 Physical，IIIN/DAT 用 LAYER。
-    if (hasUsableCategory(QStringLiteral("REGION")))
-        return QStringLiteral("REGION");
-    if (hasUsableCategory(QStringLiteral("Physical")))
-        return QStringLiteral("Physical");
-    return QStringLiteral("LAYER");
+    // The same purpose map is used by excavation picking, the crane-beam page,
+    // and imported source-domain grouping. Never derive it from MATYPE values.
+    const QString category = meshSvc->domainCategoryForUse(MeshDomainUse::ExcavationRegion);
+    return category.isEmpty() ? QStringLiteral("LAYER") : category;
 }

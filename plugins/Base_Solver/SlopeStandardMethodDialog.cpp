@@ -1,4 +1,6 @@
+#include <CompactDoubleSpinBox.h>
 #include "SlopeStandardMethodDialog.h"
+#include "SlopeSectionDisplay.h"
 
 #include <PublicConstants.h>
 #include <PublicVariables.h>
@@ -74,12 +76,15 @@
 #include <vtkAppendPolyData.h>
 #include <vtkCutter.h>
 #include <vtkDataArray.h>
+#include <vtkFeatureEdges.h>
+#include <vtkIdList.h>
 #include <vtkIntArray.h>
 #include <vtkPoints.h>
 #include <vtkPolyDataMapper.h>
 #include <vtkProperty.h>
 #include <vtkPlane.h>
 #include <vtkProp.h>
+#include <vtkPropCollection.h>
 #include <vtkRenderer.h>
 #include <vtkRenderWindow.h>
 #include <vtkRenderWindowInteractor.h>
@@ -1020,6 +1025,7 @@ SlopeStandardAnalysisWidget::SlopeStandardAnalysisWidget(
 
 SlopeStandardAnalysisWidget::~SlopeStandardAnalysisWidget()
 {
+    setSectionAntialiasing(false);
     uninstallSectionInteractor();
     restoreOriginalModelVisibility();
     clearVisualization(false);
@@ -1099,23 +1105,41 @@ bool SlopeStandardAnalysisWidget::isRunning() const
 }
 
 
+void SlopeStandardAnalysisWidget::setSectionAntialiasing(bool enabled)
+{
+    if (enabled == m_sectionAntialiasingActive)
+        return;
+    auto* visual = ServiceRegistry::instance().getService<VisualWidgetService>();
+    vtkRenderer* renderer = visual ? visual->renderer() : nullptr;
+    if (renderer)
+    {
+        if (enabled)
+            m_savedUseFXAA = renderer->GetUseFXAA();
+        // Transparency disables MSAA for depth peeling. FXAA also smooths
+        // section outlines in that mode, without changing the section geometry.
+        renderer->SetUseFXAA(enabled ? true : m_savedUseFXAA);
+    }
+    m_sectionAntialiasingActive = enabled && renderer;
+}
+
 void SlopeStandardAnalysisWidget::beforeLoad()
 {
     syncFromSharedState();
     m_pageActive = true;
+    setSectionAntialiasing(true);
     applyPageRole();
-    if (m_geometrySourceButton)
+    if (m_geometrySourceButton && m_pageRole != PageRole::AnalysisSettings)
     {
-        QString geometryError;
-        const bool geometryAvailable = !currentGeometrySectionRegions(&geometryError).isEmpty();
+        const bool geometryAvailable = hasAvailableGeometrySection();
         m_geometrySourceButton->setEnabled(geometryAvailable);
         m_geometrySourceButton->setText(geometryAvailable
                                             ? QStringLiteral("当前几何模型")
                                             : QStringLiteral("当前几何模型（无可用几何）"));
         m_geometrySourceButton->setToolTip(geometryAvailable
             ? QStringLiteral("从当前几何模型提取断面。")
-            : geometryError);
+            : QStringLiteral("当前没有可用于剖切的可见几何实体。请先显示目标几何，或改用三维/二维网格。"));
     }
+    installSectionInteractor();
 
     // A new analysis should not open as an empty wizard when a usable mesh is
     // already present. Pick the natural source and prepare the first section so
@@ -1209,6 +1233,7 @@ void SlopeStandardAnalysisWidget::beforeLoad()
 
 void SlopeStandardAnalysisWidget::beforeUnload()
 {
+    setSectionAntialiasing(false);
     syncToSharedState();
     setSectionInteractionMode(SectionInteractionMode::None);
     uninstallSectionInteractor();
@@ -1484,7 +1509,10 @@ void SlopeStandardAnalysisWidget::loadMaterialRegionIntoEditor(int row)
                             static_cast<QWidget*>(m_ruSpin)})
         widget->setEnabled(valid);
     if (!valid)
+    {
+        updateMaterialRegionHighlight(-1);
         return;
+    }
 
     const auto valueAt = [this, row](int column, double fallback)
     {
@@ -1509,6 +1537,7 @@ void SlopeStandardAnalysisWidget::loadMaterialRegionIntoEditor(int row)
     m_saturatedUnitWeightSpin->setValue(gammaSat);
     m_ruSpin->setValue(valueAt(6, 0.0));
     m_updatingMaterialEditor = false;
+    updateMaterialRegionHighlight(row);
 }
 
 void SlopeStandardAnalysisWidget::rebuildMaterialRegionEditor()
@@ -1632,7 +1661,7 @@ void SlopeStandardAnalysisWidget::buildSectionPage()
     positionLayout->setContentsMargins(0, 0, 0, 0);
     m_sectionPositionSlider = new QSlider(Qt::Horizontal, positionWidget);
     m_sectionPositionSlider->setRange(0, 1000);
-    m_sectionPositionSpin = new QDoubleSpinBox(positionWidget);
+    m_sectionPositionSpin = new CompactDoubleSpinBox(positionWidget);
     m_sectionPositionSpin->setDecimals(6);
     m_sectionPositionSpin->setKeyboardTracking(false);
     positionLayout->addWidget(m_sectionPositionSlider, 1);
@@ -1641,7 +1670,7 @@ void SlopeStandardAnalysisWidget::buildSectionPage()
     m_surfaceCandidateCombo = new QComboBox(m_meshSectionControls);
     m_surfaceCandidateCombo->setVisible(false);
     m_surfaceCandidateCombo->setToolTip(QStringLiteral("存在多个坡面时，在这里选择计算对象。"));
-    m_simplificationToleranceSpin = new QDoubleSpinBox(m_meshSectionControls);
+    m_simplificationToleranceSpin = new CompactDoubleSpinBox(m_meshSectionControls);
     m_simplificationToleranceSpin->setDecimals(8);
     m_simplificationToleranceSpin->setRange(0.0, 1.0e12);
     m_simplificationToleranceSpin->setKeyboardTracking(false);
@@ -1895,6 +1924,17 @@ void SlopeStandardAnalysisWidget::buildCasePage()
          QStringLiteral("天然重度 γ (kN/m³)"), QStringLiteral("饱和重度 γsat (kN/m³)"),
          QStringLiteral("孔隙水压力比 Ru")});
     m_soilTable->hide();
+    connect(m_soilTable, &QTableWidget::itemSelectionChanged, this, [this]() {
+        if (m_loadingCase || m_updatingMaterialEditor || !m_soilTable || !m_materialRegionCombo)
+            return;
+        const auto items = m_soilTable->selectedItems();
+        if (!items.isEmpty())
+        {
+            const int row = items.first()->row();
+            if (row >= 0 && row < m_materialRegionCombo->count() && row != m_materialRegionCombo->currentIndex())
+                m_materialRegionCombo->setCurrentIndex(row);
+        }
+    });
 
     auto* materialForm = new QFormLayout();
     m_materialRegionCombo = new QComboBox(materialGroup);
@@ -1903,7 +1943,7 @@ void SlopeStandardAnalysisWidget::buildCasePage()
     const auto makeMaterialSpin = [materialGroup](double minimum, double maximum,
                                                    int decimals, double value)
     {
-        auto* spin = new QDoubleSpinBox(materialGroup);
+        auto* spin = new CompactDoubleSpinBox(materialGroup);
         spin->setRange(minimum, maximum);
         spin->setDecimals(decimals);
         spin->setValue(value);
@@ -1948,7 +1988,7 @@ void SlopeStandardAnalysisWidget::buildCasePage()
     m_computePrecisionCombo = new QComboBox(calculationGroup);
     m_computePrecisionCombo->addItem(QStringLiteral("标准"), 50);
     m_computePrecisionCombo->addItem(QStringLiteral("高精度"), 100);
-    m_requiredFactorSpin = new QDoubleSpinBox(calculationGroup);
+    m_requiredFactorSpin = new CompactDoubleSpinBox(calculationGroup);
     m_requiredFactorSpin->setRange(0.001, 10.0);
     m_requiredFactorSpin->setDecimals(3);
     m_requiredFactorSpin->setValue(1.30);
@@ -1983,7 +2023,7 @@ void SlopeStandardAnalysisWidget::buildCasePage()
     phreaticButtonsLayout->addWidget(m_clearPhreaticButton);
     phreaticButtonsLayout->addStretch();
     m_outsideWaterCheck = new QCheckBox(QStringLiteral("考虑坡外水位"), conditionGroup);
-    m_outsideWaterSpin = new QDoubleSpinBox(conditionGroup);
+    m_outsideWaterSpin = new CompactDoubleSpinBox(conditionGroup);
     m_outsideWaterSpin->setRange(-1.0e9, 1.0e9);
     m_outsideWaterSpin->setDecimals(4);
     m_outsideWaterSpin->setEnabled(false);
@@ -2010,19 +2050,19 @@ void SlopeStandardAnalysisWidget::buildCasePage()
 
     auto* advancedGroup = new QGroupBox(QStringLiteral("高级参数"), m_advancedSettingsPanel);
     auto* advancedForm = new QFormLayout(advancedGroup);
-    m_searchStepSpin = new QDoubleSpinBox(advancedGroup);
+    m_searchStepSpin = new CompactDoubleSpinBox(advancedGroup);
     m_searchStepSpin->setRange(0.000001, 1.0e6); m_searchStepSpin->setDecimals(6); m_searchStepSpin->setValue(0.2);
     m_sliceCountSpin = new QSpinBox(advancedGroup);
     m_sliceCountSpin->setRange(1, 200); m_sliceCountSpin->setValue(50);
-    m_radiusSpin = new QDoubleSpinBox(advancedGroup);
+    m_radiusSpin = new CompactDoubleSpinBox(advancedGroup);
     m_radiusSpin->setRange(0.000001, 1.0e9); m_radiusSpin->setDecimals(6); m_radiusSpin->setValue(12.8);
-    m_circleXSpin = new QDoubleSpinBox(advancedGroup);
+    m_circleXSpin = new CompactDoubleSpinBox(advancedGroup);
     m_circleXSpin->setRange(-1.0e9, 1.0e9); m_circleXSpin->setDecimals(6); m_circleXSpin->setValue(5.0);
-    m_circleYSpin = new QDoubleSpinBox(advancedGroup);
+    m_circleYSpin = new CompactDoubleSpinBox(advancedGroup);
     m_circleYSpin->setRange(-1.0e9, 1.0e9); m_circleYSpin->setDecimals(6); m_circleYSpin->setValue(12.0);
-    m_waterWeightSpin = new QDoubleSpinBox(advancedGroup);
+    m_waterWeightSpin = new CompactDoubleSpinBox(advancedGroup);
     m_waterWeightSpin->setRange(0.000001, 1.0e6); m_waterWeightSpin->setDecimals(6); m_waterWeightSpin->setValue(9.81);
-    m_slopeHeightSpin = new QDoubleSpinBox(advancedGroup);
+    m_slopeHeightSpin = new CompactDoubleSpinBox(advancedGroup);
     m_slopeHeightSpin->setRange(0.0, 1.0e9); m_slopeHeightSpin->setDecimals(6);
     m_earthquakeModeCombo = new QComboBox(advancedGroup);
     m_earthquakeModeCombo->addItem(QStringLiteral("仅水平向"), 0);
@@ -2997,6 +3037,7 @@ bool SlopeStandardAnalysisWidget::collectFormModel(SlopeStandardDatModel* model,
         }
     }
 
+    value.ensureSearchCircleNearSection();
     *model = value;
     return true;
 }
@@ -3083,6 +3124,13 @@ bool SlopeStandardAnalysisWidget::syncDatFromForm(QString* errorMessage)
     if (!collectFormModel(&model, errorMessage))
         return false;
     const QString serialized = model.serialize();
+    // Keep saved state and the next process input consistent with the seed.
+    const QSignalBlocker radiusBlocker(m_radiusSpin);
+    const QSignalBlocker xBlocker(m_circleXSpin);
+    const QSignalBlocker yBlocker(m_circleYSpin);
+    m_radiusSpin->setValue(model.radius);
+    m_circleXSpin->setValue(model.circleX);
+    m_circleYSpin->setValue(model.circleY);
     const QSignalBlocker blocker(m_datEditor);
     m_datEditor->setPlainText(serialized);
     m_datEditor->document()->setModified(false);
@@ -3200,20 +3248,6 @@ void SlopeStandardAnalysisWidget::restoreSectionOnlyCameraState()
     m_sectionOnlyCameraSaved = false;
 }
 
-QTreeWidget* SlopeStandardAnalysisWidget::findHostDisplayFilterTree() const
-{
-    for (QWidget* widget : QApplication::allWidgets())
-    {
-        auto* tree = qobject_cast<QTreeWidget*>(widget);
-        if (!tree || !tree->headerItem() || tree->columnCount() < 1)
-            continue;
-        const QString header = tree->headerItem()->text(0).trimmed();
-        if (header.contains(QStringLiteral("筛选项")) && tree->topLevelItemCount() > 0)
-            return tree;
-    }
-    return nullptr;
-}
-
 void SlopeStandardAnalysisWidget::setOriginalModelVisible(bool visible)
 {
     if (visible)
@@ -3222,71 +3256,51 @@ void SlopeStandardAnalysisWidget::setOriginalModelVisible(bool visible)
         return;
     }
 
-    QTreeWidget* tree = findHostDisplayFilterTree();
-    if (!tree)
+    auto* visual = ServiceRegistry::instance().getService<VisualWidgetService>();
+    if (!visual)
         return;
 
-    const auto visitLeaves = [&](auto&& self, QTreeWidgetItem* item, const QString& path,
-                                 bool saveOnly) -> void
+    const QString limitPrefix = QStringLiteral("slope.limit.%1.").arg(m_analysisUuid);
+    const QList<QString> allIds = visual->allIds();
+    QSet<vtkProp*> ourProps;
+    if (m_sectionPickActor)
+        ourProps.insert(m_sectionPickActor.GetPointer());
+    if (m_sectionFillPickActor)
+        ourProps.insert(m_sectionFillPickActor.GetPointer());
+
+    for (const QString& id : allIds)
     {
-        if (!item)
-            return;
-        if (item->childCount() == 0)
+        if (id.startsWith(limitPrefix) || id.startsWith(m_analysisUuid))
         {
-            if (item->flags().testFlag(Qt::ItemIsUserCheckable))
+            if (auto* p = visual->getProp(id))
+                ourProps.insert(p);
+            continue;
+        }
+        vtkProp* prop = visual->getProp(id);
+        if (prop && prop->GetVisibility() != 0)
+        {
+            if (!m_savedPropVisibilities.contains(id))
+                m_savedPropVisibilities.insert(id, true);
+            visual->setVisible(id, false, false);
+        }
+    }
+
+    if (auto* ren = visual->renderer())
+    {
+        vtkPropCollection* props = ren->GetViewProps();
+        if (props)
+        {
+            props->InitTraversal();
+            while (vtkProp* prop = props->GetNextProp())
             {
-                if (saveOnly)
-                    m_savedHostDisplayStates.insert(path, static_cast<int>(item->checkState(0)));
-                else
-                    item->setCheckState(0, Qt::Unchecked);
+                if (!prop || prop->GetVisibility() == 0 || ourProps.contains(prop))
+                    continue;
+                if (!m_savedRendererProps.contains(prop))
+                {
+                    m_savedRendererProps.append(prop);
+                    prop->SetVisibility(0);
+                }
             }
-            return;
-        }
-        for (int i = 0; i < item->childCount(); ++i)
-            self(self, item->child(i), path + QLatin1Char('/') + QString::number(i), saveOnly);
-    };
-
-    // 第一次由断面页隐藏原模型时，保存宿主显示筛选状态。
-    // 之后即使后处理重新把原模型 actor 加回场景，也不能仅凭
-    // m_originalModelHiddenByPage=true 就认为“已经隐藏”。返回断面页时必须再次
-    // 把筛选状态应用到真实场景，否则会出现“复选框未勾选，但原模型又显示”的状态漂移。
-    if (!m_originalModelHiddenByPage)
-    {
-        m_savedHostDisplayStates.clear();
-        for (int i = 0; i < tree->topLevelItemCount(); ++i)
-        {
-            QTreeWidgetItem* item = tree->topLevelItem(i);
-            const QString text = item ? item->text(0) : QString();
-            if (text.contains(QStringLiteral("边坡极限平衡"))
-                || text.contains(QStringLiteral("断面")))
-                continue;
-            visitLeaves(visitLeaves, item, QString::number(i), true);
-        }
-    }
-
-    // 无论树节点当前是否已经是 Unchecked，都重新执行一次隐藏。
-    // 后处理可能直接刷新 VTK actor，而没有同步改变显示控制树；此时单纯
-    // setCheckState(Unchecked) 不会产生变化信号，所以还要显式触发“应用筛选”。
-    for (int i = 0; i < tree->topLevelItemCount(); ++i)
-    {
-        QTreeWidgetItem* item = tree->topLevelItem(i);
-        const QString text = item ? item->text(0) : QString();
-        if (text.contains(QStringLiteral("边坡极限平衡"))
-            || text.contains(QStringLiteral("断面")))
-            continue;
-        visitLeaves(visitLeaves, item, QString::number(i), false);
-    }
-
-    for (QWidget* widget : QApplication::allWidgets())
-    {
-        auto* button = qobject_cast<QPushButton*>(widget);
-        if (!button || button->window() != tree->window())
-            continue;
-        if (button->text().trimmed() == QStringLiteral("应用筛选"))
-        {
-            if (button->isEnabled())
-                button->click();
-            break;
         }
     }
 
@@ -3297,49 +3311,24 @@ void SlopeStandardAnalysisWidget::restoreOriginalModelVisibility()
 {
     if (!m_originalModelHiddenByPage)
         return;
-    QTreeWidget* tree = findHostDisplayFilterTree();
-    if (!tree)
-    {
-        m_originalModelHiddenByPage = false;
-        m_savedHostDisplayStates.clear();
-        return;
-    }
 
-    const auto restoreLeaves = [&](auto&& self, QTreeWidgetItem* item, const QString& path) -> void
+    auto* visual = ServiceRegistry::instance().getService<VisualWidgetService>();
+    if (visual)
     {
-        if (!item)
-            return;
-        if (item->childCount() == 0)
+        for (auto it = m_savedPropVisibilities.constBegin(); it != m_savedPropVisibilities.constEnd(); ++it)
         {
-            const auto found = m_savedHostDisplayStates.constFind(path);
-            if (found != m_savedHostDisplayStates.constEnd()
-                && item->flags().testFlag(Qt::ItemIsUserCheckable))
-                item->setCheckState(0, static_cast<Qt::CheckState>(found.value()));
-            return;
+            visual->setVisible(it.key(), it.value(), false);
         }
-        for (int i = 0; i < item->childCount(); ++i)
-            self(self, item->child(i), path + QLatin1Char('/') + QString::number(i));
-    };
-    for (int i = 0; i < tree->topLevelItemCount(); ++i)
-        restoreLeaves(restoreLeaves, tree->topLevelItem(i), QString::number(i));
-
-    // 和隐藏时一样，恢复不能只依赖 checkState 变化信号。后处理可能已经直接
-    // 修改了场景 actor，因此这里显式应用一次宿主显示筛选，保证树状态和场景一致。
-    for (QWidget* widget : QApplication::allWidgets())
-    {
-        auto* button = qobject_cast<QPushButton*>(widget);
-        if (!button || button->window() != tree->window())
-            continue;
-        if (button->text().trimmed() == QStringLiteral("应用筛选"))
+        for (vtkProp* prop : m_savedRendererProps)
         {
-            if (button->isEnabled())
-                button->click();
-            break;
+            if (prop)
+                prop->SetVisibility(1);
         }
+        visual->render();
     }
-
+    m_savedPropVisibilities.clear();
+    m_savedRendererProps.clear();
     m_originalModelHiddenByPage = false;
-    m_savedHostDisplayStates.clear();
 }
 
 void SlopeStandardAnalysisWidget::setSectionInteractionMode(SectionInteractionMode mode)
@@ -3355,10 +3344,6 @@ void SlopeStandardAnalysisWidget::setSectionInteractionMode(SectionInteractionMo
     }
     if (mode == SectionInteractionMode::PhreaticDraw && m_pendingPhreaticNodeId <= 0)
         m_pendingPhreaticSoilId = 1;
-    if (mode == SectionInteractionMode::None)
-        uninstallSectionInteractor();
-    else
-        installSectionInteractor();
 
     if (m_stateLabel)
     {
@@ -3382,12 +3367,13 @@ void SlopeStandardAnalysisWidget::installSectionInteractor()
     m_interactorCallback->SetCallback([](vtkObject* caller, unsigned long, void* clientData, void*) {
         auto* self = static_cast<SlopeStandardAnalysisWidget*>(clientData);
         auto* iren = vtkRenderWindowInteractor::SafeDownCast(caller);
-        if (!self || !iren || self->m_sectionInteractionMode == SectionInteractionMode::None)
+        if (!self || !iren)
             return;
         int* pos = iren->GetEventPosition();
         if (!pos) return;
         self->handleSectionViewClick(pos[0], pos[1]);
-        if (self->m_interactorCallback) self->m_interactorCallback->SetAbortFlag(1);
+        if (self->m_sectionInteractionMode != SectionInteractionMode::None && self->m_interactorCallback)
+            self->m_interactorCallback->SetAbortFlag(1);
     });
     m_interactorObserverTag = interactor->AddObserver(vtkCommand::LeftButtonPressEvent,
                                                        m_interactorCallback, 1.0f);
@@ -3412,11 +3398,55 @@ void SlopeStandardAnalysisWidget::handleSectionViewClick(int displayX, int displ
         return;
     auto picker = vtkSmartPointer<vtkCellPicker>::New();
     picker->SetTolerance(0.01);
+
+    if (m_sectionInteractionMode == SectionInteractionMode::None)
+    {
+        if (!m_sectionFillPickActor || !m_materialRegionCombo)
+            return;
+        picker->AddPickList(m_sectionFillPickActor);
+        picker->PickFromListOn();
+        if (!picker->Pick(displayX, displayY, 0.0, renderer))
+            return;
+
+        vtkActor* pickedActor = vtkActor::SafeDownCast(picker->GetActor());
+        const vtkIdType cellId = picker->GetCellId();
+        if (pickedActor == m_sectionFillPickActor.GetPointer() && cellId >= 0)
+        {
+            auto* mapper = vtkPolyDataMapper::SafeDownCast(pickedActor->GetMapper());
+            vtkPolyData* poly = mapper ? mapper->GetInput() : nullptr;
+            vtkDataArray* scalars = nullptr;
+            if (poly && poly->GetCellData())
+            {
+                scalars = vtkDataArray::SafeDownCast(poly->GetCellData()->GetArray("__SlopeSectionMaterial"));
+                if (!scalars)
+                    scalars = vtkDataArray::SafeDownCast(poly->GetCellData()->GetArray("__SlopeSectionPreviewMaterial"));
+            }
+            if (scalars && cellId < scalars->GetNumberOfTuples())
+            {
+                const int sourceId = qRound(scalars->GetComponent(cellId, 0));
+                int targetRow = -1;
+                if (m_currentCaseIndex >= 0 && m_currentCaseIndex < m_cases.size()
+                    && !m_cases.at(m_currentCaseIndex).sourceMaterialIds.isEmpty())
+                {
+                    targetRow = m_cases.at(m_currentCaseIndex).sourceMaterialIds.indexOf(sourceId);
+                }
+                else
+                {
+                    targetRow = sourceId - 1;
+                }
+                if (targetRow >= 0 && targetRow < m_materialRegionCombo->count())
+                    m_materialRegionCombo->setCurrentIndex(targetRow);
+            }
+        }
+        return;
+    }
+
     if (!picker->Pick(displayX, displayY, 0.0, renderer))
         return;
 
     vtkActor* pickedActor = vtkActor::SafeDownCast(picker->GetActor());
     const vtkIdType cellId = picker->GetCellId();
+
     if (m_sectionInteractionMode == SectionInteractionMode::SurfaceEdit)
     {
         if (pickedActor == m_sectionPickActor.GetPointer() && cellId >= 0)
@@ -3457,7 +3487,12 @@ void SlopeStandardAnalysisWidget::handleSectionViewClick(int displayX, int displ
     const bool mapped = sourceType == QStringLiteral("mesh3d")
                         || sourceType == QStringLiteral("mesh2d")
                         || sourceType == QStringLiteral("geometry");
-    const bool sectionOnly = mapped && m_showOriginalModelCheck && !m_showOriginalModelCheck->isChecked();
+    const bool showOriginalModel = m_pageRole == PageRole::AnalysisSettings
+                                       ? false
+                                       : (m_pageRole != PageRole::SectionEditor
+                                          || !m_showOriginalModelCheck
+                                          || m_showOriginalModelCheck->isChecked());
+    const bool sectionOnly = mapped && !showOriginalModel;
     double x = world[0], y = world[1];
     if (mapped)
     {
@@ -3533,6 +3568,9 @@ void SlopeStandardAnalysisWidget::clearVisualization(bool renderNow)
     visual->removeProp(prefix + QStringLiteral("outside_water"), false);
     visual->removeProp(prefix + QStringLiteral("result_outline"), false);
     visual->removeProp(prefix + QStringLiteral("slip_arc"), false);
+    visual->removeProp(prefix + QStringLiteral("material_highlight_fill"), false);
+    visual->removeProp(prefix + QStringLiteral("material_highlight_edge"), false);
+    visual->removeProp(prefix + QStringLiteral("material_highlight_segments"), false);
     m_sectionPickActor = nullptr;
     m_sectionFillPickActor = nullptr;
     if (renderNow)
@@ -3569,7 +3607,9 @@ void SlopeStandardAnalysisWidget::updateVisualization()
     {
         static const unsigned char palette[][3] = {
             {205, 177, 132}, {151, 184, 139}, {169, 153, 190}, {205, 194, 137},
-            {132, 178, 188}, {196, 151, 151}, {160, 177, 205}, {184, 166, 145}};
+            {132, 178, 188}, {196, 151, 151}, {160, 177, 205}, {184, 166, 145},
+            {142, 196, 168}, {214, 164, 132}, {152, 162, 198}, {188, 198, 142},
+            {198, 162, 184}, {140, 186, 206}, {212, 188, 156}, {164, 182, 162}};
         const int count = static_cast<int>(sizeof(palette) / sizeof(palette[0]));
         const int index = std::abs(materialId > 0 ? materialId - 1 : 0) % count;
         rgb[0] = palette[index][0]; rgb[1] = palette[index][1]; rgb[2] = palette[index][2];
@@ -3604,8 +3644,7 @@ void SlopeStandardAnalysisWidget::updateVisualization()
         actor->PickableOff();
         actor->GetProperty()->LightingOff();
         actor->GetProperty()->SetOpacity(0.78);
-        actor->GetProperty()->EdgeVisibilityOn();
-        actor->GetProperty()->SetEdgeColor(0.32, 0.34, 0.36);
+        actor->GetProperty()->EdgeVisibilityOff();
         actor->GetProperty()->SetLineWidth(1.0);
         return actor;
     };
@@ -3632,6 +3671,7 @@ void SlopeStandardAnalysisWidget::updateVisualization()
     const int verticalAxis = m_sectionVerticalAxis;
     const int normalAxis = m_sectionNormalAxis;
     const double planePosition = (mesh3dSource || geometrySource) && m_sectionPositionSpin
+                                     && m_planeCombo && m_planeCombo->count() > 0
                                      ? m_sectionPositionSpin->value() : m_sectionWorldOffset;
     const auto sourceHorizontal = [&](double x)
     {
@@ -3678,7 +3718,7 @@ void SlopeStandardAnalysisWidget::updateVisualization()
                 double origin[3]{0.5*(b[0]+b[1]),0.5*(b[2]+b[3]),0.5*(b[4]+b[5])};
                 double normal[3]{0.0,0.0,0.0}; origin[normalAxis]=planePosition; normal[normalAxis]=1.0;
                 auto plane=vtkSmartPointer<vtkPlane>::New(); plane->SetOrigin(origin); plane->SetNormal(normal);
-                auto cutter=vtkSmartPointer<vtkCutter>::New(); cutter->SetCutFunction(plane); cutter->SetInputData(sourcePoly); cutter->Update();
+                auto cutter=vtkSmartPointer<vtkCutter>::New(); cutter->SetOutputPointsPrecision(vtkAlgorithm::DOUBLE_PRECISION); cutter->SetCutFunction(plane); cutter->SetInputData(sourcePoly); cutter->Update();
                 auto triangulator=vtkSmartPointer<vtkContourTriangulator>::New(); triangulator->SetInputConnection(cutter->GetOutputPort()); triangulator->Update();
                 vtkPolyData* filled=triangulator->GetOutput();
                 if(!filled || filled->GetNumberOfCells()<=0) continue;
@@ -3686,7 +3726,7 @@ void SlopeStandardAnalysisWidget::updateVisualization()
                 auto ids=vtkSmartPointer<vtkIntArray>::New(); ids->SetName("__SlopeSectionMaterial");ids->SetNumberOfComponents(1);ids->SetNumberOfTuples(regionPoly->GetNumberOfCells());ids->FillComponent(0,regionId);regionPoly->GetCellData()->SetScalars(ids);
                 if(sectionOnlyView && regionPoly->GetPoints())
                 {
-                    auto pts=vtkSmartPointer<vtkPoints>::New();pts->SetNumberOfPoints(regionPoly->GetNumberOfPoints());
+                    auto pts=vtkSmartPointer<vtkPoints>::New(); pts->SetDataTypeToDouble();pts->SetNumberOfPoints(regionPoly->GetNumberOfPoints());
                     for(vtkIdType pi=0;pi<regionPoly->GetNumberOfPoints();++pi){double pt[3]{};regionPoly->GetPoint(pi,pt);pts->SetPoint(pi,pt[horizontalAxis],pt[verticalAxis],0.0);}regionPoly->SetPoints(pts);
                 }
                 combined->AddInputData(regionPoly);
@@ -3706,13 +3746,22 @@ void SlopeStandardAnalysisWidget::updateVisualization()
         if ((!holder || holder->GetNumberOfCells() <= 0) && meshService)
             holder = meshService->getVtkUnstructuredGrid();
         vtkUnstructuredGrid* grid = holder;
-        if (meshService && grid && grid->GetNumberOfCells() > 0
-            && m_materialFieldCombo && m_materialFieldCombo->count() > 0)
+        QString materialField = (m_materialFieldCombo && m_materialFieldCombo->count() > 0)
+                                    ? m_materialFieldCombo->currentData().toString()
+                                    : QString();
+        if (materialField.isEmpty() && m_currentCaseIndex >= 0 && m_currentCaseIndex < m_cases.size())
+        {
+            const QJsonObject& st = m_cases.at(m_currentCaseIndex).state;
+            materialField = st.value(QStringLiteral("section_material_field")).toString();
+            if (materialField.isEmpty())
+                materialField = st.value(QStringLiteral("material_region_source")).toString();
+        }
+        if (meshService && grid && grid->GetNumberOfCells() > 0 && !materialField.isEmpty())
         {
             QMap<int, QString> labels;
             QString materialError;
             auto materialArray = vtkSmartPointer<vtkIntArray>::New();
-            if (fillMaterialArray(meshService, grid, m_materialFieldCombo->currentData().toString(),
+            if (fillMaterialArray(meshService, grid, materialField,
                                   materialArray, &labels, &materialError))
             {
                 auto workingGrid = vtkSmartPointer<vtkUnstructuredGrid>::New();
@@ -3728,7 +3777,7 @@ void SlopeStandardAnalysisWidget::updateVisualization()
                 auto plane = vtkSmartPointer<vtkPlane>::New();
                 plane->SetOrigin(origin); plane->SetNormal(normal);
                 auto cutter = vtkSmartPointer<vtkCutter>::New();
-                cutter->SetCutFunction(plane); cutter->SetInputData(workingGrid); cutter->Update();
+                cutter->SetOutputPointsPrecision(vtkAlgorithm::DOUBLE_PRECISION); cutter->SetCutFunction(plane); cutter->SetInputData(workingGrid); cutter->Update();
                 vtkPolyData* cut = cutter->GetOutput();
                 vtkDataArray* cutMaterials = cut && cut->GetCellData()
                     ? vtkDataArray::SafeDownCast(cut->GetCellData()->GetArray("__SlopeSectionMaterial"))
@@ -3740,7 +3789,7 @@ void SlopeStandardAnalysisWidget::updateVisualization()
                 {
                     flattenedCut = vtkSmartPointer<vtkPolyData>::New();
                     flattenedCut->DeepCopy(cut);
-                    auto flatPoints = vtkSmartPointer<vtkPoints>::New();
+                    auto flatPoints = vtkSmartPointer<vtkPoints>::New(); flatPoints->SetDataTypeToDouble();
                     flatPoints->SetNumberOfPoints(cut->GetNumberOfPoints());
                     for (vtkIdType pointId = 0; pointId < cut->GetNumberOfPoints(); ++pointId)
                     {
@@ -3793,7 +3842,7 @@ void SlopeStandardAnalysisWidget::updateVisualization()
             auto materialArray = vtkSmartPointer<vtkIntArray>::New();
             if (fillMaterialArray(meshService, grid, source, materialArray, &labels, &materialError))
             {
-                auto points = vtkSmartPointer<vtkPoints>::New();
+                auto points = vtkSmartPointer<vtkPoints>::New(); points->SetDataTypeToDouble();
                 if (sectionOnlyView && grid->GetPoints())
                 {
                     points->SetNumberOfPoints(grid->GetNumberOfPoints());
@@ -3844,8 +3893,7 @@ void SlopeStandardAnalysisWidget::updateVisualization()
                 m_sectionFillPickActor = actor;
                 actor->GetProperty()->LightingOff();
                 actor->GetProperty()->SetOpacity(0.82);
-                actor->GetProperty()->EdgeVisibilityOn();
-                actor->GetProperty()->SetEdgeColor(0.32, 0.34, 0.36);
+                actor->GetProperty()->EdgeVisibilityOff();
                 visual->addProp(prefix + QStringLiteral("section_fill"), actor, groupName,
                                 QStringLiteral("断面区域"), false, false);
             }
@@ -3856,7 +3904,7 @@ void SlopeStandardAnalysisWidget::updateVisualization()
                                       double r, double g, double b,
                                       double width) -> vtkSmartPointer<vtkActor>
     {
-        auto points = vtkSmartPointer<vtkPoints>::New();
+        auto points = vtkSmartPointer<vtkPoints>::New(); points->SetDataTypeToDouble();
         for (const auto& node : model.nodes)
             insertSectionPoint(points, node.x, node.y, 0.0);
         auto lines = vtkSmartPointer<vtkCellArray>::New();
@@ -3888,7 +3936,7 @@ void SlopeStandardAnalysisWidget::updateVisualization()
 
     // 透明宽线用于图上拾取；cell 顺序与 model.segments 一一对应。
     {
-        auto points = vtkSmartPointer<vtkPoints>::New();
+        auto points = vtkSmartPointer<vtkPoints>::New(); points->SetDataTypeToDouble();
         for (const auto& node : model.nodes) insertSectionPoint(points, node.x, node.y, 0.02);
         auto lines = vtkSmartPointer<vtkCellArray>::New();
         for (const auto& segment : model.segments)
@@ -3916,7 +3964,7 @@ void SlopeStandardAnalysisWidget::updateVisualization()
     }
     if (!ordinarySegments.isEmpty())
         visual->addProp(prefix + QStringLiteral("section"),
-                        makeSegmentActor(ordinarySegments, 0.42, 0.46, 0.50, 2.0),
+                        makeSegmentActor(ordinarySegments, 0.25, 0.28, 0.32, 2.0),
                         groupName, QStringLiteral("断面"), false, false);
     if (!surfaceSegments.isEmpty()
         && (!m_showSurfaceCheck || m_showSurfaceCheck->isChecked()))
@@ -3927,7 +3975,7 @@ void SlopeStandardAnalysisWidget::updateVisualization()
     if (!model.phreaticSegments.isEmpty())
     {
         // Phreatic segments use the same node table but are stored separately.
-        auto points = vtkSmartPointer<vtkPoints>::New();
+        auto points = vtkSmartPointer<vtkPoints>::New(); points->SetDataTypeToDouble();
         for (const auto& node : model.nodes)
             insertSectionPoint(points, node.x, node.y, 0.01);
         auto lines = vtkSmartPointer<vtkCellArray>::New();
@@ -3964,7 +4012,7 @@ void SlopeStandardAnalysisWidget::updateVisualization()
             minX = std::min(minX, node.x);
             maxX = std::max(maxX, node.x);
         }
-        auto points = vtkSmartPointer<vtkPoints>::New();
+        auto points = vtkSmartPointer<vtkPoints>::New(); points->SetDataTypeToDouble();
         insertSectionPoint(points, minX, model.outsideWaterLevel, 0.015);
         insertSectionPoint(points, maxX, model.outsideWaterLevel, 0.015);
         auto lines = vtkSmartPointer<vtkCellArray>::New();
@@ -3985,6 +4033,7 @@ void SlopeStandardAnalysisWidget::updateVisualization()
         visual->addProp(prefix + QStringLiteral("outside_water"), actor,
                         groupName, QStringLiteral("坡外水位"), false, false);
     }
+    updateMaterialRegionHighlight(m_materialRegionCombo ? m_materialRegionCombo->currentIndex() : -1);
     visual->render();
 }
 
@@ -4015,6 +4064,7 @@ void SlopeStandardAnalysisWidget::updateResultVisualization(const QJsonObject& p
     const int verticalAxis = m_sectionVerticalAxis;
     const int normalAxis = m_sectionNormalAxis;
     const double planePosition = (mesh3dSource || geometrySource) && m_sectionPositionSpin
+                                     && m_planeCombo && m_planeCombo->count() > 0
                                      ? m_sectionPositionSpin->value() : m_sectionWorldOffset;
     const auto sourceHorizontal = [&](double x)
     {
@@ -4047,7 +4097,7 @@ void SlopeStandardAnalysisWidget::updateResultVisualization(const QJsonObject& p
     {
         if (values.size() < 2)
             return;
-        auto points = vtkSmartPointer<vtkPoints>::New();
+        auto points = vtkSmartPointer<vtkPoints>::New(); points->SetDataTypeToDouble();
         auto lines = vtkSmartPointer<vtkCellArray>::New();
         lines->InsertNextCell(values.size());
         for (int i = 0; i < values.size(); ++i)
@@ -4307,7 +4357,7 @@ void SlopeStandardAnalysisWidget::initializeMeshSectionControls()
     m_verticalCombo->setCurrentIndex(m_verticalCombo->findData(reportedVerticalAxis));
 
     m_materialFieldCombo->clear();
-    QString materialCategory = meshService->materialGroupCategory().trimmed();
+    QString materialCategory = meshService->domainCategoryForUse(MeshDomainUse::MaterialRegion);
     const QVector<MeshTagSet> domainSets = meshService->domainTagSets();
     const auto categoryHasDomains = [&](const QString& category)
     {
@@ -4988,6 +5038,243 @@ bool SlopeStandardAnalysisWidget::extractSectionFromCurrent2DMesh()
     return true;
 }
 
+bool SlopeStandardAnalysisWidget::hasAvailableGeometrySection() const
+{
+    auto* visual = ServiceRegistry::instance().getService<VisualWidgetService>();
+    if (!visual)
+        return false;
+    const QList<QString> ids = visual->allIds();
+    for (const QString& id : ids)
+    {
+        if (!id.endsWith(QStringLiteral("_face")))
+            continue;
+        auto* actor = vtkActor::SafeDownCast(visual->getProp(id));
+        if (!actor || actor->GetVisibility() == 0)
+            continue;
+        auto* mapper = vtkPolyDataMapper::SafeDownCast(actor->GetMapper());
+        vtkPolyData* input = mapper ? mapper->GetInput() : nullptr;
+        if (input && input->GetNumberOfPoints() >= 3 && input->GetNumberOfCells() > 0)
+            return true;
+    }
+    return false;
+}
+
+void SlopeStandardAnalysisWidget::updateMaterialRegionHighlight(int row)
+{
+    auto* visual = ServiceRegistry::instance().getService<VisualWidgetService>();
+    if (!visual)
+        return;
+
+    const QString prefix = QStringLiteral("slope.limit.%1.").arg(m_analysisUuid);
+    constexpr const char* groupName = "极限平衡";
+
+    visual->removeProp(prefix + QStringLiteral("material_highlight_fill"), false);
+    visual->removeProp(prefix + QStringLiteral("material_highlight_edge"), false);
+    visual->removeProp(prefix + QStringLiteral("material_highlight_segments"), false);
+
+    if (row < 0 || !m_pageActive)
+    {
+        visual->render();
+        return;
+    }
+
+    const int targetSoilId = row + 1;
+    int targetSourceId = targetSoilId;
+    if (m_currentCaseIndex >= 0 && m_currentCaseIndex < m_cases.size())
+    {
+        const auto& rec = m_cases.at(m_currentCaseIndex);
+        if (!rec.sourceMaterialIds.isEmpty())
+        {
+            targetSourceId = (row < rec.sourceMaterialIds.size())
+                                 ? rec.sourceMaterialIds.at(row)
+                                 : -1;
+        }
+    }
+
+    // 1. Highlight filled cells if available (strictly match source material ID, never solver soilId)
+    bool filledHighlighted = false;
+    if (m_sectionFillPickActor && targetSourceId >= 0)
+    {
+        auto* mapper = vtkPolyDataMapper::SafeDownCast(m_sectionFillPickActor->GetMapper());
+        vtkPolyData* sourcePoly = mapper ? mapper->GetInput() : nullptr;
+        if (sourcePoly && sourcePoly->GetNumberOfCells() > 0)
+        {
+            vtkDataArray* matArray = nullptr;
+            if (sourcePoly->GetCellData())
+            {
+                matArray = sourcePoly->GetCellData()->GetArray("__SlopeSectionMaterial");
+                if (!matArray)
+                    matArray = sourcePoly->GetCellData()->GetArray("__SlopeSectionPreviewMaterial");
+            }
+
+            auto matchingCellIds = vtkSmartPointer<vtkIdList>::New();
+            if (matArray)
+            {
+                for (vtkIdType cellId = 0; cellId < sourcePoly->GetNumberOfCells(); ++cellId)
+                {
+                    if (cellId < matArray->GetNumberOfTuples())
+                    {
+                        const int matVal = qRound(matArray->GetComponent(cellId, 0));
+                        if (matVal == targetSourceId)
+                            matchingCellIds->InsertNextId(cellId);
+                    }
+                }
+            }
+
+            if (matchingCellIds->GetNumberOfIds() > 0)
+            {
+                filledHighlighted = true;
+                auto highlightPoly = vtkSmartPointer<vtkPolyData>::New();
+                highlightPoly->SetPoints(sourcePoly->GetPoints());
+                highlightPoly->Allocate(matchingCellIds->GetNumberOfIds());
+                auto ptIds = vtkSmartPointer<vtkIdList>::New();
+                for (vtkIdType i = 0; i < matchingCellIds->GetNumberOfIds(); ++i)
+                {
+                    vtkIdType cellId = matchingCellIds->GetId(i);
+                    sourcePoly->GetCellPoints(cellId, ptIds);
+                    highlightPoly->InsertNextCell(sourcePoly->GetCellType(cellId), ptIds);
+                }
+
+                const auto regionDisplay = makeSlopeRegionDisplay(highlightPoly);
+                auto hMapper = vtkSmartPointer<vtkPolyDataMapper>::New();
+                hMapper->SetInputData(regionDisplay.fill);
+                hMapper->ScalarVisibilityOff();
+                hMapper->SetResolveCoincidentTopologyToPolygonOffset();
+                hMapper->SetRelativeCoincidentTopologyPolygonOffsetParameters(0.0, -4.0);
+
+                auto hActor = vtkSmartPointer<vtkActor>::New();
+                hActor->SetMapper(hMapper);
+                hActor->PickableOff();
+                hActor->GetProperty()->LightingOff();
+                hActor->GetProperty()->SetColor(1.0, 0.82, 0.08);
+                hActor->GetProperty()->SetOpacity(1.0);
+                hActor->GetProperty()->EdgeVisibilityOff();
+
+                double pos[3]{};
+                m_sectionFillPickActor->GetPosition(pos);
+                hActor->SetPosition(pos[0], pos[1], pos[2]);
+
+                visual->addProp(prefix + QStringLiteral("material_highlight_fill"),
+                                hActor, groupName, QStringLiteral("选中材料高亮"), false, false);
+
+                if (regionDisplay.boundary->GetNumberOfCells() > 0)
+                {
+                    auto edgeMapper = vtkSmartPointer<vtkPolyDataMapper>::New();
+                    edgeMapper->SetInputData(regionDisplay.boundary);
+                    edgeMapper->ScalarVisibilityOff();
+                    edgeMapper->SetResolveCoincidentTopologyToPolygonOffset();
+                    edgeMapper->SetRelativeCoincidentTopologyLineOffsetParameters(0.0, -6.0);
+
+                    auto edgeActor = vtkSmartPointer<vtkActor>::New();
+                    edgeActor->SetMapper(edgeMapper);
+                    edgeActor->PickableOff();
+                    edgeActor->GetProperty()->LightingOff();
+                    edgeActor->GetProperty()->SetColor(0.95, 0.32, 0.0);
+                    edgeActor->GetProperty()->SetLineWidth(3.5);
+                    edgeActor->SetPosition(pos[0], pos[1], pos[2]);
+
+                    visual->addProp(prefix + QStringLiteral("material_highlight_edge"),
+                                    edgeActor, groupName, QStringLiteral("选中材料边界"), false, false);
+                }
+            }
+        }
+    }
+
+    // 2. Fallback: only when no filled region is available (e.g. pure DAT import or fill hidden),
+    // highlight matching boundary segments strictly by solver soilId (never sourceMaterialId).
+    if (!filledHighlighted)
+    {
+        const SlopeStandardDatModel model = collectPreviewModel();
+        QVector<int> matchingSegments;
+        for (int i = 0; i < model.segments.size(); ++i)
+        {
+            if (model.segments.at(i).soilId == targetSoilId)
+                matchingSegments.append(i);
+        }
+        if (!matchingSegments.isEmpty())
+        {
+            const QString sourceType = m_currentCaseIndex >= 0 && m_currentCaseIndex < m_cases.size()
+                                           ? m_cases.at(m_currentCaseIndex).sourceType : QString();
+            const bool mesh3dSource = sourceType == QStringLiteral("mesh3d");
+            const bool mesh2dSource = sourceType == QStringLiteral("mesh2d");
+            const bool geometrySource = sourceType == QStringLiteral("geometry");
+            const bool mappedSectionSource = mesh3dSource || mesh2dSource || geometrySource;
+            const bool showOriginalModel = m_pageRole == PageRole::AnalysisSettings
+                                               ? false
+                                               : (m_pageRole != PageRole::SectionEditor
+                                                  || !m_showOriginalModelCheck
+                                                  || m_showOriginalModelCheck->isChecked());
+            const bool sectionOnlyView = mappedSectionSource && !showOriginalModel;
+            const int horizontalAxis = m_sectionHorizontalAxis;
+            const int verticalAxis = m_sectionVerticalAxis;
+            const int normalAxis = m_sectionNormalAxis;
+            const double planePosition = (mesh3dSource || geometrySource) && m_sectionPositionSpin
+                                             && m_planeCombo && m_planeCombo->count() > 0
+                                             ? m_sectionPositionSpin->value() : m_sectionWorldOffset;
+            const auto sourceHorizontal = [&](double x)
+            {
+                return m_sectionHorizontalReversed
+                           ? m_sectionHorizontalMinimum + m_sectionHorizontalMaximum - x
+                           : x;
+            };
+            const auto insertPoint = [&](vtkPoints* points, double x, double y, double offset)
+            {
+                if (sectionOnlyView)
+                {
+                    points->InsertNextPoint(sourceHorizontal(x), y, offset);
+                    return;
+                }
+                double world[3]{x, y, offset};
+                if (mappedSectionSource && verticalAxis >= 0 && verticalAxis < 3
+                    && normalAxis >= 0 && normalAxis < 3 && horizontalAxis >= 0 && horizontalAxis < 3)
+                {
+                    world[0] = world[1] = world[2] = 0.0;
+                    world[horizontalAxis] = sourceHorizontal(x);
+                    world[verticalAxis] = y;
+                    world[normalAxis] = planePosition + offset;
+                }
+                points->InsertNextPoint(world);
+            };
+
+            auto points = vtkSmartPointer<vtkPoints>::New(); points->SetDataTypeToDouble();
+            for (const auto& node : model.nodes)
+                insertPoint(points, node.x, node.y, 0.03);
+            auto lines = vtkSmartPointer<vtkCellArray>::New();
+            for (int segIdx : matchingSegments)
+            {
+                const auto& seg = model.segments.at(segIdx);
+                if (seg.startNode >= 1 && seg.startNode <= model.nodes.size()
+                    && seg.endNode >= 1 && seg.endNode <= model.nodes.size())
+                {
+                    lines->InsertNextCell(2);
+                    lines->InsertCellPoint(seg.startNode - 1);
+                    lines->InsertCellPoint(seg.endNode - 1);
+                }
+            }
+            if (lines->GetNumberOfCells() > 0)
+            {
+                auto segPoly = vtkSmartPointer<vtkPolyData>::New();
+                segPoly->SetPoints(points);
+                segPoly->SetLines(lines);
+                auto sMapper = vtkSmartPointer<vtkPolyDataMapper>::New();
+                sMapper->SetInputData(segPoly);
+                sMapper->SetResolveCoincidentTopologyToPolygonOffset();
+                sMapper->SetRelativeCoincidentTopologyPolygonOffsetParameters(0.0, -8.0);
+                auto sActor = vtkSmartPointer<vtkActor>::New();
+                sActor->SetMapper(sMapper);
+                sActor->PickableOff();
+                sActor->GetProperty()->LightingOff();
+                sActor->GetProperty()->SetColor(0.95, 0.32, 0.0);
+                sActor->GetProperty()->SetLineWidth(4.0);
+                visual->addProp(prefix + QStringLiteral("material_highlight_segments"),
+                                sActor, groupName, QStringLiteral("选中材料分界线"), false, false);
+            }
+        }
+    }
+
+    visual->render();
+}
+
 QVector<vtkSmartPointer<vtkPolyData>> SlopeStandardAnalysisWidget::currentGeometrySectionRegions(
     QString* errorMessage)
 {
@@ -5604,6 +5891,17 @@ QString SlopeStandardAnalysisWidget::userFacingEngineError(const QJsonObject& st
 {
     const QString key = status.value(QStringLiteral("message_key")).toString();
     const QString field = status.value(QStringLiteral("field")).toString();
+    if (key == QStringLiteral("SEARCH_RESULT_MISSING"))
+    {
+        QFile report(m_resultPath);
+        if (report.open(QIODevice::ReadOnly)
+            && report.readAll().contains("NO VALID INITIAL ARC FOUND"))
+            return QStringLiteral("没有找到有效的初始滑弧，自动搜索未能开始。\n"
+                                  "请检查计算坡面、材料分区及滑弧是否能够穿过断面；"
+                                  "也可改用指定圆弧检查。\n结果目录：%1").arg(m_jobDirectory);
+        return QStringLiteral("搜索结果不完整，无法读取临界滑弧和安全系数。\n"
+                              "请查看详细计算报告。\n结果目录：%1").arg(m_jobDirectory);
+    }
     static const QMap<QString, QString> keyMessages = {
         {QStringLiteral("PHREATIC_LINE_REQUIRED"), QStringLiteral("当前选择了浸润线法，但还没有绘制浸润线。")},
         {QStringLiteral("SURFACE_COUNT_INVALID"), QStringLiteral("请至少选择一条外坡面，且不能超过 50 条。")},

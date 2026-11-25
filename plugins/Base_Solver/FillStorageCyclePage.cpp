@@ -1,4 +1,5 @@
 #include "FillStorageCyclePage.h"
+#include <CompactNumberDelegate.h>
 
 #include <PickManager.h>
 #include <PublicConstants.h>
@@ -354,13 +355,14 @@ void FillStorageCyclePage::initValueEditors()
     bindLine("TEND", ui->editTEND);
     bindLine("WOMI_1", ui->editWOMI1);
 
-    // 当前产品仅提供均质坝。求解器会把 IROCKFILLTYPE=4 的
-    // IFIIWL_SEEP 强制改为 0，因此前端固定显示且只导出 0。
+    // 均质坝（IROCKFILLTYPE=4）在求解器中固定忽略 IFIIWL_SEEP；
+    // 混凝土面板堆石坝（IROCKFILLTYPE=1）支持 0/1/2 三种坝基扬压力模式。
     ui->comboIFIIWL_SEEP->clear();
-    ui->comboIFIIWL_SEEP->addItem(
-        QStringLiteral("均质坝固定不单独施加"), QStringLiteral("0"));
+    ui->comboIFIIWL_SEEP->addItem(QStringLiteral("不施加坝基扬压力"), QStringLiteral("0"));
+    ui->comboIFIIWL_SEEP->addItem(QStringLiteral("按折减系数线性分布"), QStringLiteral("1"));
+    ui->comboIFIIWL_SEEP->addItem(QStringLiteral("按渗流场节点水头计算"), QStringLiteral("2"));
+    ui->comboIFIIWL_SEEP->setCurrentIndex(0);
     ui->comboIFIIWL_SEEP->setEnabled(false);
-    // 当前仅支持均质坝，该项固定为 0，不向用户显示无可操作意义的固定字段。
     ui->formLayoutStaticLoad->setRowVisible(ui->comboIFIIWL_SEEP, false);
     ui->comboIFIIWL_BODY->setItemData(0, "0");
     ui->comboIFIIWL_BODY->setItemData(1, "2");
@@ -499,6 +501,9 @@ void FillStorageCyclePage::initValueEditors()
     m_circleTable = mkTable({"填筑起始层", "填筑结束层", "填筑后流变时间", "起始水位", "目标水位",
                              "蓄水后流变时间", "填筑", "填筑流变", "蓄水",
                              "蓄水流变", "节点水头数据（可选）", "节点体力数据（可选）"});
+    auto* cycleNumbers=new CompactNumberDelegate(m_circleTable);
+    for(int column=0;column<6;++column)m_circleTable->setItemDelegateForColumn(column,cycleNumbers);
+    m_dropTable->setItemDelegate(new CompactNumberDelegate(m_dropTable));
     // 内部仍保留求解器需要的 12 列；界面只显示前 6 项施工参数。
     // IF_PACK / IF_PLIU / IF_FILL / IF_FLIU 始终由施工参数自动生成。
 
@@ -1450,6 +1455,9 @@ void FillStorageCyclePage::updateConditionalVisibility()
     // 但求解流程不会重新执行静力填筑蓄水。
     ui->groupCycle->setVisible(m_staticOptionsAvailable);
     ui->groupStaticLoad->setVisible(m_staticOptionsAvailable);
+    const bool allowBaseUplift = m_damType != 4 && m_staticOptionsAvailable;
+    ui->comboIFIIWL_SEEP->setEnabled(allowBaseUplift);
+    ui->formLayoutStaticLoad->setRowVisible(ui->comboIFIIWL_SEEP, allowBaseUplift);
     ui->groupSeepageAssociation->setVisible(m_staticOptionsAvailable);
     ui->groupSeepageTransientStep->setVisible(m_staticOptionsAvailable);
     ui->groupWet->setVisible(m_staticOptionsAvailable);
@@ -1694,15 +1702,24 @@ void FillStorageCyclePage::applyDynamicAnalysisState(const QJsonObject& state, b
     updatePreview();
 }
 
+void FillStorageCyclePage::setDamType(int damType)
+{
+    if (m_damType == damType)
+        return;
+    m_damType = damType;
+    updateConditionalVisibility();
+    updatePreview();
+}
+
 bool FillStorageCyclePage::usesDamBaseUplift() const
 {
     // IROCKFILLTYPE=4（均质坝）时，求解器会固定 IFIIWL_SEEP=0。
-    return false;
+    return m_damType != 4 && valueOf(QStringLiteral("IFIIWL_SEEP")) != QStringLiteral("0");
 }
 
 bool FillStorageCyclePage::usesLinearDamBaseUplift() const
 {
-    return false;
+    return m_damType != 4 && valueOf(QStringLiteral("IFIIWL_SEEP")) == QStringLiteral("1");
 }
 
 bool FillStorageCyclePage::usesDamFacePressure() const
@@ -1712,9 +1729,10 @@ bool FillStorageCyclePage::usesDamFacePressure() const
 
 bool FillStorageCyclePage::usesImportedSeepageHead() const
 {
-    // FILLFBLOAD2 会同时读取 CAHEAD 与 CABODY，并依据水头判断湿润节点。
-    // 因此选择节点渗流体力时，节点水头是必需的伴随输入。
-    return usesImportedSeepageBody();
+    // FILLFTSEEP2（IFIIWL_SEEP=2）读取 CAHEAD；
+    // FILLFBLOAD2（IFIIWL_BODY=2）会同时读取 CAHEAD 与 CABODY。
+    return (m_damType != 4 && valueOf(QStringLiteral("IFIIWL_SEEP")) == QStringLiteral("2"))
+           || usesImportedSeepageBody();
 }
 
 bool FillStorageCyclePage::usesImportedSeepageBody() const
@@ -1724,7 +1742,7 @@ bool FillStorageCyclePage::usesImportedSeepageBody() const
 
 bool FillStorageCyclePage::needsSeepageAssociation() const
 {
-    return usesImportedSeepageBody();
+    return usesImportedSeepageHead() || usesImportedSeepageBody();
 }
 
 QString FillStorageCyclePage::seepageSourceUuid() const
@@ -2755,11 +2773,14 @@ QString FillStorageCyclePage::sectionText(int caseIndex) const
     QString text;
     text += QString("%1    ICASE--------------------------------------\n").arg(caseIndex);
     // IFIIWL_BODY=1 在现有求解器中会主动报错，始终只导出 0 或 2。
+    const QString seepMode = m_damType == 4
+                                 ? QStringLiteral("0")
+                                 : valueOf(QStringLiteral("IFIIWL_SEEP"));
     const QString bodyMode = usesImportedSeepageBody()
                                  ? QStringLiteral("2")
                                  : QStringLiteral("0");
-    text += QString("0 %1 %2     IFIIWL_SEEP IFIIWL_BODY IFIIWL_FACE\n")
-                .arg(bodyMode, valueOf("IFIIWL_FACE"));
+    text += QString("%1 %2 %3     IFIIWL_SEEP IFIIWL_BODY IFIIWL_FACE\n")
+                .arg(seepMode, bodyMode, valueOf("IFIIWL_FACE"));
     const int numWet = valueOf("IFWET") == QStringLiteral("1") && m_wetTable
         ? m_wetTable->rowCount() : 0;
     text += QString("%1 %2     NUM_WET IFWET\n").arg(numWet).arg(valueOf("IFWET"));
@@ -2875,9 +2896,6 @@ void FillStorageCyclePage::loadJson(const QJsonObject& obj)
         else if (auto* edit = qobject_cast<QLineEdit*>(it.value()))
             current = edit->text();
         QString savedValue = values.value(it.key()).toString(current);
-        // 当前仅提供均质坝：坝基渗透荷载在求解器中固定为 0。
-        if (it.key() == QStringLiteral("IFIIWL_SEEP"))
-            savedValue = QStringLiteral("0");
         // 旧工程中的 IFIIWL_BODY=1 对应求解器已停用分支，按“不考虑”迁移。
         if (it.key() == QStringLiteral("IFIIWL_BODY") &&
             savedValue.trimmed() == QStringLiteral("1"))

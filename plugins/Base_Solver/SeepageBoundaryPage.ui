@@ -117,10 +117,10 @@
  </property>
 </widget>
         </item>
-        <item row="3" column="1">
+        <item row="3" column="1" colspan="2">
          <widget class="CustomComboBox" name="comboBoxGroup" />
         </item>
-        <item row="3" column="2">
+        <item row="4" column="1" colspan="2">
          <widget class="QPushButton" name="btnBatchAdd">
           <property name="text">
            <string>添加分组</string>
@@ -319,7 +319,7 @@
 </widget>
         </item>
         <item row="1" column="1">
-         <widget class="QDoubleSpinBox" name="spinWaterLevel">
+         <widget class="CompactDoubleSpinBox" name="spinWaterLevel">
           <property name="decimals">
            <number>4</number>
           </property>
@@ -374,7 +374,7 @@
 </widget>
         </item>
         <item row="3" column="1">
-         <widget class="QDoubleSpinBox" name="spinFlux">
+         <widget class="CompactDoubleSpinBox" name="spinFlux">
           <property name="decimals">
            <number>10</number>
           </property>
@@ -587,6 +587,8 @@
    <extends>QComboBox</extends>
    <header>CustomComboBox.h</header>
   </customwidget>
+ 
+  <customwidget><class>CompactDoubleSpinBox</class><extends>QDoubleSpinBox</extends><header>CompactDoubleSpinBox.h</header></customwidget>
  </customwidgets>
  <resources />
  <connections />

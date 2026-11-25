@@ -95,6 +95,9 @@ SlopeStabilityWidget::SlopeStabilityWidget(QWidget* parent)
     m_excavation=new SlopeExcavationSettings(excavationBox);excavationLayout->addWidget(m_excavation);
     ui->verticalLayout->insertWidget(1,excavationBox);
     connect(m_excavation,&SlopeExcavationSettings::initialStressRequested,this,&SlopeStabilityWidget::initialStressRequested);
+    connect(m_excavation,&SlopeExcavationSettings::structureChanged,this,&SlopeStabilityWidget::excavationStructureChanged);
+    connect(m_excavation,&SlopeExcavationSettings::navigateToStageRequested,this,&SlopeStabilityWidget::navigateToExcavationStageRequested);
+    connect(m_excavation,&SlopeExcavationSettings::navigateToReinforcementRequested,this,&SlopeStabilityWidget::navigateToReinforcementRequested);
     SolverUiLayoutHelper::polishPage(this);
     SolverUiLayoutHelper::setupComputeControls(this);
 
@@ -576,7 +579,7 @@ bool SlopeStabilityWidget::exportIslopDatFile() const
     for (int lineNo = 1; lineNo <= 30; ++lineNo)
     {
         QString value = lineValue(lineNo);
-        if (lineNo == 1)
+        if (lineNo == 1 || (lineNo == 29 && excavationEnabled()))
             value = inputDirAbs;
         os << quoteValue(value) << "      " << lineNo << "\n";
     }
@@ -594,6 +597,7 @@ bool SlopeStabilityWidget::exportIslopDatFile() const
     // A single unit load step is required for an ordinary elastic solve.
     os << (strengthReduction?nsrf:1) << "    NSRF\n";
     if(!strengthReduction)os << "1.0000 1.0000 1 SRF IFPR II\n";
+    int exportedIndex = 0;
     for (int row = 0; strengthReduction && row < ui->strengthReserveTable->rowCount(); ++row)
     {
         const auto* factorItem = ui->strengthReserveTable->item(row, 0);
@@ -614,7 +618,7 @@ bool SlopeStabilityWidget::exportIslopDatFile() const
             factorOk ? QString::asprintf("%11.4f", factorVal) : factor.rightJustified(11, ' ');
         const QString formattedIfpr =
             ifprOk ? QString::asprintf("%11.4f", ifprVal) : ifpr.rightJustified(11, ' ');
-        os << formattedFactor << " " << formattedIfpr <<" "<< QString("%1").arg(row + 1)
+        os << formattedFactor << " " << formattedIfpr <<" "<< QString("%1").arg(++exportedIndex)
            << " SRF    IFPR   II\n";
     }
 
@@ -879,12 +883,17 @@ bool SlopeStabilityWidget::prepareExcavationFiles(const QString& inputDirectory,
     auto grid=mesh->getVtkUnstructuredGrid();
     const int dimension=PublicVariables::instance().get(PublicConstants::kMeshDimension).toInt();
     const QDir input(inputDirectory);
-    for(const QString& name:{QStringLiteral("MODSTR.TXT"),QStringLiteral("ISGMAR.TXT")})
+    for(const auto& pair:{qMakePair(QStringLiteral("MODSTR.TXT"),QStringLiteral("MODSTR_CZ100CB100.TXT")),
+                            qMakePair(QStringLiteral("ISGMAR.TXT"),QStringLiteral("ISGMAR_CZ100CB100.TXT"))})
     {
-        QFile source(QDir(stressDirectory).filePath(name));
+        QFile source(QDir(stressDirectory).filePath(pair.first));
         if(!source.open(QIODevice::ReadOnly) || source.size()==0)return fail(QStringLiteral("请先通过“设置／计算初始地应力”完成本工况的初始地应力计算。"));
-        const auto bytes=source.readAll();QSaveFile output(input.filePath(name));
-        if(!output.open(QIODevice::WriteOnly) || output.write(bytes)!=bytes.size() || !output.commit())return fail(QStringLiteral("无法准备初始地应力文件。"));
+        const auto bytes=source.readAll();
+        for(const QString& targetName:{pair.first,pair.second})
+        {
+            QSaveFile output(input.filePath(targetName));
+            if(!output.open(QIODevice::WriteOnly) || output.write(bytes)!=bytes.size() || !output.commit())return fail(QStringLiteral("无法准备初始地应力文件。"));
+        }
     }
     SlopeExcavationProtocol::Prepared prepared;QString message;
     const bool preserve=QFileInfo(mesh->sourceMeshFilePath()).suffix().compare("dat",Qt::CaseInsensitive)==0;

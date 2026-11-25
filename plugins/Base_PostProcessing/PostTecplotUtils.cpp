@@ -49,6 +49,7 @@
 #include <memory>
 #include <initializer_list>
 #include <limits>
+#include <unordered_map>
 #include <vector>
 
 namespace
@@ -297,6 +298,111 @@ bool tetrahedralizeCollapsedHexSlots(vtkCell* cell, vtkPoints* sourcePoints,
     return !tetrahedra.isEmpty();
 }
 
+
+// 对求解器统一 8 槽位 BRICK 的标准退化单元（Tet/Pyramid/Wedge/Hex），
+// 校正局部节点绕序以保证正体积与向外的表面法线，避免与相邻六面体共享面时
+// 法线反向而被 vtkFeatureEdges 误识别为 180° 折角线。
+void orientCanonicalLinear3DCellPositive(int vtkCellType,
+                                         vtkPoints* points,
+                                         QVector<vtkIdType>& ids)
+{
+    if (!points)
+        return;
+
+    auto signedVolume6 = [&](vtkIdType aId, vtkIdType bId,
+                             vtkIdType cId, vtkIdType dId) -> double
+    {
+        double a[3]{}, b[3]{}, c[3]{}, d[3]{};
+        points->GetPoint(aId, a);
+        points->GetPoint(bId, b);
+        points->GetPoint(cId, c);
+        points->GetPoint(dId, d);
+        const double ab[3] = {b[0] - a[0], b[1] - a[1], b[2] - a[2]};
+        const double ac[3] = {c[0] - a[0], c[1] - a[1], c[2] - a[2]};
+        const double ad[3] = {d[0] - a[0], d[1] - a[1], d[2] - a[2]};
+        return ab[0] * (ac[1] * ad[2] - ac[2] * ad[1]) +
+               ab[1] * (ac[2] * ad[0] - ac[0] * ad[2]) +
+               ab[2] * (ac[0] * ad[1] - ac[1] * ad[0]);
+    };
+
+    if (vtkCellType == VTK_TETRA && ids.size() == 4)
+    {
+        if (signedVolume6(ids[0], ids[1], ids[2], ids[3]) < 0.0)
+            std::swap(ids[1], ids[2]);
+    }
+    else if (vtkCellType == VTK_PYRAMID && ids.size() == 5)
+    {
+        const double v = signedVolume6(ids[0], ids[1], ids[2], ids[4]) +
+                         signedVolume6(ids[0], ids[2], ids[3], ids[4]);
+        if (v < 0.0)
+            std::swap(ids[1], ids[3]);
+    }
+    else if (vtkCellType == VTK_WEDGE && ids.size() == 6)
+    {
+        // VTK_WEDGE 标准外法线约定：底面 {0,2,1} 外法线背离顶面 {3,4,5}，
+        // 等价于 ((p1-p0) x (p2-p0)) . (p3-p0) < 0，即 signedVolume6(0,1,2,3) < 0。
+        if (signedVolume6(ids[0], ids[1], ids[2], ids[3]) > 0.0)
+        {
+            std::swap(ids[1], ids[2]);
+            std::swap(ids[4], ids[5]);
+        }
+    }
+    else if (vtkCellType == VTK_HEXAHEDRON && ids.size() == 8)
+    {
+        static constexpr double kNaturalSigns[8][3] = {
+            {-1.0, -1.0, -1.0}, {1.0, -1.0, -1.0}, {1.0, 1.0, -1.0},
+            {-1.0, 1.0, -1.0},  {-1.0, -1.0, 1.0}, {1.0, -1.0, 1.0},
+            {1.0, 1.0, 1.0},    {-1.0, 1.0, 1.0},
+        };
+        auto hexDet = [&](const int order[8]) -> double
+        {
+            double jac[3][3]{};
+            for (int i = 0; i < 8; ++i)
+            {
+                double p[3]{};
+                points->GetPoint(ids[order[i]], p);
+                for (int axis = 0; axis < 3; ++axis)
+                {
+                    const double dN = kNaturalSigns[i][axis] / 8.0;
+                    jac[0][axis] += p[0] * dN;
+                    jac[1][axis] += p[1] * dN;
+                    jac[2][axis] += p[2] * dN;
+                }
+            }
+            return jac[0][0] * (jac[1][1] * jac[2][2] - jac[1][2] * jac[2][1]) -
+                   jac[0][1] * (jac[1][0] * jac[2][2] - jac[1][2] * jac[2][0]) +
+                   jac[0][2] * (jac[1][0] * jac[2][1] - jac[1][1] * jac[2][0]);
+        };
+
+        static constexpr int kIdentity[8] = {0, 1, 2, 3, 4, 5, 6, 7};
+        const double currentDet = hexDet(kIdentity);
+        if (currentDet < 0.0)
+        {
+            static constexpr int kFlipCandidates[3][8] = {
+                {1, 0, 3, 2, 5, 4, 7, 6},
+                {3, 2, 1, 0, 7, 6, 5, 4},
+                {4, 5, 6, 7, 0, 1, 2, 3},
+            };
+            int bestCandidate = -1;
+            double bestDet = currentDet;
+            for (int i = 0; i < 3; ++i)
+            {
+                const double det = hexDet(kFlipCandidates[i]);
+                if (det > bestDet)
+                {
+                    bestDet = det;
+                    bestCandidate = i;
+                }
+            }
+            if (bestCandidate >= 0 && bestDet > 0.0)
+            {
+                const QVector<vtkIdType> oldIds = ids;
+                for (int i = 0; i < 8; ++i)
+                    ids[i] = oldIds[kFlipCandidates[bestCandidate][i]];
+            }
+        }
+    }
+}
 
 struct LegacyHexTopologyInfo
 {
@@ -1016,6 +1122,8 @@ vtkSmartPointer<vtkUnstructuredGrid> normalizeLegacyDegenerateBricks(
             ids.reserve(info.localNodeSlots.size());
             for (int sourceSlot : info.localNodeSlots)
                 ids.push_back(cell->GetPointId(sourceSlot));
+            orientCanonicalLinear3DCellPositive(
+                info.vtkCellType, source->GetPoints(), ids);
             if (appendCell(info.vtkCellType, ids, cid, topologyValue) >= 0)
                 continue;
         }
@@ -1025,6 +1133,8 @@ vtkSmartPointer<vtkUnstructuredGrid> normalizeLegacyDegenerateBricks(
         ids.reserve(static_cast<int>(numberOfPoints));
         for (vtkIdType i = 0; i < numberOfPoints; ++i)
             ids.push_back(cell->GetPointId(i));
+        orientCanonicalLinear3DCellPositive(
+            cell->GetCellType(), source->GetPoints(), ids);
         appendCell(cell->GetCellType(), ids, cid, topologyValue);
     }
 
@@ -1049,7 +1159,11 @@ void trimGridCacheLocked()
 {
     constexpr int maxEntries = 8;
     auto& cache = gridCache();
-    while (cache.size() > maxEntries)
+    const auto memoryKiB = [&cache] { quint64 size=0;
+        for(const auto& entry:cache)if(entry.grid)size+=entry.grid->GetActualMemorySize();return size; };
+    // Keep the current frame even if it exceeds the budget, but do not retain
+    // eight very large time steps indefinitely.
+    while (cache.size()>1 && (cache.size()>maxEntries || memoryKiB()>512*1024))
     {
         auto oldest = cache.end();
         for (auto it = cache.begin(); it != cache.end(); ++it)
@@ -1067,7 +1181,9 @@ void trimSurfaceCacheLocked()
 {
     constexpr int maxEntries = 8;
     auto& cache = surfaceCache();
-    while (cache.size() > maxEntries)
+    const auto memoryKiB = [&cache] { quint64 size=0;
+        for(const auto& entry:cache)if(entry.surface)size+=entry.surface->GetActualMemorySize();return size; };
+    while (cache.size()>1 && (cache.size()>maxEntries || memoryKiB()>128*1024))
     {
         auto oldest = cache.end();
         for (auto it = cache.begin(); it != cache.end(); ++it)
@@ -1333,11 +1449,120 @@ vtkSmartPointer<vtkUnstructuredGrid> tetrahedralizeLegacyFallbackCells(
     return converted;
 }
 
+vtkSmartPointer<vtkUnstructuredGrid> orientStandardLinear3DCells(
+    vtkUnstructuredGrid* source)
+{
+    if (!source || !source->GetPoints())
+        return shallowGridCopy(source);
+
+    const vtkIdType cellCount = source->GetNumberOfCells();
+    if (cellCount <= 0)
+        return shallowGridCopy(source);
+
+    auto signedVolume6 = [&](vtkIdType aId, vtkIdType bId,
+                             vtkIdType cId, vtkIdType dId) -> double
+    {
+        double a[3]{}, b[3]{}, c[3]{}, d[3]{};
+        source->GetPoints()->GetPoint(aId, a);
+        source->GetPoints()->GetPoint(bId, b);
+        source->GetPoints()->GetPoint(cId, c);
+        source->GetPoints()->GetPoint(dId, d);
+        const double ab[3] = {b[0] - a[0], b[1] - a[1], b[2] - a[2]};
+        const double ac[3] = {c[0] - a[0], c[1] - a[1], c[2] - a[2]};
+        const double ad[3] = {d[0] - a[0], d[1] - a[1], d[2] - a[2]};
+        return ab[0] * (ac[1] * ad[2] - ac[2] * ad[1]) +
+               ab[1] * (ac[2] * ad[0] - ac[0] * ad[2]) +
+               ab[2] * (ac[0] * ad[1] - ac[1] * ad[0]);
+    };
+
+    bool needsFlip = false;
+    for (vtkIdType cid = 0; cid < cellCount; ++cid)
+    {
+        vtkCell* cell = source->GetCell(cid);
+        if (!cell)
+            continue;
+        const int type = cell->GetCellType();
+        if (type == VTK_WEDGE && cell->GetNumberOfPoints() == 6)
+        {
+            if (signedVolume6(cell->GetPointId(0), cell->GetPointId(1),
+                              cell->GetPointId(2), cell->GetPointId(3)) > 0.0)
+            {
+                needsFlip = true;
+                break;
+            }
+        }
+        else if (type == VTK_TETRA && cell->GetNumberOfPoints() == 4)
+        {
+            if (signedVolume6(cell->GetPointId(0), cell->GetPointId(1),
+                              cell->GetPointId(2), cell->GetPointId(3)) < 0.0)
+            {
+                needsFlip = true;
+                break;
+            }
+        }
+        else if (type == VTK_PYRAMID && cell->GetNumberOfPoints() == 5)
+        {
+            const double v = signedVolume6(cell->GetPointId(0), cell->GetPointId(1),
+                                           cell->GetPointId(2), cell->GetPointId(4)) +
+                             signedVolume6(cell->GetPointId(0), cell->GetPointId(2),
+                                           cell->GetPointId(3), cell->GetPointId(4));
+            if (v < 0.0)
+            {
+                needsFlip = true;
+                break;
+            }
+        }
+        else if (type == VTK_HEXAHEDRON && cell->GetNumberOfPoints() == 8)
+        {
+            QVector<vtkIdType> ids(8);
+            for (int i = 0; i < 8; ++i)
+                ids[i] = cell->GetPointId(i);
+            const QVector<vtkIdType> before = ids;
+            orientCanonicalLinear3DCellPositive(VTK_HEXAHEDRON, source->GetPoints(), ids);
+            if (ids != before)
+            {
+                needsFlip = true;
+                break;
+            }
+        }
+    }
+
+    if (!needsFlip)
+        return shallowGridCopy(source);
+
+    auto oriented = vtkSmartPointer<vtkUnstructuredGrid>::New();
+    oriented->SetPoints(source->GetPoints());
+    oriented->GetPointData()->ShallowCopy(source->GetPointData());
+    oriented->GetFieldData()->ShallowCopy(source->GetFieldData());
+    oriented->Allocate(cellCount);
+    oriented->GetCellData()->CopyAllocate(source->GetCellData(), cellCount);
+
+    for (vtkIdType cid = 0; cid < cellCount; ++cid)
+    {
+        vtkCell* cell = source->GetCell(cid);
+        if (!cell)
+            continue;
+        const vtkIdType nPts = cell->GetNumberOfPoints();
+        QVector<vtkIdType> ids;
+        ids.reserve(static_cast<int>(nPts));
+        for (vtkIdType i = 0; i < nPts; ++i)
+            ids.push_back(cell->GetPointId(i));
+        orientCanonicalLinear3DCellPositive(cell->GetCellType(), source->GetPoints(), ids);
+        const vtkIdType newCid = oriented->InsertNextCell(
+            cell->GetCellType(), static_cast<vtkIdType>(ids.size()), ids.constData());
+        if (newCid >= 0)
+            oriented->GetCellData()->CopyData(source->GetCellData(), cid, newCid);
+    }
+    oriented->Squeeze();
+    return oriented;
+}
+
 vtkSmartPointer<vtkUnstructuredGrid> normalizeSolverTopology(
     vtkUnstructuredGrid* source)
 {
     auto normalized = normalizeLegacyDegenerateBricks(source);
-    return tetrahedralizeLegacyFallbackCells(normalized);
+    auto tetrahedralized = tetrahedralizeLegacyFallbackCells(normalized);
+    return orientStandardLinear3DCells(tetrahedralized);
 }
 
 vtkSmartPointer<vtkUnstructuredGrid> readGrid(const QString& fileName,
@@ -1509,7 +1734,7 @@ vtkSmartPointer<vtkUnstructuredGrid> readGrid(const QString& fileName,
                 if (vtmInput)
                 {
                     auto* leafGrid = vtkUnstructuredGrid::SafeDownCast(dataSet);
-                    if (!leafGrid || normalizedTopologyMarkerVersion(leafGrid) < 4)
+                    if (!leafGrid || normalizedTopologyMarkerVersion(leafGrid) < 5)
                         allBlocksNormalized = false;
                 }
                 appender->AddInputData(dataSet);
@@ -1544,9 +1769,9 @@ vtkSmartPointer<vtkUnstructuredGrid> readGrid(const QString& fileName,
         }
 
         // vtkAppendFilter 不保证保留 Composite 叶子的 FieldData；所有原生 Block
-        // 都带 marker>=4 时，在适配后的网格上恢复该标记，避免再次逐单元规范化。
+        // 都带 marker>=5 时，在适配后的网格上恢复该标记，避免再次逐单元规范化。
         if (allBlocksNormalized)
-            setNormalizedTopologyMarkerVersion(grid, 4);
+            setNormalizedTopologyMarkerVersion(grid, 5);
     }
 
     if (!grid || grid->GetNumberOfPoints() == 0 || grid->GetNumberOfCells() == 0)
@@ -1556,9 +1781,9 @@ vtkSmartPointer<vtkUnstructuredGrid> readGrid(const QString& fileName,
         return nullptr;
     }
 
-    // marker >= 4 的新缓存已经保证所有重复节点 Hex 都被改写为标准单元
-    // 或在零体积时丢弃。marker 2/3 仍可能保留“无法直接归类”的重复节点 Hex，
-    // 因此升级后只需兼容扫描一次；新写出的 marker 4 继续走快路径。
+    // marker >= 5 的新缓存已经保证所有重复节点 Hex 都被改写为正向标准单元
+    // 或在零体积时丢弃。marker < 5 的历史缓存可能存在法线反向的 VTK_WEDGE 等，
+    // 因此升级后只需兼容扫描/修正一次；新写出的 marker 5 继续走快路径。
     const int topologyMarkerVersion = normalizedTopologyMarkerVersion(grid);
     if (topologyMarkerVersion <= 0)
     {
@@ -1569,11 +1794,15 @@ vtkSmartPointer<vtkUnstructuredGrid> readGrid(const QString& fileName,
     {
         // V20 已经把常规 Tet/Pyramid/Wedge 恢复完成，只可能残留早期
         // Polyhedron/ConvexPointSet 兜底。不要再逐单元做一遍退化 Hex 分析。
-        grid = tetrahedralizeLegacyFallbackCells(grid);
+        grid = orientStandardLinear3DCells(tetrahedralizeLegacyFallbackCells(grid));
     }
     else if (topologyMarkerVersion < 4)
     {
         grid = normalizeSolverTopology(grid);
+    }
+    else if (topologyMarkerVersion == 4)
+    {
+        grid = orientStandardLinear3DCells(grid);
     }
 
     {

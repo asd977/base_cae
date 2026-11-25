@@ -67,6 +67,17 @@ class GEOMETRY_EXPORT CadBody : public QObject
     static void setFastDisplayMode(bool enabled);
     static bool fastDisplayMode();
 
+    struct FaceGroup
+    {
+        QString name;
+        QString role; // "Top", "Bottom", "Sides", "Excavation", "Contact", etc.
+        QVector<int> faceIndices;
+    };
+
+    void setFaceGroups(const QVector<FaceGroup>& groups) { m_faceGroups = groups; }
+    QVector<FaceGroup> faceGroups() const { return m_faceGroups; }
+    void addFaceGroup(const FaceGroup& group) { m_faceGroups.append(group); }
+
   private:
     enum class PresentationState
     {
@@ -83,6 +94,7 @@ class GEOMETRY_EXPORT CadBody : public QObject
     QColor m_displayColor;
     bool m_hasDisplayColor = false;
     PresentationState m_presentationState = PresentationState::NotMaterialized;
+    QVector<FaceGroup> m_faceGroups;
 };
 
 using GeomShapeObject = CadBody;

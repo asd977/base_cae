@@ -33,6 +33,7 @@
 #include <QLineEdit>
 #include <QPushButton>
 #include <QGroupBox>
+#include <QTabWidget>
 #include <QCheckBox>
 #include <QAbstractItemView>
 #include <QItemSelectionModel>
@@ -256,6 +257,18 @@ QString MeshGroupingWidget::currentTargetArrayName() const
     return ui->cmbRangeTargetArray->currentData().toString().trimmed();
 }
 
+QString MeshGroupingWidget::groupFieldForTab(int tab) const
+{
+    const QWidget* page = ui->tabGroupingInfo->widget(tab);
+    if (page == ui->tabLayer) return QStringLiteral("LAYER");
+    return m_primaryGroupCategory;
+}
+
+bool MeshGroupingWidget::isSelectionTab() const
+{
+    return ui->tabGroupingInfo->currentWidget() == m_selectionSetsPage;
+}
+
 void MeshGroupingWidget::onAutoGrouping()
 {
     auto* meshService = ServiceRegistry::instance().getService<MeshModuleControllerService>();
@@ -266,7 +279,12 @@ void MeshGroupingWidget::onAutoGrouping()
     }
 
     const QString targetArray = ui->cmbTargetArray->currentData().toString().trimmed();
-    QString prefix = targetArray == "LAYER" ? "LayerGroup" : "MaterialGroup";
+    if (!m_dualSolverGroups && QMessageBox::question(this, QStringLiteral("重建原始区域"),
+        QStringLiteral("按空间位置重新划分原始网格区域？这会替换当前区域分组，已有材料/开挖/坝体区域引用不会自动迁移；MATYPE 和 LAYER 不变。"),
+        QMessageBox::Yes | QMessageBox::No, QMessageBox::No) != QMessageBox::Yes)
+        return;
+    QString prefix = targetArray == "LAYER" ? "LayerGroup"
+        : (targetArray == "MATYPE" ? "MaterialGroup" : "RegionGroup");
 
     QString err;
     if (!meshService->autoGroupingBySpatialBins(ui->spAutoGroupCount->value(), targetArray,
@@ -772,14 +790,73 @@ void MeshGroupingWidget::refreshGroupList()
         return;
     }
     const MshPickMap map = svc->mshPickMapSolid();
+    const QString materialCategory = svc->domainCategoryForUse(MeshDomainUse::MaterialRegion);
+    const QString excavationCategory = svc->domainCategoryForUse(MeshDomainUse::ExcavationRegion);
+    // Only native IIIN/DAT has two independent SOURCE groupings. For all
+    // other meshes there is one editable original region category.
+    const bool dual = materialCategory.compare(QStringLiteral("MATYPE"), Qt::CaseInsensitive) == 0
+        && excavationCategory.compare(QStringLiteral("LAYER"), Qt::CaseInsensitive) == 0;
+    const QString primary = materialCategory.isEmpty() ? QStringLiteral("MATYPE") : materialCategory;
+    const bool groupingChanged = dual != m_dualSolverGroups
+        || primary.compare(m_primaryGroupCategory, Qt::CaseInsensitive) != 0;
+    m_dualSolverGroups = dual;
+    m_primaryGroupCategory = primary;
+    if (groupingChanged)
+    {
+        QSignalBlocker tabBlock(ui->tabGroupingInfo);
+        QSignalBlocker autoBlock(ui->cmbTargetArray);
+        QSignalBlocker rangeBlock(ui->cmbRangeTargetArray);
+        const int layerTab = ui->tabGroupingInfo->indexOf(ui->tabLayer);
+        if (dual && layerTab < 0)
+            ui->tabGroupingInfo->insertTab(1, ui->tabLayer, QStringLiteral("施工/开挖层分组"));
+        else if (!dual && layerTab >= 0)
+            ui->tabGroupingInfo->removeTab(layerTab);
+        ui->tabGroupingInfo->setTabText(0,
+            dual ? QStringLiteral("材料分组") : QStringLiteral("网格区域"));
+        ui->tblMatypeGroups->horizontalHeaderItem(0)->setText(
+            dual ? QStringLiteral("材料编号") : QStringLiteral("区域编号"));
+        ui->cmbTargetArray->clear();
+        ui->cmbRangeTargetArray->clear();
+        if (dual)
+        {
+            ui->cmbTargetArray->addItem(QStringLiteral("材料分组"), QStringLiteral("MATYPE"));
+            ui->cmbTargetArray->addItem(QStringLiteral("施工/开挖层分组"), QStringLiteral("LAYER"));
+            ui->cmbRangeTargetArray->addItem(QStringLiteral("材料分组"), QStringLiteral("MATYPE"));
+            ui->cmbRangeTargetArray->addItem(QStringLiteral("施工/开挖层分组"), QStringLiteral("LAYER"));
+        }
+        else
+        {
+            ui->cmbTargetArray->addItem(QStringLiteral("网格区域"), primary);
+            ui->cmbRangeTargetArray->addItem(QStringLiteral("网格区域"), primary);
+        }
+        ui->spStartValue->setMinimum(dual ? FIRST_AUTO_MATYPE : 1);
+        ui->spStartValue->setMaximum(dual ? MAX_SOLVER_MATYPE : 1000000);
+        ui->spTargetValue->setMinimum(dual ? FIRST_AUTO_MATYPE : 1);
+        ui->spTargetValue->setMaximum(dual ? MAX_SOLVER_MATYPE : 1000000);
+        if (dual)
+        {
+            ui->spStartValue->setValue(qMax(FIRST_AUTO_MATYPE, ui->spStartValue->value()));
+            ui->spTargetValue->setValue(qMax(FIRST_AUTO_MATYPE, ui->spTargetValue->value()));
+        }
+        else
+        {
+            ui->spStartValue->setValue(1);
+            ui->spTargetValue->setValue(1);
+        }
+        // Avoid changing solver MATYPE/LAYER merely to split the original mesh.
+        ui->cmbTargetArray->setToolTip(dual ? QString()
+            : QStringLiteral("修改原始网格分区，不更改计算材料编号和施工层号。"));
+    }
     struct Row { int id = 0; QString name; qsizetype count = 0; };
-    for (const QString& field : {QStringLiteral("MATYPE"), QStringLiteral("LAYER")})
+    for (const QString& field : (dual
+        ? QStringList{QStringLiteral("MATYPE"), QStringLiteral("LAYER")}
+        : QStringList{primary}))
     {
         QMap<int, Row> groups;
         for (auto it = map.tagSets.constBegin(); it != map.tagSets.constEnd(); ++it)
         {
             const MeshTagSet& set = it.value();
-            if (set.key.category.compare(field, Qt::CaseInsensitive) != 0 || set.key.dim < 2)
+            if (set.key.category.compare(field, Qt::CaseInsensitive) != 0 || set.key.dim != map.meshDim)
                 continue;
             Row& row = groups[set.key.id];
             row.id = set.key.id;
@@ -787,9 +864,10 @@ void MeshGroupingWidget::refreshGroupList()
             const QString label = map.groupDisplayNames.value(
                 QStringLiteral("%1/%2/%3").arg(field).arg(set.key.dim).arg(set.key.id));
             if (!label.trimmed().isEmpty()) row.name = label.trimmed();
+            else if (!set.name.trimmed().isEmpty()) row.name = set.name.trimmed();
         }
-        QTableWidget* table = field == QStringLiteral("MATYPE")
-            ? ui->tblMatypeGroups : ui->tblLayerGroups;
+        QTableWidget* table = field == QStringLiteral("LAYER")
+            ? ui->tblLayerGroups : ui->tblMatypeGroups;
         table->setRowCount(groups.size());
         int rowNumber = 0;
         for (auto it = groups.begin(); it != groups.end(); ++it, ++rowNumber)
@@ -805,14 +883,15 @@ void MeshGroupingWidget::refreshGroupList()
             table->setItem(rowNumber, 2, count);
         }
         table->resizeColumnsToContents();
-        const QSet<int>& prior = field == QStringLiteral("MATYPE") ? matPrior : layPrior;
+        const QSet<int>& prior = field == QStringLiteral("LAYER") ? layPrior : matPrior;
         for (int row = 0; row < table->rowCount(); ++row)
             if (auto* item = table->item(row, 0); item && prior.contains(item->text().toInt()))
                 table->selectionModel()->select(table->model()->index(row, 0),
                     QItemSelectionModel::Select | QItemSelectionModel::Rows);
     }
     m_rebuildingGroups = false;
-    updateGroupActionState();
+    if (groupingChanged) syncGroupTab();
+    else updateGroupActionState();
 }
 
 void MeshGroupingWidget::refreshBoundaryGroupList()
@@ -823,25 +902,26 @@ void MeshGroupingWidget::refreshBoundaryGroupList()
     if (!meshService)
         return;
 
-    const MshPickMap pick =
-        m_hasAutoBoundaryGroups ? m_autoBoundaryPickMap : meshService->mshPickMapSolid();
-
     QVector<MeshTagSet> boundarySets;
-    for (auto it = pick.tagSets.constBegin(); it != pick.tagSets.constEnd(); ++it)
+    if (m_hasAutoBoundaryGroups)
     {
-        const MeshTagSet& set = it.value();
-        if (set.key.category != QStringLiteral("Physical"))
-            continue;
-        if (set.key.dim < 0 || set.key.dim > 2)
-            continue;
-        boundarySets.push_back(set);
+        for (auto it = m_autoBoundaryPickMap.tagSets.constBegin();
+             it != m_autoBoundaryPickMap.tagSets.constEnd(); ++it)
+            if (it.key().dim >= 0 && it.key().dim <= 2
+                && (it.key().category == QStringLiteral("Physical")
+                    || it.key().category == QStringLiteral("SmeshBoundary")))
+                boundarySets.push_back(it.value());
     }
+    else
+        boundarySets = meshService->boundaryTagSets();
 
     std::sort(boundarySets.begin(), boundarySets.end(),
               [](const MeshTagSet& a, const MeshTagSet& b)
               {
                   if (a.key.dim != b.key.dim)
                       return a.key.dim < b.key.dim;
+                  if (a.key.category != b.key.category)
+                      return a.key.category < b.key.category;
                   return a.key.id < b.key.id;
               });
 
@@ -915,6 +995,7 @@ void MeshGroupingWidget::buildManualGroupingControls()
 
     // Selection sets remain separate data; they do NOT write MATYPE/LAYER.
     auto* setsPage = new QWidget(this);
+    m_selectionSetsPage = setsPage;
     auto* setsLayout = new QVBoxLayout(setsPage);
     m_selectionSetsTable = new QTableWidget(setsPage);
     m_selectionSetsTable->setColumnCount(3);
@@ -970,11 +1051,12 @@ void MeshGroupingWidget::buildManualGroupingControls()
 
 void MeshGroupingWidget::syncGroupTab()
 {
-    const int tab = ui->tabGroupingInfo->currentIndex();
     // Selection-set creation needs individual members. For material and layer
     // tabs, the user explicitly chooses whole groups or local cells.
-    m_advancedCellMode = tab == 3 || (tab < 2 && m_selectMode->currentIndex() == 1);
-    if (m_advancedCellMode && tab < 2)
+    const bool groupTab = ui->tabGroupingInfo->currentWidget() == ui->tabMaterial
+        || ui->tabGroupingInfo->currentWidget() == ui->tabLayer;
+    m_advancedCellMode = isSelectionTab() || (groupTab && m_selectMode->currentIndex() == 1);
+    if (m_advancedCellMode && groupTab)
     {
         // In local mode the group-list highlight is not the editable cell selection.
         // Drop it so the user does not mistake a whole group for selected cells.
@@ -985,7 +1067,7 @@ void MeshGroupingWidget::syncGroupTab()
         }
     }
     clearManualSelection();
-    if (!m_advancedCellMode && tab < 2)
+    if (!m_advancedCellMode && groupTab)
         selectGroupsFromTable();
     updateGroupActionState();
 }
@@ -993,8 +1075,9 @@ void MeshGroupingWidget::syncGroupTab()
 void MeshGroupingWidget::updateGroupActionState()
 {
     const int tab = ui->tabGroupingInfo->currentIndex();
-    const bool groupTab = tab == 0 || tab == 1;
-    const bool selectionTab = tab == 3;
+    const bool groupTab = ui->tabGroupingInfo->currentWidget() == ui->tabMaterial
+        || ui->tabGroupingInfo->currentWidget() == ui->tabLayer;
+    const bool selectionTab = isSelectionTab();
     if (m_groupActions) m_groupActions->setVisible(groupTab || selectionTab);
     if (m_modeLabel) m_modeLabel->setVisible(groupTab);
     if (m_selectMode) m_selectMode->setVisible(groupTab);
@@ -1008,7 +1091,9 @@ void MeshGroupingWidget::updateGroupActionState()
     }
     if (m_mergeTargetId)
     {
-        m_mergeTargetId->setRange(tab == 1 ? 1 : 3, tab == 1 ? 1000000 : MAX_SOLVER_MATYPE);
+        const QString field = groupFieldForTab(tab);
+        m_mergeTargetId->setRange(field == QStringLiteral("MATYPE") ? 3 : 1,
+            field == QStringLiteral("MATYPE") ? MAX_SOLVER_MATYPE : 1000000);
         m_mergeTargetId->setVisible(groupTab);
     }
     if (m_targetLabel) m_targetLabel->setVisible(groupTab);
@@ -1031,13 +1116,14 @@ void MeshGroupingWidget::selectGroupsFromTable()
     updateGroupActionState();
     if (m_advancedCellMode) return;
     const int tab = ui->tabGroupingInfo->currentIndex();
-    if (tab != 0 && tab != 1) return;
+    if (ui->tabGroupingInfo->currentWidget() != ui->tabMaterial
+        && ui->tabGroupingInfo->currentWidget() != ui->tabLayer) return;
     QTableWidget* table = currentGroupTable();
     if (!table || !table->selectionModel()) return;
     auto* svc = ServiceRegistry::instance().getService<MeshModuleControllerService>();
     if (!svc) return;
     const MshPickMap map = svc->mshPickMapSolid();
-    const QString field = tab == 0 ? QStringLiteral("MATYPE") : QStringLiteral("LAYER");
+    const QString field = groupFieldForTab(tab);
     QSet<int> selected;
     for (const QModelIndex& index : table->selectionModel()->selectedRows())
         if (const auto* item = table->item(index.row(), 0))
@@ -1061,12 +1147,13 @@ void MeshGroupingWidget::selectGroupsFromTable()
 void MeshGroupingWidget::mergeSelectedGroups()
 {
     const int tab = ui->tabGroupingInfo->currentIndex();
-    if (tab != 0 && tab != 1) return;
+    if (ui->tabGroupingInfo->currentWidget() != ui->tabMaterial
+        && ui->tabGroupingInfo->currentWidget() != ui->tabLayer) return;
     QTableWidget* table = currentGroupTable();
     if (!table || !table->selectionModel()) return;
     auto* svc = ServiceRegistry::instance().getService<MeshModuleControllerService>();
     if (!svc) return;
-    const QString field = tab == 0 ? QStringLiteral("MATYPE") : QStringLiteral("LAYER");
+    const QString field = groupFieldForTab(tab);
     const int target = m_mergeTargetId->value();
     QSet<int> sources;
     for (const QModelIndex& index : table->selectionModel()->selectedRows())
@@ -1076,7 +1163,8 @@ void MeshGroupingWidget::mergeSelectedGroups()
     for (int source : sources)
     {
         if ((field == QStringLiteral("MATYPE") && source < 3) ||
-            (field == QStringLiteral("LAYER") && source <= 0))
+            (field == QStringLiteral("LAYER") && source <= 0) ||
+            (field != QStringLiteral("MATYPE") && field != QStringLiteral("LAYER") && source <= 0))
         {
             QMessageBox::warning(this, QStringLiteral("合并分组"),
                 QStringLiteral("所选组包含求解器保留材料编号或杆单元安装层号，不能直接合并。"));
@@ -1094,13 +1182,20 @@ void MeshGroupingWidget::mergeSelectedGroups()
     for (auto it = map.tagSets.constBegin(); it != map.tagSets.constEnd(); ++it)
     {
         const MeshTagSet& set = it.value();
-        if (set.key.category != field || !sources.contains(set.key.id)) continue;
-        if (set.key.dim != map.meshDim && !set.cellIds.isEmpty())
+        if (set.key.category.compare(field, Qt::CaseInsensitive) != 0
+            || !sources.contains(set.key.id)) continue;
+        if (set.key.dim != map.meshDim)
         {
-            QMessageBox::warning(this, QStringLiteral("合并分组"),
-                QStringLiteral("所选组同时包含杆单元或其他维度单元。为避免只合并部分成员，"
-                               "请在相应单元类型的专用页面处理，当前未执行修改。"));
-            return;
+            // Physical boundary tags may share an ID with volume groups.
+            // They are independent and must never be moved as volume cells.
+            if ((field == QStringLiteral("MATYPE") || field == QStringLiteral("LAYER"))
+                && !set.cellIds.isEmpty())
+            {
+                QMessageBox::warning(this, QStringLiteral("合并分组"),
+                    QStringLiteral("所选组包含其他维度单元，请在专用页面处理。"));
+                return;
+            }
+            continue;
         }
         ids += set.cellIds;
     }
@@ -1115,7 +1210,9 @@ void MeshGroupingWidget::mergeSelectedGroups()
     sourceNames.sort();
     const QString warning = field == QStringLiteral("LAYER")
         ? QStringLiteral("施工层合并可能改变开挖/填筑阶段的作用范围，原工况中引用的旧层号不会自动替换。")
-        : QStringLiteral("材料组合并会改变单元材料编号；请确认目标组已配置正确的材料参数，旧材料关联不会自动迁移。");
+        : field == QStringLiteral("MATYPE")
+            ? QStringLiteral("材料组合并会改变单元材料编号；请确认目标组已配置正确的材料参数，旧材料关联不会自动迁移。")
+            : QStringLiteral("修改原始区域会影响已有业务区域引用，MATYPE/LAYER 保持不变。请检查已设置的开挖或坝体区域。");
     const QString details = QStringLiteral("将 %1 组 [%2] 的 %3 个单元合并到 %4=%5？\n\n%6\n\n另一套 MATYPE/LAYER 属性保持不变。")
         .arg(field, sourceNames.join(QStringLiteral(", "))).arg(ids.size())
         .arg(field).arg(target).arg(warning);
@@ -1164,10 +1261,9 @@ void MeshGroupingWidget::mergeSelectedGroups()
 
 QTableWidget* MeshGroupingWidget::currentGroupTable() const
 {
-    const int tab = ui->tabGroupingInfo->currentIndex();
-    if (tab == 0) return ui->tblMatypeGroups;
-    if (tab == 1) return ui->tblLayerGroups;
-    if (tab == 3) return m_selectionSetsTable;
+    if (ui->tabGroupingInfo->currentWidget() == ui->tabMaterial) return ui->tblMatypeGroups;
+    if (ui->tabGroupingInfo->currentWidget() == ui->tabLayer) return ui->tblLayerGroups;
+    if (isSelectionTab()) return m_selectionSetsTable;
     return nullptr;
 }
 
@@ -1204,23 +1300,28 @@ void MeshGroupingWidget::onPickedFacesChanged()
     for (vtkIdType k : keys) now.insert(static_cast<qint64>(k));
 
     const int tab = ui->tabGroupingInfo->currentIndex();
-    if (tab == 2) return; // No mesh cell editing on the boundary-group tab.
-    if (!m_advancedCellMode && (tab == 0 || tab == 1))
+    if (ui->tabGroupingInfo->currentWidget() == ui->tabBoundary) return;
+    if (!m_advancedCellMode &&
+        (ui->tabGroupingInfo->currentWidget() == ui->tabMaterial
+         || ui->tabGroupingInfo->currentWidget() == ui->tabLayer))
     {
-        const QString field = tab == 0 ? QStringLiteral("MATYPE") : QStringLiteral("LAYER");
-        vtkDataArray* values = full->GetCellData() ?
-            full->GetCellData()->GetArray(field.toUtf8().constData()) : nullptr;
-        QTableWidget* table = tab == 0 ? ui->tblMatypeGroups : ui->tblLayerGroups;
+        const QString field = groupFieldForTab(tab);
+        const MshPickMap map = svc->mshPickMapSolid();
+        QTableWidget* table = ui->tabGroupingInfo->currentWidget() == ui->tabMaterial
+            ? ui->tblMatypeGroups : ui->tblLayerGroups;
         // Only act on NEW picks; clearing old picks must not randomly change the group.
         for (vtkIdType key : keys)
         {
             if (m_lastFaceKeys.contains(static_cast<qint64>(key))) continue;
             const vtkIdType cid = key >> 4;
-            if (!values || cid < 0 || cid >= full->GetNumberOfCells()
-                || cid >= values->GetNumberOfTuples()) continue;
+            if (cid < 0 || cid >= full->GetNumberOfCells()) continue;
             vtkCell* cell = full->GetCell(cid);
             if (!cell || cell->GetCellDimension() != meshDim || meshDim < 2) continue;
-            const int groupId = static_cast<int>(values->GetTuple1(cid));
+            int groupId = 0;
+            for (const MeshTagKey& key : map.cellIdToDomainTags.value(cid))
+                if (key.dim == meshDim && key.category.compare(field, Qt::CaseInsensitive) == 0)
+                { groupId = key.id; break; }
+            if (groupId == 0) continue;
             for (int row = 0; row < table->rowCount(); ++row)
             {
                 const auto* item = table->item(row, 0);
@@ -1275,7 +1376,8 @@ void MeshGroupingWidget::clearManualSelection()
 void MeshGroupingWidget::applyManualGrouping()
 {
     const int tab = ui->tabGroupingInfo->currentIndex();
-    if ((tab != 0 && tab != 1) || !m_advancedCellMode)
+    if ((ui->tabGroupingInfo->currentWidget() != ui->tabMaterial
+        && ui->tabGroupingInfo->currentWidget() != ui->tabLayer) || !m_advancedCellMode)
         return;
     auto* svc = ServiceRegistry::instance().getService<MeshModuleControllerService>();
     if (!svc || m_manualCellIds.isEmpty())
@@ -1286,11 +1388,13 @@ void MeshGroupingWidget::applyManualGrouping()
     QVector<MeshIdType> ids;
     ids.reserve(m_manualCellIds.size());
     for (MeshIdType id : m_manualCellIds) ids.push_back(id);
-    const QString field = tab == 0 ? QStringLiteral("MATYPE") : QStringLiteral("LAYER");
+    const QString field = groupFieldForTab(tab);
     const int target = m_mergeTargetId->value();
-    const QString consequence = tab == 0
+    const QString consequence = field == QStringLiteral("MATYPE")
         ? QStringLiteral("这会修改所选单元的材料编号，请核对相应材料参数关联。")
-        : QStringLiteral("这会修改所选单元的施工层号，请核对已有开挖/填筑工况。 ");
+        : field == QStringLiteral("LAYER")
+            ? QStringLiteral("这会修改所选单元的施工层号，请核对已有开挖/填筑工况。")
+            : QStringLiteral("这会修改原始网格区域分组，不会更改 MATYPE/LAYER；请核对已配置的区域引用。");
     if (QMessageBox::question(this, QStringLiteral("确认调整分组"),
           QStringLiteral("将 %1 个单元设为 %2=%3？\n\n%4\n另一套 MATYPE/LAYER 属性保持不变。")
               .arg(ids.size()).arg(field).arg(target).arg(consequence),
@@ -1383,7 +1487,7 @@ void MeshGroupingWidget::writeSelectionSet(const QString& action)
 
 void MeshGroupingWidget::deleteSelectionSet()
 {
-    if (ui->tabGroupingInfo->currentIndex() != 3 || selectedGroupId() <= 0) return;
+    if (!isSelectionTab() || selectedGroupId() <= 0) return;
     auto* svc = ServiceRegistry::instance().getService<MeshModuleControllerService>();
     if (!svc) return;
     MshPickMap map = svc->mshPickMapSolid();

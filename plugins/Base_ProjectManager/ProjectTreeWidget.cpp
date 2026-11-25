@@ -1,7 +1,9 @@
 #include "ProjectTreeWidget.h"
 #include "DashboardPage.h"
+#include <SettingsLayout.h>
 
 #include <ContextMenuHub.h>
+#include <EventManager.h>
 #include <QHeaderView.h>
 #include <services/UiFrameService.h>
 #include <services/VisualWidgetService.h>
@@ -176,6 +178,7 @@ void ProjectTreeWidget::onCurItemChanged(QTreeWidgetItem* current, QTreeWidgetIt
     {
         page->applyDeferredLoadJson();
         page->beforeLoad();
+        CaeSettingsLayout::prepare(widget);
     }
     m_activeSettingsPage = page;
     m_stackWidget->setCurrentWidget(widget);
@@ -207,78 +210,26 @@ QString ProjectTreeWidget::resolveNodeModule(QTreeWidgetItem* node) const
 
 void ProjectTreeWidget::ensureSceneVisibleForCurrentNode(QTreeWidgetItem* current)
 {
-    auto* vis = ServiceRegistry::instance().getService<VisualWidgetService>();
-    if (!vis || !current)
-    {
-        return;
-    }
-
-    const QString module = resolveNodeModule(current);
-    if (module == "Geometry")
-    {
-        // 切回几何节点时，自动恢复几何显示，避免网格预览后“看不到几何”。
-        vis->setGroupVisible("Geometry", true, false);
-
-        // 可选聚焦：切几何时弱化网格层，避免遮挡。
-        vis->setVisible("mesh.global.surf", false, false);
-        vis->setVisible("mesh.global.wire", false, false);
-        vis->setVisible("mesh.imported.surface", false, false);
-        vis->setVisible("mesh.imported.line", false, false);
-        vis->render();
-    }
-    else if (module == "Mesh")
-    {
-        const bool hasMeshActors = vis->getProp("mesh.global.surf") != nullptr ||
-                                   vis->getProp("mesh.global.wire") != nullptr ||
-                                   vis->getProp("mesh.imported.surface") != nullptr ||
-                                   vis->getProp("mesh.imported.line") != nullptr;
-
-        if (hasMeshActors)
-        {
-            // 切到网格节点且存在网格结果时：隐藏几何，仅显示网格结果。
-            vis->setGroupVisible("Geometry", false, false);
-            vis->setVisible("mesh.global.surf", true, false);
-            vis->setVisible("mesh.global.wire", true, false);
-            vis->setVisible("mesh.imported.surface", true, false);
-            vis->setVisible("mesh.imported.line", true, false);
-        }
-        else
-        {
-            // 还没有任何网格结果时，保留几何显示，避免“切到网格页面模型消失”。
-            vis->setGroupVisible("Geometry", true, false);
-        }
-        vis->render();
-    }
-    else if (module == "PostProcessing")
-    {
-        // 后处理页面不强制显示网格，避免遮挡后处理结果。
-        vis->setVisible("mesh.global.surf", false, false);
-        vis->setVisible("mesh.global.wire", false, false);
-        vis->setVisible("mesh.imported.surface", false, false);
-        vis->setVisible("mesh.imported.line", false, false);
-        vis->render();
-    }
-    else
-    {
-        // 非几何模块默认优先显示网格（若有网格），否则回退显示几何。
-        const bool hasMeshActors = vis->getProp("mesh.global.surf") != nullptr ||
-                                   vis->getProp("mesh.global.wire") != nullptr ||
-                                   vis->getProp("mesh.imported.surface") != nullptr ||
-                                   vis->getProp("mesh.imported.line") != nullptr;
-        if (hasMeshActors)
-        {
-            vis->setGroupVisible("Geometry", false, false);
-            vis->setVisible("mesh.global.surf", true, false);
-            vis->setVisible("mesh.global.wire", true, false);
-            vis->setVisible("mesh.imported.surface", true, false);
-            vis->setVisible("mesh.imported.line", true, false);
-        }
-        else
-        {
-            vis->setGroupVisible("Geometry", true, false);
-        }
-        vis->render();
-    }
+    auto* visual=ServiceRegistry::instance().getService<VisualWidgetService>();
+    if(!visual||!current)return;
+    const QString module=resolveNodeModule(current);
+    auto* node=dynamic_cast<ProjectNode*>(current);
+    const QString pageType=node&&node->getPage()?node->getPage()->getPageType():QString();
+    const bool section=pageType.startsWith(QStringLiteral("SlopeLimitEquilibrium"));
+    const bool meshAvailable=visual->getProp("mesh.imported.surface")||visual->getProp("mesh.imported.line")
+        ||visual->getProp("mesh.global.surf")||visual->getProp("mesh.global.wire");
+    const bool post=module==QLatin1String("PostProcessing");
+    const bool meshVisible=meshAvailable&&module!=QLatin1String("Geometry")&&!post&&!section;
+    const bool geometryVisible=!post&&!section&&(module==QLatin1String("Geometry")||!meshAvailable);
+    // Module visibility is a mask. Never overwrite each object's saved choice.
+    visual->setGroupVisible(QStringLiteral("Geometry"),geometryVisible,false);
+    visual->setGroupVisible(QStringLiteral("GeometryPreview"),geometryVisible,false);
+    visual->setGroupVisible(QStringLiteral("网格"),meshVisible,false);
+    visual->setGroupVisible(QStringLiteral("Mesh"),meshVisible,false);
+    visual->setGroupVisible(QStringLiteral("post"),post,false);
+    EventManager::instance().sendEvent(QStringLiteral("scene.mesh.visibility.changed"),
+        {{QStringLiteral("visible"),meshVisible}});
+    visual->render();
 }
 
 void ProjectTreeWidget::deletePage(QTreeWidgetItem* item)

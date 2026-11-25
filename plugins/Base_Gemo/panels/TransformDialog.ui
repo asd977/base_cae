@@ -29,11 +29,11 @@
       <property name="rightMargin"><number>8</number></property>
       <property name="bottomMargin"><number>8</number></property>
       <item row="0" column="0"><widget class="QLabel" name="dxLabel"><property name="text"><string>X 位移</string></property></widget></item>
-      <item row="0" column="1"><widget class="QDoubleSpinBox" name="dxSpin"><property name="suffix"><string> mm</string></property><property name="decimals"><number>4</number></property><property name="minimum"><double>-1000000.000000000000000</double></property><property name="maximum"><double>1000000.000000000000000</double></property><property name="value"><double>10.000000000000000</double></property></widget></item>
+      <item row="0" column="1"><widget class="CompactDoubleSpinBox" name="dxSpin"><property name="suffix"><string> mm</string></property><property name="decimals"><number>4</number></property><property name="minimum"><double>-1000000.000000000000000</double></property><property name="maximum"><double>1000000.000000000000000</double></property><property name="value"><double>10.000000000000000</double></property></widget></item>
       <item row="1" column="0"><widget class="QLabel" name="dyLabel"><property name="text"><string>Y 位移</string></property></widget></item>
-      <item row="1" column="1"><widget class="QDoubleSpinBox" name="dySpin"><property name="suffix"><string> mm</string></property><property name="decimals"><number>4</number></property><property name="minimum"><double>-1000000.000000000000000</double></property><property name="maximum"><double>1000000.000000000000000</double></property></widget></item>
+      <item row="1" column="1"><widget class="CompactDoubleSpinBox" name="dySpin"><property name="suffix"><string> mm</string></property><property name="decimals"><number>4</number></property><property name="minimum"><double>-1000000.000000000000000</double></property><property name="maximum"><double>1000000.000000000000000</double></property></widget></item>
       <item row="2" column="0"><widget class="QLabel" name="dzLabel"><property name="text"><string>Z 位移</string></property></widget></item>
-      <item row="2" column="1"><widget class="QDoubleSpinBox" name="dzSpin"><property name="suffix"><string> mm</string></property><property name="decimals"><number>4</number></property><property name="minimum"><double>-1000000.000000000000000</double></property><property name="maximum"><double>1000000.000000000000000</double></property></widget></item>
+      <item row="2" column="1"><widget class="CompactDoubleSpinBox" name="dzSpin"><property name="suffix"><string> mm</string></property><property name="decimals"><number>4</number></property><property name="minimum"><double>-1000000.000000000000000</double></property><property name="maximum"><double>1000000.000000000000000</double></property></widget></item>
      </layout>
     </widget>
    </item>
@@ -46,11 +46,11 @@
       <property name="rightMargin"><number>8</number></property>
       <property name="bottomMargin"><number>8</number></property>
       <item row="0" column="0"><widget class="QLabel" name="rxLabel"><property name="text"><string>绕 X 轴</string></property></widget></item>
-      <item row="0" column="1"><widget class="QDoubleSpinBox" name="rxSpin"><property name="suffix"><string> °</string></property><property name="decimals"><number>4</number></property><property name="minimum"><double>-1000000.000000000000000</double></property><property name="maximum"><double>1000000.000000000000000</double></property><property name="singleStep"><double>5.000000000000000</double></property></widget></item>
+      <item row="0" column="1"><widget class="CompactDoubleSpinBox" name="rxSpin"><property name="suffix"><string> °</string></property><property name="decimals"><number>4</number></property><property name="minimum"><double>-1000000.000000000000000</double></property><property name="maximum"><double>1000000.000000000000000</double></property><property name="singleStep"><double>5.000000000000000</double></property></widget></item>
       <item row="1" column="0"><widget class="QLabel" name="ryLabel"><property name="text"><string>绕 Y 轴</string></property></widget></item>
-      <item row="1" column="1"><widget class="QDoubleSpinBox" name="rySpin"><property name="suffix"><string> °</string></property><property name="decimals"><number>4</number></property><property name="minimum"><double>-1000000.000000000000000</double></property><property name="maximum"><double>1000000.000000000000000</double></property><property name="singleStep"><double>5.000000000000000</double></property></widget></item>
+      <item row="1" column="1"><widget class="CompactDoubleSpinBox" name="rySpin"><property name="suffix"><string> °</string></property><property name="decimals"><number>4</number></property><property name="minimum"><double>-1000000.000000000000000</double></property><property name="maximum"><double>1000000.000000000000000</double></property><property name="singleStep"><double>5.000000000000000</double></property></widget></item>
       <item row="2" column="0"><widget class="QLabel" name="rzLabel"><property name="text"><string>绕 Z 轴</string></property></widget></item>
-      <item row="2" column="1"><widget class="QDoubleSpinBox" name="rzSpin"><property name="suffix"><string> °</string></property><property name="decimals"><number>4</number></property><property name="minimum"><double>-1000000.000000000000000</double></property><property name="maximum"><double>1000000.000000000000000</double></property><property name="singleStep"><double>5.000000000000000</double></property></widget></item>
+      <item row="2" column="1"><widget class="CompactDoubleSpinBox" name="rzSpin"><property name="suffix"><string> °</string></property><property name="decimals"><number>4</number></property><property name="minimum"><double>-1000000.000000000000000</double></property><property name="maximum"><double>1000000.000000000000000</double></property><property name="singleStep"><double>5.000000000000000</double></property></widget></item>
      </layout>
     </widget>
    </item>
@@ -65,11 +65,11 @@
       <item row="0" column="0"><widget class="QLabel" name="pivotModeLabel"><property name="text"><string>中心方式</string></property></widget></item>
       <item row="0" column="1"><widget class="QComboBox" name="pivotModeCombo"/></item>
       <item row="1" column="0"><widget class="QLabel" name="pivotXLabel"><property name="text"><string>中心 X</string></property></widget></item>
-      <item row="1" column="1"><widget class="QDoubleSpinBox" name="pivotXSpin"><property name="suffix"><string> mm</string></property><property name="decimals"><number>4</number></property><property name="minimum"><double>-1000000.000000000000000</double></property><property name="maximum"><double>1000000.000000000000000</double></property></widget></item>
+      <item row="1" column="1"><widget class="CompactDoubleSpinBox" name="pivotXSpin"><property name="suffix"><string> mm</string></property><property name="decimals"><number>4</number></property><property name="minimum"><double>-1000000.000000000000000</double></property><property name="maximum"><double>1000000.000000000000000</double></property></widget></item>
       <item row="2" column="0"><widget class="QLabel" name="pivotYLabel"><property name="text"><string>中心 Y</string></property></widget></item>
-      <item row="2" column="1"><widget class="QDoubleSpinBox" name="pivotYSpin"><property name="suffix"><string> mm</string></property><property name="decimals"><number>4</number></property><property name="minimum"><double>-1000000.000000000000000</double></property><property name="maximum"><double>1000000.000000000000000</double></property></widget></item>
+      <item row="2" column="1"><widget class="CompactDoubleSpinBox" name="pivotYSpin"><property name="suffix"><string> mm</string></property><property name="decimals"><number>4</number></property><property name="minimum"><double>-1000000.000000000000000</double></property><property name="maximum"><double>1000000.000000000000000</double></property></widget></item>
       <item row="3" column="0"><widget class="QLabel" name="pivotZLabel"><property name="text"><string>中心 Z</string></property></widget></item>
-      <item row="3" column="1"><widget class="QDoubleSpinBox" name="pivotZSpin"><property name="suffix"><string> mm</string></property><property name="decimals"><number>4</number></property><property name="minimum"><double>-1000000.000000000000000</double></property><property name="maximum"><double>1000000.000000000000000</double></property></widget></item>
+      <item row="3" column="1"><widget class="CompactDoubleSpinBox" name="pivotZSpin"><property name="suffix"><string> mm</string></property><property name="decimals"><number>4</number></property><property name="minimum"><double>-1000000.000000000000000</double></property><property name="maximum"><double>1000000.000000000000000</double></property></widget></item>
      </layout>
     </widget>
    </item>
@@ -89,6 +89,9 @@
    <item><spacer name="verticalSpacer"><property name="orientation"><enum>Qt::Vertical</enum></property><property name="sizeHint" stdset="0"><size><width>20</width><height>40</height></size></property></spacer></item>
   </layout>
  </widget>
+  <customwidgets>
+  <customwidget><class>CompactDoubleSpinBox</class><extends>QDoubleSpinBox</extends><header>CompactDoubleSpinBox.h</header></customwidget>
+ </customwidgets>
  <resources/>
  <connections/>
 </ui>

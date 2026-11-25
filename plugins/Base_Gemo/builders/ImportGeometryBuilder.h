@@ -60,12 +60,12 @@ public:
                                        const QString& filePath,
                                        QString& errorMsg);
 
-    // 草图编辑器复用普通几何导入的 DXF 解析路径，确保圆弧 bulge、
-    // OCS 坐标和样条在两个入口中使用同一套规则。
+    // 几何、草图和等高线统一使用 GDAL 读取 DXF。
+    // GDAL 处理图块和 OCS；圆弧、样条以离散折线导入。
     static bool readDxfShape(const QString& filePath,
                              TopoDS_Shape& shape,
                              QString& errorMsg);
-    // 原始对象级导入，保留图层、三维坐标并递归展开 INSERT 图块。
+    // 保留 GDAL 展开后的对象、图层和三维坐标。
     static bool readDxfRecords(const QString& filePath, QVector<DxfGeometryRecord>& records,
                                QString& diagnostic);
 

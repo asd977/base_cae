@@ -6,8 +6,11 @@
 #include <QLabel>
 #include <QLineEdit>
 #include <QPixmap>
+#include <QCheckBox>
+#include <QComboBox>
 
 class QResizeEvent;
+class QShowEvent;
 
 class EarthRockfillDamDialog : public BasePage
 {
@@ -21,17 +24,26 @@ class EarthRockfillDamDialog : public BasePage
 
   protected:
     void resizeEvent(QResizeEvent* event) override;
+    void showEvent(QShowEvent* event) override;
 
   private slots:
     void onPreviewClicked();
     void onGenerateClicked();
+    void onLinkGeologyToggled(bool checked);
 
   private:
     void initUi();
     void updateDiagram();
+    void refreshGeologyCombo();
+    void applyTargetGeologyDefaults();
     void buildLayeredDam(double H, double Bt, double mu, double md, double L, int layers);
 
     QLineEdit *hEdit, *crestEdit, *upEdit, *downEdit, *lenEdit, *coreWidthEdit, *layerEdit;
+    QCheckBox* m_linkGeology = nullptr;
+    QComboBox* m_geologyCombo = nullptr;
+    QLineEdit* m_posXEdit = nullptr;
+    QLineEdit* m_posYEdit = nullptr;
+    QLineEdit* m_posZEdit = nullptr;
     QLabel* diagramLabel = nullptr;
     QPixmap diagramPixmap;
 };

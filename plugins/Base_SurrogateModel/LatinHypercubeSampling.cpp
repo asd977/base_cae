@@ -1,4 +1,5 @@
-﻿#include "LatinHypercubeSampling.h"
+﻿#include <CompactDoubleSpinBox.h>
+#include "LatinHypercubeSampling.h"
 
 #include <qtemporaryfile.h>
 
@@ -98,7 +99,7 @@ LatinHypercubeSampling::LatinHypercubeSampling(QWidget* parent)
     ensureOneRowIfEmpty();
 
     // test 按钮
-    connect(ui->test, &QPushButton::clicked, this, &LatinHypercubeSampling::on_test_clicked);
+
 }
 
 LatinHypercubeSampling::~LatinHypercubeSampling()
@@ -135,11 +136,11 @@ void LatinHypercubeSampling::ensureOnceInit()
     {
         QWidget* w = new QWidget;
         auto form = new QFormLayout(w);
-        m_mu = new QDoubleSpinBox;
+        m_mu = new CompactDoubleSpinBox;
         m_mu->setDecimals(6);
         m_mu->setRange(-1e100, 1e100);
         m_mu->setValue(0.0);
-        m_sigma = new QDoubleSpinBox;
+        m_sigma = new CompactDoubleSpinBox;
         m_sigma->setDecimals(6);
         m_sigma->setRange(1e-12, 1e100);
         m_sigma->setValue(1.0);
@@ -155,11 +156,11 @@ void LatinHypercubeSampling::ensureOnceInit()
     {
         QWidget* w = new QWidget;
         auto form = new QFormLayout(w);
-        m_umin = new QDoubleSpinBox;
+        m_umin = new CompactDoubleSpinBox;
         m_umin->setDecimals(6);
         m_umin->setRange(-1e100, 1e100);
         m_umin->setValue(0.0);
-        m_umax = new QDoubleSpinBox;
+        m_umax = new CompactDoubleSpinBox;
         m_umax->setDecimals(6);
         m_umax->setRange(-1e100, 1e100);
         m_umax->setValue(1.0);
@@ -193,15 +194,15 @@ void LatinHypercubeSampling::ensureOnceInit()
     {
         QWidget* w = new QWidget;
         auto form = new QFormLayout(w);
-        m_gshape = new QDoubleSpinBox;
+        m_gshape = new CompactDoubleSpinBox;
         m_gshape->setDecimals(6);
         m_gshape->setRange(1e-12, 1e100);
         m_gshape->setValue(1.0);
-        m_gloc = new QDoubleSpinBox;
+        m_gloc = new CompactDoubleSpinBox;
         m_gloc->setDecimals(6);
         m_gloc->setRange(-1e100, 1e100);
         m_gloc->setValue(0.0);
-        m_gscale = new QDoubleSpinBox;
+        m_gscale = new CompactDoubleSpinBox;
         m_gscale->setDecimals(6);
         m_gscale->setRange(1e-12, 1e100);
         m_gscale->setValue(1.0);

@@ -10,14 +10,17 @@
 #include <vtkSmartPointer.h>
 #include <vtkUnstructuredGrid.h>
 #include <vtkType.h>
+#include <vtkWeakPointer.h>
 
 #include <QString>
 #include <QWidget>
 
 class VisualWidgetService;
 class vtkDataArray;
-class vtkObject;
-class vtkScalarBarActor;
+class vtkDataSet;
+class PostSurfacePipeline;
+struct PostPreparedSurface;
+class QLabel;
 namespace Ui
 {
 class NephogramSettingWidget;
@@ -36,7 +39,6 @@ class NephogramSettingWidget : public BasePage
 
     QJsonObject saveJson() override;
     void loadJson(const QJsonObject& obj) override;
-    void selectGridNode(vtkObject* caller, unsigned long eventId, void* callData);
 
   private slots:
     void on_analysisComboBox_currentIndexChanged(int index);
@@ -47,11 +49,14 @@ class NephogramSettingWidget : public BasePage
 
   private:
     void ensureActorAttached();
-    void applyThresholdDisplay(vtkUnstructuredGrid* grid, bool usePointData);
+    bool applyThresholdDisplay(vtkUnstructuredGrid* grid, bool usePointData, bool prepareOnly=false);
     void clearThresholdDisplay();
+    vtkDataSet* surfaceDisplayData(vtkUnstructuredGrid* grid);
+    void finishReadTecplot(const PostPreparedSurface&);
+    void updatePreparationStatus();
     void updateSurfaceOutline(vtkUnstructuredGrid* displayGrid);
+    void detachSurfaceOutline();
     void clearSurfaceOutline();
-    void syncScalarBarFromCurrent();
     bool syncScalarBarFromResolved(vtkUnstructuredGrid* displayGrid, vtkDataArray* array,
                                    bool usePointData, double dataMin, double dataMax);
     void updateNephogram(const QString& selectedScalarName, bool renderNow = true);
@@ -60,23 +65,18 @@ class NephogramSettingWidget : public BasePage
     void initResultDirectoryOptions();
     QString selectedResultDirectoryPath() const;
     void readTecplot(const QString& fileName);
-    void readVtu(const QString& fileName);
 
     QString currentScalarName() const;
     QString currentScalarDisplayName() const;
     void refreshCurrentVisualization(bool renderNow = true);
     void updateRangeEditorState();
-    void setRangeControls(double minV, double maxV);
-    bool displayRange(double dataMin, double dataMax, double& minV, double& maxV) const;
-    void applyLegendAppearance(vtkScalarBarActor* scalarBar, double minV, double maxV) const;
 
     vtkDataArray* findScalarArray(vtkUnstructuredGrid* grid, const QString& scalarName,
                                   bool& usePointData) const;
-    void updateLookupTableRange(vtkLookupTable* lut, double minV, double maxV) const;
     void configureMapper(vtkDataSetMapper* mapper, const QString& scalarName, bool usePointData,
                          double minV, double maxV, vtkLookupTable* lut) const;
     bool prepareDisplaySurface(vtkUnstructuredGrid* sourceGrid, const QString& scalarName,
-                               bool sourceUsePointData, bool& mapperUsePointData);
+                               bool usePointData);
     void invalidateDisplaySurface();
 
     void updateContourOverlay(const QString& scalarName, bool usePointData, double minV,
@@ -91,28 +91,36 @@ class NephogramSettingWidget : public BasePage
     vtkSmartPointer<vtkActor> m_actor;
     vtkSmartPointer<vtkActor> m_belowThresholdActor;
     vtkSmartPointer<vtkUnstructuredGrid> m_retainedThresholdGrid;
+    vtkSmartPointer<vtkUnstructuredGrid> m_visibleVolumeGrid;
+    PostSurfacePipeline* m_surfacePipeline{nullptr};
+    QLabel* m_preparationStatus{nullptr};
+    QString m_pendingScalar;
+    vtkWeakPointer<vtkUnstructuredGrid> m_thresholdSource;
+    vtkMTimeType m_thresholdSourceTime{0};
+    QString m_thresholdField;
+    double m_thresholdValue{0};
+    bool m_thresholdPointData{true};
+    vtkSmartPointer<vtkUnstructuredGrid> m_belowThresholdGrid;
     vtkSmartPointer<vtkDataSetMapper> m_mapper;
     vtkSmartPointer<vtkUnstructuredGrid> m_grid;
     // m_displaySurface 仅用于等值线的外表面缓存。
     vtkSmartPointer<vtkPolyData> m_displaySurface;
-    bool m_displaySurfaceUsePointData{true};
     QString m_displaySurfaceFilterSignature;
 
     QString m_dataPath;
     QString m_loadedFileName;
+    qint64 m_loadedFileSize{-1};
+    qint64 m_loadedFileModified{-1};
+    QString m_cachedProjectDir;
+    bool m_resultOptionsReady{false};
     QString m_currentArrayName;
     bool m_initialized{false};
+    bool m_frameCameraOnReady{false};
     bool m_actorAttached{false};
     bool m_resultOptionsPreparedByLoadJson{false};
     bool m_loadingState{false};
-    bool m_updatingRangeControls{false};
-    bool m_hasLegendPosition{false};
-    double m_legendPositionX{0.0};
-    double m_legendPositionY{0.0};
 
     vtkSmartPointer<vtkActor> m_outlineActor;
-    vtkSmartPointer<vtkUnstructuredGrid> m_outlineOriginalGrid;
-    vtkMTimeType m_outlineOriginalMTime{0};
     QString m_outlineFilterKey;
     vtkSmartPointer<vtkActor> m_contourActor;
     vtkSmartPointer<vtkActor2D> m_contourLabelActor;

@@ -1,4 +1,4 @@
-#include "MeshCompactDoubleSpinBox.h"
+#include "CompactDoubleSpinBox.h"
 #include "MeshSmeshPartitionWidget.h"
 #include "core/MeshSettingsUi.h"
 
@@ -65,7 +65,7 @@ MeshSmeshPartitionWidget::MeshSmeshPartitionWidget(QWidget* parent)
     m_axis->addItem(tr("X = 常数"), 0);
     m_axis->addItem(tr("Y = 常数"), 1);
     m_axis->addItem(tr("Z = 常数"), 2);
-    m_coordinate = new MeshCompactDoubleSpinBox(this);
+    m_coordinate = new CompactDoubleSpinBox(this);
     m_coordinate->setRange(-1.0e12, 1.0e12);
     m_coordinate->setDecimals(8);
     m_coordinate->setSingleStep(0.001); // CAD units: fine adjustment for wheel and arrow buttons.

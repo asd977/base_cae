@@ -22,6 +22,7 @@ class CaveExcavationWidget;
 class DamAnalysisWidget;
 class DamDynamicAnalysisPage;
 class FillStorageCyclePage;
+class SlopeStabilityWidget;
 class QWidget;
 
 class Solver : public QObject, public SolverService
@@ -73,6 +74,10 @@ class Solver : public QObject, public SolverService
     void syncSeepageConditionalNodes(ProjectNode* analysisNode) const;
     void syncDamConditionalNodes(ProjectNode* analysisNode) const;
     void syncQuietBoundaryNode(ProjectNode* owner) const;
+    void connectSlopeExcavationSignals(SlopeStabilityWidget* page, ProjectNode* analysisNode);
+    void syncSlopeExcavationNodes(ProjectNode* analysisNode, bool expandOnEnable = false);
+    void navigateToSlopeExcavationStage(ProjectNode* analysisNode, int stageIndex);
+    void navigateToSlopeReinforcement(ProjectNode* analysisNode);
     QVector<QPair<QString, QString>> seepageAnalysisSources() const;
     ProjectNode* findAnalysisNodeByUuid(const QString& uuid) const;
     bool prepareDamSeepageFiles(FillStorageCyclePage* cyclePage, int cycleIndex,

@@ -15,6 +15,7 @@ class QTabWidget;
 class QPushButton;
 class QGroupBox;
 class QCheckBox;
+class QWidget;
 
 namespace Ui
 {
@@ -48,6 +49,8 @@ class MeshGroupingWidget : public BasePage
     void updateRangePreview(bool forceOn = false);
     void clearRangePreview(bool renderNow = true);
     QString currentTargetArrayName() const;
+    QString groupFieldForTab(int tab) const;
+    bool isSelectionTab() const;
     void buildManualGroupingControls();
     void onPickedFacesChanged();
     void clearManualSelection();
@@ -75,6 +78,9 @@ class MeshGroupingWidget : public BasePage
     bool m_ignoreFaceSignal = false;
     QLabel* m_manualStatus = nullptr;
     QTableWidget* m_selectionSetsTable = nullptr;
+    QWidget* m_selectionSetsPage = nullptr;
+    QString m_primaryGroupCategory = QStringLiteral("MATYPE");
+    bool m_dualSolverGroups = true;
     QGroupBox* m_groupActions = nullptr;
     QComboBox* m_selectMode = nullptr;
     QLabel* m_modeLabel = nullptr;

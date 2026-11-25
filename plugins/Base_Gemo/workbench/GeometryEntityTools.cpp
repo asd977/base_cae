@@ -1,4 +1,5 @@
 #include "GeometryEntityTools.h"
+#include <QJsonArray>
 #include "GeometrySelectionVisuals.h"
 
 #include <GeomManagerInstance.h>
@@ -368,6 +369,21 @@ bool buildActiveSolidArguments(const QStringList& uuids,
 
 namespace GeometryEntityTools
 {
+QJsonObject meshingShapeIndexMap(const QStringList& uuids, const TopoDS_Shape& exported)
+{
+    QJsonObject result{{"format",1}};
+    for (int dim=1;dim<=3;++dim) {
+        TopTools_IndexedMapOfShape ui, native;
+        buildIndexedShapesFromGeometry(uuids,dim,ui);
+        TopExp::MapShapes(exported,shapeTypeForDimension(dim),native);
+        QJsonArray indices;
+        for (int i=1;i<=ui.Extent();++i) indices.append(native.FindIndex(ui(i)));
+        result[QString::number(dim)] = indices;
+        result[QStringLiteral("count%1").arg(dim)] = native.Extent();
+    }
+    return result;
+}
+
 QStringList listEntityIds(const QStringList& geometryUuids, int dim)
 {
     QStringList out;

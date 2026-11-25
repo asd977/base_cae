@@ -256,7 +256,7 @@
           </widget>
          </item>
          <item>
-          <widget class="QDoubleSpinBox" name="thresholdSpin">
+          <widget class="CompactDoubleSpinBox" name="thresholdSpin">
            <property name="decimals">
             <number>3</number>
            </property>
@@ -530,6 +530,9 @@
    </item>
   </layout>
  </widget>
+  <customwidgets>
+  <customwidget><class>CompactDoubleSpinBox</class><extends>QDoubleSpinBox</extends><header>CompactDoubleSpinBox.h</header></customwidget>
+ </customwidgets>
  <resources />
  <connections />
 </ui>

@@ -5,6 +5,8 @@
 #include <QLabel>
 #include <QLineEdit>
 #include <QPixmap>
+#include <QCheckBox>
+#include <QComboBox>
 
 class CavernTemplateDialog : public BasePage
 {
@@ -18,11 +20,20 @@ class CavernTemplateDialog : public BasePage
   private slots:
     void onPreviewClicked();
     void onGenerateClicked();
+    void onLinkGeologyToggled(bool checked);
   private:
     void resizeEvent(QResizeEvent* event) override;
+    void showEvent(QShowEvent* event) override;
     void updateDiagram();
+    void refreshGeologyCombo();
+    void applyTargetGeologyDefaults();
     void buildLayeredCavern(double span,double wallH,double archH,double len,double lining);
     QLineEdit *spanEdit,*wallHEdit,*archHEdit,*lenEdit,*liningEdit;
+    QCheckBox* m_linkGeology = nullptr;
+    QComboBox* m_geologyCombo = nullptr;
+    QLineEdit* m_posXEdit = nullptr;
+    QLineEdit* m_posYEdit = nullptr;
+    QLineEdit* m_posZEdit = nullptr;
     QLabel* diagramLabel = nullptr;
     QPixmap diagramPixmap;
 };

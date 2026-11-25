@@ -3,13 +3,11 @@
 #include <QVector>
 #include <QVector3D>
 
-// UI ids are captured with geometric signatures; native BREP indices are resolved
-// only after the current geometry has been exported and made conformal.
+// Explicit topology indices; OCC history carries them through mesh preparation.
 struct SmeshEntityReference {
     int dimension = 3;
     int entityId = 0;
-    QVector3D center;
-    double measure = 0.0;
+    int parentRegion = 0; // nonzero for a partition-local face index
 };
 
 struct SmeshSubmeshSettings {

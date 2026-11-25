@@ -1,6 +1,8 @@
 #include "Settingwidget.h"
 
 #include "ui_settingwidget.h"
+#include <SettingsLayout.h>
+#include <QScrollArea>
 
 SettingWidget::SettingWidget(QWidget* parent) : QWidget(parent), ui(new Ui::SettingWidget)
 {
@@ -8,11 +10,20 @@ SettingWidget::SettingWidget(QWidget* parent) : QWidget(parent), ui(new Ui::Sett
 
     setWindowTitle(QStringLiteral("参数"));
     setObjectName(QStringLiteral("settingWorkspace"));
+    setProperty("dockForceNoScrollArea",true);
+    setSizePolicy(QSizePolicy::Ignored,QSizePolicy::Expanding);
 
     m_layout = new QHBoxLayout(this);
-    m_stackedWidget = new QStackedWidget(this);
+    auto* scroll=new QScrollArea(this);
+    scroll->setObjectName(QStringLiteral("settingsPageScrollArea"));
+    scroll->setFrameShape(QFrame::NoFrame);
+    scroll->setWidgetResizable(true);
+    scroll->setHorizontalScrollBarPolicy(Qt::ScrollBarAsNeeded);
+    scroll->setSizePolicy(QSizePolicy::Ignored,QSizePolicy::Expanding);
+    m_stackedWidget = new CaeSettingsLayout::ActivePageStack(scroll);
     m_stackedWidget->setObjectName(QStringLiteral("projectSettingStackWidget"));
-    m_layout->addWidget(m_stackedWidget);
+    scroll->setWidget(m_stackedWidget);
+    m_layout->addWidget(scroll);
     m_layout->setContentsMargins(0, 0, 0, 0);
     m_layout->setSpacing(0);
 

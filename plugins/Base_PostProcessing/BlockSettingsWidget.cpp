@@ -21,6 +21,7 @@
 #include <QDir>
 #include <QRegularExpression>
 #include <QSignalBlocker>
+#include <QScopedValueRollback>
 
 #include "PostFieldUtils.h"
 #include "ResultDisplayNames.h"
@@ -95,28 +96,6 @@ BlockSettingsWidget::BlockSettingsWidget(VisualWidgetService* postProcessingWidg
     ui->flipCheckBox->setChecked(false);
     ui->flipCheckBox->setToolTip(QStringLiteral("勾选后保留切平面的另一侧"));
 
-    connect(ui->stepComboBox, QOverload<int>::of(&QComboBox::currentIndexChanged), this,
-            &BlockSettingsWidget::on_stepComboBox_currentIndexChanged);
-
-    connect(ui->scalarComboBox, QOverload<int>::of(&QComboBox::currentIndexChanged), this,
-            &BlockSettingsWidget::on_scalarComboBox_currentIndexChanged);
-    connect(ui->planeComboBox, QOverload<int>::of(&QComboBox::currentIndexChanged), this,
-            &BlockSettingsWidget::on_planeComboBox_currentIndexChanged);
-    connect(ui->blockSlider, &QSlider::valueChanged, this,
-            &BlockSettingsWidget::on_blockSlider_valueChanged);
-    connect(ui->blockPositionSpin, QOverload<double>::of(&QDoubleSpinBox::valueChanged), this,
-            &BlockSettingsWidget::on_blockPositionSpin_valueChanged);
-    connect(ui->flipCheckBox, &QCheckBox::toggled, this,
-            &BlockSettingsWidget::on_flipCheckBox_toggled);
-    connect(ui->analysisComboBox,
-            QOverload<int>::of(&QComboBox::currentIndexChanged), this,
-            &BlockSettingsWidget::on_analysisComboBox_currentIndexChanged);
-    connect(ui->resultDirComboBox, QOverload<int>::of(&QComboBox::currentIndexChanged), this,
-            &BlockSettingsWidget::on_resultDirComboBox_currentIndexChanged);
-    connect(ui->resultTimeComboBox,
-            QOverload<int>::of(&QComboBox::currentIndexChanged), this,
-            &BlockSettingsWidget::on_resultTimeComboBox_currentIndexChanged);
-
     EventManager::instance().registerHandler(
         postDisplaySettingsChangedEvent(), this,
         [this](const QVariantMap&)
@@ -142,46 +121,46 @@ BlockSettingsWidget::~BlockSettingsWidget()
 
 void BlockSettingsWidget::beforeLoad()
 {
-    setProperty("postDisplayActive", true);
-    showPostProcessingOnly(m_visualService, false);
-    ui->showScalarBarCheckBox->setChecked(postScalarBarStyle().visible);
-    ui->showContourCheckBox->setChecked(postContourStyle().enabled);
-    refreshResultGroups();
-    if (m_dataPath.isEmpty())
     {
-        const QString workPath =
-            PublicVariables::instance().get(PublicConstants::kProjectDirectoryKey).toString();
+        QScopedValueRollback<bool> defer(m_deferRender,true);
+        const QSignalBlocker legendBlocker(ui->showScalarBarCheckBox);
+        const QSignalBlocker contourBlocker(ui->showContourCheckBox);
+        setProperty("postDisplayActive", true);
+        showPostProcessingOnly(m_visualService, false);
+        ui->showScalarBarCheckBox->setChecked(postScalarBarStyle().visible);
+        ui->showContourCheckBox->setChecked(postContourStyle().enabled);
+        refreshResultGroups();
         if (m_dataPath.isEmpty())
-            m_dataPath = PostResultAutoPrepare::firstResultDirectory(workPath);
-    }
-
-    if (ui->stepComboBox->count() == 0)
-    {
-        // 首次进入：列出 step，并触发一次读取
-        loadFileName(m_dataPath);
-        // buildClipPipelineIfNeeded/updateColoring/updatePlane 会在 on_step...
-        // 和下面调用
-        buildClipPipelineIfNeeded();
-        updateColoringFromUI();
-        updatePlaneFromUI();
-        m_loadedOnce = true;
-    }
-    else
-    {
-        // 非首次：恢复 actor（如果之前被 beforeUnload 隐藏）
-        if (m_actor && !m_isAttached)
         {
-            addActorByService(m_visualService, postActorId(getUuid(), QStringLiteral("block")),
-                          m_actor, QStringLiteral("切块"));
-            m_isAttached = true;
+            const QString workPath =
+                PublicVariables::instance().get(PublicConstants::kProjectDirectoryKey).toString();
+            if (m_dataPath.isEmpty())
+                m_dataPath = PostResultAutoPrepare::firstResultDirectory(workPath);
         }
-        // 确保 mapper/LUT/plane 与当前 UI 一致
-        buildClipPipelineIfNeeded();
-        updateColoringFromUI();
-        updatePlaneFromUI();
-    }
 
-    applyPendingState();
+        if (ui->stepComboBox->count() == 0)
+        {
+            // 首次进入：列出 step，并触发一次读取
+            loadFileName(m_dataPath);
+            m_loadedOnce = true;
+        }
+        else
+        {
+            // 非首次：恢复 actor（如果之前被 beforeUnload 隐藏）
+            if (m_actor && !m_isAttached)
+            {
+                addActorByService(m_visualService, postActorId(getUuid(), QStringLiteral("block")),
+                              m_actor, QStringLiteral("切块"), false);
+                m_isAttached = true;
+            }
+            // 确保 mapper/LUT/plane 与当前 UI 一致
+            buildClipPipelineIfNeeded();
+            updateColoringFromUI();
+            updatePlaneFromUI();
+        }
+
+        applyPendingState();
+    }
     renderNow();
 }
 
@@ -388,7 +367,7 @@ void BlockSettingsWidget::beforeUnload()
     // 只移除，不销毁；保持状态与对象以便回来恢复
     if (m_actor && m_isAttached)
     {
-        removeActorByService(m_visualService, postActorId(getUuid(), QStringLiteral("block")));
+        removeActorByService(m_visualService, postActorId(getUuid(), QStringLiteral("block")), false);
         m_isAttached = false;
     }
     if (m_contourActor)
@@ -458,6 +437,7 @@ void BlockSettingsWidget::loadLatestData()
 
 bool BlockSettingsWidget::readTecplot(const QString& fileName)
 {
+    const QSignalBlocker scalarBlocker(ui->scalarComboBox);
     QString errorMessage;
     auto newGrid = PostTecplotUtils::readGrid(fileName, &errorMessage);
     if (!newGrid || newGrid->GetNumberOfPoints() == 0 || newGrid->GetNumberOfCells() == 0)
@@ -496,13 +476,12 @@ void BlockSettingsWidget::buildClipPipelineIfNeeded()
         return;
 
     // 1) Clip
-    vtkSmartPointer<vtkUnstructuredGrid> displayGrid = postFilteredResultGrid(m_grid);
+    vtkSmartPointer<vtkUnstructuredGrid> displayGrid = postFilteredResultGrid(m_grid, true);
     m_clipper = vtkSmartPointer<vtkTableBasedClipDataSet>::New();
     m_clipper->SetInputData(displayGrid);
     m_clipper->SetClipFunction(m_plane);
     m_clipper->InsideOutOff();             // 默认保留法向一侧
     m_clipper->GenerateClippedOutputOff(); // 不输出反面
-    m_clipper->Update();
 
     // 2) Mapper
     m_mapper = vtkSmartPointer<vtkDataSetMapper>::New();
@@ -515,7 +494,7 @@ void BlockSettingsWidget::buildClipPipelineIfNeeded()
 
     // 首次建管线时即挂入场景
     addActorByService(m_visualService, postActorId(getUuid(), QStringLiteral("block")),
-                          m_actor, QStringLiteral("切块"));
+                          m_actor, QStringLiteral("切块"), false);
     m_isAttached = true;
 }
 
@@ -557,7 +536,7 @@ void BlockSettingsWidget::updateColoringFromUI()
     if (!m_grid || !m_mapper || !m_clipper)
         return;
 
-    vtkSmartPointer<vtkUnstructuredGrid> displayGrid = postFilteredResultGrid(m_grid);
+    vtkSmartPointer<vtkUnstructuredGrid> displayGrid = postFilteredResultGrid(m_grid, true);
     if (!displayGrid || displayGrid->GetNumberOfCells() <= 0)
     {
         clearPostDisplayContext();
@@ -567,7 +546,7 @@ void BlockSettingsWidget::updateColoringFromUI()
             m_visualService->showScalarBar(false, false);
         return;
     }
-    m_clipper->SetInputData(displayGrid);
+    if(m_clipper->GetInputDataObject(0,0)!=displayGrid)m_clipper->SetInputData(displayGrid);
     m_clipper->Update();
     if (m_actor)
         m_actor->SetVisibility(postSceneStyle().visible);
@@ -585,11 +564,6 @@ void BlockSettingsWidget::updateColoringFromUI()
     }
 
     const QByteArray encodedName = field.name.toUtf8();
-    if (field.association == vtkDataObject::FIELD_ASSOCIATION_CELLS)
-        displayGrid->GetCellData()->SetActiveScalars(encodedName.constData());
-    else
-        displayGrid->GetPointData()->SetActiveScalars(encodedName.constData());
-
     double dataRange[2];
     arr->GetRange(dataRange);
     if (property("postDisplayActive").toBool())
@@ -639,7 +613,7 @@ void BlockSettingsWidget::updateContourOverlay()
     if (!m_visualService || !m_grid || !m_clipper || !postContourStyle().enabled)
         return;
 
-    vtkSmartPointer<vtkUnstructuredGrid> displayGrid = postFilteredResultGrid(m_grid);
+    vtkSmartPointer<vtkUnstructuredGrid> displayGrid = postFilteredResultGrid(m_grid, true);
     if (!displayGrid || displayGrid->GetNumberOfCells() <= 0)
         return;
     const PostFieldUtils::Field field = PostFieldUtils::selectedField(ui->scalarComboBox);
@@ -673,6 +647,7 @@ void BlockSettingsWidget::updateContourOverlay()
 
 void BlockSettingsWidget::renderNow()
 {
+    if(m_deferRender)return;
     if (!m_visualService)
         return;
     if (auto* rw = m_visualService->renderWindow())
@@ -779,26 +754,17 @@ void BlockSettingsWidget::on_stepComboBox_currentIndexChanged(int index)
     if (!readTecplot(file))
         return;
 
-    // 如已建管线，切换输入；否则现在就建
-    if (!m_clipper)
-    {
-        buildClipPipelineIfNeeded();
-    }
-    else
-    {
-        m_clipper->SetInputData(postFilteredResultGrid(m_grid));
-        m_clipper->Update();
-    }
-
-    // 刷新着色/切块位置（沿用当前 UI）
-    updateColoringFromUI();
+    // 配置当前输入和目标平面后再执行裁剪，避免先计算旧位置。
+    buildClipPipelineIfNeeded();
+    m_clipper->SetInputData(postFilteredResultGrid(m_grid, true));
     updatePlaneFromUI();
+    updateColoringFromUI();
 
     // 确保 actor 已挂
     if (m_actor && !m_isAttached)
     {
         addActorByService(m_visualService, postActorId(getUuid(), QStringLiteral("block")),
-                          m_actor, QStringLiteral("切块"));
+                          m_actor, QStringLiteral("切块"), false);
         m_isAttached = true;
     }
 

@@ -73,8 +73,7 @@ class GeometryWorkbench : public QObject, public PreProcessingService
                                                    const QVariantList& visibleRegionOrdinals,
                                                    int selectedRegionOrdinal);
     Q_INVOKABLE int externalPartitionRegionCount(const QVariantList& planes);
-    // Stable geometric signature for a temporary OCC Region. Used by the SMESH
-    // sweep bridge to map the previewed Region onto the partitioned working BREP.
+    // Temporary region metadata for the partition list and explicit topology selection.
     Q_INVOKABLE QVariantMap externalPartitionRegionInfo(const QVariantList& planes, int regionOrdinal);
     // 选中 Region 后，只显示并拾取该 Region 自己的边界面。返回的 Face ID 是
     // Region 内稳定局部序号 1..M，不是原 CAD Face ID，也不是临时 SMESH tag。
@@ -180,7 +179,8 @@ class GeometryWorkbench : public QObject, public PreProcessingService
     bool writeJsonFile(const QString& filePath, const QJsonObject& obj);
     bool readJsonFile(const QString& filePath, QJsonObject& out);
     bool loadChildProject(ProjectNode* node, const QString& name);
-    QJsonArray serializeGeometryItems(bool includeCachedBrep) const;
+    QJsonArray serializeGeometryItems(bool includeCachedBrep, const QString& changedUuid = QString(),
+                                      bool preserveCommittedState = false) const;
     bool loadGeometryItems(const QJsonArray& items,
                            const QHash<QString, TopoDS_Shape>* shapeSnapshots = nullptr);
     BasePage* createPageByType(const QString& type, const QString& title);
@@ -274,6 +274,17 @@ class GeometryWorkbench : public QObject, public PreProcessingService
     QString makeUniqueName(const QString& baseName, const QString& typeKey);
 
     QHash<QString, int> m_nameCounters;
+    struct SavedBrepAsset
+    {
+        TopoDS_Shape shape;
+        QString relativePath;
+        qint64 bytes = 0;
+        qint64 modifiedMsecs = 0;
+    };
+    QHash<QString, SavedBrepAsset> m_savedBrepAssets;
+    QVector<TopoDS_Shape> m_exportedGeometryShapes;
+    qint64 m_exportedGeometryBytes = 0;
+    qint64 m_exportedGeometryModifiedMsecs = 0;
     QHash<QString, ProjectNode*> m_geometryGroups;
     QPointer<QTreeWidget> m_hookedGeometryTree;
     bool m_updatingGeometryTree = false;

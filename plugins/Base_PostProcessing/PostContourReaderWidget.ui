@@ -184,7 +184,7 @@
 </widget>
         </item>
         <item row="0" column="1">
-         <widget class="QDoubleSpinBox" name="lineWidthDoubleSpinBox">
+         <widget class="CompactDoubleSpinBox" name="lineWidthDoubleSpinBox">
           <property name="minimumSize">
            <size>
             <width>10</width>
@@ -289,6 +289,9 @@
    </item>
   </layout>
  </widget>
+  <customwidgets>
+  <customwidget><class>CompactDoubleSpinBox</class><extends>QDoubleSpinBox</extends><header>CompactDoubleSpinBox.h</header></customwidget>
+ </customwidgets>
  <resources/>
  <connections/>
 </ui>

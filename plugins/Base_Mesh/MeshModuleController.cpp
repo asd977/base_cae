@@ -1,3 +1,5 @@
+#include "core/MeshSnapshotState.h"
+#include <MeshWorkingPaths.h>
 #include "MeshModuleController.h"
 
 #include <EventManager.h>
@@ -184,16 +186,11 @@ static constexpr int kIiinTopologySchemaVersion = 2;
 // 1) IIIN/DAT 网格快照只有在网格对象真正变更后才重写；
 // 2) MATYPE/LAYER 来自 vtkCellData，保存工程时不再把每个单元 id 全量写入 mesh_map.json；
 // 3) cell_id_to_domain_tags 是运行期反查缓存，可由 tagSets + 网格 CellData 重建，不再落盘。
-static QHash<QString, unsigned long> s_savedSnapshotMTimeByPath;
+static QHash<QString, MeshSnapshotState> s_savedSnapshots;
 
 static QString normalizedProjectPathKey(const QString& path)
 {
     return QDir::cleanPath(QFileInfo(path).absoluteFilePath());
-}
-
-static unsigned long gridModifiedTime(vtkUnstructuredGrid* grid)
-{
-    return grid ? static_cast<unsigned long>(grid->GetMTime()) : 0UL;
 }
 
 static bool shouldRewriteGridSnapshot(const QString& snapshotPath, vtkUnstructuredGrid* grid)
@@ -205,7 +202,7 @@ static bool shouldRewriteGridSnapshot(const QString& snapshotPath, vtkUnstructur
         return true;
 
     const QString key = normalizedProjectPathKey(snapshotPath);
-    return s_savedSnapshotMTimeByPath.value(key, 0UL) != gridModifiedTime(grid);
+    return !s_savedSnapshots.value(key).matches(grid,snapshotPath);
 }
 
 static void markGridSnapshotSaved(const QString& snapshotPath, vtkUnstructuredGrid* grid)
@@ -213,7 +210,7 @@ static void markGridSnapshotSaved(const QString& snapshotPath, vtkUnstructuredGr
     if (!grid)
         return;
 
-    s_savedSnapshotMTimeByPath.insert(normalizedProjectPathKey(snapshotPath), gridModifiedTime(grid));
+    s_savedSnapshots[normalizedProjectPathKey(snapshotPath)].remember(grid,snapshotPath);
 }
 
 static bool meshCacheIsFresh(const QString& cachePath, const QString& sourcePath)
@@ -634,7 +631,8 @@ static bool normalizeGridAttributeTupleCounts(vtkUnstructuredGrid* grid,
 static bool isGridCellDataDomainTag(const MeshTagKey& key)
 {
     return key.category.compare(QStringLiteral("MATYPE"), Qt::CaseInsensitive) == 0
-           || key.category.compare(QStringLiteral("LAYER"), Qt::CaseInsensitive) == 0;
+           || key.category.compare(QStringLiteral("LAYER"), Qt::CaseInsensitive) == 0
+           || key.category.compare(QStringLiteral("REGION"), Qt::CaseInsensitive) == 0;
 }
 
 static bool copyFileOverwrite(const QString& sourcePath, const QString& targetPath)
@@ -808,7 +806,12 @@ static QVector<MeshIdType> jsonToMeshIdVector(const QJsonArray& arr)
     QVector<MeshIdType> ids;
     ids.reserve(arr.size());
     for (const auto& v : arr)
-        ids.push_back(static_cast<MeshIdType>(v.toString().toLongLong()));
+    {
+        if (v.isDouble())
+            ids.push_back(static_cast<MeshIdType>(v.toDouble()));
+        else
+            ids.push_back(static_cast<MeshIdType>(v.toString().toLongLong()));
+    }
     return ids;
 }
 
@@ -1413,6 +1416,9 @@ static void rebuildBoundaryRuntimeIndexFromNodeData(
     for (auto it = facePhysToNodeIds.constBegin(); it != facePhysToNodeIds.constEnd(); ++it)
         setPhysicalBoundaryPointIds(pick, it.key(), 2, nodeIdsToPointIds(it.value(), nodeToPoint), QStringLiteral("ProjectRestoreLegacy"));
 
+    if (edgeNodeElems.isEmpty() && faceNodeElems.isEmpty())
+        return;
+
     QHash<quint64, qint64> edgeIndex;
     QHash<QByteArray, qint64> faceIndex;
 
@@ -1581,7 +1587,15 @@ static bool loadMeshMapJson(const QString& filePath,
 
     for (const auto& v : tagSets)
     {
-        const MeshTagSet set = jsonToMeshTagSet(v.toObject());
+        const QJsonObject obj = v.toObject();
+        const MeshTagKey key = jsonToMeshTagKey(obj.value("key").toObject());
+        const bool isMatype = key.category.compare("MATYPE", Qt::CaseInsensitive) == 0;
+        const bool isLayer = key.category.compare("LAYER", Qt::CaseInsensitive) == 0;
+        const bool isRegion = key.category.compare("REGION", Qt::CaseInsensitive) == 0;
+        if (isMatype || isLayer || (isRegion && grid && grid->GetCellData() && grid->GetCellData()->GetArray("src_part")))
+            continue;
+
+        const MeshTagSet set = jsonToMeshTagSet(obj);
         pick.tagSets.insert(set.key, set);
     }
 
@@ -1898,6 +1912,44 @@ static int meshDisplayCellDimensionFast(vtkUnstructuredGrid* grid, vtkIdType cel
             if (dim > 0)
                 return dim;
         }
+    }
+
+    const int cellType = grid->GetCellType(cellId);
+    switch (cellType)
+    {
+    case VTK_TETRA:
+    case VTK_VOXEL:
+    case VTK_HEXAHEDRON:
+    case VTK_WEDGE:
+    case VTK_PYRAMID:
+    case VTK_PENTAGONAL_PRISM:
+    case VTK_HEXAGONAL_PRISM:
+    case VTK_QUADRATIC_TETRA:
+    case VTK_QUADRATIC_HEXAHEDRON:
+    case VTK_QUADRATIC_WEDGE:
+    case VTK_QUADRATIC_PYRAMID:
+    case VTK_BIQUADRATIC_QUADRATIC_WEDGE:
+    case VTK_BIQUADRATIC_QUADRATIC_HEXAHEDRON:
+    case VTK_CONVEX_POINT_SET:
+    case VTK_POLYHEDRON:
+        return 3;
+    case VTK_TRIANGLE:
+    case VTK_QUAD:
+    case VTK_PIXEL:
+    case VTK_POLYGON:
+    case VTK_QUADRATIC_TRIANGLE:
+    case VTK_QUADRATIC_QUAD:
+    case VTK_BIQUADRATIC_QUAD:
+        return 2;
+    case VTK_LINE:
+    case VTK_POLY_LINE:
+    case VTK_QUADRATIC_EDGE:
+        return 1;
+    case VTK_VERTEX:
+    case VTK_POLY_VERTEX:
+        return 0;
+    default:
+        break;
     }
 
     vtkCell* cell = grid->GetCell(cellId);
@@ -3681,6 +3733,7 @@ void MeshModuleController::closeProject()
             m_visualWidgetService->removeProp(propId, false);
     }
 
+    s_savedSnapshots.clear();
     m_importedGrid = nullptr;
     m_hasGrid = false;
     m_sourceFileName.clear();
@@ -3705,6 +3758,7 @@ void MeshModuleController::closeProject()
 
     MeshGridIO::instance().setMeshMap(MshPickMap{});
     PickManager::instance().resetProjectState();
+    MeshWorkingPaths::cleanup();
 
     auto& variables = PublicVariables::instance();
     const QStringList meshKeys = variables.keysForOwner(QStringLiteral("mesh"));
@@ -4150,25 +4204,13 @@ void MeshModuleController::importGridFile(const QString& fileName)
 
     if (ext == "vtk")
     {
-        // 普通 VTK 不携带 mesh_map.json，必须清掉上一张网格的分组映射。
-        // 有有效 src_part 时按 SMESH 区域处理，否则按 DAT 风格的 MATYPE/LAYER 处理。
+        // VTK has no independent IIIN construction-group semantics. Its
+        // src_part (when present) is the source domain; without it, create a
+        // single REGION from top-dimensional cells during synchronization.
+        // MATYPE/LAYER remain solver attributes, not a second UI grouping.
         MshPickMap vtkPickMap;
-        bool hasPositiveRegion = false;
-        vtkDataArray* regionArray = m_importedGrid->GetCellData()
-            ? m_importedGrid->GetCellData()->GetArray("src_part")
-            : nullptr;
-        for (vtkIdType cid = 0; regionArray && cid < regionArray->GetNumberOfTuples(); ++cid)
-        {
-            if (static_cast<int>(regionArray->GetTuple1(cid)) > 0)
-            {
-                hasPositiveRegion = true;
-                break;
-            }
-        }
-        vtkPickMap.materialGroupCategory =
-            hasPositiveRegion ? QStringLiteral("REGION") : QStringLiteral("MATYPE");
-        vtkPickMap.excavationGroupCategory =
-            hasPositiveRegion ? QStringLiteral("REGION") : QStringLiteral("LAYER");
+        vtkPickMap.materialGroupCategory = QStringLiteral("REGION");
+        vtkPickMap.excavationGroupCategory = QStringLiteral("REGION");
         MeshGridIO::instance().setMeshMap(vtkPickMap);
     }
 
@@ -5294,6 +5336,8 @@ void MeshModuleController::displayCurrentGrid(bool fitView)
 
            // 网格导入/预览后默认只显示网格。
     m_visualWidgetService->setGroupVisible("Geometry", false, false);
+    m_visualWidgetService->setGroupVisible(QStringLiteral("网格"),true,false);
+    m_visualWidgetService->setGroupVisible(QStringLiteral("Mesh"),true,false);
 
            // 全局显示控制在这里统一应用。该函数会从 m_importedGrid 一次性构造：
            // 1) 只包含外表面/必要内部分界面的 surface；
@@ -5763,17 +5807,49 @@ static void syncPickMapGroupingFromGrid(vtkUnstructuredGrid* grid)
         }
     }
 
+    // Unlabeled VTK/SMESH grids still have one original domain. Do NOT
+    // infer a second source group from default MATYPE/LAYER properties.
+    if (!hasUsableRegionCellData &&
+        pick.materialGroupCategory.compare(QStringLiteral("REGION"), Qt::CaseInsensitive) == 0 &&
+        pick.excavationGroupCategory.compare(QStringLiteral("REGION"), Qt::CaseInsensitive) == 0)
+    {
+        int highestDim = -1;
+        for (vtkIdType cid = 0; cid < grid->GetNumberOfCells(); ++cid)
+            highestDim = qMax(highestDim, meshDisplayCellDimensionFast(grid, cid));
+        if (highestDim >= 2 && grid->GetCellData())
+        {
+            vtkNew<vtkIntArray> defaultRegion;
+            defaultRegion->SetName("src_part");
+            defaultRegion->SetNumberOfTuples(grid->GetNumberOfCells());
+            defaultRegion->FillValue(0);
+            for (vtkIdType cid = 0; cid < grid->GetNumberOfCells(); ++cid)
+                if (meshDisplayCellDimensionFast(grid, cid) == highestDim)
+                    defaultRegion->SetValue(cid, 1);
+            grid->GetCellData()->RemoveArray("src_part");
+            grid->GetCellData()->AddArray(defaultRegion);
+            regionCellData = defaultRegion;
+            hasUsableRegionCellData = true;
+        }
+    }
+
     int meshDim = -1;
     const vtkIdType nCells = grid->GetNumberOfCells();
+    if (nCells <= 0)
+        return;
 
-    for (vtkIdType cid = 0; cid < nCells; ++cid)
+    auto* dimArray = grid->GetCellData() ? grid->GetCellData()->GetArray("CELL_DIM") : nullptr;
+    if (dimArray && dimArray->GetNumberOfTuples() == nCells)
     {
-        vtkCell* cell = grid->GetCell(cid);
-
-        if (!cell)
-            continue;
-
-        meshDim = qMax(meshDim, meshDisplayCellDimensionFast(grid, cid));
+        double range[2];
+        dimArray->GetRange(range);
+        meshDim = static_cast<int>(range[1]);
+    }
+    else
+    {
+        for (vtkIdType cid = 0; cid < nCells; ++cid)
+        {
+            meshDim = qMax(meshDim, meshDisplayCellDimensionFast(grid, cid));
+        }
     }
 
     if (meshDim < 0)
@@ -5790,10 +5866,13 @@ static void syncPickMapGroupingFromGrid(vtkUnstructuredGrid* grid)
     // mesh-map file is needed for node picking and solver export.
     pick.nodeIdToPointId.clear();
     pick.pointIdToNodeId.clear();
+    const vtkIdType nPoints = grid->GetNumberOfPoints();
+    pick.nodeIdToPointId.reserve(nPoints);
+    pick.pointIdToNodeId.reserve(nPoints);
     auto* nodeIdArr = grid->GetPointData()
         ? grid->GetPointData()->GetArray("node_id")
         : nullptr;
-    for (vtkIdType pid = 0; pid < grid->GetNumberOfPoints(); ++pid)
+    for (vtkIdType pid = 0; pid < nPoints; ++pid)
     {
         const int nodeId = nodeIdArr && pid < nodeIdArr->GetNumberOfTuples()
             ? static_cast<int>(nodeIdArr->GetTuple1(pid))
@@ -5843,6 +5922,7 @@ static void syncPickMapGroupingFromGrid(vtkUnstructuredGrid* grid)
         pick.tagSets.remove(key);
 
     pick.cellIdToDomainTags.clear();
+    pick.cellIdToDomainTags.reserve(nCells);
 
     auto* matArr =
         vtkIntArray::SafeDownCast(grid->GetCellData()->GetArray("MATYPE"));
@@ -5853,24 +5933,20 @@ static void syncPickMapGroupingFromGrid(vtkUnstructuredGrid* grid)
     auto* groupNameArr =
         vtkStringArray::SafeDownCast(grid->GetCellData()->GetAbstractArray("GroupName"));
 
-    auto addDomainTag = [&](const QString& category, int dim, int id, vtkIdType cid)
+    struct TagEntry {
+        MeshTagKey key;
+        MeshTagSet* setPtr = nullptr;
+    };
+    QHash<quint64, TagEntry> matTagCache;
+    QHash<quint64, TagEntry> layTagCache;
+    QHash<quint64, TagEntry> regTagCache;
+
+    auto getOrCreateTag = [&](const QString& category, int dim, int id, QHash<quint64, TagEntry>& cache, vtkIdType cid) -> TagEntry&
     {
-        if (dim <= 0)
-            return;
-
-        const bool isLayer =
-            category.compare("LAYER", Qt::CaseInsensitive) == 0;
-
-        if (isLayer)
-        {
-            if (id == 0)
-                return;
-        }
-        else
-        {
-            if (id <= 0)
-                return;
-        }
+        const quint64 ckey = (static_cast<quint64>(dim) << 32) | static_cast<quint64>(static_cast<quint32>(id));
+        auto it = cache.find(ckey);
+        if (it != cache.end())
+            return it.value();
 
         MeshTagKey key;
         key.category = category;
@@ -5881,12 +5957,7 @@ static void syncPickMapGroupingFromGrid(vtkUnstructuredGrid* grid)
         {
             MeshTagSet set;
             set.key = key;
-            // GroupName describes a SMESH source geometry region. It must
-            // not become the label of the common MATYPE/LAYER domains: all
-            // SMESH cells initially have LAYER=1, so that made the whole-model
-            // layer look like one particular geometry part in combo boxes.
-            const bool isRegion =
-                category.compare("REGION", Qt::CaseInsensitive) == 0;
+            const bool isRegion = category.compare("REGION", Qt::CaseInsensitive) == 0;
             const QString groupName = isRegion && groupNameArr &&
                     cid < groupNameArr->GetNumberOfValues()
                 ? QString::fromStdString(groupNameArr->GetValue(cid)).trimmed()
@@ -5900,22 +5971,25 @@ static void syncPickMapGroupingFromGrid(vtkUnstructuredGrid* grid)
             pick.tagSets.insert(key, set);
         }
 
-        pick.tagSets[key].cellIds.push_back(static_cast<MeshIdType>(cid));
-
-        auto& tags = pick.cellIdToDomainTags[static_cast<MeshIdType>(cid)];
-
-        if (!tags.contains(key))
-            tags.push_back(key);
+        TagEntry entry;
+        entry.key = key;
+        entry.setPtr = &pick.tagSets[key];
+        return *cache.insert(ckey, entry);
     };
+
+    auto* dimArr = grid->GetCellData() ? grid->GetCellData()->GetArray("CELL_DIM") : nullptr;
+    auto* ketypeArr = grid->GetCellData() ? grid->GetCellData()->GetArray("KETYPE") : nullptr;
 
     for (vtkIdType cid = 0; cid < nCells; ++cid)
     {
-        vtkCell* cell = grid->GetCell(cid);
+        int cellDim = 0;
+        if (dimArr)
+            cellDim = meshDisplayTuple1i(dimArr, cid, 0);
+        else if (ketypeArr)
+            cellDim = meshDisplayDimFromKetype(meshDisplayTuple1i(ketypeArr, cid, 0));
+        else
+            cellDim = meshDisplayCellDimensionFast(grid, cid);
 
-        if (!cell)
-            continue;
-
-        const int cellDim = meshDisplayCellDimensionFast(grid, cid);
         if (cellDim <= 0)
             continue;
 
@@ -5923,9 +5997,27 @@ static void syncPickMapGroupingFromGrid(vtkUnstructuredGrid* grid)
         const int lay = layArr ? layArr->GetValue(cid) : 0;
         const int region = regionArr ? regionArr->GetValue(cid) : 0;
 
-        addDomainTag("MATYPE", cellDim, mat, cid);
-        addDomainTag("LAYER", cellDim, lay, cid);
-        addDomainTag("REGION", cellDim, region, cid);
+        auto& tags = pick.cellIdToDomainTags[static_cast<MeshIdType>(cid)];
+        tags.reserve(3);
+
+        if (mat > 0)
+        {
+            auto& entry = getOrCreateTag(QStringLiteral("MATYPE"), cellDim, mat, matTagCache, cid);
+            entry.setPtr->cellIds.push_back(static_cast<MeshIdType>(cid));
+            tags.push_back(entry.key);
+        }
+        if (lay != 0)
+        {
+            auto& entry = getOrCreateTag(QStringLiteral("LAYER"), cellDim, lay, layTagCache, cid);
+            entry.setPtr->cellIds.push_back(static_cast<MeshIdType>(cid));
+            tags.push_back(entry.key);
+        }
+        if (region > 0)
+        {
+            auto& entry = getOrCreateTag(QStringLiteral("REGION"), cellDim, region, regTagCache, cid);
+            entry.setPtr->cellIds.push_back(static_cast<MeshIdType>(cid));
+            tags.push_back(entry.key);
+        }
     }
 
            // 保留并重建已有 Physical 域标签的 cellId -> tags 反查。
@@ -5941,18 +6033,21 @@ static void syncPickMapGroupingFromGrid(vtkUnstructuredGrid* grid)
             set.key.category.compare("MATYPE", Qt::CaseInsensitive) == 0;
         const bool isLayer =
             set.key.category.compare("LAYER", Qt::CaseInsensitive) == 0;
+        const bool isRegion =
+            set.key.category.compare("REGION", Qt::CaseInsensitive) == 0;
 
-        if (isMatype || isLayer)
+        if (isMatype || isLayer || isRegion)
             continue;
 
         if (set.key.dim != pick.meshDim)
             continue;
 
+        const MeshTagKey key = set.key;
         for (MeshIdType cid : set.cellIds)
         {
             auto& tags = pick.cellIdToDomainTags[cid];
-            if (!tags.contains(set.key))
-                tags.push_back(set.key);
+            if (!tags.contains(key))
+                tags.push_back(key);
         }
     }
 
@@ -6077,12 +6172,15 @@ bool MeshModuleController::autoGroupingBySpatialBins(int binCount, const QString
             axis = 2;
     }
 
-    auto* targetArr = vtkIntArray::SafeDownCast(
-        m_importedGrid->GetCellData()->GetArray(targetArrayName.toUtf8().constData()));
-    if (!targetArr)
+    const bool physicalTarget = targetArrayName.compare(QStringLiteral("Physical"), Qt::CaseInsensitive) == 0;
+    const QString arrayName = targetArrayName.compare(QStringLiteral("REGION"), Qt::CaseInsensitive) == 0
+        ? QStringLiteral("src_part") : targetArrayName;
+    auto* targetArr = physicalTarget ? nullptr : vtkIntArray::SafeDownCast(
+        m_importedGrid->GetCellData()->GetArray(arrayName.toUtf8().constData()));
+    if (!targetArr && !physicalTarget)
     {
         auto newArr = vtkSmartPointer<vtkIntArray>::New();
-        newArr->SetName(targetArrayName.toUtf8().constData());
+        newArr->SetName(arrayName.toUtf8().constData());
         newArr->SetNumberOfComponents(1);
         newArr->SetNumberOfTuples(nCells);
         newArr->FillComponent(0, 0);
@@ -6113,16 +6211,39 @@ bool MeshModuleController::autoGroupingBySpatialBins(int binCount, const QString
 
         const int targetValue = startValue + bin;
         const vtkIdType cid = centers[i].cid;
-        targetArr->SetValue(cid, targetValue);
+        if (targetArr) targetArr->SetValue(cid, targetValue);
     }
 
-    m_importedGrid->GetCellData()->Modified();
-    m_importedGrid->Modified();
+    if (targetArr)
+    {
+        targetArr->Modified();
+        m_importedGrid->GetCellData()->Modified();
+        m_importedGrid->Modified();
+    }
     {
         MshPickMap pick = MeshGridIO::instance().getMeshMap();
         int dim = 0;
         for (vtkIdType cid = 0; cid < nCells; ++cid)
             if (vtkCell* c = m_importedGrid->GetCell(cid)) dim = qMax(dim, c->GetCellDimension());
+        if (physicalTarget)
+        {
+            QVector<MeshTagKey> keysToRemove;
+            for (auto it = pick.tagSets.constBegin(); it != pick.tagSets.constEnd(); ++it)
+                if (it.key().dim == dim &&
+                    it.key().category.compare(QStringLiteral("Physical"), Qt::CaseInsensitive) == 0)
+                    keysToRemove.push_back(it.key());
+            for (const MeshTagKey& key : keysToRemove) pick.tagSets.remove(key);
+            for (int i = 0; i < n; ++i)
+            {
+                const int value = startValue + (i * binCount) / n;
+                const MeshTagKey key{QStringLiteral("Physical"), dim, value};
+                MeshTagSet& set = pick.tagSets[key];
+                set.key = key;
+                set.source = QStringLiteral("SpatialBinGrouping");
+                set.name = QStringLiteral("%1_%2").arg(groupPrefix).arg(value);
+                set.cellIds.push_back(centers.at(i).cid);
+            }
+        }
         for (int i = 0; i < binCount; ++i)
         {
             const int value = startValue + i;
@@ -6131,6 +6252,7 @@ bool MeshModuleController::autoGroupingBySpatialBins(int binCount, const QString
                 QStringLiteral("%1_%2").arg(groupPrefix).arg(value);
         }
         MeshGridIO::instance().setMeshMap(pick);
+        if (physicalTarget) m_importedGrid->Modified();
     }
     syncPickMapGroupingFromGrid(m_importedGrid);
     displayCurrentGrid();
@@ -6183,12 +6305,15 @@ bool MeshModuleController::groupByCoordinateRange(double xmin, double xmax, doub
         std::swap(zmin, zmax);
 
     const vtkIdType nCells = m_importedGrid->GetNumberOfCells();
-    auto* targetArr = vtkIntArray::SafeDownCast(
-        m_importedGrid->GetCellData()->GetArray(targetArrayName.toStdString().c_str()));
-    if (!targetArr)
+    const bool physicalTarget = targetArrayName.compare(QStringLiteral("Physical"), Qt::CaseInsensitive) == 0;
+    const QString arrayName = targetArrayName.compare(QStringLiteral("REGION"), Qt::CaseInsensitive) == 0
+        ? QStringLiteral("src_part") : targetArrayName;
+    auto* targetArr = physicalTarget ? nullptr : vtkIntArray::SafeDownCast(
+        m_importedGrid->GetCellData()->GetArray(arrayName.toUtf8().constData()));
+    if (!targetArr && !physicalTarget)
     {
         auto newArr = vtkSmartPointer<vtkIntArray>::New();
-        newArr->SetName(targetArrayName.toStdString().c_str());
+        newArr->SetName(arrayName.toUtf8().constData());
         newArr->SetNumberOfComponents(1);
         newArr->SetNumberOfTuples(nCells);
         newArr->FillComponent(0, 0);
@@ -6201,6 +6326,7 @@ bool MeshModuleController::groupByCoordinateRange(double xmin, double xmax, doub
         if (vtkCell* c = m_importedGrid->GetCell(cid))
             highestDimension = qMax(highestDimension, c->GetCellDimension());
     int changed = 0;
+    QVector<MeshIdType> matchedIds;
     for (vtkIdType cid = 0; cid < nCells; ++cid)
     {
         auto* cell = m_importedGrid->GetCell(cid);
@@ -6213,7 +6339,8 @@ bool MeshModuleController::groupByCoordinateRange(double xmin, double xmax, doub
         const double cz = CENTER_FACTOR * (b[4] + b[5]);
         if (cx >= xmin && cx <= xmax && cy >= ymin && cy <= ymax && cz >= zmin && cz <= zmax)
         {
-            targetArr->SetValue(cid, value);
+            if (targetArr) targetArr->SetValue(cid, value);
+            matchedIds.push_back(cid);
             ++changed;
         }
     }
@@ -6225,6 +6352,9 @@ bool MeshModuleController::groupByCoordinateRange(double xmin, double xmax, doub
         return false;
     }
 
+    if (physicalTarget)
+        return assignSelectedCellsToGroup(matchedIds, QStringLiteral("Physical"), value, groupName, errMsg);
+    targetArr->Modified();
     m_importedGrid->GetCellData()->Modified();
     m_importedGrid->Modified();
     {
@@ -6253,8 +6383,13 @@ bool MeshModuleController::assignSelectedCellsToGroup(
     if (!m_importedGrid || m_importedGrid->GetNumberOfCells() == 0)
         return fail(QStringLiteral("请先导入或生成网格。"));
     const QString field = attribute.trimmed().toUpper();
-    if (field != QStringLiteral("MATYPE") && field != QStringLiteral("LAYER"))
-        return fail(QStringLiteral("仅允许修改 MATYPE 或 LAYER。"));
+    const bool sourceRegion = field == QStringLiteral("REGION");
+    const bool sourcePhysical = field == QStringLiteral("PHYSICAL");
+    if (field != QStringLiteral("MATYPE") && field != QStringLiteral("LAYER")
+        && !sourceRegion && !sourcePhysical)
+        return fail(QStringLiteral("不支持的网格分组类别。"));
+    if ((sourceRegion || sourcePhysical) && (groupId <= 0 || groupId > 1000000))
+        return fail(QStringLiteral("原始区域编号必须在 1 至 1000000 之间。"));
     if (field == QStringLiteral("MATYPE") && (groupId < 3 || groupId > MAX_SOLVER_MATYPE))
         return fail(QStringLiteral("新材料编号只能使用 3 至 300；1/2 为求解器保留编号。"));
     if (field == QStringLiteral("LAYER") && (groupId < 1 || groupId > 1000000))
@@ -6278,22 +6413,77 @@ bool MeshModuleController::assignSelectedCellsToGroup(
             return fail(QStringLiteral("选区包含杆单元或非最高维单元，请改选土体面/体单元。"));
         uniqueIds.insert(static_cast<vtkIdType>(raw));
     }
+    // Physical source domains are stored as tag sets rather than as an
+    // arbitrary solver CellData attribute. Change ONLY top-dimensional
+    // Physical memberships; boundary Physical tags are independent.
+    if (sourcePhysical)
+    {
+        MshPickMap pick = MeshGridIO::instance().getMeshMap();
+        QVector<MeshTagKey> emptyKeys;
+        for (auto it = pick.tagSets.begin(); it != pick.tagSets.end(); ++it)
+        {
+            if (it.key().category.compare(QStringLiteral("Physical"), Qt::CaseInsensitive) != 0
+                || it.key().dim != meshDim) continue;
+            QVector<MeshIdType>& members = it.value().cellIds;
+            members.erase(std::remove_if(members.begin(), members.end(),
+                [&uniqueIds](MeshIdType id) { return uniqueIds.contains(static_cast<vtkIdType>(id)); }),
+                members.end());
+            if (members.isEmpty()) emptyKeys.push_back(it.key());
+        }
+        for (const MeshTagKey& key : emptyKeys) pick.tagSets.remove(key);
+        const MeshTagKey key{QStringLiteral("Physical"), meshDim, groupId};
+        MeshTagSet& targetSet = pick.tagSets[key];
+        targetSet.key = key;
+        targetSet.source = QStringLiteral("ManualDomainGrouping");
+        if (!displayName.trimmed().isEmpty()) targetSet.name = displayName.trimmed();
+        if (targetSet.name.isEmpty()) targetSet.name = QStringLiteral("区域 %1").arg(groupId);
+        for (vtkIdType cid : uniqueIds) targetSet.cellIds.push_back(cid);
+        // Business pages cache the mesh mtime when rebuilding their region UI.
+        m_importedGrid->Modified();
+        MeshGridIO::instance().setMeshMap(pick);
+        syncPickMapGroupingFromGrid(m_importedGrid);
+        displayCurrentGrid();
+        return true;
+    }
+
     auto* cd = m_importedGrid->GetCellData();
-    vtkDataArray* existing = cd ? cd->GetArray(field.toUtf8().constData()) : nullptr;
+    const QString arrayName = sourceRegion ? QStringLiteral("src_part") : field;
+    vtkDataArray* existing = cd ? cd->GetArray(arrayName.toUtf8().constData()) : nullptr;
+    if (sourceRegion && !existing && cd)
+    {
+        // Legacy source-region tags can exist only in mesh_map.json. Restore
+        // all existing memberships before editing a subset, otherwise the
+        // untouched cells would accidentally become REGION=0.
+        vtkNew<vtkIntArray> recovered;
+        recovered->SetName("src_part");
+        recovered->SetNumberOfTuples(nCells);
+        recovered->FillValue(0);
+        const MshPickMap current = MeshGridIO::instance().getMeshMap();
+        for (auto it = current.tagSets.constBegin(); it != current.tagSets.constEnd(); ++it)
+        {
+            if (it.key().category.compare(QStringLiteral("REGION"), Qt::CaseInsensitive) != 0)
+                continue;
+            for (MeshIdType id : it.value().cellIds)
+                if (id >= 0 && id < nCells)
+                    recovered->SetValue(id, it.key().id);
+        }
+        cd->AddArray(recovered);
+        existing = cd->GetArray("src_part");
+    }
     if (!cd)
         return fail(QStringLiteral("网格缺少单元属性表。"));
     auto* target = vtkIntArray::SafeDownCast(existing);
     if (!target || target->GetNumberOfTuples() != nCells)
     {
         vtkNew<vtkIntArray> converted;
-        converted->SetName(field.toUtf8().constData());
+        converted->SetName(arrayName.toUtf8().constData());
         converted->SetNumberOfTuples(nCells);
         for (vtkIdType cid = 0; cid < nCells; ++cid)
             converted->SetValue(cid, existing && cid < existing->GetNumberOfTuples()
                                          ? static_cast<int>(existing->GetTuple1(cid)) : 0);
-        cd->RemoveArray(field.toUtf8().constData());
+        cd->RemoveArray(arrayName.toUtf8().constData());
         cd->AddArray(converted);
-        target = vtkIntArray::SafeDownCast(cd->GetArray(field.toUtf8().constData()));
+        target = vtkIntArray::SafeDownCast(cd->GetArray(arrayName.toUtf8().constData()));
     }
     if (!target)
         return fail(QStringLiteral("无法创建目标单元属性。"));
@@ -6304,7 +6494,8 @@ bool MeshModuleController::assignSelectedCellsToGroup(
     m_importedGrid->Modified();
     // Only this attribute changes: GroupName is not a solver grouping field.
     MshPickMap pick = MeshGridIO::instance().getMeshMap();
-    const QString key = QStringLiteral("%1/%2/%3").arg(field).arg(meshDim).arg(groupId);
+    const QString key = QStringLiteral("%1/%2/%3")
+        .arg(sourceRegion ? QStringLiteral("REGION") : field).arg(meshDim).arg(groupId);
     if (!displayName.trimmed().isEmpty())
         pick.groupDisplayNames.insert(key, displayName.trimmed());
     MeshGridIO::instance().setMeshMap(pick);
@@ -7856,7 +8047,7 @@ bool MeshModuleController::collectSmeshWorkflow(const QString& meshUuid,SmeshWor
     }
     auto capture=[&](int dim,int id,SmeshEntityReference& ref){
         ref.dimension=dim;ref.entityId=id;
-        if(id<=0||!pre->listEntityIds(dim).contains(QString::number(id))||!pre->entityCenter(dim,id,ref.center)||!pre->entityMeasure(dim,id,ref.measure)||ref.measure<=0.) {
+        if(id<=0||!pre->listEntityIds(dim).contains(QString::number(id))) {
             error=tr("几何实体 %1（维度 %2）已失效，请重新选择。").arg(id).arg(dim);return false;
         }return true;
     };
@@ -7971,19 +8162,9 @@ bool MeshModuleController::collectSmeshWorkflow(const QString& meshUuid,SmeshWor
                 for(auto sweep:tasks) {
                 if(sweep.partitionRegion) {
                     if(planes.isEmpty()||!geometryBridge){error=tr("扫掠分块已失效，请重新预览并选择区域。");return false;}
-                    QVariantMap volume,source,target;
-                    const bool ok=QMetaObject::invokeMethod(geometryBridge,"externalPartitionRegionInfo",Qt::DirectConnection,
-                        Q_RETURN_ARG(QVariantMap,volume),Q_ARG(QVariantList,planes),Q_ARG(int,sweep.volumeId)) &&
-                        QMetaObject::invokeMethod(geometryBridge,"externalPartitionFaceInfo",Qt::DirectConnection,
-                        Q_RETURN_ARG(QVariantMap,source),Q_ARG(QVariantList,planes),Q_ARG(int,sweep.volumeId),Q_ARG(int,sweep.sourceFaceId)) &&
-                        QMetaObject::invokeMethod(geometryBridge,"externalPartitionFaceInfo",Qt::DirectConnection,
-                        Q_RETURN_ARG(QVariantMap,target),Q_ARG(QVariantList,planes),Q_ARG(int,sweep.volumeId),Q_ARG(int,sweep.targetFaceId));
-                    if(!ok||!volume.value("valid").toBool()||!source.value("valid").toBool()||!target.value("valid").toBool()) {
-                        error=tr("分块 %1 或其扫掠端面已失效，请重新选择。").arg(sweep.volumeId);return false;
-                    }
-                    sweep.volume={3,0,volume.value("center").value<QVector3D>(),volume.value("volume").toDouble()};
-                    sweep.source={2,0,source.value("center").value<QVector3D>(),source.value("area").toDouble()};
-                    sweep.target={2,0,target.value("center").value<QVector3D>(),target.value("area").toDouble()};
+                    sweep.volume={3,sweep.volumeId};
+                    sweep.source={2,sweep.sourceFaceId,sweep.volumeId};
+                    sweep.target={2,sweep.targetFaceId,sweep.volumeId};
                     if(sweep.sourceFaceId==sweep.targetFaceId){error=tr("扫掠起始面和目标面不能相同。");return false;}
                     settings.sweeps.push_back(sweep);continue;
                 }
@@ -8035,10 +8216,16 @@ bool MeshModuleController::collectSmeshWorkflow(const QString& meshUuid,SmeshWor
         const int faceId=it.key().toInt();
         for (int i=0; i<owners.size(); ++i) {
             const auto& first=*owners[i];
-            const QVector3D dirA=first.target.center-first.source.center;
+            QVector3D firstSource, firstTarget;
+            pre->entityCenter(2,first.sourceFaceId,firstSource);
+            pre->entityCenter(2,first.targetFaceId,firstTarget);
+            const QVector3D dirA=firstTarget-firstSource;
             for (int j=i+1; j<owners.size(); ++j) {
                 const auto& second=*owners[j];
-                const QVector3D dirB=second.target.center-second.source.center;
+                QVector3D secondSource, secondTarget;
+                pre->entityCenter(2,second.sourceFaceId,secondSource);
+                pre->entityCenter(2,second.targetFaceId,secondTarget);
+                const QVector3D dirB=secondTarget-secondSource;
                 const bool capA=faceId==first.sourceFaceId||faceId==first.targetFaceId;
                 const bool capB=faceId==second.sourceFaceId||faceId==second.targetFaceId;
                 if (dirA.lengthSquared()>1.e-12f && dirB.lengthSquared()>1.e-12f) {

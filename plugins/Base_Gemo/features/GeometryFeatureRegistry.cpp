@@ -5,6 +5,7 @@
 #include "IGeometryService.h"
 #include "GeometryBuildUtils.h"
 #include "ImportGeometryBuilder.h"
+#include "TemplateGeometryBuilder.h"
 #include "SketchDocument.h"
 #include "SketchShapeBuilder.h"
 #include <GeometryDisplayManager.h>
@@ -377,10 +378,18 @@ const QVector<FeatureDescriptor>& descriptors()
                 const auto result = GeometryTerrain::TerrainSurfaceBuilder::build(
                     GeometryTerrain::TerrainSurfaceBuilder::sourcesFromState(feature.state),
                     feature.state.value("spacing").toDouble(5),
-                    GeometryTerrain::TerrainSurfaceBuilder::domainMode(feature.state));
+                    GeometryTerrain::TerrainSurfaceBuilder::domainMode(feature.state),
+                    GeometryTerrain::TerrainSurfaceBuilder::gridOptions(feature.state));
                 if (!result.ok()) { setMessage(message, result.error); return false; }
                 GeometryDisplayManager::setTerrainPresentation(feature.uuid);
                 GeometryBuildUtils::registerShape(feature.uuid,feature.title,new TopoDS_Shape(result.shape));
+                if (auto* body = GeomManager::CadDocument::getInstance()->getGeomShapeObject(feature.uuid))
+                {
+                    QVector<CadBody::FaceGroup> groups;
+                    for (const auto& fg : result.faceGroups)
+                        groups.append({fg.name, fg.role, fg.faceIndices});
+                    body->setFaceGroups(groups);
+                }
                 setMessage(message,result.summary()); return true;
             }
         },
@@ -503,6 +512,24 @@ const QVector<FeatureDescriptor>& descriptors()
             [](const FeatureData& feature, IGeometryService& service, QString*)
             {
                 const QJsonObject& state = feature.state;
+                if (state.value(QStringLiteral("linkGeology")).toBool(false))
+                {
+                    const QString targetUuid = state.value(QStringLiteral("targetGeology")).toString();
+                    if (!targetUuid.isEmpty() &&
+                        TemplateGeometryBuilder::recreateGravityDamLinked(
+                            feature.uuid, feature.title, targetUuid,
+                            state.value(QStringLiteral("height")).toDouble(),
+                            state.value(QStringLiteral("crestWidth")).toDouble(),
+                            state.value(QStringLiteral("upstreamSlope")).toDouble(),
+                            state.value(QStringLiteral("downstreamSlope")).toDouble(),
+                            state.value(QStringLiteral("length")).toDouble(),
+                            coordinateValue(state, QLatin1Char('x')),
+                            coordinateValue(state, QLatin1Char('y')),
+                            coordinateValue(state, QLatin1Char('z'))))
+                    {
+                        return true;
+                    }
+                }
                 return service.recreateGravityDam(
                     feature.uuid, feature.title,
                     state.value(QStringLiteral("height")).toDouble(),
@@ -529,6 +556,29 @@ const QVector<FeatureDescriptor>& descriptors()
             [](const FeatureData& feature, IGeometryService& service, QString*)
             {
                 const QJsonObject& state = feature.state;
+                if (state.value(QStringLiteral("linkGeology")).toBool(false))
+                {
+                    const QString targetUuid = state.value(QStringLiteral("targetGeology")).toString();
+                    const double up = state.contains(QStringLiteral("upW"))
+                        ? state.value(QStringLiteral("upW")).toDouble()
+                        : state.value(QStringLiteral("up")).toDouble();
+                    const double down = state.contains(QStringLiteral("downW"))
+                        ? state.value(QStringLiteral("downW")).toDouble()
+                        : state.value(QStringLiteral("down")).toDouble();
+                    if (!targetUuid.isEmpty() &&
+                        TemplateGeometryBuilder::recreateEarthRockfillDamLinked(
+                            feature.uuid, feature.title, targetUuid,
+                            state.value(QStringLiteral("h")).toDouble(),
+                            state.value(QStringLiteral("crest")).toDouble(),
+                            up, down,
+                            state.value(QStringLiteral("len")).toDouble(),
+                            state.value(QStringLiteral("posX")).toDouble(0.0),
+                            state.value(QStringLiteral("posY")).toDouble(0.0),
+                            state.value(QStringLiteral("posZ")).toDouble(0.0)))
+                    {
+                        return true;
+                    }
+                }
                 return service.recreateEarthRockfillDam(
                     feature.uuid, feature.title,
                     state.value(QStringLiteral("h")).toDouble(),
@@ -562,6 +612,30 @@ const QVector<FeatureDescriptor>& descriptors()
             [](const FeatureData& feature, IGeometryService& service, QString*)
             {
                 const QJsonObject& state = feature.state;
+                if (state.value(QStringLiteral("linkGeology")).toBool(false))
+                {
+                    const QString targetUuid = state.value(QStringLiteral("targetGeology")).toString();
+                    const double slope = state.contains(QStringLiteral("w"))
+                        ? state.value(QStringLiteral("w")).toDouble()
+                        : state.value(QStringLiteral("s")).toDouble();
+                    if (!targetUuid.isEmpty() &&
+                        TemplateGeometryBuilder::recreateSlopeTemplateLinked(
+                            feature.uuid, feature.title, targetUuid,
+                            state.value(QStringLiteral("h")).toDouble(),
+                            state.value(QStringLiteral("bw")).toDouble(),
+                            slope,
+                            state.value(QStringLiteral("l")).toDouble(),
+                            state.value(QStringLiteral("bc")).toInt(),
+                            state.value(QStringLiteral("top")).toDouble(20.0),
+                            state.value(QStringLiteral("toe")).toDouble(30.0),
+                            state.value(QStringLiteral("baseH")).toDouble(15.0),
+                            state.value(QStringLiteral("posX")).toDouble(0.0),
+                            state.value(QStringLiteral("posY")).toDouble(0.0),
+                            state.value(QStringLiteral("posZ")).toDouble(0.0)))
+                    {
+                        return true;
+                    }
+                }
                 return service.recreateSlopeTemplate(
                     feature.uuid, feature.title,
                     state.value(QStringLiteral("h")).toDouble(),
@@ -589,6 +663,23 @@ const QVector<FeatureDescriptor>& descriptors()
             [](const FeatureData& feature, IGeometryService& service, QString*)
             {
                 const QJsonObject& state = feature.state;
+                if (state.value(QStringLiteral("linkGeology")).toBool(false))
+                {
+                    const QString targetUuid = state.value(QStringLiteral("targetGeology")).toString();
+                    if (!targetUuid.isEmpty() &&
+                        TemplateGeometryBuilder::recreateCavernTemplateLinked(
+                            feature.uuid, feature.title, targetUuid,
+                            state.value(QStringLiteral("span")).toDouble(),
+                            state.value(QStringLiteral("wh")).toDouble(),
+                            state.value(QStringLiteral("ah")).toDouble(),
+                            state.value(QStringLiteral("len")).toDouble(),
+                            state.value(QStringLiteral("posX")).toDouble(0.0),
+                            state.value(QStringLiteral("posY")).toDouble(0.0),
+                            state.value(QStringLiteral("posZ")).toDouble(0.0)))
+                    {
+                        return true;
+                    }
+                }
                 const double stages = state.contains(QStringLiteral("stage"))
                     ? state.value(QStringLiteral("stage")).toDouble()
                     : qMax(1, qRound(state.value(QStringLiteral("lining")).toDouble()));

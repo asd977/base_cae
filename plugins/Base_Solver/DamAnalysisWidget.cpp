@@ -335,10 +335,11 @@ void DamAnalysisWidget::rebuildConstructionLayerPanel()
     };
 
     QVector<RegionChoice> regions;
-    const QStringList preferredCategories = m_existingConstructionLayersValid
-        ? QStringList{QStringLiteral("LAYER"), QStringLiteral("REGION"), QStringLiteral("Physical"), QStringLiteral("MATYPE")}
-        : QStringList{QStringLiteral("REGION"), QStringLiteral("Physical"), QStringLiteral("MATYPE"), QStringLiteral("LAYER")};
-    for (const QString& category : preferredCategories)
+    // A fill LAYER is a calculation stage, not an original foundation/dam region.
+    // Keep the same source-region identity before and after assigning fill layers.
+    const QString sourceCategory =
+        meshService->domainCategoryForUse(MeshDomainUse::MaterialRegion);
+    for (const QString& category : QStringList{sourceCategory})
     {
         QVector<RegionChoice> candidate = collectRegions(category);
         if (isExactPartition(candidate))
@@ -398,6 +399,9 @@ void DamAnalysisWidget::rebuildConstructionLayerPanel()
         purpose->addItem(QStringLiteral("请选择"), 0);
         purpose->addItem(colorIcon(foundationColor), QStringLiteral("坝基"), 1);
         purpose->addItem(colorIcon(damColor), QStringLiteral("坝体"), 2);
+        purpose->addItem(QStringLiteral("混凝土面板"), 3);
+        purpose->addItem(QStringLiteral("附属结构（趾板、接缝等）"), 4);
+        purpose->addItem(QStringLiteral("防渗心墙"), 5);
         const QString name = nameItem->text().toCaseFolded();
         const bool nameLooksLikeDam = name.contains(QStringLiteral("坝体")) ||
                                       name.contains(QStringLiteral("填筑")) ||
@@ -416,9 +420,13 @@ void DamAnalysisWidget::rebuildConstructionLayerPanel()
             purposeValue = 2;
         else if (nameLooksLikeFoundation && !nameLooksLikeDam)
             purposeValue = 1;
+        const QString roleKey = QStringLiteral("%1/%2/%3")
+            .arg(region.key.category).arg(region.key.dim).arg(region.key.id);
+        if (m_constructionRegionRoles.contains(roleKey))
+            purposeValue = m_constructionRegionRoles.value(roleKey);
         purpose->setCurrentIndex(purpose->findData(purposeValue));
         SolverUiLayoutHelper::configureComboSizing(purpose);
-        purpose->setToolTip(QStringLiteral("蓝色表示坝基，橙色表示坝体"));
+        purpose->setToolTip(QStringLiteral("蓝色表示坝基，橙色表示填筑区域。面板坝需区分面板与附属结构材料。"));
         connect(purpose, qOverload<int>(&QComboBox::currentIndexChanged),
                 this, &DamAnalysisWidget::markConstructionLayerDirty);
         m_constructionRegionTable->setCellWidget(row, 3, purpose);
@@ -473,6 +481,7 @@ void DamAnalysisWidget::markConstructionLayerDirty()
     if (m_constructionLayerUiUpdating)
         return;
     m_constructionLayerUiDirty = true;
+    captureConstructionRegionRoles();
     updateConstructionLayerHighlights();
     applyConstructionLayerChanges();
 }
@@ -496,7 +505,7 @@ void DamAnalysisWidget::applyConstructionLayerChanges()
                 firstUnassignedRow = row;
             continue;
         }
-        QSet<MeshIdType>& target = purposeValue == 2 ? damCells : foundationCells;
+        QSet<MeshIdType>& target = purposeValue >= 2 ? damCells : foundationCells;
         for (MeshIdType cellId : m_constructionRegionCells.at(row))
             target.insert(cellId);
     }
@@ -559,7 +568,7 @@ void DamAnalysisWidget::updateConstructionLayerHighlights()
         const int purposeValue = purpose ? purpose->currentData().toInt() : 0;
         if (purposeValue == 0)
             continue;
-        QSet<MeshIdType>& target = purposeValue == 2 ? damCells : foundationCells;
+        QSet<MeshIdType>& target = purposeValue >= 2 ? damCells : foundationCells;
         for (MeshIdType cellId : m_constructionRegionCells.at(row))
             target.insert(cellId);
     }
@@ -677,9 +686,19 @@ void DamAnalysisWidget::initValueEditors()
     m_comboIfRock = ui->comboIfRock;
     m_comboIfIso = ui->comboIfIso;
 
-    auto* damTypeLabel = new QLabel(QStringLiteral("均质坝"), this);
-    damTypeLabel->setObjectName(QStringLiteral("labelDamTypeValue"));
-    ui->formLayoutMode->addRow(QStringLiteral("坝体类型"), damTypeLabel);
+    m_damTypeCombo = new QComboBox(this);
+    m_damTypeCombo->setObjectName(QStringLiteral("comboDamType"));
+    m_damTypeCombo->addItem(QStringLiteral("均质坝"), QStringLiteral("4"));
+    m_damTypeCombo->addItem(QStringLiteral("混凝土面板堆石坝"), QStringLiteral("1"));
+    m_damTypeCombo->addItem(QStringLiteral("粘土心墙堆石坝"), QStringLiteral("2"));
+    m_damTypeCombo->addItem(QStringLiteral("沥青心墙堆石坝"), QStringLiteral("3"));
+    ui->formLayoutMode->addRow(QStringLiteral("坝体类型"), m_damTypeCombo);
+    connect(m_damTypeCombo, qOverload<int>(&QComboBox::currentIndexChanged), this, [this] {
+        if (m_loadingSettings) return;
+        captureConstructionRegionRoles();
+        rebuildConstructionLayerPanel();
+        emit requirementsChanged();
+    });
 
     m_groupFreezeThaw = new QGroupBox(QStringLiteral("结冰变形"), this);
     m_groupFreezeThaw->setObjectName(QStringLiteral("groupFreezeThaw"));
@@ -706,7 +725,7 @@ void DamAnalysisWidget::initValueEditors()
     m_lineEditors[7] = nullptr;
     m_lineEditors[8] = nullptr;
     m_lineEditors[9] = nullptr;
-    m_lineEditors[10] = nullptr;
+    m_lineEditors[10] = m_damTypeCombo;
     m_lineEditors[11] = nullptr;
     m_lineEditors[12] = nullptr;
     m_lineEditors[13] = nullptr;
@@ -1080,7 +1099,7 @@ void DamAnalysisWidget::setLineValue(int lineNo, const QString& value)
 
 bool DamAnalysisWidget::isFixedFileLine(int lineNo) const
 {
-    static const QSet<int> fixedLines = {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14,
+    static const QSet<int> fixedLines = {1, 2, 3, 4, 5, 6, 7, 8, 9, 11, 12, 13, 14,
                                          31, 32, 33, 34, 35, 36, 39, 40};
     return fixedLines.contains(lineNo);
 }
@@ -1242,20 +1261,24 @@ bool DamAnalysisWidget::exportIfillDatFile(int mcase, const QString& cycleSectio
 
     // Refresh homogeneous-dam derived sets here, after obsolete-file cleanup.
     // The native fallback attempts to inspect arrays already released by AUTOPACK.
-    const bool homogeneous=normalizeEnumValue(lineValue(10))==QStringLiteral("4");
-    if (homogeneous)
+    const int type = damType();
     for (const QString& obsoleteFile : {
              QStringLiteral("MA_ROCK.DAT"),
              QStringLiteral("MA_DAMUP.DAT"),
              QStringLiteral("MA_DAMDW.DAT"),
              QStringLiteral("MA_CORE.DAT"),
              QStringLiteral("MA_PLATE.DAT"),
-             QStringLiteral("FA_DAMBASE.DAT")})
+             QStringLiteral("MA_YA.DAT")})
     {
         QFile::remove(inputDir.filePath(obsoleteFile));
     }
+    if (type == 4)
+        QFile::remove(inputDir.filePath(QStringLiteral("FA_DAMBASE.DAT")));
 
-    if(!DamInputProtocol::prepareMaterialSets(inputDir,homogeneous,&error))
+    QSet<int> plate, auxiliary, core;
+    if ((type == 1 && !faceDamMaterialSets(plate, auxiliary, &error)) ||
+        ((type == 2 || type == 3) && !coreDamMaterialSets(core, &error)) ||
+        !DamInputProtocol::prepareMaterialSets(inputDir, type, plate, auxiliary, core, &error))
     {
         QMessageBox::warning(nullptr,QStringLiteral("请完善填筑材料"),error);
         return false;
@@ -1363,9 +1386,88 @@ void DamAnalysisWidget::setMCaseCount(int mcase)
     Q_UNUSED(mcase);
 }
 
+int DamAnalysisWidget::damType() const
+{
+    return m_damTypeCombo ? m_damTypeCombo->currentData().toInt() : 4;
+}
+
+void DamAnalysisWidget::captureConstructionRegionRoles()
+{
+    if (m_loadingSettings || m_constructionLayerUiUpdating || !m_constructionRegionTable) return;
+    for (int row = 0; row < m_constructionRegionKeys.size(); ++row)
+    {
+        auto* choice = qobject_cast<QComboBox*>(m_constructionRegionTable->cellWidget(row, 3));
+        if (!choice) continue;
+        const auto& key = m_constructionRegionKeys[row];
+        m_constructionRegionRoles[QStringLiteral("%1/%2/%3").arg(key.category).arg(key.dim).arg(key.id)]
+            = choice->currentData().toInt();
+    }
+}
+
+bool DamAnalysisWidget::faceDamMaterialSets(QSet<int>& plate, QSet<int>& auxiliary,
+                                           QString* error) const
+{
+    auto fail = [error](const QString& text) { if (error) *error = text; return false; };
+    auto* mesh = ServiceRegistry::instance().getService<MeshModuleControllerService>();
+    auto grid = mesh ? mesh->getVtkUnstructuredGrid() : nullptr;
+    auto* materials = grid && grid->GetCellData() ? grid->GetCellData()->GetArray("MATYPE") : nullptr;
+    if (!materials) return fail(QStringLiteral("请先导入网格并指定面板坝的区域用途。"));
+    QSet<int> body, rock;
+    for (int row = 0; row < m_constructionRegionCells.size(); ++row)
+    {
+        auto* choice = qobject_cast<QComboBox*>(m_constructionRegionTable->cellWidget(row, 3));
+        const int role = choice ? choice->currentData().toInt() : 0;
+        if (role == 0) return fail(QStringLiteral("请为面板坝的每个区域指定用途。"));
+        QSet<int>* target = role == 3 ? &plate : role == 4 ? &auxiliary : role == 1 ? &rock : &body;
+        for (auto cell : m_constructionRegionCells[row])
+            if (cell >= 0 && cell < grid->GetNumberOfCells())
+            {
+                const int material = int(materials->GetTuple1(cell));
+                if (material > 1) target->insert(material);
+            }
+    }
+    if (plate.isEmpty()) return fail(QStringLiteral("请在区域用途中指定混凝土面板。"));
+    if (!(plate & auxiliary).isEmpty() || !(plate & body).isEmpty() || !(plate & rock).isEmpty() ||
+        !(auxiliary & body).isEmpty() || !(auxiliary & rock).isEmpty())
+        return fail(QStringLiteral("面板、附属结构和坝体/坝基共用了材料号，请分别分配材料。"));
+    return true;
+}
+
+bool DamAnalysisWidget::coreDamMaterialSets(QSet<int>& core, QString* error) const
+{
+    auto fail = [error](const QString& text) { if (error) *error = text; return false; };
+    auto* mesh = ServiceRegistry::instance().getService<MeshModuleControllerService>();
+    auto grid = mesh ? mesh->getVtkUnstructuredGrid() : nullptr;
+    auto* materials = grid && grid->GetCellData() ? grid->GetCellData()->GetArray("MATYPE") : nullptr;
+    if (!materials) return fail(QStringLiteral("请先导入网格并指定心墙坝的区域用途。"));
+    QSet<int> body, rock;
+    for (int row = 0; row < m_constructionRegionCells.size(); ++row)
+    {
+        auto* choice = qobject_cast<QComboBox*>(m_constructionRegionTable->cellWidget(row, 3));
+        const int role = choice ? choice->currentData().toInt() : 0;
+        if (role == 0) return fail(QStringLiteral("请为心墙坝的每个区域指定用途。"));
+        QSet<int>* target = role == 5 ? &core : role == 1 ? &rock : &body;
+        for (auto cell : m_constructionRegionCells[row])
+            if (cell >= 0 && cell < grid->GetNumberOfCells())
+            {
+                const int material = int(materials->GetTuple1(cell));
+                if (material > 1) target->insert(material);
+            }
+    }
+    if (core.isEmpty()) return fail(QStringLiteral("请在区域用途中指定防渗心墙。"));
+    if (!(core & body).isEmpty() || !(core & rock).isEmpty())
+        return fail(QStringLiteral("防渗心墙与坝壳/坝基共用了材料号，请分别分配材料。"));
+    return true;
+}
+
 QJsonObject DamAnalysisWidget::saveJson()
 {
     QJsonObject obj;
+    captureConstructionRegionRoles();
+    QJsonObject roles;
+    for (auto it = m_constructionRegionRoles.cbegin(); it != m_constructionRegionRoles.cend(); ++it)
+        roles.insert(it.key(), it.value());
+    obj["construction_region_roles"] = roles;
     obj["quiet_boundary_selection"]=m_quietBoundarySelection?m_quietBoundarySelection->save():QJsonObject();
     QJsonArray arr;
     for (int lineNo = 1; lineNo <= 40; ++lineNo)
@@ -1389,6 +1491,11 @@ QJsonObject DamAnalysisWidget::saveJson()
 
 void DamAnalysisWidget::loadJson(const QJsonObject& obj)
 {
+    m_loadingSettings = true;
+    m_constructionRegionRoles.clear();
+    const auto roles = obj.value("construction_region_roles").toObject();
+    for (auto it = roles.begin(); it != roles.end(); ++it)
+        m_constructionRegionRoles.insert(it.key(), it.value().toInt());
     m_quietBoundarySelection->load(obj.value("quiet_boundary_selection").toObject(),obj.value("quiet_boundary_enabled").toBool(false));
     const QJsonArray arr = obj.value("base_values").toArray();
     for (int lineNo = 1; lineNo <= 40; ++lineNo)
@@ -1511,6 +1618,8 @@ void DamAnalysisWidget::loadJson(const QJsonObject& obj)
     updateAnalysisModeVisibility();
     updateFreezeThawOptionState();
     updateUpliftOptionState();
+    m_loadingSettings = false;
+    rebuildConstructionLayerPanel();
 }
 
 void DamAnalysisWidget::onComputeClicked()

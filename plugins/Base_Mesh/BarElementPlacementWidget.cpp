@@ -1,4 +1,5 @@
-﻿#include "BarElementPlacementWidget.h"
+﻿#include <CompactDoubleSpinBox.h>
+#include "BarElementPlacementWidget.h"
 
 #include <PickManager.h>
 #include <ServiceRegistry.h>
@@ -210,7 +211,7 @@ BarElementPlacementWidget::BarElementPlacementWidget(QWidget* parent)
     directionForm->setHorizontalSpacing(8);
     directionForm->setVerticalSpacing(6);
 
-    m_length = new QDoubleSpinBox(m_lengthDirectionPanel);
+    m_length = new CompactDoubleSpinBox(m_lengthDirectionPanel);
     m_length->setRange(0.0, 1.0e12);
     m_length->setDecimals(8);
     m_length->setValue(1.0);
@@ -294,7 +295,7 @@ BarElementPlacementWidget::BarElementPlacementWidget(QWidget* parent)
     surfaceForm->setHorizontalSpacing(10);
     surfaceForm->setVerticalSpacing(8);
 
-    m_surfaceLength = new QDoubleSpinBox(surfaceParamBox);
+    m_surfaceLength = new CompactDoubleSpinBox(surfaceParamBox);
     m_surfaceLength->setRange(1.0e-8, 1.0e12);
     m_surfaceLength->setDecimals(4);
     m_surfaceLength->setSingleStep(0.1);
@@ -473,7 +474,7 @@ BarElementPlacementWidget::BarElementPlacementWidget(QWidget* parent)
     m_arrayCount = new QSpinBox(m_arrayRow);
     m_arrayCount->setRange(2, 10000);
     m_arrayCount->setValue(2);
-    m_arraySpacing = new QDoubleSpinBox(m_arrayRow);
+    m_arraySpacing = new CompactDoubleSpinBox(m_arrayRow);
     m_arraySpacing->setRange(0.0, 1.0e12);
     m_arraySpacing->setDecimals(8);
     m_arraySpacing->setValue(1.0);
@@ -571,7 +572,7 @@ BarElementPlacementWidget::BarElementPlacementWidget(QWidget* parent)
 
 QDoubleSpinBox* BarElementPlacementWidget::coordinateSpin(double value)
 {
-    auto* spin = new QDoubleSpinBox(this);
+    auto* spin = new CompactDoubleSpinBox(this);
     spin->setRange(-1.0e12, 1.0e12);
     spin->setDecimals(6);
     spin->setValue(value);
@@ -581,7 +582,7 @@ QDoubleSpinBox* BarElementPlacementWidget::coordinateSpin(double value)
 
 QDoubleSpinBox* BarElementPlacementWidget::directionSpin(double value)
 {
-    auto* spin = new QDoubleSpinBox(this);
+    auto* spin = new CompactDoubleSpinBox(this);
     spin->setRange(-1.0e9, 1.0e9);
     spin->setDecimals(6);
     spin->setValue(value);

@@ -1,7 +1,7 @@
 #include "PostDisplayControlWidget.h"
 
 #include "PostVisualUtils.h"
-#include "CompactPostDoubleSpinBox.h"
+#include "CompactDoubleSpinBox.h"
 #include "ResultDisplayNames.h"
 #include "PostScientificText.h"
 #include "ui_PostDisplayControlWidget.h"
@@ -40,18 +40,56 @@ PostDisplayControlWidget::PostDisplayControlWidget(VisualWidgetService* visualSe
     ui->displayModeComboBox->addItem(QStringLiteral("表面 + 单元边线"), 1);
     ui->displayModeComboBox->addItem(QStringLiteral("线框"), 2);
 
-    m_gridLineStrengthSpinBox = new QSpinBox(ui->visibilityGroupBox);
-    m_gridLineStrengthSpinBox->setRange(0, 100);
-    m_gridLineStrengthSpinBox->setSuffix(QStringLiteral(" %"));
-    auto* gridLineRow = new QHBoxLayout;
-    gridLineRow->setContentsMargins(0, 0, 0, 0);
-    gridLineRow->addWidget(new QLabel(QStringLiteral("网格线强度"), ui->visibilityGroupBox));
-    gridLineRow->addWidget(m_gridLineStrengthSpinBox, 1);
-    ui->visibilityLayout->insertLayout(2, gridLineRow);
+    m_meshEdgeSettings=new QWidget(ui->visibilityGroupBox);
+    m_meshEdgeForm=new QFormLayout(m_meshEdgeSettings);
+    m_meshEdgeForm->setContentsMargins(0,0,0,0);
+    m_meshEdgeWidth=new CompactDoubleSpinBox(m_meshEdgeSettings);
+    m_meshEdgeWidth->setObjectName(QStringLiteral("postMeshEdgeWidth"));
+    m_meshEdgeWidth->setRange(1,5);m_meshEdgeWidth->setDecimals(1);m_meshEdgeWidth->setSingleStep(.5);
+    m_meshEdgeWidth->setSuffix(QStringLiteral(" px"));m_meshEdgeWidth->setKeyboardTracking(false);
+    m_meshEdgeOpacity=new QSpinBox(m_meshEdgeSettings);
+    m_meshEdgeOpacity->setObjectName(QStringLiteral("postMeshEdgeOpacity"));
+    m_meshEdgeOpacity->setRange(0,100);m_meshEdgeOpacity->setSingleStep(5);
+    m_meshEdgeOpacity->setSuffix(QStringLiteral(" %"));m_meshEdgeOpacity->setKeyboardTracking(false);
+    m_meshEdgeOpacity->setToolTip(QStringLiteral("仅控制单元边线；0% 不显示，100% 完全不透明，不改变云图表面的透明度。"));
+    m_meshEdgeForm->addRow(QStringLiteral("边线粗细"),m_meshEdgeWidth);
+    m_meshEdgeForm->addRow(QStringLiteral("边线不透明度"),m_meshEdgeOpacity);
+    ui->visibilityLayout->insertWidget(2,m_meshEdgeSettings);
 
-    m_showOutlineCheckBox = new QCheckBox(QStringLiteral("表面显示几何轮廓/折角线"), ui->visibilityGroupBox);
-    m_showOutlineCheckBox->setToolTip(QStringLiteral("仅显示模型开放边界和明显折角，不显示普通网格线或视角剪影；材料分界不单独描边。"));
-    ui->visibilityLayout->insertWidget(2, m_showOutlineCheckBox);
+    const auto updateMeshEdges=[this] {
+        m_meshEdgeSettings->setVisible(postSceneStyle().representationMode!=0);
+        m_meshEdgeForm->setRowVisible(m_meshEdgeOpacity,postSceneStyle().representationMode==1);
+    };
+    connect(m_meshEdgeWidth,QOverload<double>::of(&QDoubleSpinBox::valueChanged),this,[this](double value) {
+        if(m_syncing)return;postSceneStyle().meshEdgeWidth=value;applyPostSceneRepresentation(m_visualService);
+    });
+    connect(m_meshEdgeOpacity,QOverload<int>::of(&QSpinBox::valueChanged),this,[this](int value) {
+        if(m_syncing)return;postSceneStyle().meshEdgeOpacity=value/100.0;applyPostSceneRepresentation(m_visualService);
+    });
+
+    // Retain the advanced native options for internal diagnostics, outside the
+    // user-facing layout. Project loading always restores the agreed defaults.
+    auto* advanced=new QWidget(this);
+    advanced->setObjectName(QStringLiteral("postSurfaceAdvancedOptions"));
+    advanced->hide();
+    m_showOutlineCheckBox=new QCheckBox(advanced);
+    m_showOutlineCheckBox->setObjectName(QStringLiteral("postSurfaceOutline"));
+    m_surfaceInterpolationComboBox=new QComboBox(advanced);
+    m_surfaceInterpolationComboBox->setObjectName(QStringLiteral("postSurfaceInterpolation"));
+    m_surfaceInterpolationComboBox->addItem(QStringLiteral("Gouraud"),1);
+    m_surfaceInterpolationComboBox->addItem(QStringLiteral("Flat"),0);
+    m_scalarInterpolationCheckBox=new QCheckBox(advanced);
+    m_scalarInterpolationCheckBox->setObjectName(QStringLiteral("postScalarInterpolation"));
+    m_computeNormalsCheckBox=new QCheckBox(advanced);
+    m_computeNormalsCheckBox->setObjectName(QStringLiteral("postComputePointNormals"));
+    m_splitSharpEdgesCheckBox=new QCheckBox(advanced);
+    m_splitSharpEdgesCheckBox->setObjectName(QStringLiteral("postSplitSharpEdges"));
+    m_normalsFeatureAngleSpinBox=new CompactDoubleSpinBox(advanced);
+    m_normalsFeatureAngleSpinBox->setObjectName(QStringLiteral("postNormalsFeatureAngle"));
+    m_normalsFeatureAngleSpinBox->setRange(0,180);
+    m_normalsFeatureAngleSpinBox->setDecimals(1);
+    m_normalsFeatureAngleSpinBox->setSuffix(QStringLiteral("°"));
+    m_normalsFeatureAngleSpinBox->setKeyboardTracking(false);
     m_reverseColorsCheckBox = new QCheckBox(QStringLiteral("反转颜色"), ui->scalarBarGroupBox);
     ui->scalarBarFormLayout->insertRow(1, m_reverseColorsCheckBox);
     m_tickModeComboBox = new QComboBox(ui->scalarBarGroupBox);
@@ -59,7 +97,7 @@ PostDisplayControlWidget::PostDisplayControlWidget(VisualWidgetService* visualSe
     m_tickModeComboBox->addItem(QStringLiteral("等分数量"), 1);
     m_tickModeComboBox->addItem(QStringLiteral("固定步长"), 2);
     ui->scalarBarFormLayout->insertRow(2, QStringLiteral("刻度模式"), m_tickModeComboBox);
-    m_tickStepSpinBox = new CompactPostDoubleSpinBox(ui->scalarBarGroupBox);
+    m_tickStepSpinBox = new CompactDoubleSpinBox(ui->scalarBarGroupBox);
     m_tickStepSpinBox->setRange(1.0e-12, 1.0e100);
     m_tickStepSpinBox->setDecimals(12);
     m_tickStepSpinBox->setKeyboardTracking(false);
@@ -70,7 +108,7 @@ PostDisplayControlWidget::PostDisplayControlWidget(VisualWidgetService* visualSe
     auto* thresholdForm = new QFormLayout(m_thresholdGroup);
     m_thresholdEnabled = new QCheckBox(QStringLiteral("低于阈值的区域透明显示"), m_thresholdGroup);
     m_thresholdEnabled->setObjectName(QStringLiteral("postThresholdEnabled"));
-    m_thresholdValue = new CompactPostDoubleSpinBox(m_thresholdGroup);
+    m_thresholdValue = new CompactDoubleSpinBox(m_thresholdGroup);
     m_thresholdValue->setObjectName(QStringLiteral("postThresholdValue"));
     m_thresholdValue->setRange(-1.0e100, 1.0e100);
     m_thresholdValue->setDecimals(12);
@@ -143,14 +181,15 @@ PostDisplayControlWidget::PostDisplayControlWidget(VisualWidgetService* visualSe
     });
 
     connect(ui->displayModeComboBox, QOverload<int>::of(&QComboBox::currentIndexChanged),
-            this, [this](int index)
+            this, [this,updateMeshEdges](int index)
             {
                 if (m_syncing || index < 0)
                     return;
                 postSceneStyle().representationMode =
                     ui->displayModeComboBox->itemData(index).toInt();
                 applyPostSceneRepresentation(m_visualService, false);
-                m_showOutlineCheckBox->setEnabled(postSceneStyle().representationMode == 0);
+                m_showOutlineCheckBox->setEnabled(false);
+                updateMeshEdges();
                 notifyRefresh(QStringLiteral("representation"));
                 if (m_visualService)
                     m_visualService->render();
@@ -160,8 +199,33 @@ PostDisplayControlWidget::PostDisplayControlWidget(VisualWidgetService* visualSe
     {
         if (m_syncing)
             return;
-        postSceneStyle().showSurfaceOutline = enabled;
-        notifyRefresh(QStringLiteral("surface-outline"));
+        Q_UNUSED(enabled);
+        const QSignalBlocker blocker(m_showOutlineCheckBox);
+        m_showOutlineCheckBox->setChecked(false);
+    });
+    connect(m_surfaceInterpolationComboBox,QOverload<int>::of(&QComboBox::currentIndexChanged),this,[this](int index){
+        if(m_syncing || index<0)return;
+        postSceneStyle().surfaceInterpolation=m_surfaceInterpolationComboBox->itemData(index).toInt();
+        notifyRefresh(QStringLiteral("surface-lighting"));
+    });
+    connect(m_scalarInterpolationCheckBox,&QCheckBox::toggled,this,[this](bool enabled){
+        if(m_syncing)return;
+        postSceneStyle().interpolateScalarsBeforeMapping=enabled;
+        notifyRefresh(QStringLiteral("scalar-interpolation"));
+    });
+    const auto refreshNormals=[this]{
+        m_splitSharpEdgesCheckBox->setEnabled(postSceneStyle().computePointNormals);
+        m_normalsFeatureAngleSpinBox->setEnabled(postSceneStyle().computePointNormals && postSceneStyle().splitSharpEdges);
+        notifyRefresh(QStringLiteral("surface-normals"));
+    };
+    connect(m_computeNormalsCheckBox,&QCheckBox::toggled,this,[this,refreshNormals](bool enabled){
+        if(m_syncing)return;postSceneStyle().computePointNormals=enabled;refreshNormals();
+    });
+    connect(m_splitSharpEdgesCheckBox,&QCheckBox::toggled,this,[this,refreshNormals](bool enabled){
+        if(m_syncing)return;postSceneStyle().splitSharpEdges=enabled;refreshNormals();
+    });
+    connect(m_normalsFeatureAngleSpinBox,QOverload<double>::of(&QDoubleSpinBox::valueChanged),this,[this,refreshNormals](double angle){
+        if(m_syncing)return;postSceneStyle().normalsFeatureAngle=angle;refreshNormals();
     });
 
     connect(m_tickModeComboBox, QOverload<int>::of(&QComboBox::currentIndexChanged),
@@ -204,17 +268,6 @@ PostDisplayControlWidget::PostDisplayControlWidget(VisualWidgetService* visualSe
         postScalarBarStyle().tickStep = step;
         applyScalarBarAppearance();
     });
-
-    connect(m_gridLineStrengthSpinBox, QOverload<int>::of(&QSpinBox::valueChanged),
-            this, [this](int value)
-            {
-                if (m_syncing)
-                    return;
-                postSceneStyle().gridLineStrength = value;
-                applyPostSceneRepresentation(m_visualService, false);
-                if (m_visualService)
-                    m_visualService->render();
-            });
 
     connect(m_reverseColorsCheckBox, &QCheckBox::toggled, this, [this](bool checked)
     {
@@ -380,7 +433,7 @@ PostDisplayControlWidget::PostDisplayControlWidget(VisualWidgetService* visualSe
         [this](const QVariantMap&)
         {
             syncRangeControls();
-            applyScalarBarAppearance();
+            applyScalarBarAppearance(false);
         });
     EventManager::instance().registerHandler(
         PublicConstants::kEventBrandingVisibilityChanged, this,
@@ -416,9 +469,19 @@ void PostDisplayControlWidget::syncFromState()
     ui->showScalarBarCheckBox->setChecked(bar.visible);
     ui->scalarBarTitleEdit->setText(bar.customTitle);
     m_reverseColorsCheckBox->setChecked(bar.reverseColors);
-    m_gridLineStrengthSpinBox->setValue(postSceneStyle().gridLineStrength);
+    m_meshEdgeWidth->setValue(postSceneStyle().meshEdgeWidth);
+    m_meshEdgeOpacity->setValue(qRound(postSceneStyle().meshEdgeOpacity*100));
+    m_meshEdgeSettings->setVisible(postSceneStyle().representationMode!=0);
+    m_meshEdgeForm->setRowVisible(m_meshEdgeOpacity,postSceneStyle().representationMode==1);
     m_showOutlineCheckBox->setChecked(postSceneStyle().showSurfaceOutline);
-    m_showOutlineCheckBox->setEnabled(postSceneStyle().representationMode == 0);
+    m_showOutlineCheckBox->setEnabled(false);
+    m_surfaceInterpolationComboBox->setCurrentIndex(m_surfaceInterpolationComboBox->findData(postSceneStyle().surfaceInterpolation));
+    m_scalarInterpolationCheckBox->setChecked(postSceneStyle().interpolateScalarsBeforeMapping);
+    m_computeNormalsCheckBox->setChecked(postSceneStyle().computePointNormals);
+    m_splitSharpEdgesCheckBox->setChecked(postSceneStyle().splitSharpEdges);
+    m_splitSharpEdgesCheckBox->setEnabled(postSceneStyle().computePointNormals);
+    m_normalsFeatureAngleSpinBox->setValue(postSceneStyle().normalsFeatureAngle);
+    m_normalsFeatureAngleSpinBox->setEnabled(postSceneStyle().computePointNormals && postSceneStyle().splitSharpEdges);
     m_tickModeComboBox->setCurrentIndex(bar.tickMode);
     m_tickStepSpinBox->setValue(bar.tickStep);
     m_tickStepSpinBox->setEnabled(bar.tickMode == 2);

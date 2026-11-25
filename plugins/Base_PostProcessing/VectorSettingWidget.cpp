@@ -6,6 +6,8 @@
 #include <vtkActor.h>
 #include <vtkAppendFilter.h>
 #include <vtkArrowSource.h>
+#include <vtkCellData.h>
+#include <vtkCellDataToPointData.h>
 #include <vtkDataArray.h>
 #include <vtkDataSetMapper.h>
 #include <vtkFloatArray.h>
@@ -14,6 +16,8 @@
 #include <vtkMaskPoints.h>
 #include <vtkMultiBlockDataSet.h>
 #include <vtkPointData.h>
+#include <vtkPoints.h>
+#include <vtkPolyData.h>
 #include <vtkPolyDataMapper.h>
 #include <vtkProperty.h>
 #include <vtkRenderWindow.h>
@@ -22,10 +26,14 @@
 #include <vtkTecplotReader.h>
 #include <vtkUnstructuredGrid.h>
 
+#include <QCheckBox>
+#include <QComboBox>
 #include <QDebug>
 #include <QDir>
 #include <QFileInfo>
+#include <QGridLayout>
 #include <QJsonObject>
+#include <QLabel>
 #include <QSignalBlocker>
 
 #include "PostResultAutoPrepare.h"
@@ -39,13 +47,33 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstdint>
 #include <limits>
+#include <unordered_map>
+#include <vector>
 
 VectorSettingWidget::VectorSettingWidget(VisualWidgetService* postProcessingWidget, QWidget* parent)
     : ui(new Ui::VectorSettingWidget), BasePage(PublicConstants::kPagePostProcessVector)
 {
     ui->setupUi(this);
     ui->displayGroupBox->setVisible(false);
+
+    // 在矢量设置顶部新增统一“矢量场”选择框，并在底部增加“按幅值缩放”选项；
+    // 选择三分量矢量时自动隐藏冗余的 X/Y/Z 分量下拉框。
+    m_vectorCombo = new QComboBox(ui->vectorGroupBox);
+    m_scaleByMagCheck = new QCheckBox(QStringLiteral("按幅值缩放箭头"), ui->vectorGroupBox);
+    m_vectorCombo->setObjectName(QStringLiteral("vectorFieldComboBox"));
+    m_scaleByMagCheck->setObjectName(QStringLiteral("scaleByMagnitudeCheckBox"));
+    m_scaleByMagCheck->setChecked(false);
+    if (auto* gridLayout = ui->vectorGridLayout)
+    {
+        auto* vecLabel = new QLabel(QStringLiteral("矢量场"), ui->vectorGroupBox);
+        vecLabel->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Preferred);
+        const int nextRow = gridLayout->rowCount();
+        gridLayout->addWidget(vecLabel, nextRow, 0);
+        gridLayout->addWidget(m_vectorCombo, nextRow, 1);
+        gridLayout->addWidget(m_scaleByMagCheck, nextRow + 1, 0, 1, 2);
+    }
 
     configurePostResultCombo(ui->analysisComboBox);
     configurePostResultCombo(ui->resultDirComboBox);
@@ -71,20 +99,8 @@ VectorSettingWidget::VectorSettingWidget(VisualWidgetService* postProcessingWidg
     });
 
     // 矢量参数统一采用直接更新；采样、分量变化后无需再点“确定”。
-    connect(ui->scaleSpinBox, QOverload<double>::of(&QDoubleSpinBox::valueChanged), this,
-            &VectorSettingWidget::on_scaleSpinBox_valueChanged);
-    connect(ui->thicknessSpinBox, QOverload<double>::of(&QDoubleSpinBox::valueChanged), this,
-            &VectorSettingWidget::on_thicknessSpinBox_valueChanged);
-    connect(ui->analysisComboBox,
-            QOverload<int>::of(&QComboBox::currentIndexChanged), this,
-            &VectorSettingWidget::on_analysisComboBox_currentIndexChanged);
-    connect(ui->resultDirComboBox, QOverload<int>::of(&QComboBox::currentIndexChanged), this,
-            &VectorSettingWidget::on_resultDirComboBox_currentIndexChanged);
-    connect(ui->resultTimeComboBox,
-            QOverload<int>::of(&QComboBox::currentIndexChanged), this,
-            &VectorSettingWidget::on_resultTimeComboBox_currentIndexChanged);
 
-    // 0 表示自动采样；自动模式把箭头数量控制在约 2000 个，兼顾可读性与性能。
+    // 0 表示空间均匀自动采样；手动值表示有效点的采样间隔。
     ui->maskSizeSpinBox->setRange(0, 1000000);
     ui->maskSizeSpinBox->setSpecialValueText(QStringLiteral("自动"));
     ui->maskSizeSpinBox->setValue(0);
@@ -94,6 +110,39 @@ VectorSettingWidget::VectorSettingWidget(VisualWidgetService* postProcessingWidg
         if (!m_updatingControls && m_grid)
             rebuildPipeline();
     };
+    connect(m_vectorCombo, QOverload<int>::of(&QComboBox::currentIndexChanged), this,
+            [this](int)
+            {
+                if (m_updatingControls)
+                    return;
+                const QString vecName = m_vectorCombo->currentData().toString();
+                if (!vecName.isEmpty())
+                {
+                    m_updatingControls = true;
+                    const int ix = ui->xComboBox->findData(vecName);
+                    const int iy = ui->yComboBox->findData(vecName);
+                    int iz = ui->zComboBox->findData(vecName);
+                    if (iz < 0) {
+                        ui->zComboBox->addItem(ResultDisplayNames::displayName(vecName), vecName);
+                        iz = ui->zComboBox->count() - 1;
+                    }
+                    ui->zComboBox->setEnabled(true);
+                    if (ix >= 0) ui->xComboBox->setCurrentIndex(ix);
+                    if (iy >= 0) ui->yComboBox->setCurrentIndex(iy);
+                    if (iz >= 0) ui->zComboBox->setCurrentIndex(iz);
+                    m_updatingControls = false;
+                }
+                updateComponentRowsVisibility();
+                if (m_grid)
+                    rebuildPipeline();
+            });
+    connect(m_scaleByMagCheck, &QCheckBox::toggled, this,
+            [this](bool checked)
+            {
+                m_scaleByMagnitude = checked;
+                if (!m_updatingControls && m_grid)
+                    rebuildPipeline();
+            });
     connect(ui->xComboBox, QOverload<int>::of(&QComboBox::currentIndexChanged), this,
             rebuildOnSelectionChanged);
     connect(ui->yComboBox, QOverload<int>::of(&QComboBox::currentIndexChanged), this,
@@ -113,13 +162,21 @@ VectorSettingWidget::VectorSettingWidget(VisualWidgetService* postProcessingWidg
 
     EventManager::instance().registerHandler(
         postDisplaySettingsChangedEvent(), this,
-        [this](const QVariantMap&)
+        [this](const QVariantMap& data)
         {
+            static const QStringList appearanceReasons{
+                QStringLiteral("range"), QStringLiteral("color-map"), QStringLiteral("scalar-bar"),
+                QStringLiteral("visibility"), QStringLiteral("representation"), QStringLiteral("contour"),
+                QStringLiteral("surface-lighting"), QStringLiteral("surface-normals"),
+                QStringLiteral("surface-outline"), QStringLiteral("scalar-interpolation"),
+                QStringLiteral("threshold"), QStringLiteral("zero-display")};
+            m_displayDirty = m_displayDirty || !appearanceReasons.contains(data.value(QStringLiteral("reason")).toString());
             if (!property("postDisplayActive").toBool() || !m_grid)
                 return;
             const QSignalBlocker blocker(ui->showScalarBarCheckBox);
             ui->showScalarBarCheckBox->setChecked(postScalarBarStyle().visible);
-            rebuildPipeline();
+            if(m_displayDirty || !m_vectorActor)rebuildPipeline();
+            else {updateDisplayAppearance();requestRender();}
         });
 
     m_visualService = postProcessingWidget;
@@ -141,7 +198,7 @@ double VectorSettingWidget::computeAutoBaseScale(vtkUnstructuredGrid* grid)
     const double diag = std::sqrt(dx * dx + dy * dy + dz * dz);
     if (diag <= 0.0 || !std::isfinite(diag))
         return 1.0;
-    return diag * 0.06; // 默认箭头基准长度为模型包围盒对角线的 6%
+    return diag * 0.024; // 与空间均匀体素步长匹配，避免箭头过长相互穿插重叠
 }
 
 int VectorSettingWidget::computeAutoMaskRatio(vtkUnstructuredGrid* grid) const
@@ -188,6 +245,7 @@ QString VectorSettingWidget::vectorLegendTitle() const
 
 void VectorSettingWidget::beforeLoad()
 {
+    const QSignalBlocker legendBlocker(ui->showScalarBarCheckBox);
     setProperty("postDisplayActive", true);
     clearPostDisplayContext();
     showPostProcessingOnly(m_visualService, false);
@@ -197,15 +255,32 @@ void VectorSettingWidget::beforeLoad()
     refreshResultGroups();
     if (m_dataPath.isEmpty())
         m_dataPath = PostResultAutoPrepare::firstResultDirectory(proj);
+    if (m_grid) {
+        postPublishResultFilterSource(m_grid);
+        if (m_cachedFilterSignature != postMeshFilterSignature())
+            m_displayDirty = true;
+    }
 
     if (ui->stepComboBox->count() == 0)
     {
         // 首次进入：加载文件列表并默认读第一个
         loadFileName(m_dataPath);
     }
+    else if (m_vectorActor && m_grid && !m_hasPendingState && !m_displayDirty)
+    {
+        // 筛选未变化时复用箭头，并恢复本页的色标和显示控制上下文。
+        publishPostDisplayContext(QStringLiteral("VectorMag"), m_lastAutoMagMin,
+                                  m_lastAutoMagMax, false, false, true);
+        if (m_visualService)
+        {
+            addActorByService(m_visualService, postActorId(getUuid(), QStringLiteral("vector")),
+                              m_vectorActor, QStringLiteral("矢量"), false);
+            updateDisplayAppearance();
+            requestRender();
+        }
+    }
     else
     {
-        // 再次进入时也按当前筛选和显示设置重建，避免恢复旧筛选下的箭头。
         rebuildPipeline();
     }
     m_loadedOnce = true;
@@ -225,6 +300,7 @@ QJsonObject VectorSettingWidget::saveJson()
     object.insert(QStringLiteral("maskRatio"), ui->maskSizeSpinBox->value());
     object.insert(QStringLiteral("scale"), ui->scaleSpinBox->value());
     object.insert(QStringLiteral("thickness"), ui->thicknessSpinBox->value());
+    object.insert(QStringLiteral("scaleByMagnitude"), m_scaleByMagnitude);
     return object;
 }
 
@@ -347,7 +423,22 @@ void VectorSettingWidget::applyPendingState()
             qBound(0.25, state.value(QStringLiteral("thickness"), 1.0).toDouble(), 4.0));
         m_thicknessFactor = ui->thicknessSpinBox->value();
     }
+    if (m_scaleByMagCheck)
+    {
+        const QSignalBlocker blocker(m_scaleByMagCheck);
+        m_scaleByMagnitude = state.value(QStringLiteral("scaleByMagnitude"), false).toBool();
+        m_scaleByMagCheck->setChecked(m_scaleByMagnitude);
+    }
     m_updatingControls = false;
+    if (m_vectorCombo) {
+        const QSignalBlocker blocker(m_vectorCombo);
+        const QString name = ui->xComboBox->currentData().toString();
+        const int index = name == ui->yComboBox->currentData().toString()
+                && name == ui->zComboBox->currentData().toString()
+            ? m_vectorCombo->findData(name) : -1;
+        m_vectorCombo->setCurrentIndex(index > 0 ? index : 0);
+    }
+    updateComponentRowsVisibility();
     rebuildPipeline();
 }
 
@@ -487,6 +578,7 @@ void VectorSettingWidget::setFileName(const QString& file)
         return;
     m_fileName = file;
     m_grid = nullptr; // 强制下次重建
+    m_displayDirty = true;
 }
 
 bool VectorSettingWidget::ensureDataLoaded()
@@ -501,7 +593,7 @@ bool VectorSettingWidget::ensureDataLoaded()
 
     vtkSmartPointer<vtkUnstructuredGrid> grid;
 
-    if (ext == "txt" || ext == "dat" || ext == "tec" ||
+    if (info.isDir() || ext == "txt" || ext == "dat" || ext == "tec" ||
         ext == "vtu" || ext == "vtm")
     {
         grid = PostTecplotUtils::readGrid(m_fileName);
@@ -514,6 +606,25 @@ bool VectorSettingWidget::ensureDataLoaded()
 
     if (!grid || grid->GetNumberOfPoints() == 0)
         return false;
+
+    // 单元结果插值到节点；已有的节点位移/速度必须保留。
+    if (grid->GetCellData()->GetNumberOfArrays() > 0)
+    {
+        auto convert = vtkSmartPointer<vtkCellDataToPointData>::New();
+        convert->SetInputData(grid);
+        convert->PassCellDataOn();
+        convert->ProcessAllArraysOff();
+        for (int i = 0; i < grid->GetCellData()->GetNumberOfArrays(); ++i) {
+            const char* name = grid->GetCellData()->GetArrayName(i);
+            if (name && !grid->GetPointData()->GetArray(name))
+                convert->AddCellDataArray(name);
+        }
+        convert->Update();
+        auto converted = vtkSmartPointer<vtkUnstructuredGrid>::New();
+        converted->ShallowCopy(convert->GetOutput());
+        if (converted && converted->GetNumberOfPoints() > 0)
+            grid = converted;
+    }
 
     m_grid = grid;
     populateComponentCombos();
@@ -541,6 +652,19 @@ void VectorSettingWidget::populateComponentCombos()
     }
     names.removeDuplicates();
     names.sort();
+
+    if (m_vectorCombo)
+    {
+        const QSignalBlocker vb(m_vectorCombo);
+        m_vectorCombo->clear();
+        m_vectorCombo->addItem(QStringLiteral("由 X/Y/Z 分量组装"), QString());
+        for (const QString& name : names)
+        {
+            vtkDataArray* arr = arrayByName(m_grid, name);
+            if (arr && arr->GetNumberOfComponents() == 3)
+                m_vectorCombo->addItem(ResultDisplayNames::displayName(name), name);
+        }
+    }
 
     auto setCombo = [&](QComboBox* combo)
     {
@@ -601,12 +725,25 @@ void VectorSettingWidget::populateComponentCombos()
         }
     }
 
-    if (ix < 0 && ui->xComboBox->count() > 0)
-        ix = 0;
-    if (iy < 0 && ui->yComboBox->count() > 1)
-        iy = 1;
-    else if (iy < 0)
-        iy = ix;
+    // 未识别到任何速度/位移向量或分量时，不把温度、压力等无关标量硬拼为假矢量。
+    if (ix < 0 || iy < 0)
+    {
+        const QSignalBlocker bx(ui->xComboBox);
+        const QSignalBlocker by(ui->yComboBox);
+        const QSignalBlocker bz(ui->zComboBox);
+        ui->xComboBox->setCurrentIndex(-1);
+        ui->yComboBox->setCurrentIndex(-1);
+        ui->zComboBox->setCurrentIndex(-1);
+        ui->zComboBox->setEnabled(true);
+        if (m_vectorCombo)
+        {
+            const QSignalBlocker bv(m_vectorCombo);
+            m_vectorCombo->setCurrentIndex(0);
+        }
+        m_updatingControls = false;
+        updateComponentRowsVisibility();
+        return;
+    }
 
     selectIndex(ui->xComboBox, ix);
     selectIndex(ui->yComboBox, iy);
@@ -623,7 +760,29 @@ void VectorSettingWidget::populateComponentCombos()
         ui->zComboBox->addItem(QStringLiteral("二维结果，Z 分量为零"), QString());
         ui->zComboBox->setEnabled(false);
     }
+    if (m_vectorCombo)
+    {
+        const QSignalBlocker bv(m_vectorCombo);
+        const QString xName = ui->xComboBox->currentData().toString();
+        const int vecIdx = (!xName.isEmpty() && xName == ui->yComboBox->currentData().toString() &&
+                            xName == ui->zComboBox->currentData().toString())
+                               ? m_vectorCombo->findData(xName)
+                               : -1;
+        m_vectorCombo->setCurrentIndex(vecIdx > 0 ? vecIdx : 0);
+    }
     m_updatingControls = false;
+    updateComponentRowsVisibility();
+}
+
+void VectorSettingWidget::updateComponentRowsVisibility()
+{
+    const bool showManual = !m_vectorCombo || m_vectorCombo->currentData().toString().isEmpty();
+    ui->xLabel->setVisible(showManual);
+    ui->xComboBox->setVisible(showManual);
+    ui->yLabel->setVisible(showManual);
+    ui->yComboBox->setVisible(showManual);
+    ui->zLabel->setVisible(showManual);
+    ui->zComboBox->setVisible(showManual);
 }
 
 vtkDataArray* VectorSettingWidget::arrayByName(vtkUnstructuredGrid* grid, const QString& name)
@@ -747,7 +906,7 @@ void VectorSettingWidget::rebuildPipeline()
         return;
     }
 
-    // 0=自动：目标约 2000 个箭头；手动值仍表示“每隔 N 个点取 1 个”。
+    // 0=空间均匀自动采样；手动值表示“每隔 N 个有效点取 1 个”。
     m_maskOnRatio = ui->maskSizeSpinBox->value() == 0
                         ? computeAutoMaskRatio(displayGrid)
                         : ui->maskSizeSpinBox->value();
@@ -773,15 +932,6 @@ void VectorSettingWidget::rebuildPipeline()
         return;
     }
 
-    if (property("postDisplayActive").toBool())
-        publishPostDisplayContext(QStringLiteral("VectorMag"), magMin, magMax, false, false, true);
-
-    auto nearlyEqual = [](double a, double b)
-    {
-        const double abs = 1e-15, rel = 1e-12;
-        return std::fabs(a - b) <= std::max(abs, rel * std::max(std::fabs(a), std::fabs(b)));
-    };
-
     // 移除旧 actor
     if (m_vectorActor)
     {
@@ -790,40 +940,163 @@ void VectorSettingWidget::rebuildPipeline()
         m_vectorActor = nullptr;
     }
 
-    // 抽样
-    auto mask = vtkSmartPointer<vtkMaskPoints>::New();
-    mask->SetInputData(displayGrid);
-    mask->SetOnRatio(m_maskOnRatio); // 每隔 N 个取 1 个
-    mask->RandomModeOff();
-    mask->Update();
+    // 过滤零矢量（如无滑移壁面节点）并按均匀步长抽样，避免箭头扎堆在壁面或进出口局部。
+    auto* vecArr = vtkFloatArray::SafeDownCast(displayGrid->GetPointData()->GetArray("Vector"));
+    auto* magArr = vtkFloatArray::SafeDownCast(displayGrid->GetPointData()->GetArray("VectorMag"));
+    std::vector<vtkIdType> activeIds;
+    const vtkIdType totalPts = displayGrid->GetNumberOfPoints();
+    activeIds.reserve(static_cast<size_t>(totalPts));
+    if (magArr)
+    {
+        for (vtkIdType i = 0; i < totalPts; ++i)
+        {
+            const double m = magArr->GetComponent(i, 0);
+            if (std::isfinite(m) && m > 0.0)
+                activeIds.push_back(i);
+        }
+    }
 
-    // 箭头源
+    std::vector<vtkIdType> selectedIds;
+    if (ui->maskSizeSpinBox->value() == 0)
+    {
+        // 自动模式：使用三维空间均匀体素抽样（每个体素只保留最靠近体素中心的一个有效点），
+        // 避免四面体加密区扎堆、扫掠区稀疏和箭头严重重叠。
+        double b[6];
+        displayGrid->GetBounds(b);
+        const double diag = std::hypot(std::hypot(b[1] - b[0], b[3] - b[2]), b[5] - b[4]);
+        const double h = std::max(diag / 32.0, 1e-12);
+        struct VoxelPick
+        {
+            vtkIdType pid = -1;
+            double dist2 = std::numeric_limits<double>::infinity();
+        };
+        std::unordered_map<std::uint64_t, VoxelPick> voxels;
+        voxels.reserve(4096);
+        auto packKey = [](std::int64_t ix, std::int64_t iy, std::int64_t iz) -> std::uint64_t
+        {
+            const std::uint64_t ux = static_cast<std::uint64_t>(ix + (1LL << 20)) & 0x1FFFFFULL;
+            const std::uint64_t uy = static_cast<std::uint64_t>(iy + (1LL << 20)) & 0x1FFFFFULL;
+            const std::uint64_t uz = static_cast<std::uint64_t>(iz + (1LL << 20)) & 0x1FFFFFULL;
+            return (ux << 42) | (uy << 21) | uz;
+        };
+        for (vtkIdType pid : activeIds)
+        {
+            double xyz[3];
+            displayGrid->GetPoint(pid, xyz);
+            const std::int64_t ix = static_cast<std::int64_t>(std::floor((xyz[0] - b[0]) / h));
+            const std::int64_t iy = static_cast<std::int64_t>(std::floor((xyz[1] - b[2]) / h));
+            const std::int64_t iz = static_cast<std::int64_t>(std::floor((xyz[2] - b[4]) / h));
+            const double cx = b[0] + (ix + 0.5) * h;
+            const double cy = b[2] + (iy + 0.5) * h;
+            const double cz = b[4] + (iz + 0.5) * h;
+            const double d2 = (xyz[0] - cx) * (xyz[0] - cx) +
+                              (xyz[1] - cy) * (xyz[1] - cy) +
+                              (xyz[2] - cz) * (xyz[2] - cz);
+            auto& pick = voxels[packKey(ix, iy, iz)];
+            if (pick.pid < 0 || d2 < pick.dist2)
+            {
+                pick.pid = pid;
+                pick.dist2 = d2;
+            }
+        }
+        selectedIds.reserve(voxels.size());
+        for (const auto& kv : voxels)
+            selectedIds.push_back(kv.second.pid);
+        m_maskOnRatio = std::max(1, static_cast<int>(activeIds.size() / std::max<size_t>(1, selectedIds.size())));
+        ui->maskSizeSpinBox->setToolTip(
+            QStringLiteral("空间均匀自动采样，当前约 %1 个箭头").arg(selectedIds.size()));
+    }
+    else
+    {
+        const int stride = std::max(1, ui->maskSizeSpinBox->value());
+        m_maskOnRatio = stride;
+        selectedIds.reserve(activeIds.size() / static_cast<size_t>(stride) + 1);
+        for (size_t k = 0; k < activeIds.size(); k += static_cast<size_t>(stride))
+            selectedIds.push_back(activeIds[k]);
+        ui->maskSizeSpinBox->setToolTip(
+            QStringLiteral("当前采样间隔：%1（%2 个箭头）").arg(m_maskOnRatio).arg(selectedIds.size()));
+    }
+
+    std::sort(selectedIds.begin(), selectedIds.end());
+    auto sampledPts = vtkSmartPointer<vtkPoints>::New();
+    sampledPts->SetDataTypeToDouble();
+    auto sampledVec = vtkSmartPointer<vtkFloatArray>::New();
+    sampledVec->SetName("Vector");
+    sampledVec->SetNumberOfComponents(3);
+    auto sampledMag = vtkSmartPointer<vtkFloatArray>::New();
+    sampledMag->SetName("VectorMag");
+    sampledMag->SetNumberOfComponents(1);
+
+    std::vector<double> sampledMags;
+    sampledMags.reserve(selectedIds.size());
+    for (vtkIdType pid : selectedIds)
+    {
+        double xyz[3];
+        displayGrid->GetPoint(pid, xyz);
+        sampledPts->InsertNextPoint(xyz);
+        double v[3] = {0.0, 0.0, 0.0};
+        if (vecArr) vecArr->GetTuple(pid, v);
+        const double m = magArr ? magArr->GetComponent(pid, 0)
+                                : std::hypot(std::hypot(v[0], v[1]), v[2]);
+        sampledVec->InsertNextTuple3(static_cast<float>(v[0]), static_cast<float>(v[1]),
+                                     static_cast<float>(v[2]));
+        sampledMag->InsertNextTuple1(static_cast<float>(m));
+        sampledMags.push_back(m);
+    }
+
+    auto sampledPoly = vtkSmartPointer<vtkPolyData>::New();
+    sampledPoly->SetPoints(sampledPts);
+    sampledPoly->GetPointData()->SetVectors(sampledVec);
+    sampledPoly->GetPointData()->AddArray(sampledMag);
+    sampledPoly->GetPointData()->SetActiveScalars("VectorMag");
+
+    // 基于空间均匀采样后的实际箭头分布计算自动色标范围；当极少数角点异常尖峰
+    // 远超 95% 分位时，采用 P95 作为默认上限，呈现完整清晰的色彩层次（右侧“数据范围”仍可手动调整）。
+    if (!sampledMags.empty())
+    {
+        std::sort(sampledMags.begin(), sampledMags.end());
+        magMin = sampledMags.front();
+        const double rawMax = sampledMags.back();
+        const double p95 = sampledMags[static_cast<size_t>((sampledMags.size() - 1) * 0.95)];
+        magMax = (p95 > 1e-12 && rawMax > p95 * 2.5) ? p95 : rawMax;
+    }
+    m_lastAutoMagMax = magMax;
+    m_lastAutoMagMin = magMin;
+
+    if (property("postDisplayActive").toBool())
+        publishPostDisplayContext(QStringLiteral("VectorMag"), magMin, magMax, false, false, true);
+
+    // 箭头源：比例更利落，减少细杆锯齿
     m_arrowSource = vtkSmartPointer<vtkArrowSource>::New();
-    m_arrowSource->SetTipLength(0.35);
-    m_arrowSource->SetTipRadius(0.08 * m_thicknessFactor);
-    m_arrowSource->SetShaftRadius(0.02 * m_thicknessFactor);
+    m_arrowSource->SetTipResolution(12);
+    m_arrowSource->SetShaftResolution(12);
+    m_arrowSource->SetTipLength(0.32);
+    m_arrowSource->SetTipRadius(0.095 * m_thicknessFactor);
+    m_arrowSource->SetShaftRadius(0.028 * m_thicknessFactor);
 
     // Glyph：向量用于朝向；上色用 VectorMag
     m_glyph = vtkSmartPointer<vtkGlyph3D>::New();
 #if VTK_MAJOR_VERSION >= 9
-    m_glyph->SetInputConnection(mask->GetOutputPort());
+    m_glyph->SetInputData(sampledPoly);
     m_glyph->SetSourceConnection(m_arrowSource->GetOutputPort());
 #else
-    m_glyph->SetInputConnection(0, mask->GetOutputPort());
+    m_glyph->SetInputData(0, sampledPoly);
     m_glyph->SetSourceConnection(0, m_arrowSource->GetOutputPort());
 #endif
     m_glyph->OrientOn();
     m_glyph->SetVectorModeToUseVector();
-    m_glyph->SetScaleModeToDataScalingOff(); // 等长
-    // 指定向量与标量数组
-    m_glyph->SetInputArrayToProcess(1, 0, 0, vtkDataObject::FIELD_ASSOCIATION_POINTS,
-                                    "Vector"); // vectors
-    m_glyph->SetInputArrayToProcess(0, 0, 0, vtkDataObject::FIELD_ASSOCIATION_POINTS,
-                                    "VectorMag"); // scalars
+    if (m_scaleByMagnitude)
+        m_glyph->SetScaleModeToScaleByVector();
+    else
+        m_glyph->SetScaleModeToDataScalingOff();
+    m_glyph->SetColorModeToColorByScalar();
+    m_glyph->SetInputArrayToProcess(1, 0, 0, vtkDataObject::FIELD_ASSOCIATION_POINTS, "Vector");
+    m_glyph->SetInputArrayToProcess(0, 0, 0, vtkDataObject::FIELD_ASSOCIATION_POINTS, "VectorMag");
 
     {
         const double base = computeAutoBaseScale(displayGrid);
-        m_glyph->SetScaleFactor(base * m_scaleFactor); // 自适应尺度 × 滑条倍率
+        const double magNorm = (m_scaleByMagnitude && magMax > 1e-12) ? (1.0 / magMax) : 1.0;
+        m_glyph->SetScaleFactor(base * m_scaleFactor * magNorm);
     }
     m_glyph->Update();
 
@@ -835,10 +1108,34 @@ void VectorSettingWidget::rebuildPipeline()
     mapper->SelectColorArray("VectorMag");
     mapper->SetColorModeToMapScalars();
 
+    // Actor
+    m_vectorActor = vtkSmartPointer<vtkActor>::New();
+    m_vectorActor->SetMapper(mapper);
+    m_vectorActor->GetProperty()->SetRepresentationToSurface();
+    updateDisplayAppearance();
+
+    if (m_visualService)
+        addActorByService(m_visualService, postActorId(getUuid(), QStringLiteral("vector")),
+                          m_vectorActor, QStringLiteral("矢量"), false);
+
+    m_displayDirty = false;
+    m_cachedFilterSignature = postMeshFilterSignature();
+    requestRender();
+}
+
+void VectorSettingWidget::updateDisplayAppearance()
+{
+    auto* mapper=m_vectorActor?vtkPolyDataMapper::SafeDownCast(m_vectorActor->GetMapper()):nullptr;
+    if(!mapper)return;
     // 同步色标 LUT（与 VectorMag 一致）。公共“显示范围”对矢量模同样生效。
-    double displayMin = magMin;
-    double displayMax = magMax;
-    resolvePostDisplayRange(QStringLiteral("VectorMag"), magMin, magMax, displayMin, displayMax);
+    auto nearlyEqual = [](double a, double b)
+    {
+        const double abs = 1e-15, rel = 1e-12;
+        return std::fabs(a - b) <= std::max(abs, rel * std::max(std::fabs(a), std::fabs(b)));
+    };
+    double displayMin = m_lastAutoMagMin;
+    double displayMax = m_lastAutoMagMax;
+    resolvePostDisplayRange(QStringLiteral("VectorMag"), m_lastAutoMagMin, m_lastAutoMagMax, displayMin, displayMax);
     if (!(displayMax > displayMin) || nearlyEqual(displayMax, displayMin))
     {
         const double center = std::isfinite(displayMin) ? displayMin : 0.0;
@@ -850,21 +1147,19 @@ void VectorSettingWidget::rebuildPipeline()
     if (vtkSmartPointer<vtkScalarBarActor> scalarBar =
             m_visualService ? m_visualService->scalarBarActor() : nullptr)
     {
-        vtkLookupTable* lut = vtkLookupTable::SafeDownCast(scalarBar->GetLookupTable());
-        if (!lut)
-        {
-            auto l = vtkSmartPointer<vtkLookupTable>::New();
-            l->Build();
-            lut = l;
-            scalarBar->SetLookupTable(lut);
+        // Keep this page's colors independent of other result pages' shared legend.
+        auto* lut = vtkLookupTable::SafeDownCast(mapper->GetLookupTable());
+        if(!lut) {
+            auto newLut=vtkSmartPointer<vtkLookupTable>::New();mapper->SetLookupTable(newLut);lut=newLut;
         }
         applyPostFieldLookupTable(lut, QStringLiteral("VectorMag"), displayMin, displayMax);
+        scalarBar->SetLookupTable(lut);
         mapper->SetLookupTable(lut);
         mapper->UseLookupTableScalarRangeOn();
 
         applyStandardPostScalarBar(scalarBar);
         const QString legendTitle = resolvedPostScalarBarTitle(vectorLegendTitle());
-        m_visualService->setScalarBarTitle(legendTitle, false);
+        scalarBar->SetTitle(legendTitle.toUtf8().constData());
         scalarBar->Modified();
         m_visualService->showScalarBar(postScalarBarShouldBeVisible(), false);
     }
@@ -873,16 +1168,6 @@ void VectorSettingWidget::rebuildPipeline()
         mapper->SetScalarRange(displayMin, displayMax);
     }
 
-    // Actor
-    m_vectorActor = vtkSmartPointer<vtkActor>::New();
-    m_vectorActor->SetMapper(mapper);
-    m_vectorActor->GetProperty()->SetRepresentationToSurface();
-
-    if (m_visualService)
-        addActorByService(m_visualService, postActorId(getUuid(), QStringLiteral("vector")),
-                          m_vectorActor, QStringLiteral("矢量"), false);
-
-    requestRender();
 }
 
 void VectorSettingWidget::requestRender() const
@@ -900,7 +1185,9 @@ void VectorSettingWidget::on_scaleSpinBox_valueChanged(double value)
     {
         vtkSmartPointer<vtkUnstructuredGrid> displayGrid = postFilteredResultGrid(m_grid);
         const double base = computeAutoBaseScale(displayGrid);
-        m_glyph->SetScaleFactor(base * m_scaleFactor);
+        const double magNorm = (m_scaleByMagnitude && m_lastAutoMagMax > 1e-12)
+                                   ? (1.0 / m_lastAutoMagMax) : 1.0;
+        m_glyph->SetScaleFactor(base * m_scaleFactor * magNorm);
         m_glyph->Update();
         requestRender();
     }
@@ -911,8 +1198,8 @@ void VectorSettingWidget::on_thicknessSpinBox_valueChanged(double value)
     m_thicknessFactor = qBound(0.25, value, 4.0);
     if (m_arrowSource)
     {
-        m_arrowSource->SetTipRadius(0.08 * m_thicknessFactor);
-        m_arrowSource->SetShaftRadius(0.02 * m_thicknessFactor);
+        m_arrowSource->SetTipRadius(0.095 * m_thicknessFactor);
+        m_arrowSource->SetShaftRadius(0.028 * m_thicknessFactor);
         m_arrowSource->Modified();
         if (m_glyph)
             m_glyph->Update();

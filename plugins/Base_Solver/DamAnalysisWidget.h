@@ -42,6 +42,7 @@ class DamAnalysisWidget : public BasePage
     bool validateInputs(QString* errorMessage) const;
     void setMCaseCount(int mcase);
     bool freezeThawEnabled() const;
+    int damType() const;
     double creepTimeStep(bool* ok = nullptr) const;
     bool dynamicAnalysisEnabled() const;
     bool dynamicOnlyEnabled() const;
@@ -85,11 +86,15 @@ class DamAnalysisWidget : public BasePage
     void markConstructionLayerDirty();
     void updateConstructionLayerHighlights();
     void clearConstructionLayerHighlights(bool renderNow = true);
+    void captureConstructionRegionRoles();
+    bool faceDamMaterialSets(QSet<int>& plate, QSet<int>& auxiliary, QString* error) const;
+    bool coreDamMaterialSets(QSet<int>& core, QString* error) const;
     QString constructionRegionDisplayText(const MeshTagKey& key) const;
 
     Ui::DamAnalysisWidget* ui;
     QMap<int, QWidget*> m_lineEditors;
     QComboBox* m_comboMethodIter = nullptr;
+    QComboBox* m_damTypeCombo = nullptr;
     QLineEdit* m_editIter = nullptr;
     QLineEdit* m_editX1 = nullptr;
     QLineEdit* m_editX2 = nullptr;
@@ -112,6 +117,8 @@ class DamAnalysisWidget : public BasePage
     QSpinBox* m_fillLayerCount = nullptr;
     QVector<MeshTagKey> m_constructionRegionKeys;
     QVector<QVector<MeshIdType>> m_constructionRegionCells;
+    QMap<QString, int> m_constructionRegionRoles;
+    bool m_loadingSettings = false;
     bool m_constructionLayerUiActive = false;
     bool m_constructionLayerUiUpdating = false;
     bool m_constructionLayerUiDirty = false;

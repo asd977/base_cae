@@ -15,16 +15,16 @@
   </property>
   <layout class="QVBoxLayout" name="verticalLayoutRoot">
    <property name="leftMargin">
-    <number>18</number>
+    <number>9</number>
    </property>
    <property name="topMargin">
-    <number>16</number>
+    <number>9</number>
    </property>
    <property name="rightMargin">
-    <number>18</number>
+    <number>9</number>
    </property>
    <property name="bottomMargin">
-    <number>16</number>
+    <number>9</number>
    </property>
    <property name="spacing">
     <number>12</number>
@@ -198,7 +198,7 @@
       <item>
        <widget class="QLabel" name="batchHintLabel">
         <property name="text">
-         <string>勾选需要计算的节点，按工程树顺序依次执行。批量计算不会并行启动多个求解器。</string>
+         <string>勾选计算节点，按列表顺序依次执行。</string>
         </property>
         <property name="wordWrap">
          <bool>true</bool>
@@ -207,6 +207,7 @@
       </item>
       <item>
        <widget class="QLabel" name="batchEmptyLabel">
+        <property name="wordWrap"><bool>true</bool></property>
         <property name="text">
          <string>当前工程没有可批量执行的计算节点。</string>
         </property>
@@ -233,48 +234,32 @@
        </widget>
       </item>
       <item>
-       <layout class="QHBoxLayout" name="batchButtonLayout">
-        <item>
+       <layout class="QGridLayout" name="batchButtonLayout">
+        <item row="0" column="0">
          <widget class="QPushButton" name="batchSelectAllButton">
           <property name="text">
            <string>全选</string>
           </property>
          </widget>
         </item>
-        <item>
+        <item row="0" column="1">
          <widget class="QPushButton" name="batchClearButton">
           <property name="text">
-           <string>清空</string>
+           <string>清除勾选</string>
           </property>
          </widget>
         </item>
-        <item>
-         <spacer name="batchButtonSpacer">
-          <property name="orientation">
-           <enum>Qt::Horizontal</enum>
-          </property>
-          <property name="sizeHint" stdset="0">
-           <size>
-            <width>40</width>
-            <height>20</height>
-           </size>
-          </property>
-         </spacer>
-        </item>
-        <item>
+        <item row="1" column="0">
          <widget class="QPushButton" name="batchStopButton">
           <property name="text">
            <string>停止批量</string>
           </property>
          </widget>
         </item>
-        <item>
+        <item row="1" column="1">
          <widget class="QPushButton" name="batchComputeButton">
           <property name="text">
            <string>批量计算</string>
-          </property>
-          <property name="minimumWidth">
-           <number>110</number>
           </property>
          </widget>
         </item>

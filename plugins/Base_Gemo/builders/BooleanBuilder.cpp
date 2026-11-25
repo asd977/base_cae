@@ -14,11 +14,14 @@
 #include <BRep_Builder.hxx>
 #include <Bnd_Box.hxx>
 #include <BRepBndLib.hxx>
+#include <BRepGProp.hxx>
+#include <GProp_GProps.hxx>
 #include <Precision.hxx>
 #include <ShapeFix_Shape.hxx>
 #include <TopExp.hxx>
 #include <TopExp_Explorer.hxx>
 #include <TopTools_ListOfShape.hxx>
+#include <TopTools_ListIteratorOfListOfShape.hxx>
 #include <TopTools_IndexedMapOfShape.hxx>
 #include <TopoDS_Shape.hxx>
 #include <TopAbs_ShapeEnum.hxx>
@@ -705,4 +708,278 @@ bool BooleanBuilder::recreateBooleanCommon(const QString& uuid,
                                            const QString& savedResultBrep)
 {
     return recreateBoolean(uuid, name, selectedKeys, operationKeys, savedResultBrep, buildCommonImpl);
+}
+
+bool BooleanBuilder::excavateFromGeology(const QString& geologyUuid,
+                                       const TopoDS_Shape& excavationTool,
+                                       TopoDS_Shape& cutGeology,
+                                       QVector<int>& newExcavationFaceIndices,
+                                       QString& errorMsg)
+{
+    newExcavationFaceIndices.clear();
+    cutGeology.Nullify();
+    errorMsg.clear();
+
+    if (excavationTool.IsNull())
+    {
+        errorMsg = QStringLiteral("开挖体几何为空。");
+        return false;
+    }
+
+    auto* doc = GeomManager::CadDocument::getInstance();
+    if (!doc)
+    {
+        errorMsg = QStringLiteral("无法获取几何管理器。");
+        return false;
+    }
+
+    CadBody* geoBody = doc->getGeomShapeObject(geologyUuid);
+    if (!geoBody || !geoBody->getShape() || geoBody->getShape()->IsNull())
+    {
+        errorMsg = QStringLiteral("未找到目标地质体或其几何为空。");
+        return false;
+    }
+
+    const TopoDS_Shape geologyShape = *(geoBody->getShape());
+
+    TopTools_ListOfShape arguments;
+    arguments.Append(geologyShape);
+    TopTools_ListOfShape tools;
+    tools.Append(excavationTool);
+
+    BRepAlgoAPI_Cut cut;
+    cut.SetArguments(arguments);
+    cut.SetTools(tools);
+    configureBooleanAlgo(cut);
+
+    bool ok = false;
+    try
+    {
+        cut.Build();
+        if (cut.IsDone())
+        {
+            cutGeology = cut.Shape();
+            ok = finalizeResult(cutGeology, false);
+        }
+    }
+    catch (...)
+    {
+        ok = false;
+    }
+
+    if (!ok)
+    {
+        try
+        {
+            TopTools_ListOfShape fixArgs;
+            fixArgs.Append(fixedShape(geologyShape));
+            TopTools_ListOfShape fixTools;
+            fixTools.Append(fixedShape(excavationTool));
+            BRepAlgoAPI_Cut cutRetry;
+            cutRetry.SetArguments(fixArgs);
+            cutRetry.SetTools(fixTools);
+            configureBooleanAlgo(cutRetry);
+            cutRetry.SetFuzzyValue(1.0e-5);
+            cutRetry.Build();
+            if (cutRetry.IsDone())
+            {
+                cutGeology = cutRetry.Shape();
+                ok = finalizeResult(cutGeology, true);
+            }
+        }
+        catch (...)
+        {
+            ok = false;
+        }
+    }
+
+    if (!ok || cutGeology.IsNull())
+    {
+        errorMsg = QStringLiteral("地质体开挖布尔裁剪失败。");
+        return false;
+    }
+
+    TopTools_IndexedMapOfShape toolFaces;
+    TopExp::MapShapes(excavationTool, TopAbs_FACE, toolFaces);
+
+    TopTools_IndexedMapOfShape origGeoFaces;
+    TopExp::MapShapes(geologyShape, TopAbs_FACE, origGeoFaces);
+
+    TopTools_IndexedMapOfShape generatedInnerFaces;
+    for (int i = 1; i <= toolFaces.Extent(); ++i)
+    {
+        const TopTools_ListOfShape& genList = cut.Generated(toolFaces(i));
+        for (TopTools_ListIteratorOfListOfShape it(genList); it.More(); it.Next())
+        {
+            if (it.Value().ShapeType() == TopAbs_FACE)
+                generatedInnerFaces.Add(it.Value());
+        }
+        const TopTools_ListOfShape& modList = cut.Modified(toolFaces(i));
+        for (TopTools_ListIteratorOfListOfShape it(modList); it.More(); it.Next())
+        {
+            if (it.Value().ShapeType() == TopAbs_FACE)
+                generatedInnerFaces.Add(it.Value());
+        }
+    }
+
+    Bnd_Box toolBox;
+    BRepBndLib::Add(excavationTool, toolBox);
+    toolBox.Enlarge(1.0e-2);
+
+    TopTools_IndexedMapOfShape resultFaces;
+    TopExp::MapShapes(cutGeology, TopAbs_FACE, resultFaces);
+
+    for (int i = 1; i <= resultFaces.Extent(); ++i)
+    {
+        const TopoDS_Shape& face = resultFaces(i);
+        bool isExcavation = generatedInnerFaces.Contains(face);
+        if (!isExcavation && !origGeoFaces.Contains(face))
+        {
+            GProp_GProps props;
+            BRepGProp::SurfaceProperties(face, props);
+            gp_Pnt p = props.CentreOfMass();
+            if (!toolBox.IsOut(p))
+            {
+                isExcavation = true;
+            }
+        }
+        if (isExcavation)
+        {
+            newExcavationFaceIndices.append(i);
+        }
+    }
+
+    return true;
+}
+
+bool BooleanBuilder::fitDamToValley(const QString& geologyUuid,
+                                   const TopoDS_Shape& rawDam,
+                                   TopoDS_Shape& fittedDam,
+                                   QVector<int>& contactFaceIndices,
+                                   QString& errorMsg)
+{
+    contactFaceIndices.clear();
+    fittedDam.Nullify();
+    errorMsg.clear();
+
+    if (rawDam.IsNull())
+    {
+        errorMsg = QStringLiteral("原始大坝几何为空。");
+        return false;
+    }
+
+    auto* doc = GeomManager::CadDocument::getInstance();
+    if (!doc)
+    {
+        errorMsg = QStringLiteral("无法获取几何管理器。");
+        return false;
+    }
+
+    CadBody* geoBody = doc->getGeomShapeObject(geologyUuid);
+    if (!geoBody || !geoBody->getShape() || geoBody->getShape()->IsNull())
+    {
+        errorMsg = QStringLiteral("未找到河谷地质体或其几何为空。");
+        return false;
+    }
+
+    const TopoDS_Shape geologyShape = *(geoBody->getShape());
+
+    TopTools_ListOfShape arguments;
+    arguments.Append(rawDam);
+    TopTools_ListOfShape tools;
+    tools.Append(geologyShape);
+
+    BRepAlgoAPI_Cut cut;
+    cut.SetArguments(arguments);
+    cut.SetTools(tools);
+    configureBooleanAlgo(cut);
+
+    bool ok = false;
+    try
+    {
+        cut.Build();
+        if (cut.IsDone())
+        {
+            fittedDam = cut.Shape();
+            ok = finalizeResult(fittedDam, false);
+        }
+    }
+    catch (...)
+    {
+        ok = false;
+    }
+
+    if (!ok)
+    {
+        try
+        {
+            TopTools_ListOfShape fixArgs;
+            fixArgs.Append(fixedShape(rawDam));
+            TopTools_ListOfShape fixTools;
+            fixTools.Append(fixedShape(geologyShape));
+            BRepAlgoAPI_Cut cutRetry;
+            cutRetry.SetArguments(fixArgs);
+            cutRetry.SetTools(fixTools);
+            configureBooleanAlgo(cutRetry);
+            cutRetry.SetFuzzyValue(1.0e-5);
+            cutRetry.Build();
+            if (cutRetry.IsDone())
+            {
+                fittedDam = cutRetry.Shape();
+                ok = finalizeResult(fittedDam, true);
+            }
+        }
+        catch (...)
+        {
+            ok = false;
+        }
+    }
+
+    if (!ok || fittedDam.IsNull())
+    {
+        errorMsg = QStringLiteral("坝体与河谷地质体布尔贴合失败（可能坝体未与河谷相交或完全在地下）。");
+        return false;
+    }
+
+    TopTools_IndexedMapOfShape rawDamFaces;
+    TopExp::MapShapes(rawDam, TopAbs_FACE, rawDamFaces);
+
+    TopTools_IndexedMapOfShape geoFaces;
+    TopExp::MapShapes(geologyShape, TopAbs_FACE, geoFaces);
+
+    TopTools_IndexedMapOfShape contactFaces;
+    for (int i = 1; i <= geoFaces.Extent(); ++i)
+    {
+        const TopTools_ListOfShape& genList = cut.Generated(geoFaces(i));
+        for (TopTools_ListIteratorOfListOfShape it(genList); it.More(); it.Next())
+        {
+            if (it.Value().ShapeType() == TopAbs_FACE)
+                contactFaces.Add(it.Value());
+        }
+        const TopTools_ListOfShape& modList = cut.Modified(geoFaces(i));
+        for (TopTools_ListIteratorOfListOfShape it(modList); it.More(); it.Next())
+        {
+            if (it.Value().ShapeType() == TopAbs_FACE)
+                contactFaces.Add(it.Value());
+        }
+    }
+
+    TopTools_IndexedMapOfShape resultFaces;
+    TopExp::MapShapes(fittedDam, TopAbs_FACE, resultFaces);
+
+    for (int i = 1; i <= resultFaces.Extent(); ++i)
+    {
+        const TopoDS_Shape& face = resultFaces(i);
+        bool isContact = contactFaces.Contains(face);
+        if (!isContact && !rawDamFaces.Contains(face))
+        {
+            isContact = true;
+        }
+        if (isContact)
+        {
+            contactFaceIndices.append(i);
+        }
+    }
+
+    return true;
 }

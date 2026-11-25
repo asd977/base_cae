@@ -150,7 +150,7 @@
 </widget>
          </item>
          <item row="1" column="1">
-          <widget class="QDoubleSpinBox" name="spinFy">
+          <widget class="CompactDoubleSpinBox" name="spinFy">
            <property name="decimals">
             <number>6</number>
            </property>
@@ -169,7 +169,7 @@
           </widget>
          </item>
          <item row="0" column="1">
-          <widget class="QDoubleSpinBox" name="spinFx">
+          <widget class="CompactDoubleSpinBox" name="spinFx">
            <property name="decimals">
             <number>6</number>
            </property>
@@ -188,7 +188,7 @@
           </widget>
          </item>
          <item row="2" column="1">
-          <widget class="QDoubleSpinBox" name="spinFz">
+          <widget class="CompactDoubleSpinBox" name="spinFz">
            <property name="decimals">
             <number>6</number>
            </property>
@@ -271,7 +271,7 @@
 </widget>
          </item>
          <item row="3" column="1">
-          <widget class="QDoubleSpinBox" name="spinMx">
+          <widget class="CompactDoubleSpinBox" name="spinMx">
            <property name="minimumSize">
             <size>
              <width>10</width>
@@ -281,7 +281,7 @@
           </widget>
          </item>
          <item row="4" column="1">
-          <widget class="QDoubleSpinBox" name="spinMy">
+          <widget class="CompactDoubleSpinBox" name="spinMy">
            <property name="minimumSize">
             <size>
              <width>10</width>
@@ -291,7 +291,7 @@
           </widget>
          </item>
          <item row="5" column="1">
-          <widget class="QDoubleSpinBox" name="spinMz">
+          <widget class="CompactDoubleSpinBox" name="spinMz">
            <property name="minimumSize">
             <size>
              <width>10</width>
@@ -490,6 +490,8 @@
    <extends>QComboBox</extends>
    <header>CustomComboBox.h</header>
   </customwidget>
+ 
+  <customwidget><class>CompactDoubleSpinBox</class><extends>QDoubleSpinBox</extends><header>CompactDoubleSpinBox.h</header></customwidget>
  </customwidgets>
  <resources />
  <connections />

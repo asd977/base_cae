@@ -314,7 +314,7 @@
              </widget>
             </item>
             <item>
-             <widget class="QDoubleSpinBox" name="slicePositionSpin">
+             <widget class="CompactDoubleSpinBox" name="slicePositionSpin">
               <property name="decimals">
                <number>6</number>
               </property>
@@ -467,6 +467,8 @@
    <extends>QComboBox</extends>
    <header>PostScientificComboBox.h</header>
   </customwidget>
+ 
+  <customwidget><class>CompactDoubleSpinBox</class><extends>QDoubleSpinBox</extends><header>CompactDoubleSpinBox.h</header></customwidget>
  </customwidgets>
  <resources />
  <connections />

@@ -1,5 +1,4 @@
 #pragma once
-#include <QCryptographicHash>
 #include <QFile>
 #include <QFileInfo>
 #include <QJsonArray>
@@ -22,20 +21,16 @@ struct Definition
     QMap<int,QString> names;
 };
 inline QString fileName(const QString& geometry){return geometry+QStringLiteral(".domains.json");}
-inline QByteArray digest(const QString& path)
-{
-    QFile file(path);if(!file.open(QIODevice::ReadOnly))return {};
-    QCryptographicHash hash(QCryptographicHash::Sha256);if(!hash.addData(&file))return {};
-    return hash.result().toHex();
-}
 inline bool write(const QString& geometry,const Definition& data,QString& error)
 {
-    const auto hash=digest(geometry);if(hash.isEmpty()){error=QStringLiteral("无法校验网格几何文件。");return false;}
+    const QFileInfo source(geometry);
+    if (!source.isFile() || source.size() <= 0)
+    {error=QStringLiteral("网格几何文件不存在或为空。");return false;}
     QJsonArray faces,domains;for(int id:data.faceDomains)faces.append(id);
     for(auto it=data.materialGroups.cbegin();it!=data.materialGroups.cend();++it)
         domains.append(QJsonObject{{"id",it.key()},{"materialGroup",it.value()},{"name",data.names.value(it.key())}});
     QSaveFile file(fileName(geometry));const auto bytes=QJsonDocument(QJsonObject{
-        {"schema","GeometrySurfaceDomains.v1"},{"geometrySha256",QString::fromLatin1(hash)},
+        {"schema","GeometrySurfaceDomains.v1"},
         {"faceDomains",faces},{"domains",domains}}).toJson(QJsonDocument::Compact);
     if(!file.open(QIODevice::WriteOnly)||file.write(bytes)!=bytes.size()||!file.commit())
     {error=QStringLiteral("面域归属文件写入失败：%1").arg(file.errorString());return false;}
@@ -48,7 +43,7 @@ inline bool read(const QString& geometry,int faceCount,Definition& data,QString&
     {error=QStringLiteral("无法读取面域归属文件。");return false;}
     QJsonParseError parse;const auto doc=QJsonDocument::fromJson(file.readAll(),&parse);const auto obj=doc.object();
     if(parse.error!=QJsonParseError::NoError||obj["schema"].toString()!="GeometrySurfaceDomains.v1"||
-       obj["geometrySha256"].toString().toLatin1()!=digest(geometry)||obj["faceDomains"].toArray().size()!=faceCount)
+       obj["faceDomains"].toArray().size()!=faceCount)
     {error=QStringLiteral("面域归属与当前几何不匹配，请重新准备网格几何。");return false;}
     for(const auto& value:obj["domains"].toArray())
     {

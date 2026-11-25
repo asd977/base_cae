@@ -1,197 +1,304 @@
 #include "SlopeExcavationSettings.h"
+
 #include "CaveExcavationBodyPage.h"
 #include "CaveReinforcementFieldPage.h"
+
 #include <QCheckBox>
 #include <QComboBox>
-#include <QGroupBox>
+#include <QFormLayout>
 #include <QHBoxLayout>
 #include <QJsonArray>
 #include <QLabel>
 #include <QPushButton>
 #include <QSpinBox>
-#include <QTabWidget>
 #include <QVBoxLayout>
 
 SlopeExcavationSettings::SlopeExcavationSettings(QWidget* parent) : QWidget(parent)
 {
-    setObjectName("slopeExcavationSettings");
+    setObjectName(QStringLiteral("slopeExcavationSettings"));
+
+    // 隐藏宿主容器：持有未挂载或暂时隐藏的开挖级/加固页面，避免重复创建或丢失已选区域。
+    m_storageHost = new QWidget(this);
+    m_storageHost->setVisible(false);
+    m_reinforcement = new CaveReinforcementFieldPage(m_storageHost);
+    m_reinforcement->setObjectName(QStringLiteral("slopeReinforcementField"));
+
     auto* layout = new QVBoxLayout(this);
     layout->setContentsMargins(0, 0, 0, 0);
-    m_enabled = new QCheckBox(tr("启用分级开挖"), this);
-    m_enabled->setObjectName("slopeExcavationEnabled");
+    layout->setSpacing(6);
+
+    m_enabled = new QCheckBox(QStringLiteral("启用分级开挖"), this);
+    m_enabled->setObjectName(QStringLiteral("slopeExcavationEnabled"));
     layout->addWidget(m_enabled);
+
     m_content = new QWidget(this);
     auto* content = new QVBoxLayout(m_content);
-    content->setContentsMargins(0, 0, 0, 0);
+    content->setContentsMargins(0, 2, 0, 0);
+    content->setSpacing(6);
+
     auto* hint = new QLabel(
-        tr("先计算初始地应力，再按顺序设置各级开挖区域。各级区域不能重复，未选区域保留。"),
+        QStringLiteral("施工流程：1. 先在“地应力回归分析”中计算初始地应力 → "
+                       "2. 在左侧工程树中依次设置各“开挖级”选区 → "
+                       "3. 如需加固则配置“开挖面加固” → 4. 点击下方“数值法计算”。"),
         m_content);
     hint->setWordWrap(true);
+    hint->setStyleSheet(QStringLiteral("color: #5b6775;"));
     content->addWidget(hint);
-    auto* initial = new QPushButton(tr("设置／计算初始地应力"), m_content);
-    initial->setObjectName("slopeInitialStressButton");
-    content->addWidget(initial);
-    connect(initial, &QPushButton::clicked, this, &SlopeExcavationSettings::initialStressRequested);
+
+    auto* form = new QFormLayout();
+    form->setContentsMargins(0, 0, 0, 0);
+    form->setHorizontalSpacing(8);
+    form->setVerticalSpacing(6);
     m_support = new QComboBox(m_content);
-    m_support->setObjectName("slopeExcavationSupportMode");
-    m_support->addItem(tr("逐级开挖，不加固"));
-    m_support->addItem(tr("逐级开挖，考虑加固"));
-    content->addWidget(m_support);
-    auto* buttons = new QHBoxLayout;
-    auto* add = new QPushButton(tr("新增开挖级"), m_content);
-    add->setObjectName("slopeAddExcavationStage");
-    buttons->addWidget(add);
-    auto* remove = new QPushButton(tr("删除当前级"), m_content);
-    remove->setObjectName("slopeRemoveExcavationStage");
-    buttons->addWidget(remove);
-    content->addLayout(buttons);
-    m_tabs = new QTabWidget(m_content);
-    m_tabs->setObjectName("slopeExcavationStages");
-    content->addWidget(m_tabs);
-    auto* box = new QGroupBox(tr("开挖面加固"), m_content);
-    auto* fields = new QVBoxLayout(box);
-    m_reinforcement = new CaveReinforcementFieldPage(box);
-    m_reinforcement->setObjectName("slopeReinforcementField");
-    fields->addWidget(m_reinforcement);
-    content->addWidget(box);
+    m_support->setObjectName(QStringLiteral("slopeExcavationSupportMode"));
+    m_support->addItem(QStringLiteral("逐级开挖，不加固"));
+    m_support->addItem(QStringLiteral("逐级开挖，考虑加固"));
+    form->addRow(QStringLiteral("支护方式"), m_support);
+    content->addLayout(form);
+
+    m_summaryLabel = new QLabel(m_content);
+    m_summaryLabel->setObjectName(QStringLiteral("slopeExcavationSummary"));
+    m_summaryLabel->setWordWrap(true);
+    content->addWidget(m_summaryLabel);
+
+    auto* row1 = new QHBoxLayout();
+    row1->setContentsMargins(0, 0, 0, 0);
+    row1->setSpacing(6);
+    auto* initial = new QPushButton(QStringLiteral("初始地应力"), m_content);
+    initial->setObjectName(QStringLiteral("slopeInitialStressButton"));
+    initial->setToolTip(QStringLiteral("定位或创建当前边坡分析的初始地应力回归节点"));
+    row1->addWidget(initial);
+
+    m_reinforcementButton = new QPushButton(QStringLiteral("开挖面加固"), m_content);
+    m_reinforcementButton->setObjectName(QStringLiteral("slopeReinforcementButton"));
+    m_reinforcementButton->setToolTip(QStringLiteral("定位到左侧工程树中的开挖面加固参数页"));
+    row1->addWidget(m_reinforcementButton);
+    content->addLayout(row1);
+
+    auto* row2 = new QHBoxLayout();
+    row2->setContentsMargins(0, 0, 0, 0);
+    row2->setSpacing(6);
+    auto* add = new QPushButton(QStringLiteral("新增开挖级"), m_content);
+    add->setObjectName(QStringLiteral("slopeAddExcavationStage"));
+    row2->addWidget(add);
+
+    m_removeButton = new QPushButton(QStringLiteral("删除末级"), m_content);
+    m_removeButton->setObjectName(QStringLiteral("slopeRemoveExcavationStage"));
+    row2->addWidget(m_removeButton);
+    content->addLayout(row2);
+
     layout->addWidget(m_content);
+
+    connect(initial, &QPushButton::clicked, this, &SlopeExcavationSettings::initialStressRequested);
+    connect(m_reinforcementButton, &QPushButton::clicked, this,
+            &SlopeExcavationSettings::navigateToReinforcementRequested);
     connect(add, &QPushButton::clicked, this,
             [this]
             {
-                addStage();
-                m_tabs->setCurrentIndex(m_tabs->count() - 1);
+                const int idx = addStage({}, true);
+                if (idx >= 0)
+                    emit navigateToStageRequested(idx);
             });
-    connect(
-        remove, &QPushButton::clicked, this,
-        [this]
-        {
-            const int index = m_tabs->currentIndex();
-            if (index < 0)
-                return;
-            const bool entered = m_entered;
-            leave();
-            auto* page = m_tabs->widget(index);
-            m_tabs->removeTab(index);
-            delete page;
-            for (int i = 0; i < m_tabs->count(); ++i)
-            {
-                static_cast<CaveExcavationBodyPage*>(m_tabs->widget(i))->setExcavationLayer(-i - 1);
-                m_tabs->setTabText(i, tr("第 %1 级").arg(i + 1));
-            }
-            if (entered)
-                enter();
-        });
-    connect(m_tabs, &QTabWidget::currentChanged, this, &SlopeExcavationSettings::activateStage);
-    connect(m_enabled, &QCheckBox::toggled, this,
+    connect(m_removeButton, &QPushButton::clicked, this,
             [this]
             {
-                updateState();
+                if (!m_stages.isEmpty())
+                    removeStage(m_stages.size() - 1, true);
             });
-    connect(m_support, &QComboBox::currentIndexChanged, this,
-            [this, box]
+    connect(m_enabled, &QCheckBox::toggled, this,
+            [this](bool checked)
             {
-                box->setVisible(reinforced());
+                if (checked && !m_loading && m_stages.isEmpty())
+                    addStage({}, false);
+                updateState();
+                if (!m_loading)
+                    emit structureChanged();
             });
-    box->setVisible(false);
+    connect(m_support, QOverload<int>::of(&QComboBox::currentIndexChanged), this,
+            [this](int)
+            {
+                updateState();
+                if (!m_loading)
+                    emit structureChanged();
+            });
+
     updateState();
 }
-bool SlopeExcavationSettings::enabled() const
-{
-    return m_enabled->isChecked();
-}
+
 SlopeExcavationSettings::~SlopeExcavationSettings()
 {
     leave();
 }
+
+bool SlopeExcavationSettings::enabled() const
+{
+    return m_enabled && m_enabled->isChecked();
+}
+
 bool SlopeExcavationSettings::reinforced() const
 {
-    return enabled() && m_support->currentIndex() == 1;
+    return enabled() && m_support && m_support->currentIndex() == 1;
 }
+
 int SlopeExcavationSettings::stageCount() const
 {
-    return m_tabs->count();
+    return m_stages.size();
 }
-void SlopeExcavationSettings::updateState()
+
+CaveExcavationBodyPage* SlopeExcavationSettings::stagePage(int index) const
 {
-    m_content->setVisible(enabled());
-    m_reinforcement->parentWidget()->setVisible(reinforced());
-    if (!enabled())
-    {
-        if (m_active)
-            m_active->beforeUnload();
-        m_active = nullptr;
-    }
-    else
-        activateStage(m_tabs->currentIndex());
+    if (index < 0 || index >= m_stages.size())
+        return nullptr;
+    return m_stages.at(index).data();
 }
-void SlopeExcavationSettings::activateStage(int index)
+
+CaveReinforcementFieldPage* SlopeExcavationSettings::reinforcement() const
 {
-    if (m_active)
-        m_active->beforeUnload();
-    m_active = nullptr;
-    if (m_entered && enabled() && index >= 0)
-    {
-        m_active = static_cast<CaveExcavationBodyPage*>(m_tabs->widget(index));
-        m_active->beforeLoad();
-    }
+    return m_reinforcement.data();
 }
-void SlopeExcavationSettings::enter()
+
+int SlopeExcavationSettings::addStage(const QJsonObject& state, bool emitSignals)
 {
-    m_entered = true;
-    activateStage(m_tabs->currentIndex());
-}
-void SlopeExcavationSettings::leave()
-{
-    if (m_active)
-        m_active->beforeUnload();
-    m_active = nullptr;
-    m_entered = false;
-}
-void SlopeExcavationSettings::addStage(const QJsonObject& state)
-{
-    auto* page = new CaveExcavationBodyPage;
+    auto* page = new CaveExcavationBodyPage(m_storageHost);
     if (!state.isEmpty())
         page->loadJson(state);
-    page->setExcavationLayer(-m_tabs->count() - 1);
-    // Tab order is the construction order; no second, conflicting stage number.
-    if (auto* spin = page->findChild<QSpinBox*>("excavationLayerSpinBox"))
+    page->setExcavationLayer(-m_stages.size() - 1);
+    // 级次顺序由工程树子节点顺序统一决定，禁用页内重复的层号编辑框。
+    if (auto* spin = page->findChild<QSpinBox*>(QStringLiteral("excavationLayerSpinBox")))
         spin->setEnabled(false);
-    m_tabs->addTab(page, tr("第 %1 级").arg(m_tabs->count() + 1));
+    m_stages.push_back(page);
+    renumberStages();
+    refreshSummary();
+    if (emitSignals && !m_loading)
+        emit structureChanged();
+    return m_stages.size() - 1;
 }
+
+bool SlopeExcavationSettings::removeStage(int index, bool emitSignals)
+{
+    if (index < 0 || index >= m_stages.size())
+        return false;
+    QPointer<CaveExcavationBodyPage> page = m_stages.takeAt(index);
+    if (page)
+    {
+        page->beforeUnload();
+        page->setParent(nullptr);
+        delete page;
+    }
+    renumberStages();
+    refreshSummary();
+    if (emitSignals && !m_loading)
+        emit structureChanged();
+    return true;
+}
+
+bool SlopeExcavationSettings::moveStage(int index, int delta, bool emitSignals)
+{
+    const int target = index + delta;
+    if (index < 0 || index >= m_stages.size() || target < 0 || target >= m_stages.size() ||
+        index == target)
+        return false;
+    m_stages.swapItemsAt(index, target);
+    renumberStages();
+    refreshSummary();
+    if (emitSignals && !m_loading)
+        emit structureChanged();
+    return true;
+}
+
+void SlopeExcavationSettings::renumberStages()
+{
+    for (int i = 0; i < m_stages.size(); ++i)
+    {
+        if (m_stages.at(i))
+            m_stages.at(i)->setExcavationLayer(-i - 1);
+    }
+}
+
+void SlopeExcavationSettings::refreshSummary()
+{
+    if (!m_summaryLabel)
+        return;
+    const int count = m_stages.size();
+    if (m_removeButton)
+        m_removeButton->setEnabled(count > 0);
+    if (m_reinforcementButton)
+        m_reinforcementButton->setVisible(reinforced());
+
+    if (count == 0)
+    {
+        m_summaryLabel->setText(QStringLiteral("尚未添加开挖级，请点击“新增开挖级”。"));
+        return;
+    }
+    m_summaryLabel->setText(
+        QStringLiteral("已配置 %1 个开挖级（请在左侧工程树中点击对应“开挖级”节点选择开挖区域）。")
+            .arg(count));
+}
+
+void SlopeExcavationSettings::updateState()
+{
+    if (m_content)
+        m_content->setVisible(enabled());
+    refreshSummary();
+}
+
+void SlopeExcavationSettings::enter()
+{
+    refreshSummary();
+}
+
+void SlopeExcavationSettings::leave()
+{
+}
+
 QVector<QVector<int>> SlopeExcavationSettings::selectedStages()
 {
     QVector<QVector<int>> result;
-    for (int i = 0; i < m_tabs->count(); ++i)
-        result.push_back(
-            static_cast<CaveExcavationBodyPage*>(m_tabs->widget(i))->selectedElementIds());
+    result.reserve(m_stages.size());
+    for (const auto& page : m_stages)
+    {
+        result.push_back(page ? page->selectedElementIds() : QVector<int>{});
+    }
     return result;
 }
+
 QJsonObject SlopeExcavationSettings::save()
 {
     QJsonArray stages;
-    for (int i = 0; i < m_tabs->count(); ++i)
-        stages.append(static_cast<CaveExcavationBodyPage*>(m_tabs->widget(i))->saveJson());
-    return {{"enabled", enabled()},
-            {"support", m_support->currentIndex()},
-            {"stages", stages},
-            {"reinforcement", m_reinforcement->saveJson()}};
+    for (const auto& page : m_stages)
+        stages.append(page ? page->saveJson() : QJsonObject{});
+    return {{QStringLiteral("enabled"), enabled()},
+            {QStringLiteral("support"), m_support ? m_support->currentIndex() : 0},
+            {QStringLiteral("stages"), stages},
+            {QStringLiteral("reinforcement"),
+             m_reinforcement ? m_reinforcement->saveJson() : QJsonObject{}}};
 }
+
 void SlopeExcavationSettings::load(const QJsonObject& state)
 {
-    const bool entered = m_entered;
-    leave();
-    while (m_tabs->count())
+    m_loading = true;
+    for (auto& page : m_stages)
     {
-        auto* page = m_tabs->widget(0);
-        m_tabs->removeTab(0);
-        delete page;
+        if (page)
+        {
+            page->beforeUnload();
+            page->setParent(nullptr);
+            delete page;
+        }
     }
-    for (const auto& stage : state["stages"].toArray())
-        addStage(stage.toObject());
-    m_reinforcement->loadJson(state["reinforcement"].toObject());
-    m_support->setCurrentIndex(state["support"].toInt(0));
-    m_enabled->setChecked(state["enabled"].toBool(false));
+    m_stages.clear();
+
+    for (const auto& stage : state.value(QStringLiteral("stages")).toArray())
+        addStage(stage.toObject(), false);
+
+    if (m_reinforcement)
+        m_reinforcement->loadJson(state.value(QStringLiteral("reinforcement")).toObject());
+    if (m_support)
+        m_support->setCurrentIndex(state.value(QStringLiteral("support")).toInt(0));
+    if (m_enabled)
+        m_enabled->setChecked(state.value(QStringLiteral("enabled")).toBool(false));
+
+    m_loading = false;
     updateState();
-    if (entered)
-        enter();
+    emit structureChanged();
 }

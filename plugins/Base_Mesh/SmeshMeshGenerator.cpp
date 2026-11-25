@@ -1,4 +1,7 @@
 #include "SmeshMeshGenerator.h"
+#include <QDateTime>
+#include <SmeshShapeIndexMap.h>
+#include <PartitionFaceOrder.h>
 #include "core/SmeshOccPartitioner.h"
 
 #include <BOPAlgo_Builder.hxx>
@@ -1064,111 +1067,13 @@ int nasNodeCount(int vtkType, int available)
     }
 }
 
-struct ShapeCandidate
-{
-    TopoDS_Shape shape;
-    QVector3D center;
-    double characteristicLength = 0.0;
-};
-
 TopAbs_ShapeEnum shapeTypeForDimension(int dimension)
 {
-    if (dimension == 1)
-        return TopAbs_EDGE;
-    if (dimension == 2)
-        return TopAbs_FACE;
-    return TopAbs_SOLID;
+    return dimension == 1 ? TopAbs_EDGE : dimension == 2 ? TopAbs_FACE : TopAbs_SOLID;
 }
-
-bool shapeGeometryInfo(const TopoDS_Shape& shape, int dimension,
-                       QVector3D& center, double& characteristicLength)
-{
-    if (shape.IsNull())
-        return false;
-
-    GProp_GProps props;
-    if (dimension == 1)
-        BRepGProp::LinearProperties(shape, props);
-    else if (dimension == 2)
-        BRepGProp::SurfaceProperties(shape, props);
-    else
-        BRepGProp::VolumeProperties(shape, props);
-
-    const double measure = props.Mass();
-    if (!std::isfinite(measure) || measure <= 0.0)
-        return false;
-
-    const gp_Pnt p = props.CentreOfMass();
-    center = QVector3D(static_cast<float>(p.X()), static_cast<float>(p.Y()),
-                       static_cast<float>(p.Z()));
-    if (dimension == 1)
-        characteristicLength = measure;
-    else if (dimension == 2)
-        characteristicLength = std::sqrt(measure);
-    else
-        characteristicLength = std::cbrt(measure);
-    return std::isfinite(characteristicLength) && characteristicLength > 0.0;
-}
-
-QVector<ShapeCandidate> collectShapeCandidates(const TopoDS_Shape& topologyShape,
-                                               int dimension)
-{
-    QVector<ShapeCandidate> candidates;
-    if (topologyShape.IsNull())
-        return candidates;
-
-    TopTools_IndexedMapOfShape shapes;
-    TopExp::MapShapes(topologyShape, shapeTypeForDimension(dimension), shapes);
-    candidates.reserve(shapes.Extent());
-    for (Standard_Integer i = 1; i <= shapes.Extent(); ++i)
-    {
-        ShapeCandidate candidate;
-        candidate.shape = shapes(i);
-        if (shapeGeometryInfo(candidate.shape, dimension, candidate.center,
-                              candidate.characteristicLength))
-        {
-            candidates.push_back(candidate);
-        }
-    }
-    return candidates;
-}
-
-int bestCandidateIndex(const SmeshLocalSizeControl& control,
-                       const QVector<ShapeCandidate>& candidates,
-                       const QSet<int>& used)
-{
-    int bestIndex = -1;
-    double bestScore = std::numeric_limits<double>::infinity();
-    for (int i = 0; i < candidates.size(); ++i)
-    {
-        if (used.contains(i))
-            continue;
-        const ShapeCandidate& candidate = candidates.at(i);
-        const QVector3D delta = candidate.center - control.center;
-        const double scale = std::max(
-            1.0e-12, std::max(control.characteristicLength,
-                              candidate.characteristicLength));
-        const double distanceScore = static_cast<double>(delta.lengthSquared()) /
-                                     (scale * scale);
-        const double ratio = candidate.characteristicLength /
-                             std::max(1.0e-12, control.characteristicLength);
-        const double measureScore = std::abs(std::log(std::max(1.0e-12, ratio)));
-        const double score = distanceScore + 0.20 * measureScore;
-        if (score < bestScore)
-        {
-            bestScore = score;
-            bestIndex = i;
-        }
-    }
-
-    // Refuse clearly unrelated entities instead of silently refining the wrong
-    // part after topology changes.
-    return bestScore <= 6.0 ? bestIndex : -1;
-}
-
 
 bool prepareGeometryScope(SmeshMeshingRequest& request, const QDir& work,
-                          QVector<int>& originalRegionIds, QString* error)
+                          QVector<int>& originalRegionIds, QMap<int,QMap<int,int>>& scopedIndices, QString* error)
 {
     if (request.allGeometry) return true;
     if (request.geometryScope.isEmpty()) {
@@ -1181,27 +1086,29 @@ bool prepareGeometryScope(SmeshMeshingRequest& request, const QDir& work,
             setError(error, QStringLiteral("无法读取网格主几何。")); return false;
         }
     } else if (!loadStepShape(request.inputGeometryPath, original, error)) return false;
-    const auto candidates = collectShapeCandidates(original, request.dimension);
     TopTools_IndexedMapOfShape originalRegions;
     TopExp::MapShapes(original, shapeTypeForDimension(request.dimension), originalRegions);
     TopoDS_Compound scoped;
     BRep_Builder builder; builder.MakeCompound(scoped);
     QSet<int> used;
     for (const auto& entity : request.geometryScope) {
-        if (entity.dimension != request.dimension || !std::isfinite(entity.measure) || entity.measure <= 0) {
-            setError(error, QStringLiteral("所选网格几何引用无效。")); return false;
+        const int id = entity.entityId;
+        if (entity.dimension != request.dimension || id <= 0 || id > originalRegions.Extent()
+            || used.contains(id)) {
+            setError(error, QStringLiteral("所选网格几何编号无效或重复，请重新选择。")); return false;
         }
-        SmeshLocalSizeControl reference;
-        reference.center = entity.center;
-        reference.characteristicLength = request.dimension == 3 ? std::cbrt(entity.measure) : std::sqrt(entity.measure);
-        const int index = bestCandidateIndex(reference, candidates, used);
-        if (index < 0 || (candidates[index].center - reference.center).length() > std::max(1.e-5, reference.characteristicLength * 1.e-4) ||
-            std::abs(std::log(candidates[index].characteristicLength / reference.characteristicLength)) > 1.e-4) {
-            setError(error, QStringLiteral("所选几何 %1 不在本次导出的模型中，请重新选择。").arg(entity.entityId)); return false;
+        used.insert(id);
+        builder.Add(scoped, originalRegions(id));
+        originalRegionIds.append(id);
+    }
+    for (int dim = 1; dim <= request.dimension; ++dim) {
+        TopTools_IndexedMapOfShape full, selected;
+        TopExp::MapShapes(original, shapeTypeForDimension(dim), full);
+        TopExp::MapShapes(scoped, shapeTypeForDimension(dim), selected);
+        for (int id = 1; id <= full.Extent(); ++id) {
+            const int local = selected.FindIndex(full(id));
+            if (local > 0) scopedIndices[dim][id] = local;
         }
-        used.insert(index);
-        builder.Add(scoped, candidates[index].shape);
-        originalRegionIds.append(originalRegions.FindIndex(candidates[index].shape));
     }
     const QString path = work.filePath("selected_geometry.brep");
     if (!BRepTools::Write(scoped, QFile::encodeName(path).constData())) {
@@ -1308,10 +1215,33 @@ bool SmeshMeshGenerator::generate(const SmeshMeshingRequest& originalRequest, Sm
             (request.elemType == kElemTypeHex8FromTet && request.elementOrder != 1)) {
             setError(errMsg, QStringLiteral("网格维度、单元类型或尺寸参数无效。")); return false;
         }
+        if (QFileInfo::exists(request.inputGeometryPath + QStringLiteral(".shape-index.json"))) {
+            const auto map = SmeshShapeIndexMap::load(request.inputGeometryPath);
+            if (!map.valid()) { setError(errMsg,map.error());return false; }
+            auto translate = [&](int dim,int& id) {
+                id = map.requireIndex(dim,id);
+                return id > 0;
+            };
+            for (auto& scope : request.geometryScope)
+                if (!translate(scope.dimension,scope.entityId)) { setError(errMsg,QStringLiteral("所选几何不在导出的拓扑索引中。"));return false; }
+            for (auto& control : request.localSizeControls)
+                if (!translate(control.dimension,control.entityId)) { setError(errMsg,QStringLiteral("局部尺寸的几何编号已失效。"));return false; }
+            for (auto& sub : request.workflow.submeshes)
+                for (auto& entity : sub.entities)
+                    if (!translate(entity.dimension,entity.entityId)) { setError(errMsg,QStringLiteral("子网格的几何编号已失效。"));return false; }
+            for (auto& sweep : request.workflow.sweeps) {
+                if (sweep.partitionRegion) continue;
+                if (!translate(3,sweep.volume.entityId) || !translate(2,sweep.source.entityId)
+                    || !translate(2,sweep.target.entityId)) { setError(errMsg,QStringLiteral("扫掠几何编号已失效。"));return false; }
+            }
+            for (auto& rule : request.workflow.partitions)
+                if (rule.targetVolumeUiId > 0 && !translate(3,rule.target.entityId)) { setError(errMsg,QStringLiteral("分块目标几何编号已失效。"));return false; }
+        }
         QTemporaryDir work;
         if (!work.isValid()) { setError(errMsg, QStringLiteral("无法创建网格临时目录。")); return false; }
         QVector<int> scopedOriginalRegions;
-        if (!prepareGeometryScope(request, QDir(work.path()), scopedOriginalRegions, errMsg)) return false;
+        QMap<int,QMap<int,int>> scopedIndices;
+        if (!prepareGeometryScope(request, QDir(work.path()), scopedOriginalRegions, scopedIndices, errMsg)) return false;
         QTemporaryFile conformalBrep;
         ConformalGeometryInfo info;
         SmeshMeshingRequest prepared=request;
@@ -1330,17 +1260,14 @@ bool SmeshMeshGenerator::generate(const SmeshMeshingRequest& originalRequest, Sm
                     setError(errMsg,QStringLiteral("无法读取扫掠分块的原始几何。"));return false;
                 }
             } else if(!loadStepShape(request.inputGeometryPath,original,errMsg))return false;
-            const auto candidates=collectShapeCandidates(original,3);
             TopTools_IndexedMapOfShape originals;TopExp::MapShapes(original,TopAbs_SOLID,originals);
             for(auto& rule:cutting.rules)if(rule.enabled&&rule.targetVolumeUiId>0) {
-                SmeshLocalSizeControl ref;ref.dimension=3;ref.center=rule.target.center;ref.characteristicLength=std::cbrt(rule.target.measure);
-                const int match=bestCandidateIndex(ref,candidates,{});
-                if(match<0||!std::isfinite(rule.target.measure)||rule.target.measure<=0||
-                   (candidates[match].center-ref.center).length()>std::max(1.e-5,ref.characteristicLength*1.e-4)||
-                   std::abs(std::log(candidates[match].characteristicLength/ref.characteristicLength))>1.e-4) {
-                    setError(errMsg,QStringLiteral("分块目标实体已失效，请重新选择。"));return false;
+                const int id = request.allGeometry ? rule.target.entityId
+                    : scopedIndices.value(3).value(rule.target.entityId);
+                if(id <= 0 || id > originals.Extent()) {
+                    setError(errMsg,QStringLiteral("分块目标实体编号已失效，请重新选择。"));return false;
                 }
-                rule.targetVolumeUiId=originals.FindIndex(candidates[match].shape);
+                rule.targetVolumeUiId=id;
             }
             partition=SmeshOccPartitioner::partition(cutting,request.progress);
             prepared.inputGeometryPath=partition.brepPath;
@@ -1406,12 +1333,27 @@ bool SmeshMeshGenerator::generate(const SmeshMeshingRequest& originalRequest, Sm
         using Generate = decltype(&cae_smesh_generate_workflow);
         const auto abi = reinterpret_cast<Abi>(library.resolve("cae_smesh_abi_version"));
         const auto generate = reinterpret_cast<Generate>(library.resolve("cae_smesh_generate_workflow"));
-        if (!abi || abi() != 15 || !generate) { setError(errMsg, QStringLiteral("网格计算组件版本不匹配，请重新编译。")); return false; }
+        if (!abi || abi() != 16 || !generate) { setError(errMsg, QStringLiteral("网格计算组件版本不匹配，请重新编译。")); return false; }
         CaeSMESHWorkflowRequest workflowNative{};
         workflowNative.preferHex=request.workflow.preferHex?1:0;
         auto& native=workflowNative.mesh;
         QByteArray brep = brepPath.toUtf8(), vtk = rawPath.toUtf8();
         auto& params = native.parameters;
+        const QFileInfo sourceFile(originalRequest.inputGeometryPath);
+        QStringList generationParts{sourceFile.absoluteFilePath(), QString::number(sourceFile.size()),
+            QString::number(sourceFile.lastModified().toMSecsSinceEpoch()),
+            QString::number(request.dimension), QString::number(request.conformalizeRegions)};
+        for (const auto& scope : originalRequest.geometryScope)
+            generationParts << QStringLiteral("scope:%1:%2").arg(scope.dimension).arg(scope.entityId);
+        for (const auto& rule : request.workflow.partitions) {
+            generationParts << QStringLiteral("cut:%1:%2:%3:%4").arg(rule.enabled).arg(rule.axis)
+                .arg(rule.coordinate,0,'g',17).arg(rule.targetVolumeUiId);
+            generationParts << QString::number(rule.origin.x(),'g',17) << QString::number(rule.origin.y(),'g',17)
+                << QString::number(rule.origin.z(),'g',17) << QString::number(rule.normal.x(),'g',17)
+                << QString::number(rule.normal.y(),'g',17) << QString::number(rule.normal.z(),'g',17);
+        }
+        const QByteArray geometryGeneration = generationParts.join(QLatin1Char('|')).toUtf8();
+        params.geometryGenerationUtf8 = geometryGeneration.constData();
         params.brepPathUtf8 = brep.constData(); params.vtkPathUtf8 = vtk.constData();
         params.maxSize = request.lenMax; params.minSize = request.lenMin;
         params.optimize = request.optimize; params.surfaceCurvature = request.surfaceCurvature;
@@ -1428,16 +1370,13 @@ bool SmeshMeshGenerator::generate(const SmeshMeshingRequest& originalRequest, Sm
                 !std::isfinite(control.targetSize) || control.targetSize <= 0) {
                 setError(errMsg, QStringLiteral("局部尺寸参数无效。")); return false;
             }
-            const auto candidates = collectShapeCandidates(info.controlShape, control.dimension);
-            const int candidate = bestCandidateIndex(control, candidates, {});
-            if (candidate < 0) { setError(errMsg, QStringLiteral("局部控制实体 %1 无法对应到当前几何，请重新选择。").arg(control.entityId)); return false; }
-            if (!request.allGeometry && ((candidates[candidate].center-control.center).length() > std::max(1.e-5,control.characteristicLength*1.e-4) ||
-                std::abs(std::log(candidates[candidate].characteristicLength/control.characteristicLength)) > 1.e-4)) {
-                setError(errMsg,QStringLiteral("局部尺寸控制的实体不在整体剖分的几何范围内。"));return false;
+            TopTools_IndexedMapOfShape originals;
+            TopExp::MapShapes(info.controlShape, shapeTypeForDimension(control.dimension), originals);
+            const int originalId = request.allGeometry ? control.entityId
+                : scopedIndices.value(control.dimension).value(control.entityId);
+            if (originalId <= 0 || originalId > originals.Extent()) {
+                setError(errMsg, QStringLiteral("局部控制实体 %1 不在当前几何范围内，请重新选择。").arg(control.entityId)); return false;
             }
-            TopTools_IndexedMapOfShape original;
-            TopExp::MapShapes(info.controlShape, shapeTypeForDimension(control.dimension), original);
-            const int originalId = original.FindIndex(candidates[candidate].shape);
             QVector<int> images = info.controlImages[control.dimension].value(originalId);
             if (!info.processed) images = {originalId};
             if (images.isEmpty()) { setError(errMsg, QStringLiteral("局部控制实体在共形分割后丢失。")); return false; }
@@ -1458,29 +1397,28 @@ bool SmeshMeshGenerator::generate(const SmeshMeshingRequest& originalRequest, Sm
         for(auto it=targets.cbegin();it!=targets.cend();++it)if(it.key().first==3)surfaceModes[it.key().second]=true;
         auto resolveIn=[&](const SmeshEntityReference& entity,int& originalId,QVector<int>& images,bool onPartition)->bool {
             const auto& controlShape=onPartition?info.partitionShape:info.controlShape;
-            if(entity.dimension<1||entity.dimension>request.dimension||entity.measure<=0||!std::isfinite(entity.measure)) {
-                setError(errMsg,QStringLiteral("局部网格设置的几何引用无效。"));return false;
+            if(entity.dimension<1||entity.dimension>request.dimension||entity.entityId<=0) {
+                setError(errMsg,QStringLiteral("局部网格设置的几何编号无效。"));return false;
             }
-            SmeshLocalSizeControl match;match.dimension=entity.dimension;match.entityId=entity.entityId;match.center=entity.center;
-            match.characteristicLength=entity.dimension==1?entity.measure:entity.dimension==2?std::sqrt(entity.measure):std::cbrt(entity.measure);
-            const auto candidates=collectShapeCandidates(controlShape,entity.dimension);
-            int candidate=bestCandidateIndex(match,candidates,{});
-            TopTools_IndexedMapOfShape exact;TopExp::MapShapes(controlShape,shapeTypeForDimension(entity.dimension),exact);
-            if(entity.entityId>0&&entity.entityId<=exact.Extent()) {
-                for(int i=0;i<candidates.size();++i)if(candidates[i].shape.IsSame(exact(entity.entityId))) {
-                    const auto& option=candidates[i];const double scale=std::max(1.e-9,match.characteristicLength);
-                    if((option.center-match.center).length()<=scale*1.e-4&&std::abs(std::log(option.characteristicLength/scale))<1.e-4)candidate=i;
-                    break;
+            TopTools_IndexedMapOfShape originals;
+            TopExp::MapShapes(controlShape,shapeTypeForDimension(entity.dimension),originals);
+            originalId = onPartition || request.allGeometry ? entity.entityId
+                : scopedIndices.value(entity.dimension).value(entity.entityId);
+            if (onPartition && entity.dimension == 2 && entity.parentRegion > 0) {
+                TopTools_IndexedMapOfShape solids;
+                TopExp::MapShapes(controlShape,TopAbs_SOLID,solids);
+                if (entity.parentRegion > solids.Extent()) {
+                    setError(errMsg,QStringLiteral("分块区域编号已失效。"));return false;
                 }
+                const auto faces = GeometryPartitionTopology::orderedFaces(solids(entity.parentRegion));
+                if (entity.entityId > faces.size()) {
+                    setError(errMsg,QStringLiteral("分块端面编号已失效。"));return false;
+                }
+                originalId = originals.FindIndex(faces[entity.entityId - 1].shape);
             }
-            if(candidate<0){setError(errMsg,QStringLiteral("实体 %1 无法对应到导出的几何，请重新选择。").arg(entity.entityId));return false;}
-            if((onPartition||!request.allGeometry)&&((candidates[candidate].center-match.center).length()>std::max(1.e-5,match.characteristicLength*1.e-4)||
-               std::abs(std::log(candidates[candidate].characteristicLength/match.characteristicLength))>1.e-4)) {
-                setError(errMsg,onPartition?QStringLiteral("分块预览与当前几何不一致，请重新预览并选择扫掠端面。"):
-                    QStringLiteral("局部网格设置的实体不在整体剖分的几何范围内，请调整作用范围。"));return false;
+            if(originalId<=0||originalId>originals.Extent()) {
+                setError(errMsg,QStringLiteral("实体 %1 不在当前几何范围内，请重新选择。").arg(entity.entityId));return false;
             }
-            TopTools_IndexedMapOfShape originals;TopExp::MapShapes(controlShape,shapeTypeForDimension(entity.dimension),originals);
-            originalId=originals.FindIndex(candidates[candidate].shape);
             images=onPartition?info.partitionImages[entity.dimension].value(originalId):
                 info.processed?info.controlImages[entity.dimension].value(originalId):QVector<int>{originalId};
             if(images.isEmpty()){setError(errMsg,QStringLiteral("实体 %1 在共形分割后丢失。").arg(entity.entityId));return false;}return true;
@@ -1567,8 +1505,6 @@ bool SmeshMeshGenerator::generate(const SmeshMeshingRequest& originalRequest, Sm
             }
             CaeSMESHSweepRequest sweep{};sweep.brepPathUtf8=brep.constData();sweep.vtkPathUtf8=vtk.constData();
             sweep.volumeShapeIndex=solidId;sweep.sourceShapeIndex=sourceImages[0];sweep.targetShapeIndex=targetImages[0];
-            sweep.volumeMeasure=task.volume.measure;sweep.sourceMeasure=task.source.measure;sweep.targetMeasure=task.target.measure;
-            sweep.volumeCenter={task.volume.center.x(),task.volume.center.y(),task.volume.center.z()};sweep.sourceCenter={task.source.center.x(),task.source.center.y(),task.source.center.z()};sweep.targetCenter={task.target.center.x(),task.target.center.y(),task.target.center.z()};
             sweep.layers=task.layers;sweep.sourceSize=task.sourceSize;sweep.quadrangleSource=task.quadrangleSource;sweep.tolerance=request.tolerance;sweeps.push_back(sweep);
         }
         // A Solid sizing node can cover the entire model. Sweep owns its chosen
@@ -1611,8 +1547,7 @@ bool SmeshMeshGenerator::generate(const SmeshMeshingRequest& originalRequest, Sm
                 TopTools_IndexedMapOfShape edges; TopExp::MapShapes(info.meshShape, TopAbs_EDGE, edges);
                 GProp_GProps props; BRepGProp::LinearProperties(edges(id), props);
                 CaeSMESHEdgeSegmentsControl control{}; control.shapeIndex = id;
-                control.measure = std::abs(props.Mass());
-                const double divisions = std::ceil(control.measure / it.value());
+                const double divisions = std::ceil(std::abs(props.Mass()) / it.value());
                 if (!std::isfinite(divisions) || divisions > std::numeric_limits<int>::max()) {
                     setError(errMsg, QStringLiteral("边局部尺寸过小，分段数超出支持范围。")); return false;
                 }
@@ -1622,12 +1557,6 @@ bool SmeshMeshGenerator::generate(const SmeshMeshingRequest& originalRequest, Sm
                 CaeSMESHLocalSizeControl control{}; control.dimension = dimension;
                 TopTools_IndexedMapOfShape shapes;
                 TopExp::MapShapes(info.meshShape, shapeTypeForDimension(dimension), shapes);
-                GProp_GProps properties;
-                if (dimension == 2) BRepGProp::SurfaceProperties(shapes(id), properties);
-                else BRepGProp::VolumeProperties(shapes(id), properties);
-                const auto center = properties.CentreOfMass();
-                control.center = {center.X(), center.Y(), center.Z()};
-                control.measure = std::abs(properties.Mass());
                 control.shapeIndex = id; control.targetSize = it.value(); sizes.push_back(control);
             }
         }

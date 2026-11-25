@@ -88,4 +88,11 @@ class VisualWidgetService
     {
         Q_UNUSED(text);
     }
+
+    // Temporary scene changes must not overwrite an object's visibility choice.
+    // Keep existing viewers compatible when they do not distinguish these states.
+    virtual bool setTemporaryVisible(const QString& id, bool on, bool renderNow = true)
+    {
+        return setVisible(id, on, renderNow);
+    }
 };

@@ -71,9 +71,9 @@
         <item row="0" column="0"><widget class="QLabel" name="extentLabel"><property name="text"><string>方式</string></property></widget></item>
         <item row="0" column="1"><widget class="QComboBox" name="extentCombo"><property name="minimumHeight"><number>30</number></property><property name="toolTip"><string>两侧可分别设置两个方向的距离；对称模式按总长度在截面两侧均分。</string></property></widget></item>
         <item row="1" column="0"><widget class="QLabel" name="distanceLabel"><property name="text"><string>距离</string></property></widget></item>
-        <item row="1" column="1"><widget class="QDoubleSpinBox" name="distanceSpin"><property name="minimumHeight"><number>30</number></property><property name="suffix"><string> mm</string></property><property name="decimals"><number>6</number></property><property name="minimum"><double>0.000001000000000</double></property><property name="maximum"><double>1000000000.000000000000000</double></property><property name="singleStep"><double>1.000000000000000</double></property><property name="value"><double>10.000000000000000</double></property></widget></item>
+        <item row="1" column="1"><widget class="CompactDoubleSpinBox" name="distanceSpin"><property name="minimumHeight"><number>30</number></property><property name="suffix"><string> mm</string></property><property name="decimals"><number>6</number></property><property name="minimum"><double>0.000001000000000</double></property><property name="maximum"><double>1000000000.000000000000000</double></property><property name="singleStep"><double>1.000000000000000</double></property><property name="value"><double>10.000000000000000</double></property></widget></item>
         <item row="2" column="0"><widget class="QLabel" name="secondDistanceLabel"><property name="text"><string>反向距离</string></property></widget></item>
-        <item row="2" column="1"><widget class="QDoubleSpinBox" name="secondDistanceSpin"><property name="minimumHeight"><number>30</number></property><property name="suffix"><string> mm</string></property><property name="decimals"><number>6</number></property><property name="minimum"><double>0.000001000000000</double></property><property name="maximum"><double>1000000000.000000000000000</double></property><property name="singleStep"><double>1.000000000000000</double></property><property name="value"><double>10.000000000000000</double></property></widget></item>
+        <item row="2" column="1"><widget class="CompactDoubleSpinBox" name="secondDistanceSpin"><property name="minimumHeight"><number>30</number></property><property name="suffix"><string> mm</string></property><property name="decimals"><number>6</number></property><property name="minimum"><double>0.000001000000000</double></property><property name="maximum"><double>1000000000.000000000000000</double></property><property name="singleStep"><double>1.000000000000000</double></property><property name="value"><double>10.000000000000000</double></property></widget></item>
         <item row="3" column="0"><widget class="QLabel" name="directionLabel"><property name="text"><string>方向</string></property></widget></item>
         <item row="3" column="1"><widget class="QComboBox" name="directionCombo"><property name="minimumHeight"><number>30</number></property></widget></item>
        </layout>
@@ -85,11 +85,11 @@
         <layout class="QFormLayout" name="customDirectionForm">
          <property name="labelAlignment"><set>Qt::AlignRight|Qt::AlignTrailing|Qt::AlignVCenter</set></property>
          <item row="0" column="0"><widget class="QLabel" name="customXLabel"><property name="text"><string>X</string></property></widget></item>
-         <item row="0" column="1"><widget class="QDoubleSpinBox" name="customXSpin"><property name="minimumHeight"><number>30</number></property><property name="decimals"><number>6</number></property><property name="minimum"><double>-1000000.000000000000000</double></property><property name="maximum"><double>1000000.000000000000000</double></property><property name="singleStep"><double>0.100000000000000</double></property></widget></item>
+         <item row="0" column="1"><widget class="CompactDoubleSpinBox" name="customXSpin"><property name="minimumHeight"><number>30</number></property><property name="decimals"><number>6</number></property><property name="minimum"><double>-1000000.000000000000000</double></property><property name="maximum"><double>1000000.000000000000000</double></property><property name="singleStep"><double>0.100000000000000</double></property></widget></item>
          <item row="1" column="0"><widget class="QLabel" name="customYLabel"><property name="text"><string>Y</string></property></widget></item>
-         <item row="1" column="1"><widget class="QDoubleSpinBox" name="customYSpin"><property name="minimumHeight"><number>30</number></property><property name="decimals"><number>6</number></property><property name="minimum"><double>-1000000.000000000000000</double></property><property name="maximum"><double>1000000.000000000000000</double></property><property name="singleStep"><double>0.100000000000000</double></property></widget></item>
+         <item row="1" column="1"><widget class="CompactDoubleSpinBox" name="customYSpin"><property name="minimumHeight"><number>30</number></property><property name="decimals"><number>6</number></property><property name="minimum"><double>-1000000.000000000000000</double></property><property name="maximum"><double>1000000.000000000000000</double></property><property name="singleStep"><double>0.100000000000000</double></property></widget></item>
          <item row="2" column="0"><widget class="QLabel" name="customZLabel"><property name="text"><string>Z</string></property></widget></item>
-         <item row="2" column="1"><widget class="QDoubleSpinBox" name="customZSpin"><property name="minimumHeight"><number>30</number></property><property name="decimals"><number>6</number></property><property name="minimum"><double>-1000000.000000000000000</double></property><property name="maximum"><double>1000000.000000000000000</double></property><property name="singleStep"><double>0.100000000000000</double></property><property name="value"><double>1.000000000000000</double></property></widget></item>
+         <item row="2" column="1"><widget class="CompactDoubleSpinBox" name="customZSpin"><property name="minimumHeight"><number>30</number></property><property name="decimals"><number>6</number></property><property name="minimum"><double>-1000000.000000000000000</double></property><property name="maximum"><double>1000000.000000000000000</double></property><property name="singleStep"><double>0.100000000000000</double></property><property name="value"><double>1.000000000000000</double></property></widget></item>
         </layout>
        </widget>
       </item>
@@ -112,6 +112,9 @@
    <item><spacer name="verticalSpacer"><property name="orientation"><enum>Qt::Vertical</enum></property><property name="sizeHint" stdset="0"><size><width>20</width><height>40</height></size></property></spacer></item>
   </layout>
  </widget>
+  <customwidgets>
+  <customwidget><class>CompactDoubleSpinBox</class><extends>QDoubleSpinBox</extends><header>CompactDoubleSpinBox.h</header></customwidget>
+ </customwidgets>
  <resources/>
  <connections/>
 </ui>

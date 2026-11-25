@@ -1,3 +1,4 @@
+#include <CompactDoubleSpinBox.h>
 #include "CaveSupportComputationPage.h"
 #include "CaveExcavationProtocol.h"
 
@@ -331,7 +332,7 @@ void CaveSupportComputationPage::setupBusinessUi()
     m_craneBeamInstallStageCombo = new QComboBox(m_craneBeamGroup);
     craneForm->addRow(QStringLiteral("安装阶段"), m_craneBeamInstallStageCombo);
 
-    m_craneBeamReleaseSpin = new QDoubleSpinBox(m_craneBeamGroup);
+    m_craneBeamReleaseSpin = new CompactDoubleSpinBox(m_craneBeamGroup);
     m_craneBeamReleaseSpin->setRange(0.0, 1.0);
     m_craneBeamReleaseSpin->setDecimals(4);
     m_craneBeamReleaseSpin->setSingleStep(0.05);
@@ -1109,9 +1110,9 @@ bool CaveSupportComputationPage::validateInputs(QString* errorMessage) const
         {
             const auto* item = m_excavationDaysTable->item(row, 1);
             bool ok = false;
-            const double days = item ? item->text().trimmed().toDouble(&ok) : 0.0;
-            if (!ok || days < 0.0)
-                return fail(QStringLiteral("第 %1 级开挖用时必须为非负数。")
+            const int days = item ? item->text().trimmed().toInt(&ok) : -1;
+            if (!ok || days < 0)
+                return fail(QStringLiteral("第 %1 级开挖用时必须为非负整数。")
                                 .arg(row + 1));
         }
     }
@@ -1209,9 +1210,9 @@ bool CaveSupportComputationPage::exportICaveDatFile(
         {29, QStringLiteral("---")},
         {30, QStringLiteral("---")}};
 
-    const QSet<int> quotedFields = {1, 2, 3, 4, 5, 6, 7, 8, 9, 13, 14,
-                                    15, 16, 17, 18, 19, 20, 21, 22, 23,
-                                    24, 25, 26, 27, 28, 29, 30};
+    const QSet<int> quotedFields = {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12,
+                                    13, 14, 15, 16, 17, 18, 19, 20, 21, 22,
+                                    23, 24, 25, 26, 27, 28, 29, 30};
     for (int fieldNo = 1; fieldNo <= 30; ++fieldNo)
     {
         const QString value = fixedValues.contains(fieldNo)

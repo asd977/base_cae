@@ -1,3 +1,4 @@
+#include <CompactDoubleSpinBox.h>
 #include "CaveReinforcementFieldPage.h"
 
 #include <vtkCell.h>
@@ -377,13 +378,13 @@ CaveReinforcementFieldPage::CaveReinforcementFieldPage(QWidget* parent)
     m_formula = new QComboBox(m_actualBox);
     m_formula->addItem(QStringLiteral("张建海系列公式"), 1);
     m_formula->addItem(QStringLiteral("Indraratna 公式"), 2);
-    m_actualStiffness = new QDoubleSpinBox(m_actualBox);
+    m_actualStiffness = new CompactDoubleSpinBox(m_actualBox);
     m_actualStiffness->setRange(1.0, 1000.0);
     m_actualStiffness->setDecimals(6);
     m_actualStiffness->setValue(1.05);
     m_actualStiffness->setToolTip(
         QStringLiteral("张建海系列公式使用的加固区模量增长倍数。"));
-    m_indraratnaStiffnessCorrection = new QDoubleSpinBox(m_actualBox);
+    m_indraratnaStiffnessCorrection = new CompactDoubleSpinBox(m_actualBox);
     m_indraratnaStiffnessCorrection->setRange(0.01, 1000.0);
     m_indraratnaStiffnessCorrection->setDecimals(6);
     m_indraratnaStiffnessCorrection->setValue(1.0);
@@ -399,7 +400,7 @@ CaveReinforcementFieldPage::CaveReinforcementFieldPage(QWidget* parent)
     auto* conceptForm = new QFormLayout(m_conceptBox);
     const auto makePositive = [this](double value)
     {
-        auto* spin = new QDoubleSpinBox(this);
+        auto* spin = new CompactDoubleSpinBox(this);
         spin->setRange(0.0, 1.0e9);
         spin->setDecimals(6);
         spin->setValue(value);

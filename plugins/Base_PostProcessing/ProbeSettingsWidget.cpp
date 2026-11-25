@@ -55,10 +55,6 @@ ProbeSettingsWidget::ProbeSettingsWidget(VisualWidgetService* postProcessingWidg
     m_picker->SetTolerance(1e-3); // 可按需要调
 
     // 信号槽
-    connect(ui->enableProbeCheckBox, &QCheckBox::toggled, this,
-            &ProbeSettingsWidget::on_enableProbeCheckBox_toggled);
-    connect(ui->clearPushButton, &QPushButton::clicked, this,
-            &ProbeSettingsWidget::on_clearPushButton_clicked);
 
     // 清空按钮沿用全局 GEOCAE 主题，避免局部蓝色样式覆盖。
 

@@ -16,12 +16,6 @@ DNNModel::DNNModel(QWidget* parent) : ui(new Ui::DNNModel), BasePage("DNN")
     m_splitProcess = new QProcess;
     m_outputService = ServiceRegistry::instance().getService<OutputService>();
     setStyle();
-    connect(ui->layerWidget, &QTableWidget::itemSelectionChanged, this,
-            &DNNModel::on_layerWidget_itemSelectionChanged);
-    connect(ui->neuronLineEdit, &QLineEdit::editingFinished, this,
-            &DNNModel::on_neuronLineEdit_editingFinished);
-    connect(ui->activationComboBox, &QComboBox::currentTextChanged, this,
-            &DNNModel::on_activationComboBox_currentTextChanged);
 
     ui->sourceFileTableWidget->setEditTriggers(QAbstractItemView::NoEditTriggers);
     ui->layerWidget->setEditTriggers(QAbstractItemView::NoEditTriggers);

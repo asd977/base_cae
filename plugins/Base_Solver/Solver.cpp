@@ -85,6 +85,7 @@
 #include "GeoStressMeasurePointPage.h"
 #include "GeoStressOuterForcePage.h"
 #include "GeoStressSideFacePage.h"
+#include "SlopeExcavationSettings.h"
 #include "SlopeStabilityWidget.h"
 #include "SlopeStandardMethodDialog.h"
 #include "SolverSettingWidget.h"
@@ -136,6 +137,106 @@ void printSolverOutput(const QString& workspace, const QString& text)
     if (!text.endsWith(QLatin1Char('\n'))) log.write("\n");
 }
 constexpr int kSolverCustomTitleRole = Qt::UserRole + 104;
+constexpr int kSlopeExcavationStageIndexRole = Qt::UserRole + 105;
+
+class SlopeExcavationProxyPage : public BasePage
+{
+  public:
+    SlopeExcavationProxyPage(const QString& pageType, BasePage* target, QWidget* storageHost,
+                             const QString& hintText, QWidget* parent = nullptr)
+        : BasePage(pageType), m_target(target), m_storageHost(storageHost)
+    {
+        Q_UNUSED(parent);
+        auto* layout = new QVBoxLayout(this);
+        layout->setContentsMargins(0, 0, 0, 0);
+        layout->setSpacing(6);
+        if (!hintText.isEmpty())
+        {
+            m_hintLabel = new QLabel(hintText, this);
+            m_hintLabel->setWordWrap(true);
+            m_hintLabel->setStyleSheet(QStringLiteral(
+                "color: #4f6478; padding: 6px 8px; background: #f4f7fa; "
+                "border: 1px solid #dbe4ee; border-radius: 4px;"));
+            layout->addWidget(m_hintLabel);
+        }
+        if (m_target)
+        {
+            if (auto* parentLayout =
+                    m_target->parentWidget() ? m_target->parentWidget()->layout() : nullptr)
+                parentLayout->removeWidget(m_target);
+            m_target->setParent(this);
+            layout->addWidget(m_target, 1);
+            m_target->show();
+        }
+    }
+
+    ~SlopeExcavationProxyPage() override
+    {
+        detachTarget();
+    }
+
+    BasePage* target() const { return m_target; }
+
+    void setHintText(const QString& text)
+    {
+        if (m_hintLabel)
+            m_hintLabel->setText(text);
+    }
+
+    void detachTarget()
+    {
+        if (!m_target)
+            return;
+        if (m_active)
+        {
+            m_target->beforeUnload();
+            m_active = false;
+        }
+        if (auto* l = layout())
+            l->removeWidget(m_target);
+        if (m_storageHost)
+        {
+            m_target->setParent(m_storageHost);
+            m_target->hide();
+        }
+        else
+        {
+            m_target->setParent(nullptr);
+        }
+        m_target = nullptr;
+    }
+
+    void beforeLoad() override
+    {
+        m_active = true;
+        if (m_target)
+            m_target->beforeLoad();
+    }
+
+    void beforeUnload() override
+    {
+        if (m_target)
+            m_target->beforeUnload();
+        m_active = false;
+    }
+
+    QJsonObject saveJson() override
+    {
+        return m_target ? m_target->saveJson() : QJsonObject{};
+    }
+
+    void loadJson(const QJsonObject& obj) override
+    {
+        if (m_target)
+            m_target->loadJson(obj);
+    }
+
+  private:
+    QPointer<BasePage> m_target;
+    QPointer<QWidget> m_storageHost;
+    QLabel* m_hintLabel = nullptr;
+    bool m_active = false;
+};
 constexpr char kLegacyNamedAnalysisWorkspaceRoot[] = u8"计算结果";
 constexpr char kLegacyAnalysisWorkspaceRoot[] = ".analysis_runs";
 constexpr char kLegacyAnalysisManifestFileName[] = "analysis.json";
@@ -1196,6 +1297,8 @@ QString solverNodeBaseTitle(const QString& kind)
         {QStringLiteral("SeepageAnalysis"), QStringLiteral("渗流分析")},
         {QStringLiteral("DamAnalysis"), QStringLiteral("土石坝分析")},
         {QStringLiteral("SlopeStabilityAnalysis"), QStringLiteral("边坡分析")},
+        {QStringLiteral("SlopeExcavationStage"), QStringLiteral("开挖级")},
+        {QStringLiteral("SlopeReinforcementField"), QStringLiteral("开挖面加固")},
         {QStringLiteral("SlopeLimitEquilibriumAnalysis"), QStringLiteral("极限平衡")},
         {QStringLiteral("SlopeLimitEquilibriumSection"), QStringLiteral("断面")},
         {QStringLiteral("CaveExcavationAnalysis"), QStringLiteral("洞室开挖工程")},
@@ -1235,7 +1338,11 @@ QString solverNodeRelationshipHint(ProjectNode* node)
         {QStringLiteral("SeepageNaturalBoundary"), QStringLiteral("初始地下水自由面")},
         {QStringLiteral("DamIceRegion"), QStringLiteral("结冰作用节点")},
         {QStringLiteral("SlopeLimitEquilibriumSection"),
-         QStringLiteral("设置计算断面")}};
+         QStringLiteral("设置计算断面")},
+        {QStringLiteral("SlopeExcavationStage"),
+         QStringLiteral("拾取本级开挖移除的边坡实体区域")},
+        {QStringLiteral("SlopeReinforcementField"),
+         QStringLiteral("设置边坡开挖面加固与支护参数")}};
     return hints.value(kind);
 }
 
@@ -1267,6 +1374,7 @@ bool solverNodeCanMove(const QString& kind)
 {
     static const QSet<QString> movableKinds = {
         QStringLiteral("GeoStressRegressionSideFace"),
+        QStringLiteral("SlopeExcavationStage"),
         QStringLiteral("CaveBlockPlane"), QStringLiteral("SeepageNaturalBoundary")};
     return movableKinds.contains(kind);
 }
@@ -1280,6 +1388,15 @@ int solverChildOrderRank(ProjectNode* parent, ProjectNode* child)
     const QString childKind = child->data(0, ProjectNode::RoleKind).toString();
     const QString pageType = child->getPage() ? child->getPage()->getPageType() : QString();
 
+    if (parentKind == QStringLiteral("SlopeStabilityAnalysis"))
+    {
+        if (childKind == QStringLiteral("GeoStressRegression")) return 0;
+        if (childKind == QStringLiteral("SlopeExcavationStage"))
+            return 100 + qMax(0, child->data(0, kSlopeExcavationStageIndexRole).toInt());
+        if (childKind == QStringLiteral("SlopeReinforcementField")) return 500;
+        if (childKind == QStringLiteral("QuietBoundary")) return 600;
+    }
+
     if (childKind == QStringLiteral("QuietBoundary")) return 12;
 
     if (parentKind == QStringLiteral("SlopeLimitEquilibriumAnalysis"))
@@ -1290,7 +1407,8 @@ int solverChildOrderRank(ProjectNode* parent, ProjectNode* child)
     {
         if (childKind == QStringLiteral("FillStorageCycle")) return 0;
         if (childKind == QStringLiteral("DamDynamicAnalysis")) return 1;
-        if (pageType == QStringLiteral("StressBoundaryDamUpstream")) return 10;
+        if (pageType == QStringLiteral("StressBoundaryDamUpstream")) return 9;
+        if (pageType == QStringLiteral("StressBoundaryDamBase")) return 10;
         if (childKind == QStringLiteral("DamIceRegion")) return 11;
     }
     else if (parentKind == QStringLiteral("SeepageAnalysis"))
@@ -1488,6 +1606,10 @@ bool Solver::saveProject()
         {
             if (!child || !child->getPage())
                 continue;
+            const QString childPageType = child->getPage()->getPageType();
+            if (childPageType == QStringLiteral("SlopeExcavationStage")
+                || childPageType == QStringLiteral("SlopeReinforcementField"))
+                continue;
 
             // 保存工程只序列化设置；求解器输入文件统一在点击计算后生成，
             // 避免普通保存操作改写或残留计算输入文件。
@@ -1601,8 +1723,7 @@ bool Solver::loadProject()
                     {
                         onComputeSlopeStability(analysisNode);
                     });
-            connect(slopePage, &SlopeStabilityWidget::initialStressRequested, this,
-                    [this, analysisNode]{addGeoStressRegressionNode(analysisNode, true, false);});
+            connectSlopeExcavationSignals(slopePage, analysisNode);
             connect(slopePage, &SlopeStabilityWidget::limitEquilibriumRequested, this,
                     &Solver::onSpecificationCheckAction);
             connectStopRequest(slopePage);
@@ -1660,6 +1781,7 @@ bool Solver::loadProject()
         bool hasSeepageNaturalBoundaryNode = false;
         bool hasSeepageDrainWellNode = false;
         bool hasDamUpstreamBoundaryNode = false;
+        bool hasDamBaseBoundaryNode = false;
         bool hasDamIceRegionNode = false;
         bool hasGeoStressRegressionNode = false;
         bool hasCaveSupportComputationNode = false;
@@ -1707,9 +1829,8 @@ bool Solver::loadProject()
             }
             else if (type == "StressBoundaryDamBase")
             {
-                // 旧工程兼容：当前只提供均质坝，求解器固定忽略 IFIIWL_SEEP，
-                // 因此不再恢复无效的坝基扬压力边界节点。
-                continue;
+                page = new StressBoundaryPage(type, "坝基扬压力作用面", "FA_DAMBASE.DAT");
+                hasDamBaseBoundaryNode = true;
             }
             else if (type == "DamIceRegion")
             {
@@ -1802,6 +1923,8 @@ bool Solver::loadProject()
                 childTitle = QStringLiteral("天然渗流初始面");
             else if (type == QStringLiteral("StressBoundaryDamUpstream"))
                 childTitle = QStringLiteral("上游水压力作用面");
+            else if (type == QStringLiteral("StressBoundaryDamBase"))
+                childTitle = QStringLiteral("坝基扬压力作用面");
             else if (type == QStringLiteral("FillStorageCycle"))
                 childTitle = QStringLiteral("填筑蓄水");
             else if (type == QStringLiteral("DamDynamicAnalysis"))
@@ -2144,6 +2267,16 @@ bool Solver::loadProject()
             connectBoundaryStatus(node);
         }
         if ((analysisType == "StressStrainAnalysis" || analysisType == "DamAnalysis")
+            && !hasDamBaseBoundaryNode)
+        {
+            auto* page = new StressBoundaryPage("StressBoundaryDamBase", "坝基扬压力作用面",
+                                                "FA_DAMBASE.DAT");
+            auto* node = new ProjectNode("坝基扬压力作用面", QUuid::createUuid().toString(), page);
+            setupNodeRole(node, "StressBoundary");
+            analysisNode->addChild(node);
+            connectBoundaryStatus(node);
+        }
+        if ((analysisType == "StressStrainAnalysis" || analysisType == "DamAnalysis")
             && !hasDamIceRegionNode)
         {
             auto* page =
@@ -2327,6 +2460,7 @@ bool Solver::loadProject()
         syncSeepageConditionalNodes(analysisNode);
         syncDamConditionalNodes(analysisNode);
         syncQuietBoundaryNode(analysisNode);
+        syncSlopeExcavationNodes(analysisNode, false);
     }
 
     syncAnalysisNodeNames();
@@ -2442,6 +2576,72 @@ void Solver::initTreeMenu()
                         auto* analysisNode = pm ? pm->findNodeByUuid(uuid) : nullptr;
                         if (analysisNode)
                             addSeepageNaturalBoundaryNode(analysisNode, true);
+                    });
+            }
+            else if (kind == QStringLiteral("SlopeStabilityAnalysis"))
+            {
+                auto* slopePage = dynamic_cast<SlopeStabilityWidget*>(menuNode->getPage());
+                auto* excavation = slopePage ? slopePage->excavationSettings() : nullptr;
+                if (excavation && excavation->enabled())
+                {
+                    ContextMenuHub::addSeparator(menu);
+                    ContextMenuHub::addAction(
+                        menu, this, "定位地应力回归分析",
+                        [this, uuid]()
+                        {
+                            auto* pm = ServiceRegistry::instance().getService<ProjectManagerService>();
+                            auto* analysisNode = pm ? pm->findNodeByUuid(uuid) : nullptr;
+                            if (analysisNode)
+                                addGeoStressRegressionNode(analysisNode, true, false);
+                        });
+                    ContextMenuHub::addAction(
+                        menu, this, "新增开挖级",
+                        [this, uuid]()
+                        {
+                            auto* pm = ServiceRegistry::instance().getService<ProjectManagerService>();
+                            auto* analysisNode = pm ? pm->findNodeByUuid(uuid) : nullptr;
+                            auto* sp = analysisNode
+                                           ? dynamic_cast<SlopeStabilityWidget*>(analysisNode->getPage())
+                                           : nullptr;
+                            if (sp && sp->excavationSettings())
+                            {
+                                const int idx = sp->excavationSettings()->addStage();
+                                navigateToSlopeExcavationStage(analysisNode, idx);
+                            }
+                        });
+                    if (excavation->reinforced())
+                    {
+                        ContextMenuHub::addAction(
+                            menu, this, "定位开挖面加固",
+                            [this, uuid]()
+                            {
+                                auto* pm = ServiceRegistry::instance().getService<ProjectManagerService>();
+                                auto* analysisNode = pm ? pm->findNodeByUuid(uuid) : nullptr;
+                                if (analysisNode)
+                                    navigateToSlopeReinforcement(analysisNode);
+                            });
+                    }
+                }
+            }
+            else if (kind == QStringLiteral("SlopeExcavationStage"))
+            {
+                ContextMenuHub::addSeparator(menu);
+                ContextMenuHub::addAction(
+                    menu, this, "新增开挖级",
+                    [this, uuid]()
+                    {
+                        auto* pm = ServiceRegistry::instance().getService<ProjectManagerService>();
+                        auto* stageNode = pm ? pm->findNodeByUuid(uuid) : nullptr;
+                        auto* analysisNode =
+                            stageNode ? dynamic_cast<ProjectNode*>(stageNode->parent()) : nullptr;
+                        auto* sp = analysisNode
+                                       ? dynamic_cast<SlopeStabilityWidget*>(analysisNode->getPage())
+                                       : nullptr;
+                        if (sp && sp->excavationSettings())
+                        {
+                            const int idx = sp->excavationSettings()->addStage();
+                            navigateToSlopeExcavationStage(analysisNode, idx);
+                        }
                     });
             }
             else if (kind == QStringLiteral("SlopeLimitEquilibriumAnalysis"))
@@ -2659,6 +2859,20 @@ void Solver::removeNodeByUuid(const QString& uuid)
     if (removesAnalysis && m_activeAnalysisUuid == node->getUuid())
         finishSolverProcess(true);
 
+    if (removedKind == QStringLiteral("SlopeExcavationStage"))
+    {
+        auto* slopePage = dynamic_cast<SlopeStabilityWidget*>(parent->getPage());
+        if (slopePage && slopePage->excavationSettings())
+        {
+            const int stageIndex = node->data(0, kSlopeExcavationStageIndexRole).toInt();
+            const int targetAfter = qMax(0, stageIndex - 1);
+            slopePage->excavationSettings()->removeStage(stageIndex);
+            parent->setExpanded(parentWasExpanded);
+            navigateToSlopeExcavationStage(parent, targetAfter);
+            return;
+        }
+    }
+
     parent->removeChild(node);
     deleteNodeRecursively(node);
     if (!workspaceToRemove.isEmpty())
@@ -2802,6 +3016,21 @@ void Solver::moveNodeByUuid(const QString& uuid, int direction)
         return;
 
     const QString kind = node->data(0, ProjectNode::RoleKind).toString();
+    if (kind == QStringLiteral("SlopeExcavationStage"))
+    {
+        auto* slopePage = dynamic_cast<SlopeStabilityWidget*>(parent->getPage());
+        if (slopePage && slopePage->excavationSettings())
+        {
+            const int stageIndex = node->data(0, kSlopeExcavationStageIndexRole).toInt();
+            if (slopePage->excavationSettings()->moveStage(stageIndex, direction))
+            {
+                parent->setExpanded(true);
+                navigateToSlopeExcavationStage(parent, stageIndex + direction);
+            }
+        }
+        return;
+    }
+
     QList<QTreeWidgetItem*> items = parent->takeChildren();
     int current = -1;
     for (int i = 0; i < items.size(); ++i)
@@ -3362,7 +3591,11 @@ void Solver::syncChildNodeNames(ProjectNode* parent) const
         const int index = ++indexes[kind];
         const bool customTitle = solverNodeHasCustomTitle(node);
         QString displayTitle = configuredTitle;
-        if (auto* bodyPage = dynamic_cast<CaveExcavationBodyPage*>(node->getPage()))
+        if (kind == QStringLiteral("SlopeExcavationStage"))
+        {
+            displayTitle = QStringLiteral("开挖级 %1").arg(index);
+        }
+        else if (auto* bodyPage = dynamic_cast<CaveExcavationBodyPage*>(node->getPage()))
         {
             // 层号决定实际施工顺序，直接显示在树上，避免节点序号被误认为开挖级次。
             displayTitle = QStringLiteral("%1（层号 %2）")
@@ -4008,6 +4241,7 @@ void Solver::onStressStrainAction()
     };
 
     addBoundary("上游水压力作用面", "StressBoundaryDamUpstream", "FA_DAMUP.DAT");
+    addBoundary("坝基扬压力作用面", "StressBoundaryDamBase", "FA_DAMBASE.DAT");
 
     auto* iceRegionPage =
         new SeepageBoundaryPage("DamIceRegion", "结冰区域", "JMFW.DAT", nullptr, true);
@@ -4089,13 +4323,13 @@ void Solver::onSlopeStabilityAction()
             {
                 onComputeSlopeStability(analysisNode);
             });
-    connect(slopePage, &SlopeStabilityWidget::initialStressRequested, this,
-            [this, analysisNode]{addGeoStressRegressionNode(analysisNode, true, false);});
+    connectSlopeExcavationSignals(slopePage, analysisNode);
     connect(slopePage, &SlopeStabilityWidget::limitEquilibriumRequested, this,
             &Solver::onSpecificationCheckAction);
     connectStopRequest(slopePage);
 
     syncQuietBoundaryNode(analysisNode);
+    syncSlopeExcavationNodes(analysisNode, false);
     m_root->addChild(analysisNode);
     analysisNode->setExpanded(true);
     syncAnalysisNodeNames();
@@ -4488,6 +4722,7 @@ void Solver::onComputeStressStrain(ProjectNode* analysisNode)
     }
 
     bool needsFaceBoundary = false;
+    bool needsBaseBoundary = false;
     int cycleIndex = 0;
     QVector<FillStorageCyclePage*> cyclePages;
     for (ProjectNode* child : analysisNode->getChildren())
@@ -4506,6 +4741,7 @@ void Solver::onComputeStressStrain(ProjectNode* analysisNode)
             return;
         }
         needsFaceBoundary = needsFaceBoundary || (!stressPage->dynamicOnlyEnabled() && cycle->usesDamFacePressure());
+        needsBaseBoundary = needsBaseBoundary || (!stressPage->dynamicOnlyEnabled() && stressPage->damType() != 4 && cycle->usesDamBaseUplift());
     }
     if (cycleIndex == 0)
     {
@@ -4630,6 +4866,8 @@ void Solver::onComputeStressStrain(ProjectNode* analysisNode)
     };
     requireStressBoundary(QStringLiteral("StressBoundaryDamUpstream"),
                           QStringLiteral("上游水压力作用面"), needsFaceBoundary);
+    requireStressBoundary(QStringLiteral("StressBoundaryDamBase"),
+                          QStringLiteral("坝基扬压力作用面"), needsBaseBoundary);
     if (stressPage->freezeThawEnabled())
     {
         ProjectNode* node = findChildByPageType(analysisNode, QStringLiteral("DamIceRegion"));
@@ -4736,14 +4974,18 @@ void Solver::onComputeStressStrain(ProjectNode* analysisNode)
             cycle->finalStaticStateDirectoryName(i + 1, damLayerSummary.maximumDamLayer);
         // 求解器先执行结冰变形，再进入模态/地震波分支。结冰启用时，动力初始状态
         // 应继承本工况 DICE 的结果，而不是回退到结冰前的 FILL 状态。
+        auto twoDigits = [](int value)
+        {
+            return value > 0 && value < 10
+                       ? QStringLiteral("0%1").arg(value)
+                       : QString::number(value);
+        };
         if (stressPage->freezeThawEnabled())
         {
-            const int caseIndex = i + 1;
-            const QString caseCode = caseIndex < 10
-                                         ? QStringLiteral("0%1").arg(caseIndex)
-                                         : QString::number(caseIndex);
+            const QString caseCode = twoDigits(i + 1);
+            const QString circleCode = twoDigits(qMax(1, cycle->cycleCount()));
             stateDirectoryName =
-                QStringLiteral("CASE%1DICE%1").arg(caseCode);
+                QStringLiteral("CASE%1DICE%2").arg(caseCode, circleCode);
         }
         if (stateDirectoryName.isEmpty())
         {
@@ -4776,11 +5018,9 @@ void Solver::onComputeStressStrain(ProjectNode* analysisNode)
             // 重新形成 DICE；若已有 DICE 可直接使用，否则检查它所依赖的 FILL。
             if (stressPage->freezeThawEnabled() && !QDir(sourcePath).exists())
             {
-                const int caseIndex = i + 1;
-                const QString caseCode = caseIndex < 10
-                                             ? QStringLiteral("0%1").arg(caseIndex)
-                                             : QString::number(caseIndex);
-                sourceDescription = QStringLiteral("CASE%1FILL%1").arg(caseCode);
+                const QString caseCode = twoDigits(i + 1);
+                const QString circleCode = twoDigits(qMax(1, cycle->cycleCount()));
+                sourceDescription = QStringLiteral("CASE%1FILL%2").arg(caseCode, circleCode);
                 sourcePath = damRunRoot.filePath(sourceDescription);
             }
 
@@ -4869,6 +5109,12 @@ void Solver::onComputeStressStrain(ProjectNode* analysisNode)
         auto* boundaryPage = dynamic_cast<StressBoundaryPage*>(child->getPage());
         if (!boundaryPage)
             continue;
+        if (boundaryPage->getPageType() == QStringLiteral("StressBoundaryDamBase") && !needsBaseBoundary)
+        {
+            QFile::remove(QDir(SolverFilePaths::outputInputDirectory(projectDir))
+                              .filePath(QStringLiteral("FA_DAMBASE.DAT")));
+            continue;
+        }
 
         const bool oneOk = boundaryPage->exportDatFile();
         ok = ok && oneOk;
@@ -6576,10 +6822,16 @@ void Solver::consumeSolverOutput()
 
     // Acknowledge the console solver's final key prompt, then wait for its
     // actual finished signal. Output text never completes or kills a run.
+    // Note: Fortran list-directed READ(*,*) ignores bare newlines ("\n") and
+    // blocks until a non-whitespace token is received.
     if (rawOutput.contains(QStringLiteral("输入任意键"))
+        || rawOutput.contains(QStringLiteral("输入0，退出"))
         || rawOutput.contains(QStringLiteral("PRESS ANY LETTER"), Qt::CaseInsensitive)
-        || rawOutput.contains(QStringLiteral("PRESS ANY KEY"), Qt::CaseInsensitive))
-        m_solverProcess->write("\n");
+        || rawOutput.contains(QStringLiteral("PRESS ANY KEY"), Qt::CaseInsensitive)
+        || rawOutput.contains(QStringLiteral("INPUT ANY KEY"), Qt::CaseInsensitive)
+        || rawOutput.contains(QStringLiteral("INPUT ANY CHAR"), Qt::CaseInsensitive)
+        || rawOutput.contains(QStringLiteral("ENTER ANY NUM"), Qt::CaseInsensitive))
+        m_solverProcess->write("0\n");
 }
 
 void Solver::handleSolverProcessFinished(int exitCode, QProcess::ExitStatus exitStatus)
@@ -6762,6 +7014,7 @@ bool Solver::canDeleteNode(ProjectNode* node) const
         QStringLiteral("DamIceRegion"),
         QStringLiteral("DamDynamicAnalysis"),
         QStringLiteral("QuietBoundary"),
+        QStringLiteral("SlopeReinforcementField"),
         QStringLiteral("SlopeLimitEquilibriumSection")};
     if (fixedKinds.contains(kind))
         return false;
@@ -6769,6 +7022,12 @@ bool Solver::canDeleteNode(ProjectNode* node) const
     auto* parent = dynamic_cast<ProjectNode*>(node->parent());
     if (!parent)
         return false;
+    if (kind == QStringLiteral("SlopeExcavationStage"))
+    {
+        auto* slopePage = dynamic_cast<SlopeStabilityWidget*>(parent->getPage());
+        return slopePage && slopePage->excavationSettings()
+               && slopePage->excavationSettings()->stageCount() > 1;
+    }
     if (kind == QStringLiteral("FillStorageCycle"))
         return countFillStorageCycles(parent) > 1;
     if (kind == QStringLiteral("SeepageNaturalBoundary"))
@@ -7043,8 +7302,7 @@ bool Solver::prepareDamSeepageFiles(FillStorageCyclePage* cyclePage,
     const QString transientDir =
         seepageResultDirectory(sourceWorkspace, QStringLiteral("SEEPDYNA01"));
     const bool needBody = cyclePage->usesImportedSeepageBody();
-    // 均质坝的渗流体力由 FILLFBLOAD2 处理，它会同时读取 CAHEAD/CABODY。
-    const bool needHead = needBody;
+    const bool needHead = cyclePage->usesImportedSeepageHead();
 
     QString headPath;
     QString bodyPath;
@@ -7176,6 +7434,174 @@ void Solver::syncQuietBoundaryNode(ProjectNode* owner) const
     node->setToolTip(0,QStringLiteral("选择粘弹性边界作用区域；开关位于父节点设置页面"));
 }
 
+void Solver::connectSlopeExcavationSignals(SlopeStabilityWidget* page, ProjectNode* analysisNode)
+{
+    if (!page || !analysisNode)
+        return;
+    connect(page, &SlopeStabilityWidget::initialStressRequested, this,
+            [this, analysisNode]() { addGeoStressRegressionNode(analysisNode, true, false); });
+    connect(page, &SlopeStabilityWidget::excavationStructureChanged, this,
+            [this, analysisNode]() { syncSlopeExcavationNodes(analysisNode, true); });
+    connect(page, &SlopeStabilityWidget::navigateToExcavationStageRequested, this,
+            [this, analysisNode](int index) { navigateToSlopeExcavationStage(analysisNode, index); });
+    connect(page, &SlopeStabilityWidget::navigateToReinforcementRequested, this,
+            [this, analysisNode]() { navigateToSlopeReinforcement(analysisNode); });
+}
+
+void Solver::syncSlopeExcavationNodes(ProjectNode* analysisNode, bool expandOnEnable)
+{
+    auto* slopePage =
+        analysisNode ? dynamic_cast<SlopeStabilityWidget*>(analysisNode->getPage()) : nullptr;
+    auto* excavation = slopePage ? slopePage->excavationSettings() : nullptr;
+    if (!excavation)
+        return;
+
+    QHash<BasePage*, ProjectNode*> existingStageNodes;
+    ProjectNode* existingReinforcementNode = nullptr;
+    for (ProjectNode* child : analysisNode->getChildren())
+    {
+        if (!child || !child->getPage())
+            continue;
+        const QString kind = child->data(0, ProjectNode::RoleKind).toString();
+        if (kind == QStringLiteral("SlopeExcavationStage"))
+        {
+            if (auto* proxy = dynamic_cast<SlopeExcavationProxyPage*>(child->getPage()))
+                existingStageNodes.insert(proxy->target(), child);
+        }
+        else if (kind == QStringLiteral("SlopeReinforcementField"))
+        {
+            existingReinforcementNode = child;
+        }
+    }
+
+    if (!excavation->enabled())
+    {
+        for (ProjectNode* node : existingStageNodes)
+        {
+            analysisNode->removeChild(node);
+            deleteNodeRecursively(node);
+        }
+        if (existingReinforcementNode)
+        {
+            analysisNode->removeChild(existingReinforcementNode);
+            deleteNodeRecursively(existingReinforcementNode);
+        }
+        normalizeChildNodeOrder(analysisNode);
+        return;
+    }
+
+    // 启用分级开挖时自动准备地应力回归分析子节点，避免用户遗漏初始地应力步骤。
+    if (!findChildByPageType(analysisNode, QStringLiteral("GeoStressRegressionAnalysis")))
+        addGeoStressRegressionNode(analysisNode, false, false);
+
+    QSet<ProjectNode*> keptStageNodes;
+    const int count = excavation->stageCount();
+    for (int i = 0; i < count; ++i)
+    {
+        CaveExcavationBodyPage* stage = excavation->stagePage(i);
+        if (!stage)
+            continue;
+        const QString title = QStringLiteral("开挖级 %1").arg(i + 1);
+        const QString hint = QStringLiteral(
+            "当前为第 %1 级开挖：请在下方或三维视图中拾取本级移除的边坡实体区域；"
+            "可在左侧工程树右键新增、删除或调整开挖级顺序。").arg(i + 1);
+
+        ProjectNode* node = existingStageNodes.value(stage, nullptr);
+        if (node)
+        {
+            keptStageNodes.insert(node);
+            if (auto* proxy = dynamic_cast<SlopeExcavationProxyPage*>(node->getPage()))
+                proxy->setHintText(hint);
+        }
+        else
+        {
+            auto* proxy = new SlopeExcavationProxyPage(
+                QStringLiteral("SlopeExcavationStage"), stage, excavation->storageHost(), hint);
+            const QUuid id = QUuid::createUuid();
+            node = new ProjectNode(title, id.toString(), proxy);
+            setupNodeRole(node, QStringLiteral("SlopeExcavationStage"));
+            analysisNode->addChild(node);
+            keptStageNodes.insert(node);
+        }
+        node->setData(0, kSlopeExcavationStageIndexRole, i);
+        setSolverNodeTitle(node, title);
+    }
+
+    for (ProjectNode* node : existingStageNodes)
+    {
+        if (!keptStageNodes.contains(node))
+        {
+            analysisNode->removeChild(node);
+            deleteNodeRecursively(node);
+        }
+    }
+
+    if (excavation->reinforced() && excavation->reinforcement())
+    {
+        if (!existingReinforcementNode)
+        {
+            const QString hint = QStringLiteral(
+                "设置边坡开挖面的加固锚杆/喷护等效参数；仅在“开挖与加固”模式下生效。");
+            auto* proxy = new SlopeExcavationProxyPage(
+                QStringLiteral("SlopeReinforcementField"), excavation->reinforcement(),
+                excavation->storageHost(), hint);
+            const QUuid id = QUuid::createUuidV5(
+                QUuid(analysisNode->getUuid()), QByteArrayLiteral("SlopeReinforcementField"));
+            auto* node = new ProjectNode(QStringLiteral("开挖面加固"), id.toString(), proxy);
+            setupNodeRole(node, QStringLiteral("SlopeReinforcementField"));
+            analysisNode->addChild(node);
+        }
+    }
+    else if (existingReinforcementNode)
+    {
+        analysisNode->removeChild(existingReinforcementNode);
+        deleteNodeRecursively(existingReinforcementNode);
+    }
+
+    normalizeChildNodeOrder(analysisNode);
+    syncChildNodeNames(analysisNode);
+    if (expandOnEnable)
+        analysisNode->setExpanded(true);
+}
+
+void Solver::navigateToSlopeExcavationStage(ProjectNode* analysisNode, int stageIndex)
+{
+    if (!analysisNode)
+        return;
+    auto* pm = ServiceRegistry::instance().getService<ProjectManagerService>();
+    if (!pm)
+        return;
+    analysisNode->setExpanded(true);
+    for (ProjectNode* child : analysisNode->getChildren())
+    {
+        if (child && child->data(0, ProjectNode::RoleKind).toString()
+                         == QStringLiteral("SlopeExcavationStage")
+            && child->data(0, kSlopeExcavationStageIndexRole).toInt() == stageIndex)
+        {
+            pm->setCurrentItem(child);
+            return;
+        }
+    }
+    pm->setCurrentItem(analysisNode);
+}
+
+void Solver::navigateToSlopeReinforcement(ProjectNode* analysisNode)
+{
+    if (!analysisNode)
+        return;
+    auto* pm = ServiceRegistry::instance().getService<ProjectManagerService>();
+    if (!pm)
+        return;
+    analysisNode->setExpanded(true);
+    if (ProjectNode* node =
+            findChildByPageType(analysisNode, QStringLiteral("SlopeReinforcementField")))
+    {
+        pm->setCurrentItem(node);
+        return;
+    }
+    pm->setCurrentItem(analysisNode);
+}
+
 void Solver::syncDamConditionalNodes(ProjectNode* analysisNode) const
 {
     syncQuietBoundaryNode(analysisNode);
@@ -7246,9 +7672,13 @@ void Solver::syncDamConditionalNodes(ProjectNode* analysisNode) const
     }
 
     const QVector<QPair<QString, QString>> seepageSources = seepageAnalysisSources();
+    const bool faceDam = page->damType() != 4;
     bool usesFace = false;
+    bool usesBaseUplift = false;
+    bool usesLinearUplift = false;
     if (fillPage)
     {
+        fillPage->setDamType(page->damType());
         fillPage->setAnalysisMode(calculationType);
         fillPage->setAvailableSeepageSources(seepageSources);
         if (dynamicPage)
@@ -7282,13 +7712,14 @@ void Solver::syncDamConditionalNodes(ProjectNode* analysisNode) const
             fillPage->setAvailableTransientResults(
                 transientSteps, hasTransientFinal, transientLabels);
         usesFace = staticEnabled && fillPage->usesDamFacePressure();
+        usesBaseUplift = staticEnabled && faceDam && fillPage->usesDamBaseUplift();
+        usesLinearUplift = staticEnabled && faceDam && fillPage->usesLinearDamBaseUplift();
     }
 
     const bool usesModal = dynamicPage && dynamicPage->usesModalAnalysis();
     page->setModalAnalysisRequired(dynamicEnabled && usesModal);
-
-    // 当前仅提供均质坝，坝基渗透荷载与折减参数均不参与计算。
-    page->setUpliftReductionRequired(false);
+    const bool coreDam = page->damType() == 2 || page->damType() == 3;
+    page->setUpliftReductionRequired(usesLinearUplift || (staticEnabled && coreDam));
     for (ProjectNode* child : analysisNode->getChildren())
     {
         if (auto* boundary = child ? dynamic_cast<StressBoundaryPage*>(child->getPage()) : nullptr)
@@ -7296,7 +7727,10 @@ void Solver::syncDamConditionalNodes(ProjectNode* analysisNode) const
             const QString pageType = boundary->getPageType();
             const bool upstreamBoundary =
                 pageType == QStringLiteral("StressBoundaryDamUpstream");
-            const bool enabled = upstreamBoundary ? usesFace : false;
+            const bool baseBoundary =
+                pageType == QStringLiteral("StressBoundaryDamBase");
+            const bool enabled = upstreamBoundary ? usesFace
+                                                  : (baseBoundary ? usesBaseUplift : false);
 
             QString reason;
             if (upstreamBoundary)
@@ -7305,9 +7739,18 @@ void Solver::syncDamConditionalNodes(ProjectNode* analysisNode) const
                              ? QStringLiteral("当前为仅动力计算，坝体水面压力边界不参与本次计算")
                              : QStringLiteral("坝体水面压力未启用");
             }
+            else if (baseBoundary)
+            {
+                if (!faceDam)
+                    reason = QStringLiteral("均质坝不使用坝基扬压力边界");
+                else if (!staticEnabled)
+                    reason = QStringLiteral("当前为仅动力计算，坝基扬压力边界不参与本次计算");
+                else
+                    reason = QStringLiteral("坝基扬压力未启用");
+            }
             else
             {
-                reason = QStringLiteral("均质坝不使用坝基扬压力边界");
+                reason = QStringLiteral("当前工况不启用此边界");
             }
 
             // 土石坝工况的固定子节点始终保留在树中。

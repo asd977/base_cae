@@ -5,6 +5,8 @@
 #include <ServiceRegistry.h>
 #include <services/MaterialManagerService.h>
 #include <StyleManager.h>
+#include <SettingsLayout.h>
+#include <QFontMetrics>
 
 #include <DockAreaWidget.h>
 #include <DockAreaTitleBar.h>
@@ -96,15 +98,15 @@ ThemeColors currentThemeColors()
     if (theme == QStringLiteral("blue"))
     {
         return {theme,
-                QStringLiteral("#173c5b"), QStringLiteral("#486a85"),
-                QStringLiteral("#1e6296"), QStringLiteral("#c4d9eb"),
-                QStringLiteral("#b4cee3"), QStringLiteral("#dceaf5"),
-                QStringLiteral("#cbdff0"), QStringLiteral("#d3e4f1"),
-                QStringLiteral("#9bbbd4"), QStringLiteral("#5e8fb5"),
-                QStringLiteral("#bed8ec"), QStringLiteral("#a4c8e3"),
-                QStringLiteral("#aed0e8"), QStringLiteral("#a5bfd3"),
-                QStringLiteral("#6b9cbe"), QStringLiteral("#245d89"),
-                QStringLiteral("#3375a7"), QStringLiteral("#1c4b71"), QString()};
+                QStringLiteral("#103259"), QStringLiteral("#3b638f"),
+                QStringLiteral("#1e6bc0"), QStringLiteral("#9ec2e8"),
+                QStringLiteral("#88b1dc"), QStringLiteral("#dfecfa"),
+                QStringLiteral("#b6d2ef"), QStringLiteral("#dfecfa"),
+                QStringLiteral("#709bcb"), QStringLiteral("#367dc9"),
+                QStringLiteral("#bad8f6"), QStringLiteral("#9ec6ef"),
+                QStringLiteral("#b5d5f5"), QStringLiteral("#7ca5d1"),
+                QStringLiteral("#1e6bc0"), QStringLiteral("#1b62b3"),
+                QStringLiteral("#2978d1"), QStringLiteral("#144d8f"), QString()};
     }
     return {QStringLiteral("light"),
             QStringLiteral("#000000"), QStringLiteral("#68727c"),
@@ -123,7 +125,7 @@ QString dockFocusBorder(const ThemeColors& colors)
     if (colors.id == QStringLiteral("dark"))
         return QStringLiteral("#4b5e6b");
     if (colors.id == QStringLiteral("blue"))
-        return QStringLiteral("#1d75b7");
+        return QStringLiteral("#155b94");
     return QStringLiteral("#98aab3");
 }
 
@@ -455,6 +457,8 @@ QAction* UiFrame::addWidget(QWidget* widget, QString name)
     const ads::DockWidgetArea area = preferDockArea(name);
     const bool isVisualControlPanel =
         widget && widget->property("visualControlPanel").toBool();
+    if(isVisualControlPanel)
+        CaeSettingsLayout::prepare(widget);
     ads::CDockAreaWidget* visualControlArea =
         m_visualControlAnchorDockWidget
             ? m_visualControlAnchorDockWidget->dockAreaWidget()
@@ -862,6 +866,17 @@ void UiFrame::updateAreaTabStyle(ads::CDockAreaWidget* area)
         )");
     }
 
+    if (c.id == QStringLiteral("blue"))
+    {
+        titleStyle += QString::fromUtf8(R"(
+            ads--CDockAreaTitleBar {
+                background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                                            stop:0 #d4e6f9, stop:0.48 #bad5f2, stop:1 #9cc2ea);
+                border-bottom: 1px solid #6b96c7;
+            }
+        )");
+    }
+
     titleBar->setStyleSheet(themedStyle(titleStyle, c));
 
     auto* tabBar = titleBar->tabBar();
@@ -1090,10 +1105,21 @@ void UiFrame::applyThemeToUi()
             )"), c));
 
             if (c.id == QStringLiteral("blue"))
+            {
+                m_ribbon->setStyleSheet(m_ribbon->styleSheet() + QStringLiteral(
+                    "SARibbonBar#geoCaeRibbonBar { background: qlineargradient(x1:0, y1:0, x2:0, y2:1, "
+                    "stop:0 #bdd7f2, stop:1 #9bc0e8); border-bottom: 1px solid #6b96c7; }"
+                    "SARibbonBar#geoCaeRibbonBar QStackedWidget, "
+                    "SARibbonBar#geoCaeRibbonBar QStackedWidget > QWidget, "
+                    "SARibbonBar#geoCaeRibbonBar SARibbonCategory, "
+                    "SARibbonBar#geoCaeRibbonBar SARibbonPannel { "
+                    "background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #e5f1fc, stop:1 #c7ddf5); }"));
                 categoryTabBar->setStyleSheet(categoryTabBar->styleSheet() + QStringLiteral(
-                    "QTabBar::tab { color: #173c5b; }"
-                    "QTabBar::tab:hover:!selected { color: #173c5b; background: #bed8ec; }"
-                    "QTabBar::tab:selected { color: #174d76; background: #edf5fb; }"));
+                    "QTabBar::tab { color: #0f3663; background: transparent; }"
+                    "QTabBar::tab:hover:!selected { color: #0b3a70; background: #cfe3f8; }"
+                    "QTabBar::tab:selected { color: #0e3d75; background: #e5f1fc; "
+                    "border-left: 1px solid #6b96c7; border-top: 1px solid #6b96c7; border-right: 1px solid #6b96c7; }"));
+            }
 
 
         }
@@ -1369,9 +1395,13 @@ void UiFrame::arrangeDefaultDockLayout()
         m_dockManager->addDockWidget(ads::BottomDockWidgetArea, m_physicalDockWidget, visualArea);
     m_dockManager->addDockWidgetTabToArea(m_logDockWidget, outputArea);
 
-    // Give the model canvas the largest share; keep names and settings readable.
-    m_dockManager->setSplitterSizes(modelArea, {230, 330, 1000});
-    m_dockManager->setSplitterSizes(outputArea, {650, 180});
+    // Initial proportions follow the current font; users remain free to resize.
+    const QFontMetrics metrics(font());
+    const int modelWidth=metrics.horizontalAdvance(QStringLiteral("地质模型 / 分析工况"))+2*metrics.height();
+    const int settingsWidth=metrics.horizontalAdvance(QStringLiteral("参考参数 / 单位 -000000.000000"))+4*metrics.height();
+    m_dockManager->setSplitterSizes(modelArea, {modelWidth,settingsWidth,3*settingsWidth});
+    const int outputHeight=6*metrics.lineSpacing();
+    m_dockManager->setSplitterSizes(outputArea, {4*outputHeight,outputHeight});
 
     m_centerDockArea = settingsArea;
     m_defaultLayoutArranged = true;
@@ -1434,15 +1464,6 @@ void UiFrame::buildRibbonAppButton()
 
 void UiFrame::buildRibbonTabs()
 {
-    {
-        auto* cate = m_ribbon->addCategoryPage("渗流");
-        cate->setObjectName("seepageAnalysisObj");
-        auto* panel = cate->addPannel("分析");
-        auto* actParam =
-            makeAction(this, ":/resources/menu/minimal/analysis-seepage.svg", "&渗流分析");
-        addActionToPanel(panel, actParam, 3);
-        bindEvent(this, actParam, PublicConstants::kActionSeepageKey);
-    }
 
     // =========================
     // 几何
@@ -1923,6 +1944,16 @@ void UiFrame::buildRibbonTabs()
             bindEvent(this, actSeismicAndAddedMass,
                       PublicConstants::kActionPhysicalSeismicAndAddedMass);
         }
+    }
+
+    {
+        auto* cate = m_ribbon->addCategoryPage("渗流");
+        cate->setObjectName("seepageAnalysisObj");
+        auto* panel = cate->addPannel("分析");
+        auto* actParam =
+            makeAction(this, ":/resources/menu/minimal/analysis-seepage.svg", "&渗流分析");
+        addActionToPanel(panel, actParam, 3);
+        bindEvent(this, actParam, PublicConstants::kActionSeepageKey);
     }
 
            // =========================

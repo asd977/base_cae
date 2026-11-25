@@ -1,9 +1,16 @@
 #include "CavernTemplateDialog.h"
 
+#include "../builders/BooleanBuilder.h"
+#include "../builders/GeometryBuildUtils.h"
+#include "../core/CadDocument.h"
+#include "../core/CadBody.h"
 #include <BRepBuilderAPI_MakeFace.hxx>
 #include <BRepBuilderAPI_MakePolygon.hxx>
 #include <BRepPrimAPI_MakePrism.hxx>
+#include <BRepBuilderAPI_Transform.hxx>
 #include <BRep_Builder.hxx>
+#include <Bnd_Box.hxx>
+#include <BRepBndLib.hxx>
 #include <GeomManagerInstance.h>
 #include <GeometryCleanup.h>
 #include <GeometryServiceAccess.h>
@@ -33,6 +40,9 @@
 #include <gp_Vec.hxx>
 #include <services/ProjectManagerService.h>
 #include <services/VisualWidgetService.h>
+#include <services/PreProcessingService.h>
+#include <GeometryWorkbench.h>
+#include <GeometryDisplayManager.h>
 
 namespace
 {
@@ -228,6 +238,35 @@ CavernTemplateDialog::CavernTemplateDialog(QWidget* parent)
     form->addRow("顶部围岩厚度 Htop", topRockEdit);
     form->addRow("底部围岩厚度 Hbot", bottomRockEdit);
 
+    auto* geoGroup = new QGroupBox("地质体开挖联动", this);
+    auto* geoForm = new QFormLayout(geoGroup);
+    m_linkGeology = new QCheckBox("关联目标地质体进行地下开挖", this);
+    m_geologyCombo = new QComboBox(this);
+    m_geologyCombo->setEnabled(false);
+    m_posXEdit = new QLineEdit("0", this);
+    m_posYEdit = new QLineEdit("0", this);
+    m_posZEdit = new QLineEdit("0", this);
+    auto* coordValidator = new QDoubleValidator(-1.0e9, 1.0e9, 3, this);
+    m_posXEdit->setValidator(coordValidator);
+    m_posYEdit->setValidator(coordValidator);
+    m_posZEdit->setValidator(coordValidator);
+    m_posXEdit->setEnabled(false);
+    m_posYEdit->setEnabled(false);
+    m_posZEdit->setEnabled(false);
+
+    geoForm->addRow(m_linkGeology);
+    geoForm->addRow("目标地质体", m_geologyCombo);
+    auto* posRow = new QHBoxLayout();
+    posRow->addWidget(new QLabel("X:")); posRow->addWidget(m_posXEdit);
+    posRow->addWidget(new QLabel("Y:")); posRow->addWidget(m_posYEdit);
+    posRow->addWidget(new QLabel("Z:")); posRow->addWidget(m_posZEdit);
+    geoForm->addRow("定位坐标 (X,Y,Z)", posRow);
+
+    connect(m_linkGeology, &QCheckBox::toggled, this, &CavernTemplateDialog::onLinkGeologyToggled);
+    connect(m_geologyCombo, QOverload<int>::of(&QComboBox::currentIndexChanged), this, [this](int) {
+        applyTargetGeologyDefaults();
+    });
+
     auto* row = new QHBoxLayout();
     row->setContentsMargins(0, 0, 0, 0);
     auto* generateButton = new QPushButton("生成洞室", this);
@@ -241,6 +280,7 @@ CavernTemplateDialog::CavernTemplateDialog(QWidget* parent)
     diagramLabel->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Ignored);
 
     contentLayout->addWidget(inputGroup);
+    contentLayout->addWidget(geoGroup);
     contentLayout->addLayout(row);
     contentLayout->addWidget(diagramLabel, 2);
     contentLayout->addStretch(1);
@@ -248,6 +288,76 @@ CavernTemplateDialog::CavernTemplateDialog(QWidget* parent)
     connect(generateButton, &QPushButton::clicked, this, &CavernTemplateDialog::onGenerateClicked);
 
     updateDiagram();
+}
+
+void CavernTemplateDialog::applyTargetGeologyDefaults()
+{
+    if (!m_geologyCombo) return;
+    const QString uuid = m_geologyCombo->currentData().toString();
+    if (uuid.isEmpty()) return;
+    auto* doc = GeomManager::CadDocument::getInstance();
+    if (!doc) return;
+    CadBody* b = doc->getGeomShapeObject(uuid);
+    if (!b || !b->getShape() || b->getShape()->IsNull()) return;
+    Bnd_Box box;
+    BRepBndLib::Add(*(b->getShape()), box);
+    if (box.IsVoid()) return;
+    double xmin, ymin, zmin, xmax, ymax, zmax;
+    box.Get(xmin, ymin, zmin, xmax, ymax, zmax);
+    if (m_posXEdit) m_posXEdit->setText(QString::number((xmin + xmax) * 0.5, 'f', 1));
+    if (m_posYEdit) m_posYEdit->setText(QString::number((ymin + ymax) * 0.5, 'f', 1));
+    if (m_posZEdit) m_posZEdit->setText(QString::number(zmin + (zmax - zmin) * 0.35, 'f', 1));
+}
+
+void CavernTemplateDialog::refreshGeologyCombo()
+{
+    if (!m_geologyCombo) return;
+    const QString currentUuid = m_geologyCombo->currentData().toString();
+    const QSignalBlocker blocker(m_geologyCombo);
+    m_geologyCombo->clear();
+    auto* doc = GeomManager::CadDocument::getInstance();
+    if (!doc) return;
+    const auto map = doc->getShapMap();
+    int defaultIdx = -1;
+    for (auto it = map.cbegin(); it != map.cend(); ++it)
+    {
+        if (it.key() == m_uuid) continue;
+        CadBody* b = it.value();
+        if (!b || !b->getShape() || b->getShape()->IsNull()) continue;
+        m_geologyCombo->addItem(b->getName().isEmpty() ? it.key() : b->getName(), it.key());
+        if (b->getName().contains("地形") || b->getName().contains("地质") || !b->faceGroups().isEmpty())
+            defaultIdx = m_geologyCombo->count() - 1;
+    }
+    if (!currentUuid.isEmpty())
+    {
+        int idx = m_geologyCombo->findData(currentUuid);
+        if (idx >= 0) m_geologyCombo->setCurrentIndex(idx);
+    }
+    else if (defaultIdx >= 0)
+    {
+        m_geologyCombo->setCurrentIndex(defaultIdx);
+    }
+}
+
+void CavernTemplateDialog::onLinkGeologyToggled(bool checked)
+{
+    if (m_geologyCombo) m_geologyCombo->setEnabled(checked);
+    if (m_posXEdit) m_posXEdit->setEnabled(checked);
+    if (m_posYEdit) m_posYEdit->setEnabled(checked);
+    if (m_posZEdit) m_posZEdit->setEnabled(checked);
+    if (checked)
+    {
+        refreshGeologyCombo();
+        applyTargetGeologyDefaults();
+    }
+}
+
+void CavernTemplateDialog::showEvent(QShowEvent* event)
+{
+    BasePage::showEvent(event);
+    refreshGeologyCombo();
+    if (m_linkGeology && m_linkGeology->isChecked())
+        applyTargetGeologyDefaults();
 }
 
 QJsonObject CavernTemplateDialog::saveJson()
@@ -261,6 +371,11 @@ QJsonObject CavernTemplateDialog::saveJson()
     object["sideRock"] = readEdit(this, "sideRockEdit", 18.0);
     object["topRock"] = readEdit(this, "topRockEdit", 16.0);
     object["bottomRock"] = readEdit(this, "bottomRockEdit", 8.0);
+    object["linkGeology"] = m_linkGeology ? m_linkGeology->isChecked() : false;
+    object["targetGeology"] = m_geologyCombo ? m_geologyCombo->currentData().toString() : QString();
+    object["posX"] = m_posXEdit ? m_posXEdit->text().toDouble() : 0.0;
+    object["posY"] = m_posYEdit ? m_posYEdit->text().toDouble() : 0.0;
+    object["posZ"] = m_posZEdit ? m_posZEdit->text().toDouble() : 0.0;
     return object;
 }
 
@@ -284,6 +399,24 @@ void CavernTemplateDialog::loadJson(const QJsonObject& object)
         setEditIfExists(this, "topRockEdit", object["topRock"].toDouble());
     if (object.contains("bottomRock"))
         setEditIfExists(this, "bottomRockEdit", object["bottomRock"].toDouble());
+
+    if (m_linkGeology && object.contains("linkGeology"))
+    {
+        m_linkGeology->setChecked(object["linkGeology"].toBool());
+        onLinkGeologyToggled(m_linkGeology->isChecked());
+    }
+    if (m_geologyCombo && object.contains("targetGeology"))
+    {
+        const QString target = object["targetGeology"].toString();
+        int idx = m_geologyCombo->findData(target);
+        if (idx >= 0) m_geologyCombo->setCurrentIndex(idx);
+    }
+    if (m_posXEdit && object.contains("posX"))
+        m_posXEdit->setText(QString::number(object["posX"].toDouble()));
+    if (m_posYEdit && object.contains("posY"))
+        m_posYEdit->setText(QString::number(object["posY"].toDouble()));
+    if (m_posZEdit && object.contains("posZ"))
+        m_posZEdit->setText(QString::number(object["posZ"].toDouble()));
 
     updateDiagram();
 }
@@ -378,6 +511,115 @@ void CavernTemplateDialog::buildLayeredCavern(double span, double wallH, double 
 void CavernTemplateDialog::onGenerateClicked()
 {
     updateDiagram();
+
+    if (m_linkGeology && m_linkGeology->isChecked())
+    {
+        const QString targetUuid = m_geologyCombo ? m_geologyCombo->currentData().toString() : QString();
+        if (targetUuid.isEmpty())
+        {
+            QMessageBox::warning(this, tr("参数提示"), tr("请选择要关联的目标地质体。"));
+            return;
+        }
+
+        const double span = spanEdit->text().toDouble();
+        const double wallH = wallHEdit->text().toDouble();
+        const double archH = archHEdit->text().toDouble();
+        const double len = lenEdit->text().toDouble();
+        const double posX = m_posXEdit ? m_posXEdit->text().toDouble() : 0.0;
+        const double posY = m_posYEdit ? m_posYEdit->text().toDouble() : 0.0;
+        const double posZ = m_posZEdit ? m_posZEdit->text().toDouble() : 0.0;
+
+        if (span <= kEps || wallH <= kEps || archH <= kEps || len <= kEps)
+        {
+            QMessageBox::warning(this, tr("参数错误"), tr("洞室尺寸必须大于 0。"));
+            return;
+        }
+
+        const QVector<QPointF> profile = buildCavernProfile(span, wallH, archH);
+        TopoDS_Shape voidSolid = makePrismFromProfile(profile, len);
+        if (voidSolid.IsNull())
+        {
+            QMessageBox::warning(this, tr("生成失败"), tr("无法构建洞室开挖断面实体。"));
+            return;
+        }
+
+        auto* doc = GeomManager::CadDocument::getInstance();
+        CadBody* targetBody = doc ? doc->getGeomShapeObject(targetUuid) : nullptr;
+        if (targetBody && targetBody->getShape())
+        {
+            Bnd_Box geoBox;
+            BRepBndLib::Add(*(targetBody->getShape()), geoBox);
+            if (!geoBox.IsVoid())
+            {
+                double xmin, ymin, zmin, xmax, ymax, zmax;
+                geoBox.Get(xmin, ymin, zmin, xmax, ymax, zmax);
+                if (qAbs(posX) < 1.0 && qAbs(posY) < 1.0 && (xmin > 10.0 || xmax < -10.0))
+                {
+                    applyTargetGeologyDefaults();
+                }
+            }
+        }
+
+        const double actualX = m_posXEdit ? m_posXEdit->text().toDouble() : posX;
+        const double actualY = m_posYEdit ? m_posYEdit->text().toDouble() : posY;
+        const double actualZ = m_posZEdit ? m_posZEdit->text().toDouble() : posZ;
+
+        gp_Trsf trsf;
+        trsf.SetTranslation(gp_Vec(actualX - span * 0.5, actualY - len * 0.5, actualZ));
+        BRepBuilderAPI_Transform xform(voidSolid, trsf);
+        TopoDS_Shape placedVoid = xform.Shape();
+
+        TopoDS_Shape cutGeology;
+        QVector<int> newFaceIndices;
+        QString errorMsg;
+        if (!BooleanBuilder::excavateFromGeology(targetUuid, placedVoid, cutGeology, newFaceIndices, errorMsg))
+        {
+            QMessageBox::warning(this, tr("开挖失败"), tr("地下洞室开挖布尔裁剪失败：%1").arg(errorMsg));
+            return;
+        }
+
+        const QString targetName = targetBody ? targetBody->getName() : tr("地质体");
+
+        GeometryBuildUtils::registerShape(targetUuid, targetName, new TopoDS_Shape(cutGeology));
+        if (auto* body = doc ? doc->getGeomShapeObject(targetUuid) : nullptr)
+        {
+            body->addFaceGroup({QStringLiteral("洞室开挖面组"), QStringLiteral("Excavation"), newFaceIndices});
+        }
+
+        // 移除旧的地形高程伪彩预览，确保布尔开挖后的三维洞室空腔立即可见
+        GeometryDisplayManager::removeTerrainPreview(targetUuid);
+
+        // 注册开挖体实体（橙色半透明显示，方便观察围岩与开挖块相对位置）
+        GeometryBuildUtils::registerShape(m_uuid, getDisplayName(), new TopoDS_Shape(placedVoid));
+        if (auto* voidBody = doc ? doc->getGeomShapeObject(m_uuid) : nullptr)
+        {
+            voidBody->setDisplayColor(QColor(242, 140, 38, 102));
+            if (auto surfActor = voidBody->getSurfActor())
+            {
+                surfActor->GetProperty()->SetColor(0.95, 0.55, 0.15);
+                surfActor->GetProperty()->SetOpacity(0.4);
+            }
+        }
+
+        // 同步树节点状态、勾选并提交历史
+        if (auto* pre = ServiceRegistry::instance().getService<PreProcessingService>())
+        {
+            if (auto* workbench = dynamic_cast<GeometryWorkbench*>(pre))
+            {
+                workbench->refreshTreePresentation(m_uuid);
+                workbench->refreshTreePresentation(targetUuid);
+            }
+        }
+
+        if (auto* vis = ServiceRegistry::instance().getService<VisualWidgetService>())
+            vis->render();
+
+        QMessageBox::information(this, tr("开挖完成"),
+            tr("已在目标地质体中成功挖出地下洞室，新产生开挖内壁面 %1 个，已自动归入【洞室开挖面组】。")
+            .arg(newFaceIndices.size()));
+        return;
+    }
+
     IGeometryService* service = requireGeometryService(this);
     if (!service)
         return;

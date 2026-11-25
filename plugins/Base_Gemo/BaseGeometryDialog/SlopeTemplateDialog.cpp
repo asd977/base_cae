@@ -1,8 +1,15 @@
 #include "SlopeTemplateDialog.h"
 
+#include "../builders/BooleanBuilder.h"
+#include "../builders/GeometryBuildUtils.h"
+#include "../core/CadDocument.h"
+#include "../core/CadBody.h"
 #include <BRepBuilderAPI_MakeFace.hxx>
 #include <BRepBuilderAPI_MakePolygon.hxx>
 #include <BRepPrimAPI_MakePrism.hxx>
+#include <BRepBuilderAPI_Transform.hxx>
+#include <Bnd_Box.hxx>
+#include <BRepBndLib.hxx>
 #include <GeomManagerInstance.h>
 #include <GeometryCleanup.h>
 #include <GeometryServiceAccess.h>
@@ -31,6 +38,9 @@
 #include <gp_Vec.hxx>
 #include <services/ProjectManagerService.h>
 #include <services/VisualWidgetService.h>
+#include <services/PreProcessingService.h>
+#include <GeometryWorkbench.h>
+#include <GeometryDisplayManager.h>
 
 namespace
 {
@@ -224,6 +234,35 @@ SlopeTemplateDialog::SlopeTemplateDialog(QWidget* parent)
     form->addRow("模型厚度 L", lenEdit);
     form->addRow("台阶级数 N", benchCountEdit);
 
+    auto* geoGroup = new QGroupBox("地质体开挖联动", this);
+    auto* geoForm = new QFormLayout(geoGroup);
+    m_linkGeology = new QCheckBox("关联目标地质体进行边坡开挖", this);
+    m_geologyCombo = new QComboBox(this);
+    m_geologyCombo->setEnabled(false);
+    m_posXEdit = new QLineEdit("0", this);
+    m_posYEdit = new QLineEdit("0", this);
+    m_posZEdit = new QLineEdit("0", this);
+    auto* coordValidator = new QDoubleValidator(-1.0e9, 1.0e9, 3, this);
+    m_posXEdit->setValidator(coordValidator);
+    m_posYEdit->setValidator(coordValidator);
+    m_posZEdit->setValidator(coordValidator);
+    m_posXEdit->setEnabled(false);
+    m_posYEdit->setEnabled(false);
+    m_posZEdit->setEnabled(false);
+
+    geoForm->addRow(m_linkGeology);
+    geoForm->addRow("目标地质体", m_geologyCombo);
+    auto* posRow = new QHBoxLayout();
+    posRow->addWidget(new QLabel("X:")); posRow->addWidget(m_posXEdit);
+    posRow->addWidget(new QLabel("Y:")); posRow->addWidget(m_posYEdit);
+    posRow->addWidget(new QLabel("Z:")); posRow->addWidget(m_posZEdit);
+    geoForm->addRow("定位坐标 (X,Y,Z)", posRow);
+
+    connect(m_linkGeology, &QCheckBox::toggled, this, &SlopeTemplateDialog::onLinkGeologyToggled);
+    connect(m_geologyCombo, QOverload<int>::of(&QComboBox::currentIndexChanged), this, [this](int) {
+        applyTargetGeologyDefaults();
+    });
+
     auto* row = new QHBoxLayout();
     row->setContentsMargins(0, 0, 0, 0);
     auto* generateButton = new QPushButton("生成边坡", this);
@@ -237,6 +276,7 @@ SlopeTemplateDialog::SlopeTemplateDialog(QWidget* parent)
     diagramLabel->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Ignored);
 
     contentLayout->addWidget(inputGroup);
+    contentLayout->addWidget(geoGroup);
     contentLayout->addLayout(row);
     contentLayout->addWidget(diagramLabel, 2);
     contentLayout->addStretch(1);
@@ -244,6 +284,78 @@ SlopeTemplateDialog::SlopeTemplateDialog(QWidget* parent)
     connect(generateButton, &QPushButton::clicked, this, &SlopeTemplateDialog::onGenerateClicked);
 
     updateDiagram();
+}
+
+void SlopeTemplateDialog::applyTargetGeologyDefaults()
+{
+    if (!m_geologyCombo) return;
+    const QString uuid = m_geologyCombo->currentData().toString();
+    if (uuid.isEmpty()) return;
+    auto* doc = GeomManager::CadDocument::getInstance();
+    if (!doc) return;
+    CadBody* b = doc->getGeomShapeObject(uuid);
+    if (!b || !b->getShape() || b->getShape()->IsNull()) return;
+    Bnd_Box box;
+    BRepBndLib::Add(*(b->getShape()), box);
+    if (box.IsVoid()) return;
+    double xmin, ymin, zmin, xmax, ymax, zmax;
+    box.Get(xmin, ymin, zmin, xmax, ymax, zmax);
+    if (m_posXEdit) m_posXEdit->setText(QString::number(xmin + (xmax - xmin) * 0.25, 'f', 1));
+    if (m_posYEdit) m_posYEdit->setText(QString::number((ymin + ymax) * 0.5, 'f', 1));
+    if (m_posZEdit) m_posZEdit->setText(QString::number(zmin + (zmax - zmin) * 0.4, 'f', 1));
+    if (lenEdit && lenEdit->text().toDouble() < 100.0)
+        lenEdit->setText(QString::number(qMax(100.0, (ymax - ymin) * 0.3), 'f', 1));
+}
+
+void SlopeTemplateDialog::refreshGeologyCombo()
+{
+    if (!m_geologyCombo) return;
+    const QString currentUuid = m_geologyCombo->currentData().toString();
+    const QSignalBlocker blocker(m_geologyCombo);
+    m_geologyCombo->clear();
+    auto* doc = GeomManager::CadDocument::getInstance();
+    if (!doc) return;
+    const auto map = doc->getShapMap();
+    int defaultIdx = -1;
+    for (auto it = map.cbegin(); it != map.cend(); ++it)
+    {
+        if (it.key() == m_uuid) continue;
+        CadBody* b = it.value();
+        if (!b || !b->getShape() || b->getShape()->IsNull()) continue;
+        m_geologyCombo->addItem(b->getName().isEmpty() ? it.key() : b->getName(), it.key());
+        if (b->getName().contains("地形") || b->getName().contains("地质") || !b->faceGroups().isEmpty())
+            defaultIdx = m_geologyCombo->count() - 1;
+    }
+    if (!currentUuid.isEmpty())
+    {
+        int idx = m_geologyCombo->findData(currentUuid);
+        if (idx >= 0) m_geologyCombo->setCurrentIndex(idx);
+    }
+    else if (defaultIdx >= 0)
+    {
+        m_geologyCombo->setCurrentIndex(defaultIdx);
+    }
+}
+
+void SlopeTemplateDialog::onLinkGeologyToggled(bool checked)
+{
+    if (m_geologyCombo) m_geologyCombo->setEnabled(checked);
+    if (m_posXEdit) m_posXEdit->setEnabled(checked);
+    if (m_posYEdit) m_posYEdit->setEnabled(checked);
+    if (m_posZEdit) m_posZEdit->setEnabled(checked);
+    if (checked)
+    {
+        refreshGeologyCombo();
+        applyTargetGeologyDefaults();
+    }
+}
+
+void SlopeTemplateDialog::showEvent(QShowEvent* event)
+{
+    BasePage::showEvent(event);
+    refreshGeologyCombo();
+    if (m_linkGeology && m_linkGeology->isChecked())
+        applyTargetGeologyDefaults();
 }
 
 QJsonObject SlopeTemplateDialog::saveJson()
@@ -257,6 +369,11 @@ QJsonObject SlopeTemplateDialog::saveJson()
     object["baseH"] = readEdit(this, "baseHeightEdit", 15.0);
     object["l"] = lenEdit->text().toDouble();
     object["bc"] = benchCountEdit->text().toInt();
+    object["linkGeology"] = m_linkGeology ? m_linkGeology->isChecked() : false;
+    object["targetGeology"] = m_geologyCombo ? m_geologyCombo->currentData().toString() : QString();
+    object["posX"] = m_posXEdit ? m_posXEdit->text().toDouble() : 0.0;
+    object["posY"] = m_posYEdit ? m_posYEdit->text().toDouble() : 0.0;
+    object["posZ"] = m_posZEdit ? m_posZEdit->text().toDouble() : 0.0;
     return object;
 }
 
@@ -280,6 +397,24 @@ void SlopeTemplateDialog::loadJson(const QJsonObject& object)
         lenEdit->setText(QString::number(object["l"].toDouble()));
     if (object.contains("bc"))
         benchCountEdit->setText(QString::number(object["bc"].toInt()));
+
+    if (m_linkGeology && object.contains("linkGeology"))
+    {
+        m_linkGeology->setChecked(object["linkGeology"].toBool());
+        onLinkGeologyToggled(m_linkGeology->isChecked());
+    }
+    if (m_geologyCombo && object.contains("targetGeology"))
+    {
+        const QString target = object["targetGeology"].toString();
+        int idx = m_geologyCombo->findData(target);
+        if (idx >= 0) m_geologyCombo->setCurrentIndex(idx);
+    }
+    if (m_posXEdit && object.contains("posX"))
+        m_posXEdit->setText(QString::number(object["posX"].toDouble()));
+    if (m_posYEdit && object.contains("posY"))
+        m_posYEdit->setText(QString::number(object["posY"].toDouble()));
+    if (m_posZEdit && object.contains("posZ"))
+        m_posZEdit->setText(QString::number(object["posZ"].toDouble()));
 
     updateDiagram();
 }
@@ -349,6 +484,120 @@ void SlopeTemplateDialog::buildLayeredSlope(double H, double Bmid, double Ws, do
 void SlopeTemplateDialog::onGenerateClicked()
 {
     updateDiagram();
+
+    if (m_linkGeology && m_linkGeology->isChecked())
+    {
+        const QString targetUuid = m_geologyCombo ? m_geologyCombo->currentData().toString() : QString();
+        if (targetUuid.isEmpty())
+        {
+            QMessageBox::warning(this, tr("参数提示"), tr("请选择要关联的目标地质体。"));
+            return;
+        }
+
+        const double H = hEdit->text().toDouble();
+        const double Bmid = benchWidthEdit->text().toDouble();
+        const double Ws = slopeEdit->text().toDouble();
+        const double L = lenEdit->text().toDouble();
+        const int N = benchCountEdit->text().toInt();
+        const double top = readEdit(this, "topPlatformEdit", 20.0);
+        const double Etoe = readEdit(this, "toeExtensionEdit", 30.0);
+        const double Hbase = readEdit(this, "baseHeightEdit", 15.0);
+        const double posX = m_posXEdit ? m_posXEdit->text().toDouble() : 0.0;
+        const double posY = m_posYEdit ? m_posYEdit->text().toDouble() : 0.0;
+        const double posZ = m_posZEdit ? m_posZEdit->text().toDouble() : 0.0;
+
+        if (H <= kEps || top < 0.0 || Bmid < 0.0 || Ws <= kEps || Etoe < 0.0 ||
+            Hbase <= kEps || L <= kEps || N <= 0)
+        {
+            QMessageBox::warning(this, tr("参数错误"), tr("请检查边坡参数设置。"));
+            return;
+        }
+
+        const QVector<QPointF> profile = buildSlopeProfile2D(H, top, Bmid, Ws, Etoe, Hbase, N);
+        TopoDS_Shape slopeSolid = makePrismFromProfile(profile, L);
+        if (slopeSolid.IsNull())
+        {
+            QMessageBox::warning(this, tr("生成失败"), tr("无法构建边坡开挖体实体。"));
+            return;
+        }
+
+        auto* doc = GeomManager::CadDocument::getInstance();
+        CadBody* targetBody = doc ? doc->getGeomShapeObject(targetUuid) : nullptr;
+        if (targetBody && targetBody->getShape())
+        {
+            Bnd_Box geoBox;
+            BRepBndLib::Add(*(targetBody->getShape()), geoBox);
+            if (!geoBox.IsVoid())
+            {
+                double xmin, ymin, zmin, xmax, ymax, zmax;
+                geoBox.Get(xmin, ymin, zmin, xmax, ymax, zmax);
+                if (qAbs(posX) < 1.0 && qAbs(posY) < 1.0 && (xmin > 10.0 || xmax < -10.0))
+                {
+                    applyTargetGeologyDefaults();
+                }
+            }
+        }
+
+        const double actualX = m_posXEdit ? m_posXEdit->text().toDouble() : posX;
+        const double actualY = m_posYEdit ? m_posYEdit->text().toDouble() : posY;
+        const double actualZ = m_posZEdit ? m_posZEdit->text().toDouble() : posZ;
+
+        gp_Trsf trsf;
+        trsf.SetTranslation(gp_Vec(actualX, actualY - L * 0.5, actualZ));
+        BRepBuilderAPI_Transform xform(slopeSolid, trsf);
+        TopoDS_Shape placedSlope = xform.Shape();
+
+        TopoDS_Shape cutGeology;
+        QVector<int> newFaceIndices;
+        QString errorMsg;
+        if (!BooleanBuilder::excavateFromGeology(targetUuid, placedSlope, cutGeology, newFaceIndices, errorMsg))
+        {
+            QMessageBox::warning(this, tr("开挖失败"), tr("边坡开挖布尔裁剪失败：%1").arg(errorMsg));
+            return;
+        }
+
+        const QString targetName = targetBody ? targetBody->getName() : tr("地质体");
+
+        GeometryBuildUtils::registerShape(targetUuid, targetName, new TopoDS_Shape(cutGeology));
+        if (auto* body = doc ? doc->getGeomShapeObject(targetUuid) : nullptr)
+        {
+            body->addFaceGroup({QStringLiteral("边坡开挖面组"), QStringLiteral("Excavation"), newFaceIndices});
+        }
+
+        // 移除旧的地形高程伪彩预览，确保布尔开挖后的边坡台阶立即可见
+        GeometryDisplayManager::removeTerrainPreview(targetUuid);
+
+        // 注册开挖体实体（青蓝色半透明显示）
+        GeometryBuildUtils::registerShape(m_uuid, getDisplayName(), new TopoDS_Shape(placedSlope));
+        if (auto* voidBody = doc ? doc->getGeomShapeObject(m_uuid) : nullptr)
+        {
+            voidBody->setDisplayColor(QColor(51, 178, 217, 102));
+            if (auto surfActor = voidBody->getSurfActor())
+            {
+                surfActor->GetProperty()->SetColor(0.2, 0.7, 0.85);
+                surfActor->GetProperty()->SetOpacity(0.4);
+            }
+        }
+
+        // 同步树节点状态、勾选并提交历史
+        if (auto* pre = ServiceRegistry::instance().getService<PreProcessingService>())
+        {
+            if (auto* workbench = dynamic_cast<GeometryWorkbench*>(pre))
+            {
+                workbench->refreshTreePresentation(m_uuid);
+                workbench->refreshTreePresentation(targetUuid);
+            }
+        }
+
+        if (auto* vis = ServiceRegistry::instance().getService<VisualWidgetService>())
+            vis->render();
+
+        QMessageBox::information(this, tr("开挖完成"),
+            tr("已在目标地质体中成功切出边坡，新产生边坡开挖面 %1 个，已自动归入【边坡开挖面组】。")
+            .arg(newFaceIndices.size()));
+        return;
+    }
+
     IGeometryService* service = requireGeometryService(this);
     if (!service)
         return;

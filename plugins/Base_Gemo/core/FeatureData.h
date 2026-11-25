@@ -3,7 +3,9 @@
 #include <QJsonObject>
 #include <QString>
 #include <QStringList>
+#include <QVector>
 #include <geometry_global.h>
+#include "CadBody.h"
 
 class GEOMETRY_EXPORT FeatureData
 {
@@ -16,8 +18,10 @@ public:
     bool visible = true;
     QJsonObject state;
     QString cachedBrep;
+    QString cachedBrepAsset;
     QStringList inputUuids;
     QStringList missingInputUuids;
+    QVector<CadBody::FaceGroup> faceGroups;
 
     bool isValid() const;
     bool hasMissingInputs() const;

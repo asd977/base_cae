@@ -118,7 +118,7 @@
         </property>
         <layout class="QGridLayout" name="gridLayout">
          <item row="0" column="1">
-          <widget class="QDoubleSpinBox" name="spinFbx">
+          <widget class="CompactDoubleSpinBox" name="spinFbx">
            <property name="decimals">
             <number>6</number>
            </property>
@@ -137,7 +137,7 @@
           </widget>
          </item>
          <item row="2" column="1">
-          <widget class="QDoubleSpinBox" name="spinFbz">
+          <widget class="CompactDoubleSpinBox" name="spinFbz">
            <property name="decimals">
             <number>6</number>
            </property>
@@ -175,7 +175,7 @@
 </widget>
          </item>
          <item row="1" column="1">
-          <widget class="QDoubleSpinBox" name="spinFby">
+          <widget class="CompactDoubleSpinBox" name="spinFby">
            <property name="decimals">
             <number>6</number>
            </property>
@@ -415,6 +415,8 @@
    <extends>QComboBox</extends>
    <header>CustomComboBox.h</header>
   </customwidget>
+ 
+  <customwidget><class>CompactDoubleSpinBox</class><extends>QDoubleSpinBox</extends><header>CompactDoubleSpinBox.h</header></customwidget>
  </customwidgets>
  <resources />
  <connections />

@@ -10,8 +10,15 @@
 #include <QJsonObject>
 #include <QTemporaryDir>
 #include <QTextStream>
+#include <vtkCell.h>
+#include <vtkCellData.h>
 #include <vtkDataArray.h>
+#include <vtkDataSetSurfaceFilter.h>
+#include <vtkFeatureEdges.h>
+#include <vtkFieldData.h>
 #include <vtkPointData.h>
+#include <vtkPolyData.h>
+#include <vtkStaticCleanUnstructuredGrid.h>
 #include <vtkUnstructuredGrid.h>
 #include <algorithm>
 #include <cmath>
@@ -137,6 +144,66 @@ int main(int argc, char** argv)
         if (args.size() == 3) {
             require(PostResultAutoPrepare::prepareDirectory(args[1], args[2]), "Actual result preparation failed");
             verifyFiles(args[1], args[2]);
+            const auto files = PostResultAutoPrepare::resultFiles(args[1], args[2], false);
+            for (const auto& file : files) {
+                if (file.kind != QStringLiteral("displacement")) continue;
+                QString err;
+                auto grid = PostTecplotUtils::readGrid(file.filePath, &err);
+                require(grid != nullptr, err);
+
+                auto geometryOnly = vtkSmartPointer<vtkUnstructuredGrid>::New();
+                geometryOnly->ShallowCopy(grid);
+                geometryOnly->GetPointData()->Initialize();
+                geometryOnly->GetCellData()->Initialize();
+                geometryOnly->GetFieldData()->Initialize();
+
+                auto weld = vtkSmartPointer<vtkStaticCleanUnstructuredGrid>::New();
+                weld->SetInputData(geometryOnly);
+                weld->SetTolerance(0.0);
+                weld->Update();
+
+                auto surface = vtkSmartPointer<vtkDataSetSurfaceFilter>::New();
+                surface->SetInputConnection(weld->GetOutputPort());
+                surface->Update();
+
+                int y0PosNormal = 0, y0NegNormal = 0;
+                int y1PosNormal = 0, y1NegNormal = 0;
+                vtkPolyData* surfPoly = surface->GetOutput();
+                for (vtkIdType cid = 0; cid < surfPoly->GetNumberOfCells(); ++cid) {
+                    vtkCell* c = surfPoly->GetCell(cid);
+                    if (!c || c->GetNumberOfPoints() < 3) continue;
+                    double p0[3], p1[3], p2[3];
+                    surfPoly->GetPoint(c->GetPointId(0), p0);
+                    surfPoly->GetPoint(c->GetPointId(1), p1);
+                    surfPoly->GetPoint(c->GetPointId(2), p2);
+                    const bool allY0 = std::abs(p0[1]) < 1e-5 && std::abs(p1[1]) < 1e-5 && std::abs(p2[1]) < 1e-5;
+                    const bool allY1 = std::abs(p0[1] - 1.0) < 1e-5 && std::abs(p1[1] - 1.0) < 1e-5 && std::abs(p2[1] - 1.0) < 1e-5;
+                    const double ny = (p1[2] - p0[2]) * (p2[0] - p0[0]) - (p1[0] - p0[0]) * (p2[2] - p0[2]);
+                    if (allY0) {
+                        if (ny > 0) ++y0PosNormal; else ++y0NegNormal;
+                    } else if (allY1) {
+                        if (ny > 0) ++y1PosNormal; else ++y1NegNormal;
+                    }
+                }
+                require((y0PosNormal == 0 || y0NegNormal == 0) &&
+                        (y1PosNormal == 0 || y1NegNormal == 0),
+                        "Inconsistent wedge/hex surface normals on extruded faces");
+
+                auto edges = vtkSmartPointer<vtkFeatureEdges>::New();
+                edges->SetInputData(surfPoly);
+                edges->BoundaryEdgesOn();
+                edges->FeatureEdgesOn();
+                edges->SetFeatureAngle(50.0);
+                edges->ManifoldEdgesOff();
+                edges->NonManifoldEdgesOff();
+                edges->ColoringOff();
+                edges->Update();
+
+                vtkPolyData* edgePoly = edges->GetOutput();
+                std::cout << "rawSurfaceCells=" << surfPoly->GetNumberOfCells()
+                          << " featureEdges=" << edgePoly->GetNumberOfCells() << std::endl;
+                break;
+            }
         } else {
             fixture(2, true);
             fixture(3, true);

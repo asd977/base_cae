@@ -9,6 +9,7 @@
 #include <QMessageBox>
 #include <QPushButton>
 #include <QSettings>
+#include <QStyle>
 #include <QTreeWidget>
 #include <QTreeWidgetItem>
 
@@ -25,6 +26,11 @@ SolverSettingWidget::SolverSettingWidget(QWidget* parent)
     Q_UNUSED(parent);
     ui->setupUi(this);
     SolverUiLayoutHelper::polishPage(this);
+    ui->batchComputeButton->setProperty("primaryAction",true);
+    ui->batchHintLabel->setToolTip(QStringLiteral("按工程树顺序计算勾选的节点，同一时间只运行一个求解器。"));
+    const int rowHeight=fontMetrics().lineSpacing()+style()->pixelMetric(QStyle::PM_FocusFrameVMargin)*2;
+    ui->batchAnalysisTree->setMinimumHeight(5*rowHeight+ui->batchAnalysisTree->header()->sizeHint().height());
+    ui->batchAnalysisTree->setMaximumHeight(9*rowHeight+ui->batchAnalysisTree->header()->sizeHint().height());
 
     m_computeDeviceCombo = ui->comboComputeDevice;
     m_gpuModeCombo = ui->comboGpuMode;
@@ -191,7 +197,7 @@ void SolverSettingWidget::setAnalysisCounts(int seepageCount, int damCount, int 
 {
     const int total = seepageCount + damCount + slopeCount + caveCount + blockCount;
     ui->analysisSummaryLabel->setText(
-        tr("共 %1 个分析：渗流 %2、土石坝 %3、边坡 %4、洞室开挖 %5、块体稳定 %6")
+        tr("共 %1 个分析\n渗流 %2 · 土石坝 %3 · 边坡 %4\n洞室 %5 · 块体稳定 %6")
             .arg(total)
             .arg(seepageCount)
             .arg(damCount)

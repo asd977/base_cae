@@ -8,6 +8,10 @@
 #include <QSet>
 #include <QString>
 #include <QWidget>
+#include <QList>
+#include <QPointer>
+#include <atomic>
+#include <memory>
 
 namespace Ui
 {
@@ -23,6 +27,8 @@ class vtkLookupTable;
 class vtkMapper;
 class vtkPolyData;
 class vtkUnstructuredGrid;
+class QThread;
+class QTimer;
 
 class GridEditingWidget : public BasePage
 {
@@ -69,7 +75,14 @@ class GridEditingWidget : public BasePage
 
     void refreshMeshActors();
     void buildOrUpdateViewGrid();
-    vtkSmartPointer<vtkUnstructuredGrid> extractCells(const vtkSmartPointer<vtkIdList>& ids) const;
+    void presentView();
+    void publishFilter();
+    void cancelPendingFilter();
+    void captureViewInputs();
+    QString filterKey() const;
+    void cacheCurrentView(const QString& key);
+    static vtkSmartPointer<vtkUnstructuredGrid> extractCells(vtkUnstructuredGrid* grid,
+        const vtkSmartPointer<vtkIdList>& ids);
     void setMapperInput(vtkMapper* mapper, vtkDataSet* dataSet) const;
 
     QMap<int, int> collectCellIntCounts(const char* arrayName) const;
@@ -122,4 +135,20 @@ class GridEditingWidget : public BasePage
     vtkMapper* m_lineMapper = nullptr;
 
     bool m_updatingFilterTree = false;
+    struct CachedView
+    {
+        QString key;
+        vtkSmartPointer<vtkPolyData> surface;
+        vtkSmartPointer<vtkUnstructuredGrid> lines;
+    };
+    QList<CachedView> m_cachedViews;
+    QString m_appliedFilterKey;
+    vtkSmartPointer<vtkUnstructuredGrid> m_sourceGrid;
+    unsigned long m_sourceMTime = 0;
+    QTimer* m_autoApplyTimer = nullptr;
+    quint64 m_filterGeneration = 0;
+    QSet<quint64> m_runningFilterGenerations;
+    QList<std::shared_ptr<std::atomic_bool>> m_filterCancellations;
+    QList<QPointer<QThread>> m_filterThreads;
+    bool m_filterRequestPending = false;
 };

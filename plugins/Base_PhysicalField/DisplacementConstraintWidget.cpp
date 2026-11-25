@@ -1,4 +1,5 @@
-﻿#include "DisplacementConstraintWidget.h"
+﻿#include <CompactDoubleSpinBox.h>
+#include "DisplacementConstraintWidget.h"
 
 #include <PublicConstants.h>
 #include <PublicVariables.h>
@@ -726,7 +727,7 @@ DisplacementConstraintWidget::DisplacementConstraintWidget(QWidget* parent)
     const std::array<QComboBox*,3> directionCombos={ui->UXLineEdit,ui->UYLineEdit,ui->UZLineEdit};
     for(int axis=0;axis<3;++axis)
     {
-        auto* value=new QDoubleSpinBox(this);
+        auto* value=new CompactDoubleSpinBox(this);
         value->setObjectName(QStringLiteral("prescribedValue%1").arg(axis));
         value->setDecimals(10);value->setRange(-1.e6,1.e6);value->setSuffix(QStringLiteral(" m"));
         value->setToolTip(QStringLiteral("施加给当前选区的位移，正负号按全局坐标方向；自定义荷载静力分析使用。"));
@@ -742,7 +743,7 @@ DisplacementConstraintWidget::DisplacementConstraintWidget(QWidget* parent)
     const int prescribedIndex=m_rotation->findData(QStringLiteral("2"));m_rotation->setItemText(prescribedIndex,QStringLiteral("指定转角"));
     m_rotation->removeItem(m_rotation->findData(QStringLiteral("-10000")));
     setConstraintValue(m_rotation,QStringLiteral("1"));
-    m_rotationValue=new QDoubleSpinBox(this);m_rotationValue->setDecimals(10);m_rotationValue->setRange(-1.e6,1.e6);m_rotationValue->setSuffix(QStringLiteral(" rad"));
+    m_rotationValue=new CompactDoubleSpinBox(this);m_rotationValue->setDecimals(10);m_rotationValue->setRange(-1.e6,1.e6);m_rotationValue->setSuffix(QStringLiteral(" rad"));
     ui->gridLayout->addWidget(rotationLabel,4,0);ui->gridLayout->addWidget(m_rotation,4,1);ui->gridLayout->addWidget(m_rotationValue,4,2);
     rotationLabel->setVisible(is2D);m_rotation->setVisible(is2D);m_rotationValue->hide();
     connect(m_rotation,qOverload<int>(&QComboBox::currentIndexChanged),this,[this,is2D]{m_rotationValue->setVisible(is2D&&m_rotation->currentData().toString()==QStringLiteral("2"));});

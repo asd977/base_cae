@@ -94,7 +94,7 @@
 </widget>
          </item>
          <item row="7" column="1">
-          <widget class="QDoubleSpinBox" name="spinPgrout">
+          <widget class="CompactDoubleSpinBox" name="spinPgrout">
            <property name="decimals">
             <number>6</number>
            </property>
@@ -226,7 +226,7 @@
           </layout>
          </item>
          <item row="6" column="1">
-          <widget class="QDoubleSpinBox" name="spinRou">
+          <widget class="CompactDoubleSpinBox" name="spinRou">
            <property name="decimals">
             <number>6</number>
            </property>
@@ -319,7 +319,7 @@
           </widget>
          </item>
          <item row="5" column="1">
-          <widget class="QDoubleSpinBox" name="spinHeight">
+          <widget class="CompactDoubleSpinBox" name="spinHeight">
            <property name="decimals">
             <number>6</number>
            </property>
@@ -391,6 +391,8 @@
    <extends>QComboBox</extends>
    <header>CustomComboBox.h</header>
   </customwidget>
+ 
+  <customwidget><class>CompactDoubleSpinBox</class><extends>QDoubleSpinBox</extends><header>CompactDoubleSpinBox.h</header></customwidget>
  </customwidgets>
  <resources />
  <connections />

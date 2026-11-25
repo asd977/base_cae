@@ -75,8 +75,7 @@ int main(int argc, char** argv)
         }
         int shared=0; for(const auto& edge:owners) if(edge.second.size()==2) ++shared;
         check(shared>0,"Adjacent surface domains share mesh nodes");
-        request.localSizeControls={{2,1,QVector3D(5,5,0),10.,.8},
-                                   {1,1,QVector3D(5,0,0),10.,.5}};
+        request.localSizeControls={{2,1,.8}, {1,1,.5}};
         auto fine=generate(request);
         check(fine.nativeSubmeshCount>=2 && fine.surfaceElementCount>coarse.surfaceElementCount,
               "Native Face and Edge SubMeshes refine the mesh");
@@ -106,7 +105,7 @@ int main(int argc, char** argv)
         int common=0; for(const auto& node:nodeRegions) if(node.second.size()==2) ++common;
         check(common>=3,"Shared volume interface uses common nodes");
         QFile nas(request.nasPath); check(nas.open(QIODevice::ReadOnly) && nas.readAll().contains("CTETRA"),"Nastran export");
-        request.localSizeControls={{3,1,QVector3D(5,5,5),10.,2.}};
+        request.localSizeControls={{3,1,2.}};
         auto localTet=generate(request);
         std::cout << "Solid sizing: " << tet.volumeElementCount << " -> " << localTet.volumeElementCount << " cells\n";
         check(localTet.nativeSubmeshCount>0 && localTet.volumeElementCount>tet.volumeElementCount,"Native Solid sizing");

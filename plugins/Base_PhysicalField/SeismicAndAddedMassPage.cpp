@@ -1,4 +1,5 @@
 #include "SeismicAndAddedMassPage.h"
+#include <CompactNumberDelegate.h>
 
 #include <PublicConstants.h>
 #include <PublicVariables.h>
@@ -24,6 +25,7 @@ SeismicAndAddedMassPage::SeismicAndAddedMassPage(QWidget* parent)
     : BasePage("SeismicAndAddedMassPage"), ui(new Ui::SeismicAndAddedMassPage)
 {
     ui->setupUi(this);
+    ui->tableSeismic->setItemDelegate(new CompactNumberDelegate(ui->tableSeismic));
 
     // 表格初始化：4列 T AX AY AZ
     ui->tableSeismic->setColumnCount(4);

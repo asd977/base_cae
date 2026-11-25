@@ -1,6 +1,7 @@
 #include "TemplateGeometryBuilder.h"
 
 #include "GeometryBuildUtils.h"
+#include "BooleanBuilder.h"
 
 #include "CadDocument.h"
 #include "CadBody.h"
@@ -9,6 +10,7 @@
 #include <ServiceRegistry.h>
 #include <services/ProjectManagerService.h>
 #include <services/VisualWidgetService.h>
+#include <vtkProperty.h>
 
 #include <BRepPrimAPI_MakeBox.hxx>
 #include <BRepPrimAPI_MakeSphere.hxx>
@@ -453,6 +455,190 @@ bool TemplateGeometryBuilder::recreateCavernTemplate(const QString& uuid, const 
     addBandSolid(compound, builder, minX, maxX, minX, maxX, cavernH, maxZ, length);
 
     registerShape(uuid, name, new TopoDS_Shape(compound));
+    return true;
+}
+
+static QVector<QPointF> buildCavernProfile(double span, double wallH, double archH)
+{
+    QVector<QPointF> profile;
+    profile << QPointF(0.0, 0.0)
+            << QPointF(span, 0.0)
+            << QPointF(span, wallH)
+            << QPointF(span * 0.75, wallH + archH)
+            << QPointF(span * 0.25, wallH + archH)
+            << QPointF(0.0, wallH);
+    return profile;
+}
+
+bool TemplateGeometryBuilder::recreateSlopeTemplateLinked(
+    const QString& uuid, const QString& name, const QString& targetUuid,
+    double height, double benchWidth, double slope, double length,
+    int benchCount, double top, double toe, double baseH,
+    double posX, double posY, double posZ)
+{
+    if (height <= kEps || top < 0.0 || benchWidth < 0.0 || slope <= kEps || toe < 0.0 ||
+        baseH <= kEps || length <= kEps || benchCount <= 0)
+        return false;
+    auto* doc = GeomManager::CadDocument::getInstance();
+    if (!doc || !doc->getGeomShapeObject(targetUuid))
+        return false;
+
+    const QVector<QPointF> profile = buildSlopeProfile2D(height, top, benchWidth, slope, toe, baseH, benchCount);
+    TopoDS_Shape slopeSolid = makePrismFromProfile(profile, length);
+    if (slopeSolid.IsNull())
+        return false;
+
+    gp_Trsf trsf;
+    trsf.SetTranslation(gp_Vec(posX, posY - length * 0.5, posZ));
+    BRepBuilderAPI_Transform xform(slopeSolid, trsf);
+    TopoDS_Shape placedSlope = xform.Shape();
+
+    TopoDS_Shape cutGeology;
+    QVector<int> newFaceIndices;
+    QString errorMsg;
+    if (!BooleanBuilder::excavateFromGeology(targetUuid, placedSlope, cutGeology, newFaceIndices, errorMsg))
+        return false;
+
+    CadBody* targetBody = doc->getGeomShapeObject(targetUuid);
+    const QString targetName = targetBody ? targetBody->getName() : QStringLiteral("地质体");
+    registerShape(targetUuid, targetName, new TopoDS_Shape(cutGeology));
+    if (auto* body = doc->getGeomShapeObject(targetUuid))
+        body->addFaceGroup({QStringLiteral("边坡开挖面组"), QStringLiteral("Excavation"), newFaceIndices});
+    GeometryDisplayManager::removeTerrainPreview(targetUuid);
+
+    registerShape(uuid, name, new TopoDS_Shape(placedSlope));
+    if (auto* voidBody = doc->getGeomShapeObject(uuid))
+    {
+        voidBody->setDisplayColor(QColor(51, 178, 217, 102));
+        if (auto surfActor = voidBody->getSurfActor())
+        {
+            surfActor->GetProperty()->SetColor(0.2, 0.7, 0.85);
+            surfActor->GetProperty()->SetOpacity(0.4);
+        }
+    }
+    return true;
+}
+
+bool TemplateGeometryBuilder::recreateCavernTemplateLinked(
+    const QString& uuid, const QString& name, const QString& targetUuid,
+    double span, double wallH, double archH, double length,
+    double posX, double posY, double posZ)
+{
+    if (span <= kEps || wallH <= kEps || archH <= kEps || length <= kEps)
+        return false;
+    auto* doc = GeomManager::CadDocument::getInstance();
+    if (!doc || !doc->getGeomShapeObject(targetUuid))
+        return false;
+
+    const QVector<QPointF> profile = buildCavernProfile(span, wallH, archH);
+    TopoDS_Shape voidSolid = makePrismFromProfile(profile, length);
+    if (voidSolid.IsNull())
+        return false;
+
+    gp_Trsf trsf;
+    trsf.SetTranslation(gp_Vec(posX - span * 0.5, posY - length * 0.5, posZ));
+    BRepBuilderAPI_Transform xform(voidSolid, trsf);
+    TopoDS_Shape placedVoid = xform.Shape();
+
+    TopoDS_Shape cutGeology;
+    QVector<int> newFaceIndices;
+    QString errorMsg;
+    if (!BooleanBuilder::excavateFromGeology(targetUuid, placedVoid, cutGeology, newFaceIndices, errorMsg))
+        return false;
+
+    CadBody* targetBody = doc->getGeomShapeObject(targetUuid);
+    const QString targetName = targetBody ? targetBody->getName() : QStringLiteral("地质体");
+    registerShape(targetUuid, targetName, new TopoDS_Shape(cutGeology));
+    if (auto* body = doc->getGeomShapeObject(targetUuid))
+        body->addFaceGroup({QStringLiteral("洞室开挖面组"), QStringLiteral("Excavation"), newFaceIndices});
+    GeometryDisplayManager::removeTerrainPreview(targetUuid);
+
+    registerShape(uuid, name, new TopoDS_Shape(placedVoid));
+    if (auto* voidBody = doc->getGeomShapeObject(uuid))
+    {
+        voidBody->setDisplayColor(QColor(242, 140, 38, 102));
+        if (auto surfActor = voidBody->getSurfActor())
+        {
+            surfActor->GetProperty()->SetColor(0.95, 0.55, 0.15);
+            surfActor->GetProperty()->SetOpacity(0.4);
+        }
+    }
+    return true;
+}
+
+bool TemplateGeometryBuilder::recreateEarthRockfillDamLinked(
+    const QString& uuid, const QString& name, const QString& targetUuid,
+    double height, double crestWidth, double upSlope, double downSlope,
+    double length, double posX, double posY, double posZ)
+{
+    if (height <= kEps || crestWidth <= kEps || upSlope <= kEps || downSlope <= kEps || length <= kEps)
+        return false;
+    auto* doc = GeomManager::CadDocument::getInstance();
+    if (!doc || !doc->getGeomShapeObject(targetUuid))
+        return false;
+
+    const double bottomW = upSlope + crestWidth + downSlope;
+    QVector<QPointF> profile;
+    profile << QPointF(0.0, 0.0)
+            << QPointF(bottomW, 0.0)
+            << QPointF(upSlope + crestWidth, height)
+            << QPointF(upSlope, height);
+    TopoDS_Shape rawDam = makePrismFromProfile(profile, length);
+    if (rawDam.IsNull())
+        return false;
+
+    gp_Trsf trsf;
+    trsf.SetTranslation(gp_Vec(posX - bottomW * 0.5, posY - length * 0.5, posZ));
+    BRepBuilderAPI_Transform xform(rawDam, trsf);
+    TopoDS_Shape placedDam = xform.Shape();
+
+    TopoDS_Shape fittedDam;
+    QVector<int> contactFaces;
+    QString errorMsg;
+    if (!BooleanBuilder::fitDamToValley(targetUuid, placedDam, fittedDam, contactFaces, errorMsg))
+        return false;
+
+    registerShape(uuid, name, new TopoDS_Shape(fittedDam));
+    if (auto* body = doc->getGeomShapeObject(uuid))
+        body->addFaceGroup({QStringLiteral("土石坝基底接触面组"), QStringLiteral("Contact"), contactFaces});
+    return true;
+}
+
+bool TemplateGeometryBuilder::recreateGravityDamLinked(
+    const QString& uuid, const QString& name, const QString& targetUuid,
+    double height, double crestWidth, double upSlope, double downSlope,
+    double length, double posX, double posY, double posZ)
+{
+    if (height <= kEps || crestWidth <= kEps || length <= kEps)
+        return false;
+    auto* doc = GeomManager::CadDocument::getInstance();
+    if (!doc || !doc->getGeomShapeObject(targetUuid))
+        return false;
+
+    const double bottomW = crestWidth + height * (upSlope + downSlope);
+    QVector<QPointF> profile;
+    profile << QPointF(0.0, 0.0)
+            << QPointF(bottomW, 0.0)
+            << QPointF(height * upSlope + crestWidth, height)
+            << QPointF(height * upSlope, height);
+    TopoDS_Shape rawDam = makePrismFromProfile(profile, length);
+    if (rawDam.IsNull())
+        return false;
+
+    gp_Trsf trsf;
+    trsf.SetTranslation(gp_Vec(posX - bottomW * 0.5, posY - length * 0.5, posZ));
+    BRepBuilderAPI_Transform xform(rawDam, trsf);
+    TopoDS_Shape placedDam = xform.Shape();
+
+    TopoDS_Shape fittedDam;
+    QVector<int> contactFaces;
+    QString errorMsg;
+    if (!BooleanBuilder::fitDamToValley(targetUuid, placedDam, fittedDam, contactFaces, errorMsg))
+        return false;
+
+    registerShape(uuid, name, new TopoDS_Shape(fittedDam));
+    if (auto* body = doc->getGeomShapeObject(uuid))
+        body->addFaceGroup({QStringLiteral("重力坝基底接触面组"), QStringLiteral("Contact"), contactFaces});
     return true;
 }
 

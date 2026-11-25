@@ -1,4 +1,6 @@
 #include "../plugins/Base_Mesh/SmeshMeshGenerator.h"
+#include "../plugins/Base_Mesh/core/SmeshOccPartitioner.h"
+#include <PartitionFaceOrder.h>
 #include <BRepPrimAPI_MakeBox.hxx>
 #include <BRepTools.hxx>
 #include <BRep_Builder.hxx>
@@ -26,14 +28,12 @@ static void check(bool ok,const char* message){if(!ok)throw std::runtime_error(m
 static TopAbs_ShapeEnum type(int dim){return dim==3?TopAbs_SOLID:dim==2?TopAbs_FACE:TopAbs_EDGE;}
 static SmeshEntityReference reference(const TopoDS_Shape& shape,int dim,int id)
 {
-    TopTools_IndexedMapOfShape shapes;TopExp::MapShapes(shape,type(dim),shapes);GProp_GProps p;
-    if(dim==3)BRepGProp::VolumeProperties(shapes(id),p);else if(dim==2)BRepGProp::SurfaceProperties(shapes(id),p);else BRepGProp::LinearProperties(shapes(id),p);
-    const auto c=p.CentreOfMass();return {dim,id,QVector3D(c.X(),c.Y(),c.Z()),std::abs(p.Mass())};
+    Q_UNUSED(shape); return {dim,id};
 }
 static int faceAt(const TopoDS_Shape& shape,double x,double y,double z)
 {
     TopTools_IndexedMapOfShape faces;TopExp::MapShapes(shape,TopAbs_FACE,faces);
-    for(int i=1;i<=faces.Extent();++i)if((reference(shape,2,i).center-QVector3D(x,y,z)).length()<1.e-5)return i;
+    for(int i=1;i<=faces.Extent();++i) { GProp_GProps props;BRepGProp::SurfaceProperties(faces(i),props);const auto c=props.CentreOfMass();if((QVector3D(c.X(),c.Y(),c.Z())-QVector3D(x,y,z)).length()<1.e-5)return i; }
     throw std::runtime_error("Face fixture missing");
 }
 static SmeshMeshingResult generate(const SmeshMeshingRequest& request)
@@ -125,6 +125,31 @@ int main(int argc,char** argv)
         invalid=request;invalid.workflow.sweeps.push_back(sweep);
         check(!SmeshMeshGenerator::generate(invalid,&failed,&error)&&error.contains(QStringLiteral("多个扫掠")),"Reject two Sweep methods on the same Solid");
         std::cout<<"PASS: custom precision, automatic minimum and duplicate Sweep validation\n";
+        SmeshMeshingRequest partitioned;partitioned.inputGeometryPath=work.filePath("manual.brep");
+        check(BRepTools::Write(BRepPrimAPI_MakeBox(10,10,10).Shape(),QFile::encodeName(partitioned.inputGeometryPath).constData()),"Write manual partition CAD");
+        partitioned.lenMax=4.;partitioned.lenMin=.1;partitioned.exportVtk=false;partitioned.exportNas=false;
+        SmeshPartitionSettings cut;cut.axis=0;cut.coordinate=5;cut.targetVolumeUiId=1;cut.target={3,1};
+        partitioned.workflow.partitions={cut};
+        SmeshOccPartitioner::Settings fixture;fixture.inputStepPath=partitioned.inputGeometryPath;
+        fixture.outputBrepPath=work.filePath("preview.brep");fixture.rules={cut};
+        const auto preview=SmeshOccPartitioner::partition(fixture);
+        TopoDS_Shape previewShape;BRep_Builder reader;
+        check(BRepTools::Read(previewShape,QFile::encodeName(preview.brepPath).constData(),reader),"Read partition preview");
+        TopTools_IndexedMapOfShape blocks;TopExp::MapShapes(previewShape,TopAbs_SOLID,blocks);
+        const auto caps=GeometryPartitionTopology::orderedFaces(blocks(1));
+        int sourceCap=0,targetCap=0;double left=1.e100,right=-1.e100;
+        for(int i=0;i<caps.size();++i) {
+            if(caps[i].cx<left){left=caps[i].cx;sourceCap=i+1;}
+            if(caps[i].cx>right){right=caps[i].cx;targetCap=i+1;}
+        }
+        SmeshSweepSettings block;block.uuid="manual-sweep";block.name="Manual block";block.partitionRegion=true;
+        block.volumeId=1;block.volume={3,1};block.sourceFaceId=sourceCap;block.targetFaceId=targetCap;
+        block.source={2,sourceCap,1};block.target={2,targetCap,1};block.layers=3;block.sourceSize=4.;
+        partitioned.workflow.sweeps={block};
+        auto manual=generate(partitioned);int swept=0;
+        for(vtkIdType i=0;i<manual.grid->GetNumberOfCells();++i)swept+=manual.grid->GetCellType(i)==VTK_HEXAHEDRON;
+        check(swept>0,"Explicit partition-local face references lost Sweep");
+        std::cout<<"PASS: manual partition sweep uses region and local-face indices\n";
         return 0;
     }catch(const std::exception& ex){std::cerr<<"FAIL: "<<ex.what()<<std::endl;return 1;}
 }

@@ -43,6 +43,10 @@
 #include <QHeaderView>
 #include <QSignalBlocker>
 #include <QTimer>
+#include <QThread>
+#include <QCoreApplication>
+#include <vtkCellTypes.h>
+#include <exception>
 #include <QStringList>
 #include <QTreeWidget>
 #include <QTreeWidgetItem>
@@ -494,7 +498,8 @@ static void addViewSurfaceFace(vtkPolyData* out,
     }
 }
 
-static vtkSmartPointer<vtkPolyData> buildMappedViewSurface(vtkUnstructuredGrid* grid)
+static vtkSmartPointer<vtkPolyData> buildMappedViewSurface(vtkUnstructuredGrid* grid,
+    const std::shared_ptr<std::atomic_bool>& cancelled = {})
 {
     auto out = vtkSmartPointer<vtkPolyData>::New();
     if (!grid || grid->GetNumberOfCells() <= 0 || !grid->GetPoints())
@@ -533,6 +538,7 @@ static vtkSmartPointer<vtkPolyData> buildMappedViewSurface(vtkUnstructuredGrid* 
     const vtkIdType nCells = grid->GetNumberOfCells();
     for (vtkIdType cid = 0; cid < nCells; ++cid)
     {
+        if ((cid & 4095) == 0 && cancelled && cancelled->load()) return nullptr;
         const int dim = viewCellDimension(grid, cid);
         vtkCell* cell = grid->GetCell(cid);
         if (!cell)
@@ -646,6 +652,10 @@ GridEditingWidget::GridEditingWidget(QWidget* parent)
     setProperty("visualControlPanel", true);
     setAttribute(Qt::WA_StyledBackground, true);
     m_visualWidgetService = ServiceRegistry::instance().getService<VisualWidgetService>();
+    m_autoApplyTimer = new QTimer(this);
+    m_autoApplyTimer->setSingleShot(true);
+    m_autoApplyTimer->setInterval(0);
+    connect(m_autoApplyTimer,&QTimer::timeout,this,&GridEditingWidget::applyFilterFromTree);
 
     if (ui->comboBoxColorMode)
     {
@@ -669,7 +679,11 @@ GridEditingWidget::GridEditingWidget(QWidget* parent)
     {
         // 默认即时应用；大型网格仍可关闭此选项后手动应用。
         ui->checkBoxAutoApply->setChecked(true);
-        ui->checkBoxAutoApply->setToolTip(QStringLiteral("勾选后，筛选项变化会立即更新显示。"));
+        ui->checkBoxAutoApply->setToolTip(QStringLiteral("勾选后，筛选项变化会在后台更新显示。"));
+        connect(ui->checkBoxAutoApply,&QCheckBox::toggled,this,[this](bool on) {
+            if (on) m_autoApplyTimer->start();
+            else m_autoApplyTimer->stop();
+        });
     }
 
     if (ui->checkBoxShowBranding)
@@ -731,16 +745,29 @@ GridEditingWidget::GridEditingWidget(QWidget* parent)
             ui->checkBoxShowBranding->setChecked(
                 data.value(QStringLiteral("visible"), true).toBool());
         });
+    EventManager::instance().registerHandler(QStringLiteral("scene.mesh.visibility.changed"),this,
+        [this](const QVariantMap& data) {
+            if(!data.value(QStringLiteral("visible")).toBool())cancelPendingFilter();
+            else if(m_fullGrid && ui->checkBoxAutoApply->isChecked() && filterKey()!=m_appliedFilterKey)
+                m_autoApplyTimer->start();
+        });
     updateContextPresentation();
 }
 
 GridEditingWidget::~GridEditingWidget()
 {
+    cancelPendingFilter();
+    for (const auto& thread : m_filterThreads) if(thread) thread->wait();
     delete ui;
 }
 
 void GridEditingWidget::clearData()
 {
+    cancelPendingFilter();
+    m_cachedViews.clear();
+    m_appliedFilterKey.clear();
+    m_sourceGrid=nullptr;
+    m_sourceMTime=0;
     m_fullGrid = nullptr;
     m_viewSurface = nullptr;
     m_viewLineGrid = nullptr;
@@ -771,7 +798,14 @@ void GridEditingWidget::clearData()
 
 void GridEditingWidget::setEditableGrid(vtkUnstructuredGrid* grid, const QString& sourceName)
 {
+    if (grid && m_sourceGrid.GetPointer()==grid && m_sourceMTime==grid->GetMTime()) {
+        refreshMeshActors();
+        if(!m_viewSurface) { captureViewInputs();m_appliedFilterKey=filterKey();cacheCurrentView(m_appliedFilterKey); }
+        return;
+    }
     clearData();
+    m_sourceGrid=grid;
+    m_sourceMTime=grid ? grid->GetMTime() : 0;
     m_sourceName = sourceName;
 
            // 颜色模式属于网格的全局显示状态。重新进入页面时保持导入后或用户选择的模式。
@@ -881,6 +915,9 @@ void GridEditingWidget::setEditableGrid(vtkUnstructuredGrid* grid, const QString
 
     buildFilterTreeFromGrid();
     refreshMeshActors();
+    captureViewInputs();
+    m_appliedFilterKey=filterKey();
+    cacheCurrentView(m_appliedFilterKey);
 }
 
 void GridEditingWidget::clearGrid()
@@ -942,17 +979,19 @@ void GridEditingWidget::refreshMeshActors()
 }
 
 vtkSmartPointer<vtkUnstructuredGrid> GridEditingWidget::extractCells(
-    const vtkSmartPointer<vtkIdList>& ids) const
+    vtkUnstructuredGrid* grid, const vtkSmartPointer<vtkIdList>& ids)
 {
     auto out = vtkSmartPointer<vtkUnstructuredGrid>::New();
-    if (!m_fullGrid || !ids || ids->GetNumberOfIds() <= 0)
+    if (!grid || !ids || ids->GetNumberOfIds() <= 0)
         return out;
 
-    auto source = copyWithFullCellIds(m_fullGrid);
+    auto source = copyWithFullCellIds(grid);
+    if (ids->GetNumberOfIds()==grid->GetNumberOfCells()) { out->ShallowCopy(source); return out; }
 
     auto extractor = vtkSmartPointer<vtkExtractCells>::New();
     extractor->SetInputData(source);
     extractor->SetCellList(ids);
+    extractor->SetAssumeSortedAndUniqueIds(true);
     extractor->Update();
 
     out->ShallowCopy(extractor->GetOutput());
@@ -975,84 +1014,145 @@ void GridEditingWidget::setMapperInput(vtkMapper* mapper, vtkDataSet* dataSet) c
         dataSetMapper->SetInputData(dataSet);
 }
 
+void GridEditingWidget::cancelPendingFilter()
+{
+    ++m_filterGeneration;
+    if(m_autoApplyTimer)m_autoApplyTimer->stop();
+    for(const auto& cancelled:m_filterCancellations)cancelled->store(true);
+    m_filterRequestPending=false;
+    setProperty("mesh.display.pending",false);
+    if(ui && ui->pushButtonApplyFilter)
+        ui->pushButtonApplyFilter->setText(QStringLiteral("应用筛选"));
+}
+
+QString GridEditingWidget::filterKey() const
+{
+    return intSetToString(m_filterTopologies)+'/'+intSetToString(m_filterKetypes)+'/'
+        +intSetToString(m_filterMatypes)+'/'+intSetToString(m_filterLayers)+'/'+intSetToString(m_filterRegions);
+}
+
+void GridEditingWidget::cacheCurrentView(const QString& key)
+{
+    if(!m_viewSurface||!m_viewLineGrid)return;
+    for(const auto& view:m_cachedViews)if(view.key==key)return;
+    m_cachedViews.append({key,m_viewSurface,m_viewLineGrid});
+    const QString allKey=intSetToString(m_allTopologies)+'/'+intSetToString(m_allKetypes)+'/'
+        +intSetToString(m_allMatypes)+'/'+intSetToString(m_allLayers)+'/'+intSetToString(m_allRegions);
+    const auto memory=[this] { unsigned long size=0;for(const auto& view:m_cachedViews)
+        size+=view.surface->GetActualMemorySize()+view.lines->GetActualMemorySize();return size; };
+    while(m_cachedViews.size()>3||(!m_cachedViews.isEmpty()&&memory()>256*1024))
+        m_cachedViews.removeAt(m_cachedViews.size()>1&&m_cachedViews.first().key==allKey?1:0);
+}
+
+void GridEditingWidget::captureViewInputs()
+{
+    if(auto* mapper=vtkPolyDataMapper::SafeDownCast(m_surfaceMapper))m_viewSurface=mapper->GetInput();
+    if(auto* mapper=vtkDataSetMapper::SafeDownCast(m_lineMapper))
+        m_viewLineGrid=vtkUnstructuredGrid::SafeDownCast(mapper->GetInput());
+    if(!m_viewLineGrid)m_viewLineGrid=vtkSmartPointer<vtkUnstructuredGrid>::New();
+}
+
 void GridEditingWidget::buildOrUpdateViewGrid()
 {
     refreshMeshActors();
-
-    if (!m_visualWidgetService || !m_fullGrid)
-        return;
-
-           // “全部隐藏”是高频操作，大网格没必要再扫描几十万个 Cell、抽取并重建表面。
-           // 直接隐藏 Actor；重新勾选后再按当前条件重建即可。
-    const bool definitelyEmpty =
-        (!m_allTopologies.isEmpty() && m_filterTopologies.isEmpty()) ||
-        (!m_allKetypes.isEmpty() && m_filterKetypes.isEmpty()) ||
-        (!m_allMatypes.isEmpty() && m_filterMatypes.isEmpty()) ||
-        (!m_allLayers.isEmpty() && m_filterLayers.isEmpty());
-    if (definitelyEmpty)
-    {
-        m_visualWidgetService->setVisible(kImportedMeshSurfacePropId, false, false);
-        m_visualWidgetService->setVisible(kImportedMeshLinePropId, false, false);
-        m_visualWidgetService->render();
-        return;
+    if(!m_visualWidgetService||!m_fullGrid)return;
+    const QString key=filterKey();
+    if(m_viewSurface&&key==m_appliedFilterKey) {
+        m_filterRequestPending=false;setProperty("mesh.display.pending",false);
+        ui->pushButtonApplyFilter->setText(QStringLiteral("应用筛选"));return;
     }
-
-    auto surfaceCellIds = vtkSmartPointer<vtkIdList>::New();
-    auto lineCellIds = vtkSmartPointer<vtkIdList>::New();
-
-    for (vtkIdType cellId = 0; cellId < m_fullGrid->GetNumberOfCells(); ++cellId)
-    {
-        // 先做纯数组筛选，只有命中的 Cell 才构造 vtkCell，减少大网格筛选时的对象开销。
-        if (!cellMatchesFilter(cellId))
-            continue;
-
-        vtkCell* cell = m_fullGrid->GetCell(cellId);
-        if (!cell)
-            continue;
-
-        const int dim = cell->GetCellDimension();
-        if (dim >= 2)
-            surfaceCellIds->InsertNextId(cellId);
-        else if (dim == 1)
-            lineCellIds->InsertNextId(cellId);
+    for(const auto& view:m_cachedViews)if(view.key==key) {
+        m_viewSurface=view.surface;m_viewLineGrid=view.lines;m_appliedFilterKey=key;
+        m_filterRequestPending=false;setProperty("mesh.display.pending",false);
+        ui->pushButtonApplyFilter->setText(QStringLiteral("应用筛选"));presentView();return;
     }
+    if(m_runningFilterGenerations.contains(m_filterGeneration)||m_runningFilterGenerations.size()>=2)return;
+    const auto source=m_fullGrid;
+    const auto generation=m_filterGeneration;
+    const auto topologies=m_filterTopologies,ketypes=m_filterKetypes,matypes=m_filterMatypes,
+        layers=m_filterLayers,regions=m_filterRegions;
+    const bool byTopology=!m_allTopologies.isEmpty(),byKetype=!m_allKetypes.isEmpty(),
+        byMatype=!m_allMatypes.isEmpty(),byLayer=!m_allLayers.isEmpty(),byRegion=!m_allRegions.isEmpty();
+    struct Result { vtkSmartPointer<vtkPolyData> surface;vtkSmartPointer<vtkUnstructuredGrid> lines;QString error; };
+    const auto result=std::make_shared<Result>();
+    const auto cancelled=std::make_shared<std::atomic_bool>(false);
+    auto* thread=QThread::create([source,result,cancelled,topologies,ketypes,matypes,layers,regions,
+        byTopology,byKetype,byMatype,byLayer,byRegion] {
+        try {
+            if(cancelled->load())return;
+            auto grid=vtkSmartPointer<vtkUnstructuredGrid>::New();grid->ShallowCopy(source);
+            auto surfaceIds=vtkSmartPointer<vtkIdList>::New(),lineIds=vtkSmartPointer<vtkIdList>::New();
+            auto* cd=grid->GetCellData();
+            auto* topology=cd->GetArray("TOPOLOGY_TYPE");auto* ketype=cd->GetArray("KETYPE");
+            auto* matype=cd->GetArray("MATYPE");auto* layer=cd->GetArray("LAYER");auto* region=cd->GetArray("src_part");
+            const bool empty=(byTopology&&topologies.isEmpty())||(byKetype&&ketypes.isEmpty())
+                ||(byMatype&&matypes.isEmpty())||(byLayer&&layers.isEmpty())||(byRegion&&regions.isEmpty());
+            if(!empty)for(vtkIdType cid=0;cid<grid->GetNumberOfCells();++cid) {
+                if((cid&4095)==0&&cancelled->load())return;
+                if((byTopology&&!topologies.contains(tuple1i(topology,cid,grid->GetCellType(cid))))
+                    ||(byKetype&&!ketypes.contains(tuple1i(ketype,cid)))
+                    ||(byMatype&&!matypes.contains(tuple1i(matype,cid)))
+                    ||(byLayer&&!layers.contains(tuple1i(layer,cid)))
+                    ||(byRegion&&!regions.contains(tuple1i(region,cid))))continue;
+                const int dim=vtkCellTypes::GetDimension(grid->GetCellType(cid));
+                if(dim>=2)surfaceIds->InsertNextId(cid);else if(dim==1)lineIds->InsertNextId(cid);
+            }
+            if(cancelled->load())return;
+            result->surface=surfaceIds->GetNumberOfIds()>0
+                ? buildMappedViewSurface(extractCells(grid,surfaceIds),cancelled)
+                : vtkSmartPointer<vtkPolyData>::New();
+            if(cancelled->load())return;
+            result->lines=extractCells(grid,lineIds);
+        } catch(const std::exception& error) {result->error=QString::fromUtf8(error.what());}
+        catch(...) {result->error=QStringLiteral("显示数据构造失败。");}
+    });
+    m_runningFilterGenerations.insert(generation);m_filterCancellations.append(cancelled);m_filterThreads.append(thread);
+    setProperty("mesh.display.workerRunning",true);
+    connect(thread,&QThread::finished,thread,&QObject::deleteLater);
+    connect(QCoreApplication::instance(),&QCoreApplication::aboutToQuit,thread,[thread]{thread->wait();},Qt::DirectConnection);
+    connect(thread,&QThread::finished,this,[this,result,cancelled,source,generation,key,thread] {
+        m_runningFilterGenerations.remove(generation);m_filterCancellations.removeOne(cancelled);m_filterThreads.removeAll(thread);
+        setProperty("mesh.display.workerRunning",!m_runningFilterGenerations.isEmpty());
+        if(source!=m_fullGrid||generation!=m_filterGeneration) {
+            if(m_filterRequestPending)buildOrUpdateViewGrid();return;
+        }
+        m_filterRequestPending=false;setProperty("mesh.display.pending",false);
+        ui->pushButtonApplyFilter->setText(QStringLiteral("应用筛选"));
+        if(!result->error.isEmpty()||!result->surface||!result->lines) {
+            qWarning()<<QStringLiteral("网格显示更新失败：")+result->error;return;
+        }
+        m_viewSurface=result->surface;m_viewLineGrid=result->lines;m_appliedFilterKey=key;
+        cacheCurrentView(key);refreshMeshActors();presentView();
+    },Qt::QueuedConnection);
+    thread->start();
+}
 
-    if (surfaceCellIds->GetNumberOfIds() > 0)
-    {
-        auto surfaceSource = extractCells(surfaceCellIds);
-        // 不再用 vtkDataSetSurfaceFilter 直接抽壳。
-        // 直接抽壳只保证 vtkOriginalCellIds，无法稳定提供 originalFaceIds，
-        // 高阶单元/内部界面/筛选后局部点编号都会导致 PickManager 反推错面。
-        m_viewSurface = buildMappedViewSurface(surfaceSource);
-    }
-    else
-    {
-        m_viewSurface = vtkSmartPointer<vtkPolyData>::New();
-    }
+void GridEditingWidget::publishFilter()
+{
+    const bool custom=!setEquals(m_allTopologies,m_filterTopologies)||!setEquals(m_allKetypes,m_filterKetypes)
+        ||!setEquals(m_allMatypes,m_filterMatypes)||!setEquals(m_allLayers,m_filterLayers)||!setEquals(m_allRegions,m_filterRegions);
+    setGlobalValue(kGlobalFilterCustomKey,custom);
+    setGlobalValue(kGlobalFilterTopologyKey,intSetToString(m_filterTopologies));
+    setGlobalValue(kGlobalFilterKetypeKey,intSetToString(m_filterKetypes));
+    setGlobalValue(kGlobalFilterMatypeKey,intSetToString(m_filterMatypes));
+    setGlobalValue(kGlobalFilterLayerKey,intSetToString(m_filterLayers));
+    setGlobalValue(kGlobalFilterRegionKey,intSetToString(m_filterRegions));
+    setGlobalValue(kGlobalFilterProjectKey,PublicVariables::instance().get(PublicConstants::kProjectDirectoryKey));
+    QVariantMap event{{"custom",custom},{"topology",intSetToString(m_filterTopologies)},
+        {"ketype",intSetToString(m_filterKetypes)},{"matype",intSetToString(m_filterMatypes)},
+        {"layer",intSetToString(m_filterLayers)},{"region",intSetToString(m_filterRegions)}};
+    EventManager::instance().sendEvent(QStringLiteral("mesh.display.filter.changed"),event);
+}
 
-    if (lineCellIds->GetNumberOfIds() > 0)
-        m_viewLineGrid = extractCells(lineCellIds);
-    else
-        m_viewLineGrid = vtkSmartPointer<vtkUnstructuredGrid>::New();
-
-    if (m_surfaceMapper)
-        setMapperInput(m_surfaceMapper, m_viewSurface);
-    if (m_lineMapper)
-        setMapperInput(m_lineMapper, m_viewLineGrid);
-
-    const bool showSurface = m_viewSurface && m_viewSurface->GetNumberOfCells() > 0;
-    const bool showLine = m_viewLineGrid && m_viewLineGrid->GetNumberOfCells() > 0;
-
-    const bool postViewActive =
-        PublicVariables::instance().get(QStringLiteral("post.display.view.active")).toBool();
-    m_visualWidgetService->setVisible(kImportedMeshSurfacePropId,
-                                      !postViewActive && showSurface, false);
-    m_visualWidgetService->setVisible(kImportedMeshLinePropId,
-                                      !postViewActive && showLine, false);
-
-    applyColorMode();
-    PickManager::instance().updateStructure();
-    m_visualWidgetService->render();
+void GridEditingWidget::presentView()
+{
+    if(!m_visualWidgetService)return;
+    if(m_surfaceMapper)setMapperInput(m_surfaceMapper,m_viewSurface);
+    if(m_lineMapper)setMapperInput(m_lineMapper,m_viewLineGrid);
+    const bool postActive=PublicVariables::instance().get(QStringLiteral("post.display.view.active")).toBool();
+    m_visualWidgetService->setVisible(kImportedMeshSurfacePropId,!postActive&&m_viewSurface&&m_viewSurface->GetNumberOfCells()>0,false);
+    m_visualWidgetService->setVisible(kImportedMeshLinePropId,!postActive&&m_viewLineGrid&&m_viewLineGrid->GetNumberOfCells()>0,false);
+    publishFilter();applyColorMode();PickManager::instance().updateStructure();m_visualWidgetService->render();
 }
 
 QMap<int, int> GridEditingWidget::collectCellIntCounts(const char* arrayName) const
@@ -1507,6 +1607,7 @@ QSet<int> GridEditingWidget::checkedValuesForCategory(const QString& category) c
 
 void GridEditingWidget::applyFilterFromTree()
 {
+    m_autoApplyTimer->stop();
     m_filterTopologies = checkedValuesForCategory(kCategoryTopology);
     m_filterKetypes = checkedValuesForCategory(kCategoryKetype);
     m_filterMatypes = checkedValuesForCategory(kCategoryMatype);
@@ -1535,32 +1636,12 @@ void GridEditingWidget::applyFilterFromTree()
         return;
     }
 
-    const bool customFilter =
-        !setEquals(m_allTopologies, m_filterTopologies) ||
-        !setEquals(m_allKetypes, m_filterKetypes) ||
-        !setEquals(m_allMatypes, m_filterMatypes) ||
-        !setEquals(m_allLayers, m_filterLayers) ||
-        !setEquals(m_allRegions, m_filterRegions);
-
-    setGlobalValue(kGlobalFilterCustomKey, customFilter);
-    setGlobalValue(kGlobalFilterTopologyKey, intSetToString(m_filterTopologies));
-    setGlobalValue(kGlobalFilterKetypeKey, intSetToString(m_filterKetypes));
-    setGlobalValue(kGlobalFilterMatypeKey, intSetToString(m_filterMatypes));
-    setGlobalValue(kGlobalFilterLayerKey, intSetToString(m_filterLayers));
-    setGlobalValue(kGlobalFilterRegionKey, intSetToString(m_filterRegions));
-    setGlobalValue(kGlobalFilterProjectKey,
-                   PublicVariables::instance().get(PublicConstants::kProjectDirectoryKey));
-
+    cancelPendingFilter();
+    if(!m_fullGrid||!m_visualWidgetService)return;
+    m_filterRequestPending=true;
+    setProperty("mesh.display.pending",true);
+    ui->pushButtonApplyFilter->setText(QStringLiteral("更新中…"));
     buildOrUpdateViewGrid();
-
-    QVariantMap filterEvent;
-    filterEvent.insert(QStringLiteral("custom"), customFilter);
-    filterEvent.insert(QStringLiteral("topology"), intSetToString(m_filterTopologies));
-    filterEvent.insert(QStringLiteral("ketype"), intSetToString(m_filterKetypes));
-    filterEvent.insert(QStringLiteral("matype"), intSetToString(m_filterMatypes));
-    filterEvent.insert(QStringLiteral("layer"), intSetToString(m_filterLayers));
-    filterEvent.insert(QStringLiteral("region"), intSetToString(m_filterRegions));
-    EventManager::instance().sendEvent(QStringLiteral("mesh.display.filter.changed"), filterEvent);
 }
 
 void GridEditingWidget::onFilterTreeItemChanged(QTreeWidgetItem* item, int column)
@@ -1601,18 +1682,9 @@ void GridEditingWidget::onFilterTreeItemChanged(QTreeWidgetItem* item, int colum
     m_filterLayers = checkedValuesForCategory(kCategoryLayer);
     m_filterRegions = checkedValuesForCategory(kCategoryRegion);
 
+    cancelPendingFilter();
     if (ui->checkBoxAutoApply && ui->checkBoxAutoApply->isChecked())
-    {
-        // 大网格连续勾选时合并短时间内的多次重建请求，避免每一下都完整抽面。
-        const int generation = property("meshFilterApplyGeneration").toInt() + 1;
-        setProperty("meshFilterApplyGeneration", generation);
-        QTimer::singleShot(60, this, [this, generation]()
-                           {
-                               if (property("meshFilterApplyGeneration").toInt() != generation)
-                                   return;
-                               applyFilterFromTree();
-                           });
-    }
+        m_autoApplyTimer->start();
 }
 
 vtkSmartPointer<vtkLookupTable> GridEditingWidget::buildLookupTable(const QSet<int>& values) const
@@ -1735,7 +1807,9 @@ void GridEditingWidget::on_comboBoxColorMode_currentIndexChanged(int index)
     const QVariant data = ui->comboBoxColorMode->currentData();
     m_colorMode = data.isValid() ? static_cast<ColorMode>(data.toInt()) : ColorMode::None;
     setGlobalValue(kGlobalColorModeKey, static_cast<int>(m_colorMode));
-    buildOrUpdateViewGrid();
+    refreshMeshActors();
+    applyColorMode();
+    if(m_visualWidgetService)m_visualWidgetService->render();
 }
 
 void GridEditingWidget::highlightMatypes(const QSet<int>& matypes,
@@ -1769,6 +1843,7 @@ void GridEditingWidget::updateContextPresentation()
            // 主动压住所有常用网格 Actor，避免其它显示路径把网格重新打开。
     if (postViewActive && m_visualWidgetService)
     {
+        cancelPendingFilter();
         m_visualWidgetService->setVisible(QStringLiteral("mesh.global.surf"), false, false);
         m_visualWidgetService->setVisible(QStringLiteral("mesh.global.wire"), false, false);
         m_visualWidgetService->setVisible(kImportedMeshSurfacePropId, false, false);

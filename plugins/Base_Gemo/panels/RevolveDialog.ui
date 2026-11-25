@@ -20,7 +20,7 @@
       <item row="0" column="0"><widget class="QLabel" name="sourceLabel"><property name="text"><string>来源</string></property></widget></item>
       <item row="0" column="1"><widget class="QComboBox" name="sourceCombo"><property name="minimumHeight"><number>30</number></property></widget></item>
       <item row="1" column="0"><widget class="QLabel" name="angleLabel"><property name="text"><string>旋转角度</string></property></widget></item>
-      <item row="1" column="1"><widget class="QDoubleSpinBox" name="angleSpin"><property name="minimumHeight"><number>30</number></property><property name="suffix"><string> °</string></property><property name="decimals"><number>4</number></property><property name="minimum"><double>-360.000000000000000</double></property><property name="maximum"><double>360.000000000000000</double></property><property name="singleStep"><double>15.000000000000000</double></property><property name="value"><double>360.000000000000000</double></property></widget></item>
+      <item row="1" column="1"><widget class="CompactDoubleSpinBox" name="angleSpin"><property name="minimumHeight"><number>30</number></property><property name="suffix"><string> °</string></property><property name="decimals"><number>4</number></property><property name="minimum"><double>-360.000000000000000</double></property><property name="maximum"><double>360.000000000000000</double></property><property name="singleStep"><double>15.000000000000000</double></property><property name="value"><double>360.000000000000000</double></property></widget></item>
      </layout>
     </widget>
    </item>
@@ -42,17 +42,17 @@
       <item row="0" column="0"><widget class="QLabel" name="axisLabel"><property name="text"><string>方向</string></property></widget></item>
       <item row="0" column="1"><widget class="QComboBox" name="axisCombo"><property name="minimumHeight"><number>30</number></property></widget></item>
       <item row="1" column="0"><widget class="QLabel" name="axisDxLabel"><property name="text"><string>方向 X</string></property></widget></item>
-      <item row="1" column="1"><widget class="QDoubleSpinBox" name="axisDxSpin"><property name="minimumHeight"><number>30</number></property><property name="decimals"><number>6</number></property><property name="minimum"><double>-1000000.000000000000000</double></property><property name="maximum"><double>1000000.000000000000000</double></property><property name="value"><double>1.000000000000000</double></property></widget></item>
+      <item row="1" column="1"><widget class="CompactDoubleSpinBox" name="axisDxSpin"><property name="minimumHeight"><number>30</number></property><property name="decimals"><number>6</number></property><property name="minimum"><double>-1000000.000000000000000</double></property><property name="maximum"><double>1000000.000000000000000</double></property><property name="value"><double>1.000000000000000</double></property></widget></item>
       <item row="2" column="0"><widget class="QLabel" name="axisDyLabel"><property name="text"><string>方向 Y</string></property></widget></item>
-      <item row="2" column="1"><widget class="QDoubleSpinBox" name="axisDySpin"><property name="minimumHeight"><number>30</number></property><property name="decimals"><number>6</number></property><property name="minimum"><double>-1000000.000000000000000</double></property><property name="maximum"><double>1000000.000000000000000</double></property></widget></item>
+      <item row="2" column="1"><widget class="CompactDoubleSpinBox" name="axisDySpin"><property name="minimumHeight"><number>30</number></property><property name="decimals"><number>6</number></property><property name="minimum"><double>-1000000.000000000000000</double></property><property name="maximum"><double>1000000.000000000000000</double></property></widget></item>
       <item row="3" column="0"><widget class="QLabel" name="axisDzLabel"><property name="text"><string>方向 Z</string></property></widget></item>
-      <item row="3" column="1"><widget class="QDoubleSpinBox" name="axisDzSpin"><property name="minimumHeight"><number>30</number></property><property name="decimals"><number>6</number></property><property name="minimum"><double>-1000000.000000000000000</double></property><property name="maximum"><double>1000000.000000000000000</double></property></widget></item>
+      <item row="3" column="1"><widget class="CompactDoubleSpinBox" name="axisDzSpin"><property name="minimumHeight"><number>30</number></property><property name="decimals"><number>6</number></property><property name="minimum"><double>-1000000.000000000000000</double></property><property name="maximum"><double>1000000.000000000000000</double></property></widget></item>
       <item row="4" column="0"><widget class="QLabel" name="oxLabel"><property name="text"><string>经过点 X</string></property></widget></item>
-      <item row="4" column="1"><widget class="QDoubleSpinBox" name="oxSpin"><property name="minimumHeight"><number>30</number></property><property name="suffix"><string> mm</string></property><property name="decimals"><number>4</number></property><property name="minimum"><double>-1000000.000000000000000</double></property><property name="maximum"><double>1000000.000000000000000</double></property></widget></item>
+      <item row="4" column="1"><widget class="CompactDoubleSpinBox" name="oxSpin"><property name="minimumHeight"><number>30</number></property><property name="suffix"><string> mm</string></property><property name="decimals"><number>4</number></property><property name="minimum"><double>-1000000.000000000000000</double></property><property name="maximum"><double>1000000.000000000000000</double></property></widget></item>
       <item row="5" column="0"><widget class="QLabel" name="oyLabel"><property name="text"><string>经过点 Y</string></property></widget></item>
-      <item row="5" column="1"><widget class="QDoubleSpinBox" name="oySpin"><property name="minimumHeight"><number>30</number></property><property name="suffix"><string> mm</string></property><property name="decimals"><number>4</number></property><property name="minimum"><double>-1000000.000000000000000</double></property><property name="maximum"><double>1000000.000000000000000</double></property></widget></item>
+      <item row="5" column="1"><widget class="CompactDoubleSpinBox" name="oySpin"><property name="minimumHeight"><number>30</number></property><property name="suffix"><string> mm</string></property><property name="decimals"><number>4</number></property><property name="minimum"><double>-1000000.000000000000000</double></property><property name="maximum"><double>1000000.000000000000000</double></property></widget></item>
       <item row="6" column="0"><widget class="QLabel" name="ozLabel"><property name="text"><string>经过点 Z</string></property></widget></item>
-      <item row="6" column="1"><widget class="QDoubleSpinBox" name="ozSpin"><property name="minimumHeight"><number>30</number></property><property name="suffix"><string> mm</string></property><property name="decimals"><number>4</number></property><property name="minimum"><double>-1000000.000000000000000</double></property><property name="maximum"><double>1000000.000000000000000</double></property></widget></item>
+      <item row="6" column="1"><widget class="CompactDoubleSpinBox" name="ozSpin"><property name="minimumHeight"><number>30</number></property><property name="suffix"><string> mm</string></property><property name="decimals"><number>4</number></property><property name="minimum"><double>-1000000.000000000000000</double></property><property name="maximum"><double>1000000.000000000000000</double></property></widget></item>
      </layout>
     </widget>
    </item>
@@ -72,6 +72,9 @@
    <item><spacer name="verticalSpacer"><property name="orientation"><enum>Qt::Vertical</enum></property><property name="sizeHint" stdset="0"><size><width>20</width><height>40</height></size></property></spacer></item>
   </layout>
  </widget>
+  <customwidgets>
+  <customwidget><class>CompactDoubleSpinBox</class><extends>QDoubleSpinBox</extends><header>CompactDoubleSpinBox.h</header></customwidget>
+ </customwidgets>
  <resources/>
  <connections/>
 </ui>

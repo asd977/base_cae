@@ -14,7 +14,7 @@
      <item row="0" column="0"><widget class="QLabel" name="sourceLabel"><property name="text"><string>源对象</string></property></widget></item>
      <item row="0" column="1"><widget class="QComboBox" name="sourceCombo"><property name="minimumHeight"><number>30</number></property></widget></item>
      <item row="1" column="0"><widget class="QLabel" name="radiusLabel"><property name="text"><string>圆角半径</string></property></widget></item>
-     <item row="1" column="1"><widget class="QDoubleSpinBox" name="radiusSpin"><property name="minimumHeight"><number>30</number></property><property name="suffix"><string> mm</string></property><property name="decimals"><number>4</number></property><property name="minimum"><double>0.000100000000000</double></property><property name="maximum"><double>1000000.000000000000000</double></property><property name="singleStep"><double>0.100000000000000</double></property><property name="value"><double>0.200000000000000</double></property></widget></item>
+     <item row="1" column="1"><widget class="CompactDoubleSpinBox" name="radiusSpin"><property name="minimumHeight"><number>30</number></property><property name="suffix"><string> mm</string></property><property name="decimals"><number>4</number></property><property name="minimum"><double>0.000100000000000</double></property><property name="maximum"><double>1000000.000000000000000</double></property><property name="singleStep"><double>0.100000000000000</double></property><property name="value"><double>0.200000000000000</double></property></widget></item>
     </layout>
    </item>
    <item>
@@ -48,6 +48,9 @@
    <item><spacer name="verticalSpacer"><property name="orientation"><enum>Qt::Vertical</enum></property><property name="sizeHint" stdset="0"><size><width>20</width><height>40</height></size></property></spacer></item>
   </layout>
  </widget>
+  <customwidgets>
+  <customwidget><class>CompactDoubleSpinBox</class><extends>QDoubleSpinBox</extends><header>CompactDoubleSpinBox.h</header></customwidget>
+ </customwidgets>
  <resources/>
  <connections/>
 </ui>

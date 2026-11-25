@@ -15,6 +15,7 @@
 
 class vtkGenericOpenGLRenderWindow;
 class vtkRenderer;
+class vtkFXAAOptions;
 class vtkLookupTable;
 class vtkScalarBarActor;
 class vtkTextActor;
@@ -60,6 +61,7 @@ class VisualizationWidget : public QWidget, public VisualWidgetService
     QList<QString> allIds() const override;
 
     bool setVisible(const QString& id, bool on, bool renderNow = true) override;
+    bool setTemporaryVisible(const QString& id, bool on, bool renderNow = true) override;
     void setGroupVisible(const QString& group, bool on, bool renderNow = true) override;
 
     bool setOpacity(const QString& id, double alpha, bool renderNow = true) override;
@@ -144,6 +146,7 @@ class VisualizationWidget : public QWidget, public VisualWidgetService
     vtkSmartPointer<vtkOrientationMarkerWidget> m_omw;
 
     QHash<QString, Item> m_registry;
+    QHash<QString, bool> m_groupVisibility;
 
     QPointer<QFrame> m_toolbar;
     QPointer<QToolBar> m_actionToolbar;
@@ -159,4 +162,7 @@ class VisualizationWidget : public QWidget, public VisualWidgetService
     double m_globalOpacity = 1.0;
     int m_defaultMultiSamples = 0;
     bool m_transparencyRenderingEnabled = false;
+    bool m_postViewActive = false;
+    bool m_prePostFxaaEnabled = false;
+    vtkSmartPointer<vtkFXAAOptions> m_prePostFxaaOptions;
 };

@@ -41,6 +41,8 @@
 #include <TopoDS.hxx>
 #include <TopoDS_Vertex.hxx>
 #include <TopoDS_Edge.hxx>
+#include <TopoDS_Face.hxx>
+#include <BRepAdaptor_Surface.hxx>
 #include <IGESControl_Writer.hxx>
 #include <QAbstractItemModel>
 #include <QAbstractItemView>
@@ -87,6 +89,10 @@
 #include <SketchPanel.h>
 #include "../terrain/TerrainSurfaceBuilder.h"
 #include <SurfaceDomainData.h>
+#include <GeometryProjectStorage.h>
+#include <MeshWorkingPaths.h>
+#include <QDateTime>
+#include <PartitionFaceOrder.h>
 
 #include "GeometryBuildUtils.h"
 #include "FeatureBuilder.h"
@@ -122,56 +128,10 @@ constexpr int kRoleGeometryRestoreError = kRoleTargetUuid + 8;
 constexpr int kRoleStepImportUuid = kRoleTargetUuid + 9;
 constexpr int kRoleStepAssemblyPath = kRoleTargetUuid + 10;
 
-struct PartitionFaceView
-{
-    TopoDS_Shape shape;
-    double cx = 0.0, cy = 0.0, cz = 0.0;
-    double area = 0.0;
-    double xmin = 0.0, ymin = 0.0, zmin = 0.0;
-    double xmax = 0.0, ymax = 0.0, zmax = 0.0;
-};
-
+using PartitionFaceView = GeometryPartitionTopology::Face;
 QVector<PartitionFaceView> sortedPartitionFaces(const TopoDS_Shape& region)
 {
-    QVector<PartitionFaceView> faces;
-    for (TopExp_Explorer ex(region, TopAbs_FACE); ex.More(); ex.Next())
-    {
-        PartitionFaceView item;
-        item.shape = ex.Current();
-        GProp_GProps props;
-        BRepGProp::SurfaceProperties(TopoDS::Face(item.shape), props);
-        const gp_Pnt c = props.CentreOfMass();
-        item.cx = c.X(); item.cy = c.Y(); item.cz = c.Z();
-        item.area = props.Mass();
-
-        Bnd_Box box;
-        BRepBndLib::Add(item.shape, box);
-        if (!box.IsVoid())
-            box.Get(item.xmin, item.ymin, item.zmin, item.xmax, item.ymax, item.zmax);
-        faces.push_back(item);
-    }
-
-    auto lessWithTol = [](double a, double b) -> int
-    {
-        const double scale = std::max({1.0, std::abs(a), std::abs(b)});
-        const double eps = scale * 1e-10;
-        if (a < b - eps) return -1;
-        if (a > b + eps) return 1;
-        return 0;
-    };
-    std::sort(faces.begin(), faces.end(), [&](const PartitionFaceView& a, const PartitionFaceView& b)
-    {
-        const double av[] = {a.cx,a.cy,a.cz,a.area,a.xmin,a.ymin,a.zmin,a.xmax,a.ymax,a.zmax};
-        const double bv[] = {b.cx,b.cy,b.cz,b.area,b.xmin,b.ymin,b.zmin,b.xmax,b.ymax,b.zmax};
-        for (int i = 0; i < 10; ++i)
-        {
-            const int c = lessWithTol(av[i], bv[i]);
-            if (c < 0) return true;
-            if (c > 0) return false;
-        }
-        return false;
-    });
-    return faces;
+    return GeometryPartitionTopology::orderedFaces(region);
 }
 
 struct PartitionEdgeView
@@ -670,8 +630,24 @@ void GeometryWorkbench::initTreeMenu()
                 return action;
             };
 
+            const auto addDisplayActions=[&](const QStringList& ids) {
+                if(ids.isEmpty())return;
+                auto* modes=menu->addMenu(tr("显示方式"));
+                const QStringList labels{tr("实体"),tr("线框"),tr("实体带边线")};
+                for(int mode=0;mode<labels.size();++mode)
+                    addAction(modes,labels[mode],[ids,mode]{GeometryDisplayManager::setPresentation(ids,mode);});
+                auto* alpha=menu->addMenu(tr("透明度"));
+                for(int percent:{100,75,50,25})
+                    addAction(alpha,percent==100?tr("不透明"):tr("不透明度 %1%").arg(percent),
+                        [ids,percent]{GeometryDisplayManager::setPresentation(ids,-1,percent/100.0);});
+                addAction(menu,tr("隔离显示"),[ids]{GeometryDisplayManager::isolateObjects(ids);});
+                addAction(menu,tr("恢复显示与透明度"),[]{GeometryDisplayManager::restorePresentation();});
+                menu->addSeparator();
+            };
+
             if (kind == "GeometryRoot")
             {
+                addDisplayActions(activeGeometryUuids());
                 addAction(menu, tr("二维草图"), [this]
                 {
                     newGeometryWidget("Sketch2D", PublicConstants::kPageGeomSketch2D, tr("二维草图"));
@@ -774,6 +750,7 @@ void GeometryWorkbench::initTreeMenu()
                     selectedNodes.push_back(selectedNode);
             }
 
+            addDisplayActions(selectedUuids);
             const bool multiple = selectedNodes.size() >= 2;
             bool allSolidLike = multiple;
             for (ProjectNode* selectedNode : selectedNodes)
@@ -1317,37 +1294,7 @@ GeometryWorkbench::GeometryHistorySnapshot GeometryWorkbench::captureGeometryHis
     const QString& changedUuid, bool preserveCommittedState) const
 {
     GeometryHistorySnapshot snapshot;
-    snapshot.items = serializeGeometryItems(false);
-
-    // 页面控件可能正处于“只预览、尚未应用”的状态。普通的显隐、重命名、
-    // 删除等操作不应把这些临时控件值写进全局历史；只允许本次真正完成
-    // 重建的 changedUuid 使用当前页面参数，其余已有节点沿用上一份已提交状态。
-    if (preserveCommittedState && !m_geometryHistoryCurrent.items.isEmpty())
-    {
-        QHash<QString, FeatureData> committedByUuid;
-        for (const QJsonValue& value : m_geometryHistoryCurrent.items)
-        {
-            const FeatureData feature = FeatureData::fromJson(value.toObject());
-            if (!feature.uuid.isEmpty())
-                committedByUuid.insert(feature.uuid, feature);
-        }
-
-        for (int i = 0; i < snapshot.items.size(); ++i)
-        {
-            FeatureData current = FeatureData::fromJson(snapshot.items.at(i).toObject());
-            if (current.uuid.isEmpty() || current.uuid == changedUuid ||
-                !committedByUuid.contains(current.uuid))
-            {
-                continue;
-            }
-
-            const FeatureData committed = committedByUuid.value(current.uuid);
-            current.state = committed.state;
-            current.inputUuids = committed.inputUuids;
-            current.missingInputUuids = committed.missingInputUuids;
-            snapshot.items[i] = current.toJson();
-        }
-    }
+    snapshot.items = serializeGeometryItems(false, changedUuid, preserveCommittedState);
 
     auto* manager = GeomManager::GeomManagerInstance::getInstance();
     if (!manager)
@@ -1561,7 +1508,8 @@ void GeometryWorkbench::redoGeometryChange()
     m_geometryHistoryCurrent = target;
 }
 
-QJsonArray GeometryWorkbench::serializeGeometryItems(bool includeCachedBrep) const
+QJsonArray GeometryWorkbench::serializeGeometryItems(bool includeCachedBrep, const QString& changedUuid,
+                                                     bool preserveCommittedState) const
 {
     QJsonArray geomItems;
     if (!m_geomNode)
@@ -1595,6 +1543,16 @@ QJsonArray GeometryWorkbench::serializeGeometryItems(bool includeCachedBrep) con
             stepImportsWithParts.insert(inputs.front());
     }
 
+    // Visibility/rename/delete history changes only metadata. Reuse committed
+    // page state before serialization, especially hundreds of thousands of DXF points.
+    QHash<QString, FeatureData> committedByUuid;
+    if (preserveCommittedState)
+        for (const auto& value : m_geometryHistoryCurrent.items)
+        {
+            const auto feature = FeatureData::fromJson(value.toObject());
+            committedByUuid.insert(feature.uuid, feature);
+        }
+
     auto* manager = GeomManager::GeomManagerInstance::getInstance();
     for (ProjectNode* node : geomNodes)
     {
@@ -1620,14 +1578,20 @@ QJsonArray GeometryWorkbench::serializeGeometryItems(bool includeCachedBrep) con
         feature.visible = storedVisible.isValid()
                               ? storedVisible.toBool()
                               : GeometryDisplayManager::isVisible(nodeUuid);
-        feature.state = page->saveJson();
-        feature.inputUuids = FeatureData::collectInputUuids(feature.state, feature.uuid);
-
-        for (const QString& inputUuid : feature.inputUuids)
+        const auto committed = committedByUuid.constFind(nodeUuid);
+        if (nodeUuid != changedUuid && committed != committedByUuid.cend())
         {
+            feature.state = committed->state;
+            feature.inputUuids = committed->inputUuids;
+        }
+        else
+        {
+            feature.state = page->saveJsonForPersistence();
+            feature.inputUuids = FeatureData::collectInputUuids(feature.state, feature.uuid);
+        }
+        for (const QString& inputUuid : feature.inputUuids)
             if (!existingUuids.contains(inputUuid))
                 feature.missingInputUuids.push_back(inputUuid);
-        }
 
         const bool skipDuplicatedStepRootCache =
             feature.kind == QStringLiteral("ImportGeometry") &&
@@ -1639,10 +1603,24 @@ QJsonArray GeometryWorkbench::serializeGeometryItems(bool includeCachedBrep) con
                 TopoDS_Shape* shape = object->getShape();
                 if (shape && !shape->IsNull())
                 {
-                    std::ostringstream stream;
-                    BRepTools::Write(*shape, stream);
-                    feature.cachedBrep = QString::fromStdString(stream.str());
+                    const auto saved = m_savedBrepAssets.constFind(nodeUuid);
+                    const QString projectDir = PublicVariables::instance().get(PublicConstants::kProjectDirectoryKey).toString();
+                    const QFileInfo asset(saved != m_savedBrepAssets.cend()
+                        ? QDir(projectDir).filePath(saved->relativePath) : QString());
+                    if (saved != m_savedBrepAssets.cend() && shape->IsEqual(saved->shape)
+                        && GeometryProjectStorage::safePath(saved->relativePath)
+                        && asset.isFile() && !asset.isSymLink() && asset.size() == saved->bytes
+                        && asset.lastModified().toMSecsSinceEpoch() == saved->modifiedMsecs) {
+                        feature.cachedBrepAsset = saved->relativePath;
+                        feature.cachedBrep.clear();
+                    } else {
+                        std::ostringstream stream;
+                        BRepTools::Write(*shape, stream);
+                        feature.cachedBrep = QString::fromStdString(stream.str());
+                        feature.cachedBrepAsset.clear();
+                    }
                 }
+                feature.faceGroups = object->faceGroups();
             }
         }
         geomItems.append(feature.toJson());
@@ -1664,9 +1642,27 @@ bool GeometryWorkbench::saveProject()
     root["root_title"] = "几何";
 
     root["featureDataSchema"] = QStringLiteral("GeometryFeatureData.v2");
-    root["geom_items"] = serializeGeometryItems(true);
-
-    return writeJsonFile(filePath, root);
+    QJsonArray items = serializeGeometryItems(true);
+    if (!GeometryProjectStorage::externalize(projectDir, items)) {
+        qWarning() << "Cannot persist geometry assets; previous project JSON retained";
+        return false;
+    }
+    root["geom_items"] = items;
+    root["presentation"] = GeometryDisplayManager::presentationJson();
+    if (!writeJsonFile(filePath, root)) return false;
+    QHash<QString, SavedBrepAsset> savedAssets;
+    auto* manager = GeomManager::GeomManagerInstance::getInstance();
+    for (const auto& value : items) {
+        const auto item = value.toObject();
+        const QString uuid = item.value("uuid").toString();
+        const QString relative = item.value("cachedBrepAsset").toString();
+        auto* object = manager ? manager->getGeomShapeObject(uuid) : nullptr;
+        if (!object || !object->getShape() || !GeometryProjectStorage::safePath(relative)) continue;
+        const QFileInfo asset(QDir(projectDir).filePath(relative));
+        savedAssets[uuid] = {*object->getShape(), relative, asset.size(), asset.lastModified().toMSecsSinceEpoch()};
+    }
+    m_savedBrepAssets = std::move(savedAssets);
+    return true;
 }
 
 bool GeometryWorkbench::loadProject()
@@ -1796,6 +1792,7 @@ bool GeometryWorkbench::loadChildProject(ProjectNode* rootNode, const QString& n
         QMessageBox::warning(nullptr, tr("打开工程"), tr("几何工程文件无法读取或内容已损坏。"));
         return false;
     }
+    GeometryDisplayManager::loadPresentationJson(root.value("presentation").toObject());
     return loadGeometryItems(root.value(name).toArray());
 }
 
@@ -1827,6 +1824,16 @@ bool GeometryWorkbench::loadGeometryItems(
     {
         const auto obj = v.toObject();
         FeatureData feature = FeatureData::fromJson(obj);
+        if (feature.cachedBrep.isEmpty() && !feature.cachedBrepAsset.isEmpty()) {
+            QByteArray raw;
+            const QString root = PublicVariables::instance().get(PublicConstants::kProjectDirectoryKey).toString();
+            if (!GeometryProjectStorage::read(root, feature.cachedBrepAsset, raw)) {
+                qWarning() << "Cannot restore geometry asset" << feature.cachedBrepAsset;
+                return false;
+            }
+            feature.cachedBrep = QString::fromUtf8(raw);
+        }
+
         if (feature.uuid.isEmpty())
             feature.uuid = QUuid::createUuid().toString();
 
@@ -1886,7 +1893,8 @@ bool GeometryWorkbench::loadGeometryItems(
 
         bool restoredFromCache = false;
         if (type == PublicConstants::kPageGeomTerrainSurface)
-            GeometryDisplayManager::setTerrainPresentation(id);
+            GeometryDisplayManager::setTerrainPresentation(id, state["showSurface"].toBool(true),
+                                                           state["showContours"].toBool(true));
         if (shapeSnapshots)
         {
             const auto snapshotIt = shapeSnapshots->constFind(id);
@@ -1905,6 +1913,54 @@ bool GeometryWorkbench::loadGeometryItems(
             {
                 GeometryBuildUtils::registerShape(id, title, new TopoDS_Shape(cachedShape));
                 restoredFromCache = hasRuntimeShape(id);
+                if (restoredFromCache)
+                {
+                    if (!feature.cachedBrepAsset.isEmpty()) {
+                        const QString root = PublicVariables::instance().get(PublicConstants::kProjectDirectoryKey).toString();
+                        const QFileInfo asset(QDir(root).filePath(feature.cachedBrepAsset));
+                        m_savedBrepAssets[id] = {cachedShape, feature.cachedBrepAsset, asset.size(), asset.lastModified().toMSecsSinceEpoch()};
+                    }
+                    if (auto* body = GeomManager::CadDocument::getInstance()->getGeomShapeObject(id))
+                    {
+                        if (!feature.faceGroups.isEmpty())
+                        {
+                            body->setFaceGroups(feature.faceGroups);
+                        }
+                        else if (!cachedShape.IsNull() && cachedShape.ShapeType() == TopAbs_SOLID)
+                        {
+                            TopTools_IndexedMapOfShape fMap;
+                            TopExp::MapShapes(cachedShape, TopAbs_FACE, fMap);
+                            if (fMap.Extent() == 6)
+                            {
+                                CadBody::FaceGroup topGroup{QStringLiteral("地表顶面组"), QStringLiteral("top"), {}};
+                                CadBody::FaceGroup bottomGroup{QStringLiteral("基底底面组"), QStringLiteral("bottom"), {}};
+                                CadBody::FaceGroup sidesGroup{QStringLiteral("四周侧面组"), QStringLiteral("sides"), {}};
+                                for (int fi = 1; fi <= fMap.Extent(); ++fi)
+                                {
+                                    const TopoDS_Face& f = TopoDS::Face(fMap(fi));
+                                    BRepAdaptor_Surface surf(f, Standard_True);
+                                    gp_Pnt pMid;
+                                    gp_Vec d1u, d1v;
+                                    surf.D1(0.5 * (surf.FirstUParameter() + surf.LastUParameter()),
+                                            0.5 * (surf.FirstVParameter() + surf.LastVParameter()),
+                                            pMid, d1u, d1v);
+                                    gp_Vec normal = d1u.Crossed(d1v);
+                                    if (normal.Magnitude() > 1e-6)
+                                    {
+                                        normal.Normalize();
+                                        if (f.Orientation() == TopAbs_REVERSED) normal.Reverse();
+                                        if (normal.Z() > 0.2) topGroup.faceIndices.append(fi);
+                                        else if (normal.Z() < -0.8) bottomGroup.faceIndices.append(fi);
+                                        else sidesGroup.faceIndices.append(fi);
+                                    }
+                                    else sidesGroup.faceIndices.append(fi);
+                                }
+                                if (!topGroup.faceIndices.isEmpty() && !bottomGroup.faceIndices.isEmpty())
+                                    body->setFaceGroups({topGroup, bottomGroup, sidesGroup});
+                            }
+                        }
+                    }
+                }
                 if (!restoredFromCache)
                     loaded.restoreError = tr("已保存的几何结果恢复失败。");
             }
@@ -3657,6 +3713,8 @@ void GeometryWorkbench::openGeometryMeasureTool()
 
 void GeometryWorkbench::closeProject()
 {
+    m_savedBrepAssets.clear();
+    m_exportedGeometryShapes.clear();
     if (m_geometryCheckDialog)
         m_geometryCheckDialog->close();
     if (m_geometryMeasureDialog)
@@ -3741,24 +3799,22 @@ bool GeometryWorkbench::prepareMeshingGeometry(int dimension, QString& outputPat
 {
     outputPath.clear();
     diagnostic.clear();
-    const QString dataDir = QDir(QCoreApplication::applicationDirPath()).filePath("data");
-    if (!QDir().mkpath(dataDir))
+    const QString dataDir = MeshWorkingPaths::dataDir();
+    if (!MeshWorkingPaths::prepare() || !QDir().mkpath(dataDir))
     {
         diagnostic = tr("无法创建网格几何目录：%1").arg(dataDir);
         return false;
     }
     if (dimension == 3)
     {
-        // Avoid taking a previous successful run's STEP after an export error.
-        const QString step = QDir(dataDir).filePath(QStringLiteral("ExportedModel.step"));
+        const QString brep = QDir(dataDir).filePath(QStringLiteral("ExportedModel.brep"));
         generateStepFile();
-        if (!QFileInfo::exists(step) || QFileInfo(step).size() <= 0)
-        {
-            diagnostic = tr("三维网格几何导出失败：没有生成有效的 STEP 文件。");
+        if (!QFileInfo::exists(brep) || QFileInfo(brep).size() <= 0) {
+            diagnostic = tr("三维网格几何导出失败：没有生成有效的 BREP 文件。");
             return false;
         }
-        outputPath = step;
-        diagnostic = tr("三维网格：使用最终模型 STEP 几何。");
+        outputPath = brep;
+        diagnostic = tr("三维网格：使用原生 BREP 拓扑编号。");
         return true;
     }
     if (dimension != 2)
@@ -3823,7 +3879,8 @@ bool GeometryWorkbench::prepareMeshingGeometry(int dimension, QString& outputPat
                 const auto terrain = GeometryTerrain::TerrainSurfaceBuilder::build(
                     GeometryTerrain::TerrainSurfaceBuilder::sourcesFromState(state),
                     state.value(QStringLiteral("spacing")).toDouble(5),
-                    GeometryTerrain::TerrainSurfaceBuilder::domainMode(state));
+                    GeometryTerrain::TerrainSurfaceBuilder::domainMode(state),
+                    GeometryTerrain::TerrainSurfaceBuilder::gridOptions(state));
                 if (!terrain.ok())
                 {
                     diagnostic = tr("地形 %1 无法准备为网格面：%2").arg(node->text(0), terrain.error);
@@ -4060,7 +4117,7 @@ bool GeometryWorkbench::prepareMeshingGeometry(int dimension, QString& outputPat
 
 void GeometryWorkbench::generateStepFile()
 {
-    const QString dataDir = QDir(QCoreApplication::applicationDirPath()).filePath("data");
+    const QString dataDir = MeshWorkingPaths::dataDir();
     const QString stepPath = QDir(dataDir).filePath("ExportedModel.step");
     const QString stepTemporaryPath = stepPath + QStringLiteral(".tmp");
     const QString brepPath = QDir(dataDir).filePath("ExportedModel.brep");
@@ -4068,12 +4125,10 @@ void GeometryWorkbench::generateStepFile()
 
     QFile::remove(stepTemporaryPath);
     QFile::remove(brepTemporaryPath);
-    QFile::remove(stepPath);
-    QFile::remove(brepPath);
 
     try
     {
-        if (!QDir().mkpath(dataDir))
+        if (!MeshWorkingPaths::prepare() || !QDir().mkpath(dataDir))
             return;
 
         GeomManager::GeomManagerInstance* mgr = GeomManager::GeomManagerInstance::getInstance();
@@ -4123,8 +4178,27 @@ void GeometryWorkbench::generateStepFile()
             hasShape = true;
         }
 
-        if (!hasShape)
+        if (!hasShape) {
+            QFile::remove(stepPath); QFile::remove(brepPath);
+            m_exportedGeometryShapes.clear();
             return;
+        }
+        QVector<TopoDS_Shape> exportShapes;
+        for (int i=1;i<=uniqueSolids.Extent();++i) exportShapes.append(uniqueSolids(i));
+        exportShapes += nonSolidShapes;
+        bool unchanged = exportShapes.size() == m_exportedGeometryShapes.size();
+        for (qsizetype i=0;unchanged && i<exportShapes.size();++i)
+            unchanged = exportShapes[i].IsEqual(m_exportedGeometryShapes[i]);
+        const QFileInfo previous(brepPath);
+        if (unchanged && previous.isFile() && previous.size() == m_exportedGeometryBytes
+            && previous.lastModified().toMSecsSinceEpoch() == m_exportedGeometryModifiedMsecs
+            && QFileInfo::exists(brepPath + QStringLiteral(".shape-index.json"))
+            && QFileInfo::exists(stepPath)) return;
+        QFile::remove(stepPath); QFile::remove(brepPath);
+        QFile::remove(brepPath + QStringLiteral(".shape-index.json"));
+        QFile::remove(brepPath + QStringLiteral(".finalized.brep"));
+        QFile::remove(brepPath + QStringLiteral(".finalized.brep.topology-map.json"));
+        m_exportedGeometryShapes.clear();
 
         // BREP 保留给需要直接使用 OCC 几何的网格功能；不做额外预检、修复或诊断快照。
         if (BRepTools::Write(compound, brepTemporaryPath.toLocal8Bit().constData()))
@@ -4141,7 +4215,19 @@ void GeometryWorkbench::generateStepFile()
             qWarning() << "Failed to generate meshing BREP file:" << brepPath;
         }
 
-        // 普通整体网格继续使用 STEP，保持已经验证稳定的 OCC -> STEP -> SMESH 路径。
+        if (!writeJsonFile(brepPath + QStringLiteral(".shape-index.json"),
+                           GeometryEntityTools::meshingShapeIndexMap(uuids,compound))) {
+            QFile::remove(brepPath);
+            qWarning() << "Cannot publish explicit meshing topology indices";
+            return;
+        }
+        const QFileInfo exported(brepPath);
+        if (!exported.isFile() || exported.size() <= 0) return;
+        m_exportedGeometryShapes = exportShapes;
+        m_exportedGeometryBytes = exported.size();
+        m_exportedGeometryModifiedMsecs = exported.lastModified().toMSecsSinceEpoch();
+
+        // STEP remains available for exchange; meshing consumes the indexed BREP.
         STEPControl_Writer stepWriter;
         IFSelect_ReturnStatus transferStatus =
             stepWriter.Transfer(compound, STEPControl_ManifoldSolidBrep);
@@ -5621,39 +5707,12 @@ QVariantMap GeometryWorkbench::externalPartitionRegionInfo(const QVariantList& p
         regionOrdinal > m_externalPartitionRegionShapes.size())
         return out;
 
-    const TopoDS_Shape& region = m_externalPartitionRegionShapes[regionOrdinal - 1];
-    GProp_GProps props;
-    BRepGProp::VolumeProperties(region, props);
-    const double volume = props.Mass();
-    if (!(std::isfinite(volume) && volume > 0.0))
-        return out;
-
-    const gp_Pnt c = props.CentreOfMass();
-
-    // Region ownership is recorded at split time instead of reconstructed from
-    // the region centre.  A centre of mass can lie outside a strongly non-convex
-    // solid, so classifier-based ownership made "Sweep + body size" unreliable.
-    const int ownerVolumeId =
-        regionOrdinal <= m_externalPartitionRegionOwnerVolumeIds.size()
-        ? m_externalPartitionRegionOwnerVolumeIds[regionOrdinal - 1]
-        : 0;
-
-    Bnd_Box box;
-    BRepBndLib::Add(region, box);
-    QVariantList bbox;
-    if (!box.IsVoid())
-    {
-        double xmin=0.0,ymin=0.0,zmin=0.0,xmax=0.0,ymax=0.0,zmax=0.0;
-        box.Get(xmin,ymin,zmin,xmax,ymax,zmax);
-        bbox = QVariantList{xmin,ymin,zmin,xmax,ymax,zmax};
-    }
+    const int ownerVolumeId = regionOrdinal <= m_externalPartitionRegionOwnerVolumeIds.size()
+        ? m_externalPartitionRegionOwnerVolumeIds[regionOrdinal - 1] : 0;
 
     out.insert(QStringLiteral("valid"), true);
     out.insert(QStringLiteral("regionOrdinal"), regionOrdinal);
     out.insert(QStringLiteral("ownerVolumeId"), ownerVolumeId);
-    out.insert(QStringLiteral("center"), QVariant::fromValue(QVector3D(float(c.X()), float(c.Y()), float(c.Z()))));
-    out.insert(QStringLiteral("volume"), volume);
-    out.insert(QStringLiteral("bbox"), bbox);
     return out;
 }
 

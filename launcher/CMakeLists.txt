@@ -167,6 +167,8 @@ if(WIN32)
         )
     endforeach()
 
+    cae_copy_gdal_runtime(CAE_BASE)
+
     if(EXISTS "${CAE_SOLVER_EXECUTABLE}")
         add_custom_target(CAE_DEPLOY_SOLVER ALL
             COMMAND ${CMAKE_COMMAND} -E make_directory

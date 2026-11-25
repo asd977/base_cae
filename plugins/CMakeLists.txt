@@ -104,6 +104,8 @@ function(cae_add_base_plugin plugin_dir)
 
     if(plugin_dir STREQUAL "Base_Gemo")
         target_compile_definitions(${plugin_dir} PRIVATE GEOMETRY_LIBRARY)
+        target_link_libraries(${plugin_dir} PRIVATE CAE::GDAL)
+        cae_copy_gdal_runtime(${plugin_dir})
     endif()
 
     set(_include_dirs

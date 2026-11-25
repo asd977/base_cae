@@ -19,60 +19,93 @@
 #include <vtkProperty.h>
 #include <vtkSmartPointer.h>
 #include <vtkDoubleArray.h>
-#include <vtkColorTransferFunction.h>
+#include <vtkLookupTable.h>
 
 #include <QHash>
+#include <QSet>
+#include <services/PreProcessingService.h>
 #include <algorithm>
 
 namespace
 {
+struct DisplayState { int mode=2; double opacity=1.0; };
+QHash<QString,DisplayState>& displayStates(){static QHash<QString,DisplayState> states;return states;}
+QHash<QString,bool>& isolatedVisibility(){static QHash<QString,bool> states;return states;}
+
 QHash<QString, bool>& visibilityStates()
 {
     static QHash<QString, bool> states;
     return states;
 }
 
-QHash<QString, bool>& terrainPresentations()
+struct TerrainPresentation
 {
-    static QHash<QString, bool> states;
+    bool showColor = true;
+    bool showContours = true;
+};
+
+QHash<QString, TerrainPresentation>& terrainPresentations()
+{
+    static QHash<QString, TerrainPresentation> states;
     return states;
 }
 
 bool topologyEdgesEnabled(const QString& uuid)
 {
-    return terrainPresentations().value(uuid, true);
+    return !terrainPresentations().contains(uuid) && displayStates().value(uuid).mode!=0;
 }
 
-void applyTerrainPresentation(const QString& uuid, GeomShapeObject* object)
+void applyTerrainPresentation(const QString& uuid, GeomShapeObject* object, bool showColor = true)
 {
     if (!terrainPresentations().contains(uuid) || !object || !object->getSurfActor())
         return;
     auto actor = object->getSurfActor();
     auto* mapper = vtkPolyDataMapper::SafeDownCast(actor->GetMapper());
-    auto* poly = mapper ? mapper->GetInput() : nullptr;
+    if (!mapper) return;
+    auto* poly = mapper->GetInput();
     if (!poly || !poly->GetNumberOfPoints()) return;
+
+    if (!showColor)
+    {
+        mapper->StaticOff();
+        mapper->ScalarVisibilityOff();
+        mapper->Modified();
+        actor->GetProperty()->Modified();
+        GeometryDisplayStyle::applyDefaultSurface(actor->GetProperty());
+        return;
+    }
+
     constexpr const char* elevationName = "TerrainElevation";
     if (!poly->GetPointData()->GetArray(elevationName))
     {
         auto elevations = vtkSmartPointer<vtkDoubleArray>::New();
         elevations->SetName(elevationName);
+        elevations->SetNumberOfValues(poly->GetNumberOfPoints());
         for (vtkIdType i = 0; i < poly->GetNumberOfPoints(); ++i)
-            elevations->InsertNextValue(poly->GetPoint(i)[2]);
+            elevations->SetValue(i, poly->GetPoint(i)[2]);
         poly->GetPointData()->AddArray(elevations);
     }
+    // Repeated tree visibility changes reuse the scalar array and lookup table.
+    if (mapper->GetScalarVisibility() && mapper->GetArrayName() &&
+        QByteArray(mapper->GetArrayName()) == elevationName)
+        return;
     double range[2]; poly->GetPointData()->GetArray(elevationName)->GetRange(range);
-    const double span = std::max(range[1] - range[0], 1e-9);
-    auto colors = vtkSmartPointer<vtkColorTransferFunction>::New();
-    colors->AddRGBPoint(range[0], .24, .57, .30);
-    colors->AddRGBPoint(range[0] + span * .5, .79, .74, .39);
-    colors->AddRGBPoint(range[0] + span, .63, .40, .24);
+    if (range[0] == range[1]) range[1] = range[0] + 1.0;
+    vtkNew<vtkLookupTable> lut;
+    lut->SetNumberOfTableValues(256);
+    lut->SetHueRange(0.667, 0.0); // 蓝色低谷到红色山峰，与地形高程云图色阶保持一致
+    lut->SetTableRange(range[0], range[1]);
+    lut->Build();
+    mapper->StaticOff();
     mapper->SetScalarModeToUsePointFieldData();
     mapper->SelectColorArray(elevationName);
-    mapper->SetLookupTable(colors);
+    mapper->SetLookupTable(lut);
     mapper->SetScalarRange(range);
     mapper->ScalarVisibilityOn();
+    mapper->Modified();
     actor->GetProperty()->SetRepresentationToSurface();
     actor->GetProperty()->EdgeVisibilityOff();
+    actor->GetProperty()->Modified();
 }
 
 bool& renderSuspendedState()
@@ -415,13 +448,23 @@ bool GeometryDisplayManager::setVisible(const QString& uuid, bool visible, bool 
         }
     }
 
+    const auto style=displayStates().value(uuid);
+    const auto terrain = terrainPresentations().value(uuid);
+    const bool showTerrainColor = terrain.showColor;
+    const bool showContours = terrain.showContours;
+
     if (object)
     {
-        applyTerrainPresentation(uuid, object);
+        applyTerrainPresentation(uuid, object, showTerrainColor);
         const bool embeddedTopologyEdges = usesEmbeddedTopologyEdges(object);
         if (object->getSurfActor())
         {
-            object->getSurfActor()->SetVisibility(visible ? 1 : 0);
+            const bool wire=style.mode==1;
+            const bool showFace=visible && (!wire || embeddedTopologyEdges || terrainPresentations().contains(uuid));
+            object->getSurfActor()->SetVisibility(showFace ? 1 : 0);
+            object->getSurfActor()->GetProperty()->SetRepresentation(
+                wire && (embeddedTopologyEdges || terrainPresentations().contains(uuid)) ? VTK_WIREFRAME : VTK_SURFACE);
+            object->getSurfActor()->GetProperty()->SetEdgeVisibility(embeddedTopologyEdges && style.mode==2);
             changed = true;
         }
         if (object->getEdgeActor())
@@ -443,7 +486,17 @@ bool GeometryDisplayManager::setVisible(const QString& uuid, bool visible, bool 
     {
         const bool embeddedTopologyEdges = usesEmbeddedTopologyEdges(object);
 
-        changed = vis->setVisible(facePropId(uuid), visible, false) || changed;
+        const QString terrainSourcesId = uuid + QStringLiteral("_terrain_sources");
+        vtkProp* terrainSourcesProp = vis->getProp(terrainSourcesId);
+        changed = vis->setVisible(facePropId(uuid), visible && (style.mode!=1
+            || embeddedTopologyEdges || terrainPresentations().contains(uuid)), false) || changed;
+        vis->setOpacity(facePropId(uuid),style.opacity,false);
+
+        if (terrainSourcesProp)
+        {
+            changed = vis->setVisible(terrainSourcesId, visible && showContours, false) || changed;
+        }
+
         const bool batchableEdge = edgePolyData(object) != nullptr;
         const bool showIndividualEdge =
             visible && topologyEdgesEnabled(uuid) && !embeddedTopologyEdges &&
@@ -487,17 +540,28 @@ bool GeometryDisplayManager::hide(const QString& uuid, bool renderNow)
     return setVisible(uuid, false, renderNow);
 }
 
-void GeometryDisplayManager::setTerrainPresentation(const QString& uuid)
+void GeometryDisplayManager::setTerrainPresentation(const QString& uuid, bool showColor, bool showContours)
 {
     if (uuid.isEmpty()) return;
     const bool visible = isVisible(uuid);
-    terrainPresentations().insert(uuid, false);
+    terrainPresentations().insert(uuid, {showColor, showContours});
     // Module navigation shows the Geometry group. Internal terrain edges must
     // not be registered there, otherwise showing that group resurrects them.
     if (auto* vis = ServiceRegistry::instance().getService<VisualWidgetService>())
         vis->removeProp(edgePropId(uuid), false);
     if (auto* mgr = GeomManager::GeomManagerInstance::getInstance())
         if (mgr->getGeomShapeObject(uuid)) setVisible(uuid, visible, false);
+    if (auto* vis = ServiceRegistry::instance().getService<VisualWidgetService>())
+        vis->render();
+}
+
+void GeometryDisplayManager::removeTerrainPreview(const QString& uuid)
+{
+    if (uuid.isEmpty()) return;
+    if (auto* vis = ServiceRegistry::instance().getService<VisualWidgetService>())
+    {
+        vis->removeProp(uuid + QStringLiteral("_terrain_surface"), false);
+    }
 }
 
 bool GeometryDisplayManager::show(const QString& uuid, bool renderNow)
@@ -523,7 +587,8 @@ bool GeometryDisplayManager::isVisible(const QString& uuid)
                                      object->getSurfActor()->GetVisibility() != 0;
             const bool edgeVisible = object->getEdgeActor() &&
                                      object->getEdgeActor()->GetVisibility() != 0;
-            return surfVisible || edgeVisible;
+            if (surfVisible || edgeVisible)
+                return true;
         }
     }
 
@@ -531,7 +596,10 @@ bool GeometryDisplayManager::isVisible(const QString& uuid)
     {
         auto* surf = vtkActor::SafeDownCast(vis->getProp(facePropId(uuid)));
         auto* edge = vtkActor::SafeDownCast(vis->getProp(edgePropId(uuid)));
-        return (surf && surf->GetVisibility() != 0) || (edge && edge->GetVisibility() != 0);
+        auto* terrainSurf = vtkActor::SafeDownCast(vis->getProp(uuid + QStringLiteral("_terrain_surface")));
+        return (surf && surf->GetVisibility() != 0) ||
+               (edge && edge->GetVisibility() != 0) ||
+               (terrainSurf && terrainSurf->GetVisibility() != 0);
     }
 
     return false;
@@ -549,6 +617,8 @@ void GeometryDisplayManager::forgetVisibilityState(const QString& uuid)
     {
         visibilityStates().remove(uuid);
         terrainPresentations().remove(uuid);
+        displayStates().remove(uuid);
+        isolatedVisibility().remove(uuid);
     }
 }
 
@@ -556,6 +626,8 @@ void GeometryDisplayManager::clearVisibilityStates()
 {
     visibilityStates().clear();
     terrainPresentations().clear();
+    displayStates().clear();
+    isolatedVisibility().clear();
     edgeBatchDirtyState() = true;
     edgeBatchActiveState() = false;
     if (auto* vis = ServiceRegistry::instance().getService<VisualWidgetService>())
@@ -576,4 +648,59 @@ void GeometryDisplayManager::setRenderSuspended(bool suspended)
 bool GeometryDisplayManager::isRenderSuspended()
 {
     return renderSuspendedState();
+}
+
+void GeometryDisplayManager::setPresentation(const QStringList& uuids,int mode,double opacity)
+{
+    const bool suspended=isRenderSuspended();setRenderSuspended(true);
+    for(const auto& uuid:uuids) {
+        auto& style=displayStates()[uuid];
+        if(mode>=0)style.mode=qBound(0,mode,2);
+        if(opacity>=0)style.opacity=qBound(0.0,opacity,1.0);
+        setVisible(uuid,isVisible(uuid),false);
+    }
+    setRenderSuspended(suspended);
+    if(!suspended)if(auto* visual=ServiceRegistry::instance().getService<VisualWidgetService>())visual->render();
+}
+void GeometryDisplayManager::isolateObjects(const QStringList& uuids)
+{
+    auto* manager=GeomManager::GeomManagerInstance::getInstance();if(!manager||uuids.isEmpty())return;
+    const QSet<QString> selected(uuids.cbegin(),uuids.cend());
+    const bool suspended=isRenderSuspended();setRenderSuspended(true);
+    const auto objects=manager->getShapMap();
+    for(auto it=objects.cbegin();it!=objects.cend();++it) {
+        if(!isolatedVisibility().contains(it.key()))isolatedVisibility()[it.key()]=isVisible(it.key());
+        setVisible(it.key(),selected.contains(it.key()),false);
+    }
+    setRenderSuspended(suspended);
+    if(auto* pre=ServiceRegistry::instance().getService<PreProcessingService>())
+        if(auto* workbench=dynamic_cast<GeometryWorkbench*>(pre))workbench->refreshTreePresentation();
+    if(!suspended)if(auto* visual=ServiceRegistry::instance().getService<VisualWidgetService>())visual->render();
+}
+void GeometryDisplayManager::restorePresentation()
+{
+    auto* manager=GeomManager::GeomManagerInstance::getInstance();if(!manager)return;
+    const auto old=isolatedVisibility();isolatedVisibility().clear();displayStates().clear();
+    const bool suspended=isRenderSuspended();setRenderSuspended(true);
+    const auto objects=manager->getShapMap();
+    for(auto it=objects.cbegin();it!=objects.cend();++it)setVisible(it.key(),old.value(it.key(),isVisible(it.key())),false);
+    setRenderSuspended(suspended);
+    if(auto* pre=ServiceRegistry::instance().getService<PreProcessingService>())
+        if(auto* workbench=dynamic_cast<GeometryWorkbench*>(pre))workbench->refreshTreePresentation();
+    if(!suspended)if(auto* visual=ServiceRegistry::instance().getService<VisualWidgetService>())visual->render();
+}
+QJsonObject GeometryDisplayManager::presentationJson()
+{
+    QJsonObject result;
+    for(auto it=displayStates().cbegin();it!=displayStates().cend();++it)
+        result[it.key()]=QJsonObject{{"mode",it.value().mode},{"opacity",it.value().opacity}};
+    return result;
+}
+void GeometryDisplayManager::loadPresentationJson(const QJsonObject& object)
+{
+    displayStates().clear();
+    for(auto it=object.begin();it!=object.end();++it) {
+        const auto style=it.value().toObject();
+        displayStates()[it.key()]={qBound(0,style.value("mode").toInt(2),2),qBound(0.0,style.value("opacity").toDouble(1.0),1.0)};
+    }
 }

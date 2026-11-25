@@ -509,20 +509,20 @@ void StressBoundaryPage::setupBatchGroupCombo()
     if (!meshSvc)
         return;
 
-    const MshPickMap& map = meshSvc->mshPickMapSolid();
     const int targetDim = (currentPickMode() == PickMode::Face) ? 2 : 1;
 
     ui->comboBoxGroup->blockSignals(true);
     ui->comboBoxGroup->clear();
-
-    const auto nameMap = map.physicalNameMap();
-    for (auto it = nameMap.constBegin(); it != nameMap.constEnd(); ++it)
+    for (const MeshTagSet& set : meshSvc->boundaryTagSets(targetDim))
     {
-        const int physId = it.key();
-        const int dim = map.physicalDim(physId);
-        if (dim != targetDim)
-            continue;
-        ui->comboBoxGroup->addItem(it.value(), physId);
+        if ((targetDim == 2 && set.faceKeys.isEmpty())
+            || (targetDim == 1 && set.edgeKeys.isEmpty())) continue;
+        const QString text = set.name.trimmed().isEmpty()
+            ? QStringLiteral("%1 %2").arg(set.key.category).arg(set.key.id) : set.name;
+        ui->comboBoxGroup->addItem(text, set.key.id);
+        const int row = ui->comboBoxGroup->count() - 1;
+        ui->comboBoxGroup->setItemData(row, set.key.category, Qt::UserRole + 1);
+        ui->comboBoxGroup->setItemData(row, set.key.dim, Qt::UserRole + 2);
     }
 
     ui->comboBoxGroup->blockSignals(false);
@@ -543,13 +543,16 @@ void StressBoundaryPage::setupBatchGroupCombo()
                     if (!meshSvc)
                         return;
 
-                    const MshPickMap& map = meshSvc->mshPickMapSolid();
-                    const int physId = ui->comboBoxGroup->itemData(row).toInt();
-
+                    const MshPickMap map = meshSvc->mshPickMapSolid();
+                    const MeshTagKey key{
+                        ui->comboBoxGroup->itemData(row, Qt::UserRole + 1).toString(),
+                        ui->comboBoxGroup->itemData(row, Qt::UserRole + 2).toInt(),
+                        ui->comboBoxGroup->itemData(row).toInt()};
+                    const MeshTagSet set = map.tagSets.value(key);
                     if (currentPickMode() == PickMode::Face)
                     {
                         QVector<vtkIdType> faceKeys;
-                        for (qint64 k : map.physicalFaceKeys(physId))
+                        for (MeshIdType k : set.faceKeys)
                             faceKeys.push_back(vtkIdType(k));
                         PickManager::instance().setPreviewFaceKeys(pickDomain(), m_uuid,
                                                                    GridKind::Solid, faceKeys);
@@ -557,7 +560,7 @@ void StressBoundaryPage::setupBatchGroupCombo()
                     else
                     {
                         QVector<vtkIdType> edgeKeys;
-                        for (qint64 k : map.physicalEdgeKeys(physId))
+                        for (MeshIdType k : set.edgeKeys)
                             edgeKeys.push_back(vtkIdType(k));
                         PickManager::instance().setPreviewEdgeKeys(pickDomain(), m_uuid,
                                                                    GridKind::Solid, edgeKeys);
@@ -591,13 +594,17 @@ void StressBoundaryPage::onGroupChanged(int index)
     if (!meshSvc)
         return;
 
-    const MshPickMap& map = meshSvc->mshPickMapSolid();
-    const int physId = ui->comboBoxGroup->itemData(index).toInt();
+    const MshPickMap map = meshSvc->mshPickMapSolid();
+    const MeshTagKey key{
+        ui->comboBoxGroup->itemData(index, Qt::UserRole + 1).toString(),
+        ui->comboBoxGroup->itemData(index, Qt::UserRole + 2).toInt(),
+        ui->comboBoxGroup->itemData(index).toInt()};
+    const MeshTagSet set = map.tagSets.value(key);
 
     if (currentPickMode() == PickMode::Face)
     {
         QVector<vtkIdType> faceKeys;
-        const auto faceKeysInt = map.physicalFaceKeys(physId);
+        const auto& faceKeysInt = set.faceKeys;
         faceKeys.reserve(faceKeysInt.size());
         for (qint64 k : faceKeysInt)
             faceKeys.push_back(static_cast<vtkIdType>(k));
@@ -608,7 +615,7 @@ void StressBoundaryPage::onGroupChanged(int index)
     else
     {
         QVector<vtkIdType> edgeKeys;
-        const auto edgeKeysInt = map.physicalEdgeKeys(physId);
+        const auto& edgeKeysInt = set.edgeKeys;
         edgeKeys.reserve(edgeKeysInt.size());
         for (qint64 k : edgeKeysInt)
             edgeKeys.push_back(static_cast<vtkIdType>(k));
@@ -624,7 +631,9 @@ void StressBoundaryPage::onGroupChanged(int index)
 QJsonObject StressBoundaryPage::saveJson()
 {
     QJsonObject obj;
-    obj["group_phys_id"] = ui->comboBoxGroup->currentData().toInt();
+    obj["group_phys_id"] = ui->comboBoxGroup->currentData().toInt(); // legacy key
+    obj["group_tag_category"] = ui->comboBoxGroup->currentData(Qt::UserRole + 1).toString();
+    obj["group_tag_dim"] = ui->comboBoxGroup->currentData(Qt::UserRole + 2).toInt();
 
     auto toJson = [](const QVector<vtkIdType>& ids)
     {
@@ -650,7 +659,12 @@ void StressBoundaryPage::loadJson(const QJsonObject& obj)
     const int physId = obj.value("group_phys_id").toInt(-1);
     for (int i = 0; i < ui->comboBoxGroup->count(); ++i)
     {
-        if (ui->comboBoxGroup->itemData(i).toInt() == physId)
+        if (ui->comboBoxGroup->itemData(i).toInt() == physId
+            && (obj.value("group_tag_category").toString().isEmpty()
+                || (ui->comboBoxGroup->itemData(i, Qt::UserRole + 1).toString()
+                    == obj.value("group_tag_category").toString()
+                    && ui->comboBoxGroup->itemData(i, Qt::UserRole + 2).toInt()
+                    == obj.value("group_tag_dim").toInt())))
         {
             const QSignalBlocker blocker(ui->comboBoxGroup);
             ui->comboBoxGroup->setCurrentIndex(i);

@@ -1,9 +1,16 @@
 #include "EarthRockfillDamDialog.h"
 
+#include "../builders/BooleanBuilder.h"
+#include "../builders/GeometryBuildUtils.h"
+#include "../core/CadDocument.h"
+#include "../core/CadBody.h"
 #include <BRepBuilderAPI_MakeFace.hxx>
 #include <BRepBuilderAPI_MakePolygon.hxx>
 #include <BRepPrimAPI_MakePrism.hxx>
+#include <BRepBuilderAPI_Transform.hxx>
 #include <BRep_Builder.hxx>
+#include <Bnd_Box.hxx>
+#include <BRepBndLib.hxx>
 #include <GeomManagerInstance.h>
 #include <GeometryCleanup.h>
 #include <GeometryServiceAccess.h>
@@ -33,6 +40,9 @@
 #include <gp_Vec.hxx>
 #include <services/ProjectManagerService.h>
 #include <services/VisualWidgetService.h>
+#include <services/PreProcessingService.h>
+#include <GeometryWorkbench.h>
+#include <GeometryDisplayManager.h>
 
 namespace
 {
@@ -163,6 +173,11 @@ QJsonObject EarthRockfillDamDialog::saveJson()
     object["filter"] = readEdit(this, "filterWidthEdit", 4.0);
     object["coreOffset"] = readEdit(this, "coreOffsetEdit", 0.0);
     object["layers"] = layerEdit->text().toInt();
+    object["linkGeology"] = m_linkGeology ? m_linkGeology->isChecked() : false;
+    object["targetGeology"] = m_geologyCombo ? m_geologyCombo->currentData().toString() : QString();
+    object["posX"] = m_posXEdit ? m_posXEdit->text().toDouble() : 0.0;
+    object["posY"] = m_posYEdit ? m_posYEdit->text().toDouble() : 0.0;
+    object["posZ"] = m_posZEdit ? m_posZEdit->text().toDouble() : 0.0;
     return object;
 }
 
@@ -194,6 +209,24 @@ void EarthRockfillDamDialog::loadJson(const QJsonObject& object)
         setEditIfExists(this, "coreOffsetEdit", object["coreOffset"].toDouble());
     if (object.contains("layers"))
         layerEdit->setText(QString::number(object["layers"].toInt()));
+
+    if (m_linkGeology && object.contains("linkGeology"))
+    {
+        m_linkGeology->setChecked(object["linkGeology"].toBool());
+        onLinkGeologyToggled(m_linkGeology->isChecked());
+    }
+    if (m_geologyCombo && object.contains("targetGeology"))
+    {
+        const QString target = object["targetGeology"].toString();
+        int idx = m_geologyCombo->findData(target);
+        if (idx >= 0) m_geologyCombo->setCurrentIndex(idx);
+    }
+    if (m_posXEdit && object.contains("posX"))
+        m_posXEdit->setText(QString::number(object["posX"].toDouble()));
+    if (m_posYEdit && object.contains("posY"))
+        m_posYEdit->setText(QString::number(object["posY"].toDouble()));
+    if (m_posZEdit && object.contains("posZ"))
+        m_posZEdit->setText(QString::number(object["posZ"].toDouble()));
 
     updateDiagram();
 }
@@ -264,6 +297,35 @@ void EarthRockfillDamDialog::initUi()
     form->addRow("心墙中心偏移 Xc", coreOffsetEdit);
     form->addRow("填筑层数 N", layerEdit);
 
+    auto* geoGroup = new QGroupBox("河谷地形贴合联动", this);
+    auto* geoForm = new QFormLayout(geoGroup);
+    m_linkGeology = new QCheckBox("关联目标地质体进行河谷坝底贴合", this);
+    m_geologyCombo = new QComboBox(this);
+    m_geologyCombo->setEnabled(false);
+    m_posXEdit = new QLineEdit("0", this);
+    m_posYEdit = new QLineEdit("0", this);
+    m_posZEdit = new QLineEdit("0", this);
+    auto* posValidator = new QDoubleValidator(-1.0e9, 1.0e9, 3, this);
+    m_posXEdit->setValidator(posValidator);
+    m_posYEdit->setValidator(posValidator);
+    m_posZEdit->setValidator(posValidator);
+    m_posXEdit->setEnabled(false);
+    m_posYEdit->setEnabled(false);
+    m_posZEdit->setEnabled(false);
+
+    geoForm->addRow(m_linkGeology);
+    geoForm->addRow("目标地质体", m_geologyCombo);
+    auto* posRow = new QHBoxLayout();
+    posRow->addWidget(new QLabel("X:")); posRow->addWidget(m_posXEdit);
+    posRow->addWidget(new QLabel("Y:")); posRow->addWidget(m_posYEdit);
+    posRow->addWidget(new QLabel("Z:")); posRow->addWidget(m_posZEdit);
+    geoForm->addRow("大坝定位坐标 (X,Y,Z)", posRow);
+
+    connect(m_linkGeology, &QCheckBox::toggled, this, &EarthRockfillDamDialog::onLinkGeologyToggled);
+    connect(m_geologyCombo, QOverload<int>::of(&QComboBox::currentIndexChanged), this, [this](int) {
+        applyTargetGeologyDefaults();
+    });
+
     auto* row = new QHBoxLayout();
     row->setContentsMargins(0, 0, 0, 0);
     auto* generateButton = new QPushButton("生成土石坝", this);
@@ -277,6 +339,7 @@ void EarthRockfillDamDialog::initUi()
     diagramLabel->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Ignored);
 
     contentLayout->addWidget(inputGroup);
+    contentLayout->addWidget(geoGroup);
     contentLayout->addLayout(row);
     contentLayout->addWidget(diagramLabel, 2);
     contentLayout->addStretch(1);
@@ -286,6 +349,86 @@ void EarthRockfillDamDialog::initUi()
     updateDiagram();
 }
 
+void EarthRockfillDamDialog::applyTargetGeologyDefaults()
+{
+    if (!m_geologyCombo) return;
+    const QString uuid = m_geologyCombo->currentData().toString();
+    if (uuid.isEmpty()) return;
+    auto* doc = GeomManager::CadDocument::getInstance();
+    if (!doc) return;
+    CadBody* b = doc->getGeomShapeObject(uuid);
+    if (!b || !b->getShape() || b->getShape()->IsNull()) return;
+    Bnd_Box box;
+    BRepBndLib::Add(*(b->getShape()), box);
+    if (box.IsVoid()) return;
+    double xmin, ymin, zmin, xmax, ymax, zmax;
+    box.Get(xmin, ymin, zmin, xmax, ymax, zmax);
+
+    const double cx = (xmin + xmax) * 0.5;
+    const double cy = (ymin + ymax) * 0.5;
+    const double cz = zmin + 10.0;
+    if (m_posXEdit) m_posXEdit->setText(QString::number(cx, 'f', 1));
+    if (m_posYEdit) m_posYEdit->setText(QString::number(cy, 'f', 1));
+    if (m_posZEdit) m_posZEdit->setText(QString::number(cz, 'f', 1));
+
+    const double targetH = (zmax - cz) * 1.05;
+    if (hEdit && hEdit->text().toDouble() < targetH * 0.5)
+        hEdit->setText(QString::number(targetH, 'f', 1));
+    const double targetL = (ymax - ymin) * 0.6;
+    if (lenEdit && lenEdit->text().toDouble() < targetL * 0.5)
+        lenEdit->setText(QString::number(targetL, 'f', 1));
+}
+
+void EarthRockfillDamDialog::refreshGeologyCombo()
+{
+    if (!m_geologyCombo) return;
+    const QString currentUuid = m_geologyCombo->currentData().toString();
+    const QSignalBlocker blocker(m_geologyCombo);
+    m_geologyCombo->clear();
+    auto* doc = GeomManager::CadDocument::getInstance();
+    if (!doc) return;
+    const auto map = doc->getShapMap();
+    int defaultIdx = -1;
+    for (auto it = map.cbegin(); it != map.cend(); ++it)
+    {
+        if (it.key() == m_uuid) continue;
+        CadBody* b = it.value();
+        if (!b || !b->getShape() || b->getShape()->IsNull()) continue;
+        m_geologyCombo->addItem(b->getName().isEmpty() ? it.key() : b->getName(), it.key());
+        if (b->getName().contains("地形") || b->getName().contains("地质") || !b->faceGroups().isEmpty())
+            defaultIdx = m_geologyCombo->count() - 1;
+    }
+    if (!currentUuid.isEmpty())
+    {
+        int idx = m_geologyCombo->findData(currentUuid);
+        if (idx >= 0) m_geologyCombo->setCurrentIndex(idx);
+    }
+    else if (defaultIdx >= 0)
+    {
+        m_geologyCombo->setCurrentIndex(defaultIdx);
+    }
+}
+
+void EarthRockfillDamDialog::onLinkGeologyToggled(bool checked)
+{
+    if (m_geologyCombo) m_geologyCombo->setEnabled(checked);
+    if (m_posXEdit) m_posXEdit->setEnabled(checked);
+    if (m_posYEdit) m_posYEdit->setEnabled(checked);
+    if (m_posZEdit) m_posZEdit->setEnabled(checked);
+    if (checked)
+    {
+        refreshGeologyCombo();
+        applyTargetGeologyDefaults();
+    }
+}
+
+void EarthRockfillDamDialog::showEvent(QShowEvent* event)
+{
+    BasePage::showEvent(event);
+    refreshGeologyCombo();
+    if (m_linkGeology && m_linkGeology->isChecked())
+        applyTargetGeologyDefaults();
+}
 
 void EarthRockfillDamDialog::resizeEvent(QResizeEvent* event)
 {
@@ -412,6 +555,106 @@ void EarthRockfillDamDialog::buildLayeredDam(double H, double Bt, double Wu, dou
 void EarthRockfillDamDialog::onGenerateClicked()
 {
     updateDiagram();
+
+    if (m_linkGeology && m_linkGeology->isChecked())
+    {
+        const QString targetUuid = m_geologyCombo ? m_geologyCombo->currentData().toString() : QString();
+        if (targetUuid.isEmpty())
+        {
+            QMessageBox::warning(this, tr("参数提示"), tr("请选择要关联的目标地质体。"));
+            return;
+        }
+
+        const double H = hEdit->text().toDouble();
+        const double Bt = crestEdit->text().toDouble();
+        const double Wu = upEdit->text().toDouble();
+        const double Wd = downEdit->text().toDouble();
+        const double L = lenEdit->text().toDouble();
+        const double posX = m_posXEdit ? m_posXEdit->text().toDouble() : 0.0;
+        const double posY = m_posYEdit ? m_posYEdit->text().toDouble() : 0.0;
+        const double posZ = m_posZEdit ? m_posZEdit->text().toDouble() : 0.0;
+
+        if (H <= kEps || Bt <= kEps || Wu <= kEps || Wd <= kEps || L <= kEps)
+        {
+            QMessageBox::warning(this, tr("参数错误"), tr("大坝尺寸必须大于 0。"));
+            return;
+        }
+
+        auto* doc = GeomManager::CadDocument::getInstance();
+        CadBody* targetBody = doc ? doc->getGeomShapeObject(targetUuid) : nullptr;
+        if (targetBody && targetBody->getShape())
+        {
+            Bnd_Box geoBox;
+            BRepBndLib::Add(*(targetBody->getShape()), geoBox);
+            if (!geoBox.IsVoid())
+            {
+                double xmin, ymin, zmin, xmax, ymax, zmax;
+                geoBox.Get(xmin, ymin, zmin, xmax, ymax, zmax);
+                if (qAbs(posX) < 1.0 && qAbs(posY) < 1.0 && (xmin > 10.0 || xmax < -10.0))
+                {
+                    applyTargetGeologyDefaults();
+                }
+            }
+        }
+
+        const double actualX = m_posXEdit ? m_posXEdit->text().toDouble() : posX;
+        const double actualY = m_posYEdit ? m_posYEdit->text().toDouble() : posY;
+        const double actualZ = m_posZEdit ? m_posZEdit->text().toDouble() : posZ;
+        const double actualH = hEdit->text().toDouble();
+        const double actualL = lenEdit->text().toDouble();
+
+        const double bottomW = Wu + Bt + Wd;
+        QVector<QPointF> profile;
+        profile << QPointF(0.0, 0.0)
+                << QPointF(bottomW, 0.0)
+                << QPointF(Wu + Bt, actualH)
+                << QPointF(Wu, actualH);
+        TopoDS_Shape rawDam = makePrismFromProfile(profile, actualL);
+        if (rawDam.IsNull())
+        {
+            QMessageBox::warning(this, tr("生成失败"), tr("无法构建大坝基础实体。"));
+            return;
+        }
+
+        gp_Trsf trsf;
+        trsf.SetTranslation(gp_Vec(actualX - bottomW * 0.5, actualY - actualL * 0.5, actualZ));
+        BRepBuilderAPI_Transform xform(rawDam, trsf);
+        TopoDS_Shape placedDam = xform.Shape();
+
+        TopoDS_Shape fittedDam;
+        QVector<int> contactFaces;
+        QString errorMsg;
+        if (!BooleanBuilder::fitDamToValley(targetUuid, placedDam, fittedDam, contactFaces, errorMsg))
+        {
+            QMessageBox::warning(this, tr("贴合失败"), tr("大坝与河谷贴合布尔裁剪失败：%1").arg(errorMsg));
+            return;
+        }
+
+        GeometryBuildUtils::registerShape(m_uuid, getDisplayName(), new TopoDS_Shape(fittedDam));
+        if (auto* body = doc ? doc->getGeomShapeObject(m_uuid) : nullptr)
+        {
+            body->addFaceGroup({QStringLiteral("土石坝基底接触面组"), QStringLiteral("Contact"), contactFaces});
+        }
+
+        // 同步树节点状态、勾选并提交历史
+        if (auto* pre = ServiceRegistry::instance().getService<PreProcessingService>())
+        {
+            if (auto* workbench = dynamic_cast<GeometryWorkbench*>(pre))
+            {
+                workbench->refreshTreePresentation(m_uuid);
+                workbench->refreshTreePresentation(targetUuid);
+            }
+        }
+
+        if (auto* vis = ServiceRegistry::instance().getService<VisualWidgetService>())
+            vis->render();
+
+        QMessageBox::information(this, tr("贴合完成"),
+            tr("大坝已成功贴合河谷地形，自动裁剪嵌入山体部分，提取河谷接触面 %1 个，已归入【土石坝基底接触面组】。")
+            .arg(contactFaces.size()));
+        return;
+    }
+
     IGeometryService* service = requireGeometryService(this);
     if (!service)
         return;

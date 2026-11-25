@@ -1,4 +1,5 @@
 #include "MeshGlobalMeshingWidget.h"
+#include <MeshWorkingPaths.h>
 
 #include "SmeshMeshGenerator.h"
 #include "MeshModuleController.h"
@@ -30,7 +31,7 @@
 #include <QJsonArray>
 #include <QEvent>
 #include <QSignalBlocker>
-#include "MeshCompactDoubleSpinBox.h"
+#include "CompactDoubleSpinBox.h"
 #include <QDesktopServices>
 #include <QDir>
 #include <QFile>
@@ -85,16 +86,7 @@ std::set<int> parseEntityIdSet(const QString& text)
     return ids;
 }
 
-double entityCharacteristicLength(int dimension, double measure)
-{
-    if (!std::isfinite(measure) || measure <= 0.0)
-        return 0.0;
-    if (dimension == 1)
-        return measure;
-    if (dimension == 2)
-        return std::sqrt(measure);
-    return std::cbrt(measure);
-}
+
 
 }
 
@@ -227,7 +219,7 @@ MeshGlobalMeshingWidget::MeshGlobalMeshingWidget(QWidget* parent)
     m_automaticMin=new QCheckBox(tr("自动确定最小尺寸"),this);
     m_automaticMin->setObjectName("smeshAutomaticMinSize");m_automaticMin->setChecked(true);
     auto spin=[this](const char* name,double minimum,double maximum,int decimals,double step,double value){
-        auto* field=new MeshCompactDoubleSpinBox(this);field->setObjectName(name);
+        auto* field=new CompactDoubleSpinBox(this);field->setObjectName(name);
         field->setDecimals(decimals);field->setRange(minimum,maximum);field->setSingleStep(step);field->setValue(value);
         return field;
     };
@@ -520,7 +512,7 @@ void MeshGlobalMeshingWidget::updateFinenessControls()
 
 QString MeshGlobalMeshingWidget::tempDirPath() const
 {
-    return QCoreApplication::applicationDirPath();
+    return MeshWorkingPaths::tempGridDir();
 }
 
 QString MeshGlobalMeshingWidget::tempVtkPath() const
@@ -550,9 +542,8 @@ void MeshGlobalMeshingWidget::onGenerate()
     if (!p.allGeometry) {
         for (int id : m_geometryIds[p.dimension]) {
             SmeshEntityReference ref; ref.dimension = p.dimension; ref.entityId = id;
-            if (!preService->entityCenter(p.dimension, id, ref.center) ||
-                !preService->entityMeasure(p.dimension, id, ref.measure) || ref.measure <= 0) {
-                QMessageBox::warning(this, tr("几何范围"), tr("所选几何 %1 已失效，请刷新后重新选择。").arg(id)); return;
+            if (!preService->listEntityIds(p.dimension).contains(QString::number(id))) {
+                QMessageBox::warning(this, tr("几何范围"), tr("所选几何编号已失效，请重新选择。")); return;
             }
             p.geometryScope.append(ref);
         }
@@ -583,11 +574,9 @@ void MeshGlobalMeshingWidget::onGenerate()
         const QVector<FaceControlRule> faceRules = meshService->faceControlRules();
         const QVector<VolumeControlRule> volumeRules = meshService->volumeControlRules();
 
-        auto appendControl = [&](int dimension, int entityId, double measure, double targetSize)
+        auto appendControl = [&](int dimension, int entityId, double targetSize)
         {
-            QVector3D center;
-            if (!preService->entityCenter(dimension, entityId, center) ||
-                !std::isfinite(measure) || measure <= 0.0 ||
+            if (!preService->listEntityIds(dimension).contains(QString::number(entityId)) ||
                 !std::isfinite(targetSize) || targetSize <= 0.0)
             {
                 ++p.skippedLocalControlCount;
@@ -604,8 +593,6 @@ void MeshGlobalMeshingWidget::onGenerate()
             SmeshLocalSizeControl control;
             control.dimension = dimension;
             control.entityId = entityId;
-            control.center = center;
-            control.characteristicLength = entityCharacteristicLength(dimension, measure);
             if (targetSize < p.lenMin)
                 ++p.clampedLocalControlCount;
             control.targetSize = std::max(p.lenMin, targetSize);
@@ -616,15 +603,8 @@ void MeshGlobalMeshingWidget::onGenerate()
         {
             for (int entityId : parseEntityIdSet(rule.edgeIds))
             {
-                double length = 0.0;
-                if (!preService->entityMeasure(1, entityId, length) || length <= 0.0)
-                {
-                    ++p.skippedLocalControlCount;
-                    continue;
-                }
-
                 double target = rule.maxSize;
-                appendControl(1, entityId, length, target);
+                appendControl(1, entityId, target);
             }
         }
 
@@ -632,15 +612,8 @@ void MeshGlobalMeshingWidget::onGenerate()
         {
             for (int entityId : parseEntityIdSet(rule.faceIds))
             {
-                double area = 0.0;
-                if (!preService->entityMeasure(2, entityId, area) || area <= 0.0)
-                {
-                    ++p.skippedLocalControlCount;
-                    continue;
-                }
-
                 double target = rule.maxSize;
-                appendControl(2, entityId, area, target);
+                appendControl(2, entityId, target);
             }
         }
 
@@ -648,15 +621,8 @@ void MeshGlobalMeshingWidget::onGenerate()
         {
             for (int entityId : parseEntityIdSet(rule.volumeIds))
             {
-                double volume = 0.0;
-                if (!preService->entityMeasure(3, entityId, volume) || volume <= 0.0)
-                {
-                    ++p.skippedLocalControlCount;
-                    continue;
-                }
-
                 double target = rule.maxSize;
-                appendControl(3, entityId, volume, target);
+                appendControl(3, entityId, target);
             }
         }
 
@@ -704,7 +670,9 @@ void MeshGlobalMeshingWidget::onGenerate()
     }
 
     QDir dir(tempDirPath());
-    dir.mkpath(tempDirPath());
+    if (!MeshWorkingPaths::prepare() || !dir.mkpath(tempDirPath())) {
+        QMessageBox::warning(this,tr("网格生成"),tr("无法创建当前工程的网格临时目录。"));return;
+    }
     QFile::remove(tempVtkPath());
     QFile::remove(tempNasPath());
 

@@ -361,7 +361,7 @@
 </widget>
         </item>
         <item row="0" column="1">
-         <widget class="QDoubleSpinBox" name="dsXMin">
+         <widget class="CompactDoubleSpinBox" name="dsXMin">
           <property name="minimum">
            <double>-1000000000.000000000000000</double>
           </property>
@@ -377,7 +377,7 @@
          </widget>
         </item>
         <item row="0" column="2">
-         <widget class="QDoubleSpinBox" name="dsXMax">
+         <widget class="CompactDoubleSpinBox" name="dsXMax">
           <property name="minimum">
            <double>-1000000000.000000000000000</double>
           </property>
@@ -409,7 +409,7 @@
 </widget>
         </item>
         <item row="1" column="1">
-         <widget class="QDoubleSpinBox" name="dsYMin">
+         <widget class="CompactDoubleSpinBox" name="dsYMin">
           <property name="minimum">
            <double>-1000000000.000000000000000</double>
           </property>
@@ -425,7 +425,7 @@
          </widget>
         </item>
         <item row="1" column="2">
-         <widget class="QDoubleSpinBox" name="dsYMax">
+         <widget class="CompactDoubleSpinBox" name="dsYMax">
           <property name="minimum">
            <double>-1000000000.000000000000000</double>
           </property>
@@ -457,7 +457,7 @@
 </widget>
         </item>
         <item row="2" column="1">
-         <widget class="QDoubleSpinBox" name="dsZMin">
+         <widget class="CompactDoubleSpinBox" name="dsZMin">
           <property name="minimum">
            <double>-1000000000.000000000000000</double>
           </property>
@@ -473,7 +473,7 @@
          </widget>
         </item>
         <item row="2" column="2">
-         <widget class="QDoubleSpinBox" name="dsZMax">
+         <widget class="CompactDoubleSpinBox" name="dsZMax">
           <property name="minimum">
            <double>-1000000000.000000000000000</double>
           </property>
@@ -608,6 +608,9 @@
    </item>
   </layout>
  </widget>
+  <customwidgets>
+  <customwidget><class>CompactDoubleSpinBox</class><extends>QDoubleSpinBox</extends><header>CompactDoubleSpinBox.h</header></customwidget>
+ </customwidgets>
  <resources />
  <connections />
 </ui>

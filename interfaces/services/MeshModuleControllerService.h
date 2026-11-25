@@ -69,6 +69,10 @@ struct BarElementRecordInfo
     QString placementUuid;
 };
 
+// A "domain" is an original mesh region; MATYPE and LAYER are solver attributes.
+// Imported IIIN/DAT meshes deliberately map these uses to two different attributes.
+enum class MeshDomainUse { MaterialRegion, ExcavationRegion };
+
 struct MeshModuleControllerService
 {
     virtual ~MeshModuleControllerService()
@@ -82,6 +86,38 @@ struct MeshModuleControllerService
     virtual QVector<MeshTagSet> domainTagSets() const = 0;
     virtual QString materialGroupCategory() const = 0;
     virtual QString excavationGroupCategory() const = 0;
+
+    // The only category resolver that business pages should call. The fallback
+    // exists for legacy projects without purpose metadata, not as a per-page guess.
+    QString domainCategoryForUse(MeshDomainUse use) const
+    {
+        const QString configured = use == MeshDomainUse::MaterialRegion
+            ? materialGroupCategory() : excavationGroupCategory();
+        const QVector<MeshTagSet> sets = domainTagSets();
+        auto usable = [&sets](const QString& category) {
+            if (category.trimmed().isEmpty()) return false;
+            for (const MeshTagSet& set : sets)
+                if (set.key.category.compare(category, Qt::CaseInsensitive) == 0
+                    && set.key.id != 0 && !set.cellIds.isEmpty()) return true;
+            return false;
+        };
+        if (usable(configured)) return configured;
+        for (const QString& category : {QStringLiteral("REGION"), QStringLiteral("Physical")})
+            if (usable(category)) return category;
+        const QString legacy = use == MeshDomainUse::MaterialRegion
+            ? QStringLiteral("MATYPE") : QStringLiteral("LAYER");
+        return usable(legacy) ? legacy : QString();
+    }
+
+    QVector<MeshTagSet> domainTagSetsForUse(MeshDomainUse use) const
+    {
+        const QString category = domainCategoryForUse(use);
+        QVector<MeshTagSet> result;
+        for (const MeshTagSet& set : domainTagSets())
+            if (set.key.category.compare(category, Qt::CaseInsensitive) == 0
+                && !set.cellIds.isEmpty()) result.push_back(set);
+        return result;
+    }
     virtual QVector<MeshTagSet> boundaryTagSets(int dimFilter = -1) const = 0;
     virtual QVector<MeshIdType> cellIdsOfTag(const MeshTagKey& key) const = 0;
     virtual QVector<MeshIdType> pointIdsOfTag(const MeshTagKey& key) const = 0;

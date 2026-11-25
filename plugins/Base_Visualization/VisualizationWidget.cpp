@@ -57,6 +57,7 @@
 #include <vtkProperty.h>
 #include <vtkRenderWindowInteractor.h>
 #include <vtkRenderer.h>
+#include <vtkFXAAOptions.h>
 #include <vtkScalarBarActor.h>
 #include <vtkTextActor.h>
 #include <vtkTextProperty.h>
@@ -196,6 +197,31 @@ VisualizationWidget::VisualizationWidget(QWidget* parent) : QWidget(parent)
         [this](const QVariantMap& data)
         {
             applyUiTheme(data.value(QStringLiteral("theme")).toString());
+        });
+    EventManager::instance().registerHandler(
+        QStringLiteral("post.display.view.active.changed"),this,
+        [this](const QVariantMap& data) {
+            const bool active=data.value(QStringLiteral("active")).toBool();
+            if(active!=m_postViewActive && m_renderer) {
+                if(active) {
+                    m_prePostFxaaEnabled=m_renderer->GetUseFXAA();
+                    m_prePostFxaaOptions=m_renderer->GetFXAAOptions();
+                    auto options=vtkSmartPointer<vtkFXAAOptions>::New();
+                    options->SetRelativeContrastThreshold(.125f);
+                    options->SetHardContrastThreshold(.045f);
+                    options->SetSubpixelBlendLimit(.75f);
+                    options->SetSubpixelContrastThreshold(.25f);
+                    options->SetUseHighQualityEndpoints(true);
+                    options->SetEndpointSearchIterations(12);
+                    m_renderer->SetFXAAOptions(options);m_renderer->UseFXAAOn();
+                } else {
+                    m_renderer->SetFXAAOptions(m_prePostFxaaOptions);
+                    m_renderer->SetUseFXAA(m_prePostFxaaEnabled);
+                    m_prePostFxaaOptions=nullptr;
+                }
+            }
+            m_postViewActive=active;
+            updateTransparencyRendering();
         });
 
     UiFrameService* uiFrameService = ServiceRegistry::instance().getService<UiFrameService>();
@@ -691,6 +717,7 @@ bool VisualizationWidget::addProp(const QString& id, vtkSmartPointer<vtkProp> pr
 
     m_renderer->AddViewProp(prop.GetPointer());
     m_registry.insert(id, it);
+    prop->SetVisibility(it.visible && (group.isEmpty() || m_groupVisibility.value(group,true)));
 
     // 暗色主题下网格原本的纯黑边线会与画布背景混在一起。
     if (auto* actor = vtkActor::SafeDownCast(prop))
@@ -755,6 +782,7 @@ void VisualizationWidget::clearAll(bool renderNow)
             m_renderer->RemoveViewProp(it.value().prop);
     }
     m_registry.clear();
+    m_groupVisibility.clear();
 
     if (m_cubeAxesActor)
         m_cubeAxesActor->SetVisibility(0);
@@ -781,14 +809,23 @@ bool VisualizationWidget::setVisible(const QString& id, bool on, bool renderNow)
     if (it == m_registry.end())
         return false;
 
+    it.value().visible = on;
+    return setTemporaryVisible(id,on,renderNow);
+}
+
+bool VisualizationWidget::setTemporaryVisible(const QString& id, bool on, bool renderNow)
+{
+    auto it = m_registry.find(id);
+    if (it == m_registry.end())
+        return false;
+
     vtkProp* prop = it.value().prop.GetPointer();
-    if (it.value().visible == on &&
-        (!prop || (prop->GetVisibility() != 0) == on))
+    const bool actual=on && it.value().visible &&
+        (it.value().group.isEmpty() || m_groupVisibility.value(it.value().group,true));
+    if (!prop || (prop->GetVisibility() != 0) == actual)
         return true;
 
-    it.value().visible = on;
-    if (prop)
-        prop->SetVisibility(on ? 1 : 0);
+    prop->SetVisibility(actual ? 1 : 0);
 
     updateScaleActorBounds();
     updateTransparencyRendering();
@@ -800,27 +837,17 @@ bool VisualizationWidget::setVisible(const QString& id, bool on, bool renderNow)
 
 void VisualizationWidget::setGroupVisible(const QString& group, bool on, bool renderNow)
 {
-    bool changed = false;
-    for (auto it = m_registry.begin(); it != m_registry.end(); ++it)
-    {
-        if (it.value().group == group && it.value().prop)
-        {
-            if (it.value().visible == on &&
-                (it.value().prop->GetVisibility() != 0) == on)
-                continue;
-            it.value().visible = on;
-            it.value().prop->SetVisibility(on ? 1 : 0);
-            changed = true;
-        }
+    m_groupVisibility[group]=on;
+    bool changed=false;
+    for(auto it=m_registry.begin();it!=m_registry.end();++it) {
+        if(it.value().group!=group || !it.value().prop)continue;
+        const bool actual=it.value().visible && on;
+        if((it.value().prop->GetVisibility()!=0)==actual)continue;
+        it.value().prop->SetVisibility(actual);changed=true;
     }
-
-    if (!changed)
-        return;
-
-    updateScaleActorBounds();
-    updateTransparencyRendering();
-    if (renderNow)
-        render();
+    if(!changed)return;
+    updateScaleActorBounds();updateTransparencyRendering();
+    if(renderNow)render();
 }
 
 bool VisualizationWidget::setOpacity(const QString& id, double alpha, bool renderNow)
@@ -888,7 +915,7 @@ void VisualizationWidget::updateTransparencyRendering()
     bool hasTranslucentActor = false;
     for (auto it = m_registry.constBegin(); it != m_registry.constEnd(); ++it)
     {
-        if (!it.value().visible)
+        if (!it.value().visible || !it.value().prop || !it.value().prop->GetVisibility())
             continue;
         auto* actor = vtkActor::SafeDownCast(it.value().prop);
         if (!actor || !actor->GetProperty())
@@ -900,6 +927,13 @@ void VisualizationWidget::updateTransparencyRendering()
         }
     }
 
+    // ParaView renders with FXAA and no MSAA. Keep that policy throughout
+    // postprocessing, including after translucent actors have been removed.
+    const int samples=(hasTranslucentActor || m_postViewActive)?0:m_defaultMultiSamples;
+    if(m_renderWindow->GetMultiSamples()!=samples)m_renderWindow->SetMultiSamples(samples);
+    m_renderer->SetMaximumNumberOfPeels(m_postViewActive?4:8);
+    m_renderer->SetOcclusionRatio(m_postViewActive?0.0:0.25);
+
     // 只有“不透明 <-> 半透明”状态真正变化时才改 Renderer 配置。
     // 透明度从 60% 拖到 55% 时没有必要重复 SetUseDepthPeeling/SetMultiSamples。
     if (hasTranslucentActor == m_transparencyRenderingEnabled)
@@ -908,19 +942,14 @@ void VisualizationWidget::updateTransparencyRendering()
 
     if (hasTranslucentActor)
     {
-        // 大网格透明显示使用 depth peeling。限制为 8 层，并允许 25% 的
-        // 遮挡收敛，可显著降低旋转和最终提交透明度时的 GPU 多遍绘制开销；
-        // 域界面几何仍完整保留，不通过删面换取速度。
+        // 后处理采用 ParaView 默认的 4 层 depth peeling 和 0 遮挡阈值；
+        // 其他工作台保留原有透明渲染配置，不通过删面换取速度。
         m_renderWindow->SetAlphaBitPlanes(1);
-        m_renderWindow->SetMultiSamples(0);
         m_renderer->SetUseDepthPeeling(true);
-        m_renderer->SetMaximumNumberOfPeels(8);
-        m_renderer->SetOcclusionRatio(0.25);
     }
     else
     {
         m_renderer->SetUseDepthPeeling(false);
-        m_renderWindow->SetMultiSamples(m_defaultMultiSamples);
     }
 }
 

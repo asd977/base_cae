@@ -71,11 +71,11 @@ QPalette paletteForTheme(const QString& themeName, const QStyle* style)
     else if (themeName == QStringLiteral("blue"))
     {
         setPaletteColors(palette,
-                         QColor("#c4d9eb"), QColor("#173c5b"), QColor("#ffffff"),
-                         QColor("#e8f1f8"), QColor("#dceaf5"), QColor("#f4f9fd"),
-                         QColor("#9bbbd4"), QColor("#5e8fb5"), QColor("#245d89"),
-                         QColor("#ffffff"), QColor("#879eaf"), QColor("#6e8ca3"),
-                         QColor("#edf5fb"), QColor("#173c5b"));
+                         QColor("#9ec2e8"), QColor("#103259"), QColor("#ffffff"),
+                         QColor("#eef5fc"), QColor("#d2e4f7"), QColor("#f6faff"),
+                         QColor("#7ca5d1"), QColor("#367dc9"), QColor("#1e6bc0"),
+                         QColor("#ffffff"), QColor("#7c98b5"), QColor("#5b81ab"),
+                         QColor("#144275"), QColor("#ffffff"));
     }
     else
     {

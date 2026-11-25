@@ -208,72 +208,6 @@ std::filesystem::path utf8Path(const char* value)
 #endif
 }
 
-struct Signature
-{
-    CaeSMESHPoint3 center{};
-    double measure = 0.0;
-};
-
-Signature signature(const TopoDS_Shape& shape, bool volume)
-{
-    GProp_GProps props;
-    if (volume || shape.ShapeType() == TopAbs_SOLID)
-        BRepGProp::VolumeProperties(shape, props);
-    else if (shape.ShapeType() == TopAbs_EDGE)
-        BRepGProp::LinearProperties(shape, props);
-    else
-        BRepGProp::SurfaceProperties(shape, props);
-    const gp_Pnt p = props.CentreOfMass();
-    return {{p.X(), p.Y(), p.Z()}, std::abs(props.Mass())};
-}
-
-double distance(const CaeSMESHPoint3& a, const CaeSMESHPoint3& b)
-{
-    return std::hypot(std::hypot(a.x - b.x, a.y - b.y), a.z - b.z);
-}
-
-double score(const Signature& actual, const CaeSMESHPoint3& center, double measure)
-{
-    const double lengthScale = std::max(1.0, std::cbrt(std::max(actual.measure, measure)));
-    const double measureScale = std::max({1.0, actual.measure, std::abs(measure)});
-    return distance(actual.center, center) / lengthScale
-         + std::abs(actual.measure - measure) / measureScale;
-}
-
-TopoDS_Shape findBest(const TopoDS_Shape& root,
-                      TopAbs_ShapeEnum type,
-                      const CaeSMESHPoint3& center,
-                      double measure,
-                      bool volume,
-                      double tolerance,
-                      double* outScore = nullptr)
-{
-    TopoDS_Shape best;
-    double bestScore = std::numeric_limits<double>::infinity();
-    if (root.ShapeType() == type)
-    {
-        const double s = score(signature(root, volume), center, measure);
-        best = root;
-        bestScore = s;
-    }
-    for (TopExp_Explorer it(root, type); it.More(); it.Next())
-    {
-        const TopoDS_Shape candidate = it.Current();
-        const double s = score(signature(candidate, volume), center, measure);
-        if (s < bestScore)
-        {
-            best = candidate;
-            bestScore = s;
-        }
-    }
-    if (outScore) *outScore = bestScore;
-    // Centre/measure signatures come through float UI values, so tolerance is
-    // used as a floor rather than as an unrealistically strict absolute test.
-    const double accepted = std::max(1.0e-5, 100.0 * std::max(tolerance, 1.0e-12));
-    if (best.IsNull() || bestScore > accepted) return {};
-    return best;
-}
-
 // SMESH operates directly on OCC topology. A shape index refers to the exact
 // BREP snapshot passed into the bridge, not a stable ID across CAD edits.
 TopoDS_Shape indexedShape(const TopoDS_Shape& root, TopAbs_ShapeEnum type,
@@ -928,7 +862,7 @@ extern "C" CAE_SMESH_API void cae_smesh_request_cancel()
 
 extern "C" CAE_SMESH_API std::uint32_t cae_smesh_abi_version()
 {
-    return 15;
+    return 16;
 }
 
 extern "C" CAE_SMESH_API int cae_smesh_sweep(const CaeSMESHSweepRequest* request,
@@ -960,22 +894,12 @@ extern "C" CAE_SMESH_API int cae_smesh_sweep(const CaeSMESHSweepRequest* request
         if (imported.IsNull())
             throw std::runtime_error("Cannot read BREP geometry");
 
-        double solidScore = 0.0;
-        const TopoDS_Shape selectedShape = request->volumeShapeIndex > 0
-            ? indexedShape(imported, TopAbs_SOLID, request->volumeShapeIndex, "Sweep Solid")
-            : findBest(imported, TopAbs_SOLID, request->volumeCenter,
-                       request->volumeMeasure, true, request->tolerance, &solidScore);
+        const TopoDS_Shape selectedShape = indexedShape(imported, TopAbs_SOLID, request->volumeShapeIndex, "Sweep Solid");
         if (selectedShape.IsNull()) throw std::runtime_error("Cannot uniquely map the requested CAD Volume");
         const TopoDS_Solid solid = TopoDS::Solid(selectedShape);
 
-        const TopoDS_Shape sourceShape = request->sourceShapeIndex > 0
-            ? indexedShape(imported, TopAbs_FACE, request->sourceShapeIndex, "Sweep Source")
-            : findBest(solid, TopAbs_FACE, request->sourceCenter,
-                       request->sourceMeasure, false, request->tolerance);
-        const TopoDS_Shape targetShape = request->targetShapeIndex > 0
-            ? indexedShape(imported, TopAbs_FACE, request->targetShapeIndex, "Sweep Target")
-            : findBest(solid, TopAbs_FACE, request->targetCenter,
-                       request->targetMeasure, false, request->tolerance);
+        const TopoDS_Shape sourceShape = indexedShape(imported, TopAbs_FACE, request->sourceShapeIndex, "Sweep Source");
+        const TopoDS_Shape targetShape = indexedShape(imported, TopAbs_FACE, request->targetShapeIndex, "Sweep Target");
         if (sourceShape.IsNull()) throw std::runtime_error("Cannot map Source Face inside the selected Volume");
         if (targetShape.IsNull()) throw std::runtime_error("Cannot map Target Face inside the selected Volume");
         TopTools_IndexedMapOfShape selectedSolidFaces;
@@ -1226,16 +1150,14 @@ extern "C" CAE_SMESH_API int cae_smesh_viscous_layers(const CaeSMESHViscousReque
             for (int i = 0; i < request->wallCount; ++i)
             {
                 const CaeSMESHViscousFace& wall = request->walls[i];
-                const TopoDS_Shape face = wall.shapeIndex > 0
-                    ? indexedShape(shape, TopAbs_FACE, wall.shapeIndex, "Viscous Wall")
-                    : findBest(shape, TopAbs_FACE, wall.center, wall.measure, false, request->tolerance);
+                const TopoDS_Shape face = indexedShape(shape, TopAbs_FACE, wall.shapeIndex, "Viscous Wall");
                 if (face.IsNull())
                     throw std::runtime_error("Cannot map a selected Wall face to the BREP");
                 const int ownerIndex = faceOwners.FindIndex(face);
                 if (ownerIndex <= 0 || faceOwners.FindFromIndex(ownerIndex).Extent() != 1)
                     throw std::runtime_error("Selected Wall is not a topological external face");
                 if (selectedWalls.Contains(face))
-                    throw std::runtime_error("Two selected Wall signatures map to the same BREP face");
+                    throw std::runtime_error("Two selected Wall indices map to the same BREP face");
                 selectedWalls.Add(face);
             }
         }
@@ -1397,23 +1319,18 @@ struct NativeCadPreparation
 // OCC preparation independently of the disposable SMESH_Mesh session.
 static std::unique_ptr<NativeCadPreparation> g_nativeCadPreparation;
 
-// Digest the BREP *contents*: the same ExportedModel.brep filename may be
-// overwritten by a geometry edit without changing a parent Mesh UUID.
-static std::string brepFingerprint(const std::filesystem::path& path)
+// A session is scoped to a Geometry-owned export and its file generation.
+// Use O(1) file status to invalidate an in-process Mesh/Partition cache instead
+// of scanning/hashing entire BREP files on each incremental NETGEN request.
+static std::string brepFileGeneration(const std::filesystem::path& path)
 {
-    std::ifstream in(path, std::ios::binary);
-    if (!in) throw std::runtime_error("Cannot fingerprint BREP geometry");
-    std::uint64_t hash = 14695981039346656037ULL;
-    char buffer[65536];
-    while (in) {
-        in.read(buffer, sizeof buffer);
-        const auto len = in.gcount();
-        for (std::streamsize i = 0; i < len; ++i) {
-            hash ^= static_cast<unsigned char>(buffer[i]);
-            hash *= 1099511628211ULL;
-        }
-    }
-    return std::to_string(hash);
+    std::error_code ec;
+    const auto size = std::filesystem::file_size(path, ec);
+    if (ec || !size) throw std::runtime_error("Cannot stat BREP geometry");
+    const auto modified = std::filesystem::last_write_time(path, ec);
+    if (ec) throw std::runtime_error("Cannot stat BREP modification time");
+    return path.u8string() + ":" + std::to_string(size) + ":" +
+        std::to_string(modified.time_since_epoch().count());
 }
 
 static int runNetgen(const CaeSMESHNetgenRequest* request,
@@ -1524,7 +1441,8 @@ static int runNetgen(const CaeSMESHNetgenRequest* request,
 
         // Never reuse a native Mesh across projects, geometry changes, or a
         // different parent Main Shape. The session ID is the Mesh root UUID.
-        const std::string sourceDigest = brepFingerprint(utf8Path(request->brepPathUtf8));
+        const std::string sourceGeneration = request->geometryGenerationUtf8 && *request->geometryGenerationUtf8
+            ? request->geometryGenerationUtf8 : brepFileGeneration(utf8Path(request->brepPathUtf8));
         // Explicit Geometry finalization is independent of permission to run a
         // NEW Partition here. Include both files in the session identity so a
         // finalized/re-finalized CAD cannot reuse an older unprepared Mesh.
@@ -1532,14 +1450,14 @@ static int runNetgen(const CaeSMESHNetgenRequest* request,
         finalizedPath += ".finalized.brep";
         auto finalizedMapPath = finalizedPath;
         finalizedMapPath += ".topology-map.json";
-        const std::string finalizedDigest =
+        const std::string finalizedGeneration =
             (std::filesystem::exists(finalizedPath) && std::filesystem::exists(finalizedMapPath))
-            ? brepFingerprint(finalizedPath) + ":" + brepFingerprint(finalizedMapPath)
+            ? brepFileGeneration(finalizedPath) + ":" + brepFileGeneration(finalizedMapPath)
             : "absent";
         std::string persistentKey;
         if (sessionKeyUtf8 && *sessionKeyUtf8 && !request->boundaryLayerEnabled)
             persistentKey = std::string(sessionKeyUtf8) + ":" +
-                sourceDigest +
+                sourceGeneration +
                 (autoPartition ? ":partition" : ":native");
         std::vector<int> sortedMain;
         if (mainSolidCount > 0 && mainSolidIndices)
@@ -1549,7 +1467,7 @@ static int runNetgen(const CaeSMESHNetgenRequest* request,
         bool usesSubshapeControls = request->edgeSegmentCount > 0 || faceCurvatureCount > 0 || faceMinimumCount > 0;
         for (int i = 0; i < request->localSizeCount; ++i)
             usesSubshapeControls |= request->localSizes[i].dimension == 2;
-        preparationKey << sourceDigest << ':' << finalizedDigest << ':' << autoPartition << ':'
+        preparationKey << sourceGeneration << ':' << finalizedGeneration << ':' << autoPartition << ':'
             << usesSubshapeControls << ':' << std::setprecision(17)
             << request->tolerance;
         for (int index : sortedMain) preparationKey << ':' << index;
@@ -1598,15 +1516,13 @@ static int runNetgen(const CaeSMESHNetgenRequest* request,
             for (int i = 0; i < request->localSizeCount; ++i) {
                 const auto& c = request->localSizes[i];
                 policy << ':' << c.dimension << ':' << c.shapeIndex
-                    << ':' << c.targetSize << ':' << c.measure
-                    << ':' << c.center.x << ':' << c.center.y << ':' << c.center.z;
+                    << ':' << c.targetSize;
             }
             policy << ":edges:" << request->edgeSegmentCount;
             for (int i = 0; i < request->edgeSegmentCount; ++i) {
                 const auto& c = request->edgeSegments[i];
                 policy << ':' << c.shapeIndex << ':' << c.divisions
-                    << ':' << c.bias << ':' << c.measure
-                    << ':' << c.center.x << ':' << c.center.y << ':' << c.center.z;
+                    << ':' << c.bias;
             }
             policy << ":facecurvature:" << faceCurvatureCount;
             for (int i = 0; i < faceCurvatureCount; ++i) {
@@ -1821,9 +1737,10 @@ static int runNetgen(const CaeSMESHNetgenRequest* request,
                         if (std::filesystem::exists(mappingPath) && std::filesystem::exists(preparedPath)) {
                             try {
                                 const auto map = CaePreparedPartition::load(mappingPath);
-                                if (map.sourceFingerprint != sourceDigest ||
-                                    map.preparedFingerprint != brepFingerprint(preparedPath) ||
-                                    std::abs(map.fuzzyTolerance - fuzzy) >
+                                if (std::filesystem::last_write_time(preparedPath) < std::filesystem::last_write_time(sourcePath)
+                                    || std::filesystem::last_write_time(mappingPath) < std::filesystem::last_write_time(sourcePath))
+                                    throw std::runtime_error("Prepared topology predates the source BREP export");
+                                if (std::abs(map.fuzzyTolerance - fuzzy) >
                                         std::max(1e-14, std::abs(fuzzy) * 1e-12) ||
                                     map.sourceSolidCount != originalSolids.Extent() ||
                                     map.sourceFaceCount != originalFaces.Extent() ||
@@ -2276,12 +2193,10 @@ static int runNetgen(const CaeSMESHNetgenRequest* request,
             const CaeSMESHLocalSizeControl& c = request->localSizes[i];
             if ((c.dimension != 2 && c.dimension != 3) ||
                 !std::isfinite(c.targetSize) || c.targetSize <= 0.0 ||
-                !std::isfinite(c.measure) || c.measure <= 0.0)
+                c.shapeIndex <= 0)
                 throw std::invalid_argument("Invalid SMESH local size control");
             const TopAbs_ShapeEnum type = c.dimension == 2 ? TopAbs_FACE : TopAbs_SOLID;
-            TopoDS_Shape mapped = c.shapeIndex > 0
-                ? indexedShape(shape, type, c.shapeIndex, "NETGEN local size")
-                : findBest(shape, type, c.center, c.measure, c.dimension == 3, request->tolerance);
+            TopoDS_Shape mapped = indexedShape(shape, type, c.shapeIndex, "NETGEN local size");
             // Local Solid controls refer to the imported BREP, while native
             // submeshes must be attached to the canonical partitioned Solid.
             if (c.dimension == 3 && !mapped.IsNull()) {
@@ -2322,11 +2237,9 @@ static int runNetgen(const CaeSMESHNetgenRequest* request,
         {
             const CaeSMESHEdgeSegmentsControl& c = request->edgeSegments[i];
             if (c.divisions < 1 || !std::isfinite(c.bias) || c.bias <= 0.0 ||
-                !std::isfinite(c.measure) || c.measure <= 0.0)
+                c.shapeIndex <= 0)
                 throw std::invalid_argument("Invalid SMESH edge segment control");
-            const TopoDS_Shape sourceEdge = c.shapeIndex > 0
-                ? indexedShape(shape, TopAbs_EDGE, c.shapeIndex, "NETGEN edge control")
-                : findBest(shape, TopAbs_EDGE, c.center, c.measure, false, request->tolerance);
+            const TopoDS_Shape sourceEdge = indexedShape(shape, TopAbs_EDGE, c.shapeIndex, "NETGEN edge control");
             if (sourceEdge.IsNull()) throw std::runtime_error("Cannot map a local Edge control to the BREP");
             if (!sourceMainEdges.Contains(sourceEdge)) continue;
             const int sourceIndex = originalEdges.FindIndex(sourceEdge);
@@ -2634,8 +2547,8 @@ static int runNetgen(const CaeSMESHNetgenRequest* request,
             // Preserve the native NETGEN automatic minimum (0) selected by
             // the user. Do not replace it with an application-computed floor.
             const double effectiveMinimum = localMinimum;
-            std::ostringstream faceSignature;
-            faceSignature << std::setprecision(17) << faceMaximum << ':' <<
+            std::ostringstream faceConfiguration;
+            faceConfiguration << std::setprecision(17) << faceMaximum << ':' <<
                 base->GetFineness() << ':' << effectiveMinimum << ':' << localCurvature << ':' <<
                 (curvature == faceCurvatureTargets.end() ? 0 : curvature->second) << ':' <<
                 base->GetGrowthRate() << ':' << base->GetNbSegPerEdge() << ':' << base->GetNbSegPerRadius()
@@ -2646,8 +2559,8 @@ static int runNetgen(const CaeSMESHNetgenRequest* request,
             // curvature. Forcing a separate algorithm per Face prevents NETGEN
             // from meshing/smoothing the common skin as one native face group;
             // ViscousLayers can then receive folded/degenerate surface facets.
-            // Different controls still have distinct signatures and scopes.
-            const std::string config = faceSignature.str();
+            // Different controls still have distinct settings and scopes.
+            const std::string config = faceConfiguration.str();
             const auto existing = session->faceConfiguration.find(kv.first);
             if (existing != session->faceConfiguration.end()) {
                 if (existing->second != config)
@@ -2731,33 +2644,12 @@ static int runNetgen(const CaeSMESHNetgenRequest* request,
             for (int wi = 0; wi < request->wallCount; ++wi)
             {
                 const CaeSMESHViscousFace& wall = request->walls[wi];
-                const TopoDS_Shape sourceFace = wall.shapeIndex > 0
-                    ? indexedShape(shape, TopAbs_FACE, wall.shapeIndex, "Viscous Wall")
-                    : findBest(shape, TopAbs_FACE, wall.center, wall.measure, false, request->tolerance);
+                const TopoDS_Shape sourceFace = indexedShape(shape, TopAbs_FACE, wall.shapeIndex, "Viscous Wall");
                 if (sourceFace.IsNull())
                     throw std::runtime_error("BL_WALL_SELECTION: Cannot locate selected source CAD face; reselect the Wall after geometry changes");
                 const int sourceId = originalFaces.FindIndex(sourceFace);
-                // Cross-check the exact BREP index with its source CAD
-                // signature. A stale UI ID must not silently target a totally
-                // different face after loading/editing a project.
-                if (wall.shapeIndex > 0 && std::isfinite(wall.measure) && wall.measure > 0.0)
-                {
-                    const Signature actual = signature(sourceFace, false);
-                    const double coordScale = std::max({1.0,
-                        std::abs(actual.center.x), std::abs(actual.center.y), std::abs(actual.center.z),
-                        std::abs(wall.center.x), std::abs(wall.center.y), std::abs(wall.center.z)});
-                    // The UI transmits the centre as QVector3D (float).
-                    const double centerTolerance = std::max(
-                        100.0 * request->tolerance,
-                        64.0 * std::numeric_limits<float>::epsilon() * coordScale);
-                    const double relativeAreaError = std::abs(actual.measure - wall.measure) /
-                        std::max({1.0e-18, std::abs(actual.measure), std::abs(wall.measure)});
-                    if (distance(actual.center, wall.center) > centerTolerance ||
-                        relativeAreaError > 1.0e-4)
-                        throw std::runtime_error("BL_WALL_SELECTION: Source BREP Face " +
-                            std::to_string(wall.shapeIndex) +
-                            " does not match the selected CAD Wall centre/area; the saved UI face reference may be stale. Reselect the face");
-                }
+                // The exported BREP + its validated UI-to-BREP index map
+                // provide source identity; explicit topology indices only.
                 const auto images = faceImages.find(sourceId);
                 if (sourceId <= 0 || images == faceImages.end() || images->second.empty())
                     throw std::runtime_error("BL_WALL_SELECTION: Selected CAD face " + std::to_string(sourceId) +
@@ -2919,18 +2811,18 @@ static int runNetgen(const CaeSMESHNetgenRequest* request,
             }
             // Every genuinely different Solid owns a native 3D override.
             // Never silently replace the hypothesis of an already computed Solid.
-            std::ostringstream signature;
-            signature << std::setprecision(17) << solidMax << ':' << solidMin << ':'
+            std::ostringstream configuration;
+            configuration << std::setprecision(17) << solidMax << ':' << solidMin << ':'
                       << solidFineness << ':' << solidCurvature << ':' << solidOptimize << ':'
                       << request->growthRate << ':' << request->nbSegPerEdge << ':'
                       << request->nbSegPerRadius << ':' << request->boundaryLayerEnabled << ':'
                       << (settings ? settings->growthRate : -1.0) << ':'
                       << (settings ? settings->nbSegPerEdge : -1.0) << ':'
                       << (settings ? settings->nbSegPerRadius : -1.0);
-            signature << ":surface:" << surfaceSolids.count(i);
+            configuration << ":surface:" << surfaceSolids.count(i);
             const auto previous = session->solidConfiguration.find(i);
             if (previous != session->solidConfiguration.end()) {
-                if (previous->second != signature.str())
+                if (previous->second != configuration.str())
                     throw std::runtime_error("NETGEN settings changed for previously configured SubMesh solid " +
                         std::to_string(i) + "; reset/rebuild the parent Mesh before continuing");
                 continue;
@@ -2943,7 +2835,7 @@ static int runNetgen(const CaeSMESHNetgenRequest* request,
                 ? static_cast<SMESH_Hypothesis*>(make(new NETGENPlugin_NETGEN_3D(gen->GetANewId(), gen)))
                 : static_cast<SMESH_Hypothesis*>(make(new NETGENPlugin_NETGEN_2D3D(gen->GetANewId(), gen)));
             auto* netgenHyp = make(new NETGENPlugin_Hypothesis(gen->GetANewId(), gen));
-            session->solidConfiguration[i] = signature.str();
+            session->solidConfiguration[i] = configuration.str();
             netgenHyp->SetMaxSize(solidMax);
             netgenHyp->SetMinSize(std::min(solidMin, solidMax));
             applyNetgenFineness(netgenHyp, solidFineness, settings);
@@ -4022,8 +3914,6 @@ static int runConformalMesh(const CaeSMESHMixedRequest* request,
         for(const auto& item:domainNetgen)
             if(item.first>originals.Extent())throw std::invalid_argument("Mixed SubMesh options reference an unknown original solid");
 
-        std::vector<Signature> signatures;
-        for (int i = 1; i <= originals.Extent(); ++i) signatures.push_back(signature(originals(i), true));
         struct Sweep { int original; int label; TopoDS_Shape solid, source, target; CaeSMESHSweepRequest settings; };
         std::vector<Sweep> sweeps;
         std::set<int> sweepOriginals;
@@ -4035,30 +3925,14 @@ static int runConformalMesh(const CaeSMESHMixedRequest* request,
             int match = req.volumeShapeIndex;
             const int label = request->volumeUiIds ? request->volumeUiIds[i] : match;
             if (match <= 0)
-            {
-                // Manual mesh-only partitions have independent region-local IDs.
-                // Keep their existing fallback until their partition export carries indices.
-                double best = std::numeric_limits<double>::infinity(), second = best;
-                for (int j = 0; j < int(signatures.size()); ++j)
-                {
-                    const double value = score(signatures[j], req.volumeCenter, req.volumeMeasure);
-                    if (value < best) { second = best; best = value; match = j + 1; }
-                    else second = std::min(second, value);
-                }
-                if (match < 1 || best > std::max(1e-5, 100 * request->tolerance) || second - best < 1e-8)
-                    throw std::runtime_error("Ambiguous/missing original CAD solid for sweep V" + std::to_string(label));
-            }
+                throw std::runtime_error("Sweep requires an explicit BREP Solid index");
             if (match > originals.Extent())
                 throw std::runtime_error("Sweep Solid topology index is outside input BREP");
             if (!sweepOriginals.insert(match).second)
                 throw std::runtime_error("Duplicate sweep task for V" + std::to_string(label));
             Sweep s{match, label, originals(match), {}, {}, req};
-            s.source = req.sourceShapeIndex > 0
-                ? indexedShape(imported, TopAbs_FACE, req.sourceShapeIndex, "Mixed Sweep Source")
-                : findBest(s.solid, TopAbs_FACE, req.sourceCenter, req.sourceMeasure, false, request->tolerance);
-            s.target = req.targetShapeIndex > 0
-                ? indexedShape(imported, TopAbs_FACE, req.targetShapeIndex, "Mixed Sweep Target")
-                : findBest(s.solid, TopAbs_FACE, req.targetCenter, req.targetMeasure, false, request->tolerance);
+            s.source = indexedShape(imported, TopAbs_FACE, req.sourceShapeIndex, "Mixed Sweep Source");
+            s.target = indexedShape(imported, TopAbs_FACE, req.targetShapeIndex, "Mixed Sweep Target");
             TopTools_IndexedMapOfShape ownedFaces;
             TopExp::MapShapes(s.solid, TopAbs_FACE, ownedFaces);
             if (!ownedFaces.Contains(s.source) || !ownedFaces.Contains(s.target))
@@ -4095,15 +3969,14 @@ static int runConformalMesh(const CaeSMESHMixedRequest* request,
 
             // A boundary-layer parameter may be the thing the user is tuning.
             // Include the solid that owns every selected wall in the local diagnostic
-            // even when that solid is not itself a Sweep body. The wall signature is
+            // even when that solid is not itself a Sweep body. The wall index is
             // already part of ABI v4, so no persistent geometry/history is required.
             if (request->boundaryLayerEnabled && request->wallCount > 0)
             {
                 for (int wi = 0; wi < request->wallCount; ++wi)
                 {
                     const auto& wall = request->walls[wi];
-                    const TopoDS_Shape wallFace = findBest(imported, TopAbs_FACE,
-                        wall.center, wall.measure, false, request->tolerance);
+                    const TopoDS_Shape wallFace = indexedShape(imported, TopAbs_FACE, wall.shapeIndex, "BoundaryLayer diagnostic wall");
                     if (wallFace.IsNull()) continue;
                     for (int i = 1; i <= originals.Extent(); ++i)
                     {
@@ -4158,14 +4031,8 @@ static int runConformalMesh(const CaeSMESHMixedRequest* request,
             const TopoDS_Shape originalSource = s.source;
             const TopoDS_Shape originalTarget = s.target;
             s.solid = partitionInputs[s.original - 1];
-            s.source = s.settings.sourceShapeIndex > 0
-                ? copies[s.original - 1]->ModifiedShape(originalSource)
-                : findBest(s.solid, TopAbs_FACE, s.settings.sourceCenter,
-                           s.settings.sourceMeasure, false, request->tolerance);
-            s.target = s.settings.targetShapeIndex > 0
-                ? copies[s.original - 1]->ModifiedShape(originalTarget)
-                : findBest(s.solid, TopAbs_FACE, s.settings.targetCenter,
-                           s.settings.targetMeasure, false, request->tolerance);
+            s.source = copies[s.original - 1]->ModifiedShape(originalSource);
+            s.target = copies[s.original - 1]->ModifiedShape(originalTarget);
             if (s.source.IsNull() || s.target.IsNull() || s.source.IsSame(s.target))
                 throw std::runtime_error("Cannot remap Source/Target to Partition copy for sweep V" +
                                          std::to_string(s.label));
@@ -4557,15 +4424,7 @@ static int runConformalMesh(const CaeSMESHMixedRequest* request,
                     throw std::invalid_argument("Invalid mixed Face/Solid size rule");
                 const auto type = rule.dimension == 2 ? TopAbs_FACE : TopAbs_SOLID;
                 TopTools_IndexedMapOfShape images;
-                if (rule.shapeIndex > 0)
-                    images = finalImages(indexedShape(imported, type, rule.shapeIndex,
-                                                      "Sweep-aware local size"), type);
-                else
-                {
-                    const auto found = findBest(meshShape, type, rule.center, rule.measure,
-                                                rule.dimension == 3, request->tolerance);
-                    if (!found.IsNull()) images.Add(found);
-                }
+                images = finalImages(indexedShape(imported, type, rule.shapeIndex, "Sweep-aware local size"), type);
                 for (int im = 1; im <= images.Extent(); ++im)
                 {
                     const auto& selected = images(im);
@@ -4621,15 +4480,7 @@ static int runConformalMesh(const CaeSMESHMixedRequest* request,
             {
                 const auto& wall = request->walls[wi];
                 TopTools_IndexedMapOfShape selected;
-                if (wall.shapeIndex > 0)
-                    selected = finalImages(indexedShape(imported, TopAbs_FACE, wall.shapeIndex,
-                                                        "Mixed Wall"), TopAbs_FACE);
-                else
-                {
-                    const TopoDS_Shape face = findBest(meshShape, TopAbs_FACE,
-                        wall.center, wall.measure, false, request->tolerance);
-                    if (!face.IsNull()) selected.Add(face);
-                }
+                selected = finalImages(indexedShape(imported, TopAbs_FACE, wall.shapeIndex, "Mixed Wall"), TopAbs_FACE);
                 if (selected.IsEmpty())
                     throw std::runtime_error("Selected BoundaryLayer face not present after CAD Partition");
                 for (int k = 1; k <= selected.Extent(); ++k)
@@ -4916,20 +4767,12 @@ static int runConformalMesh(const CaeSMESHMixedRequest* request,
                 const auto& ctrl = request->localSizes[c];
                 if ((ctrl.dimension != 2 && ctrl.dimension != 3) ||
                     !std::isfinite(ctrl.targetSize) || ctrl.targetSize <= 0.0 ||
-                    !std::isfinite(ctrl.measure) || ctrl.measure <= 0.0)
+                    ctrl.shapeIndex <= 0)
                     throw std::invalid_argument("Invalid mixed local size control");
 
                 const TopAbs_ShapeEnum shapeType = ctrl.dimension == 2 ? TopAbs_FACE : TopAbs_SOLID;
                 TopTools_IndexedMapOfShape mappedShapes;
-                if (ctrl.shapeIndex > 0)
-                    mappedShapes = finalImages(indexedShape(imported, shapeType,
-                                               ctrl.shapeIndex, "Mixed local size"), shapeType);
-                else
-                {
-                    const auto mapped = findBest(meshShape, shapeType, ctrl.center, ctrl.measure,
-                                                 ctrl.dimension == 3, request->tolerance);
-                    if (!mapped.IsNull()) mappedShapes.Add(mapped);
-                }
+                mappedShapes = finalImages(indexedShape(imported, shapeType, ctrl.shapeIndex, "Mixed local size"), shapeType);
                 if (mappedShapes.IsEmpty())
                 {
                     if (request->neighboursOnly) { ++skippedRemoteLocalSizes; continue; }
@@ -4968,18 +4811,10 @@ static int runConformalMesh(const CaeSMESHMixedRequest* request,
             {
                 const auto& ctrl = request->edgeSegments[c];
                 if (ctrl.divisions < 1 || !std::isfinite(ctrl.bias) || ctrl.bias <= 0.0 ||
-                    !std::isfinite(ctrl.measure) || ctrl.measure <= 0.0)
+                    ctrl.shapeIndex <= 0)
                     throw std::invalid_argument("Invalid mixed Edge size control");
                 TopTools_IndexedMapOfShape mappedEdges;
-                if (ctrl.shapeIndex > 0)
-                    mappedEdges = finalImages(indexedShape(imported, TopAbs_EDGE,
-                                              ctrl.shapeIndex, "Mixed edge"), TopAbs_EDGE);
-                else
-                {
-                    const TopoDS_Shape edge = findBest(meshShape, TopAbs_EDGE,
-                        ctrl.center, ctrl.measure, false, request->tolerance);
-                    if (!edge.IsNull()) mappedEdges.Add(edge);
-                }
+                mappedEdges = finalImages(indexedShape(imported, TopAbs_EDGE, ctrl.shapeIndex, "Mixed edge"), TopAbs_EDGE);
                 if (mappedEdges.IsEmpty())
                 {
                     if (request->neighboursOnly) { ++skippedRemoteEdges; continue; }
@@ -5316,13 +5151,11 @@ static int runConformalMesh(const CaeSMESHMixedRequest* request,
                         ", CADFaceId=" + std::to_string(entry.first));
                 if (!gen->Compute(*mesh, face, SMESH_Gen::SHAPE_ONLY))
                 {
-                    const Signature sig = signature(face, false);
                     std::ostringstream detail;
                     detail << std::setprecision(12) << "NETGEN_2D failed on CADFaceId=" << entry.first
                            << ", original solids=";
                     for (int owner : entry.second) detail << owner << ' ';
-                    detail << ", area=" << sig.measure << ", center=(" << sig.center.x << ','
-                           << sig.center.y << ',' << sig.center.z << ')' << computeError(*mesh, face);
+                    detail << computeError(*mesh, face);
                     if (!reportPath.empty())
                     {
                         const auto failedFacePath = reportPath.parent_path() / "failed_boundary_face.brep";

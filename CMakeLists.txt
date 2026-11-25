@@ -78,6 +78,10 @@ set(CAE_VTK_ROOT
     "${CAE_3RDPARTY_ROOT}/vtk/vtk_release"
 )
 
+set(CAE_GDAL_ROOT
+    "${CAE_3RDPARTY_ROOT}/gdal"
+)
+
 set(CAE_VTK_DIR
     ""
     CACHE PATH
@@ -88,6 +92,7 @@ include("${CMAKE_SOURCE_DIR}/cmake/ThirdPartyOCC.cmake")
 include("${CMAKE_SOURCE_DIR}/cmake/ThirdPartyDockingWidget.cmake")
 include("${CMAKE_SOURCE_DIR}/cmake/ThirdPartySARibbon.cmake")
 include("${CMAKE_SOURCE_DIR}/cmake/ThirdPartyVTK.cmake")
+include("${CMAKE_SOURCE_DIR}/cmake/ThirdPartyGDAL.cmake")
 
 add_subdirectory(core)
 add_subdirectory(plugins)

@@ -64,6 +64,7 @@ class SlopeStandardDatModel
                       QString* errorMessage = nullptr);
     QString serialize() const;
     bool validate(QString* errorMessage = nullptr) const;
+    bool ensureSearchCircleNearSection();
     int poreMethod() const;
 };
 

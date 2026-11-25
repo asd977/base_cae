@@ -75,6 +75,7 @@ class IsosurfaceSegmentationWidget : public BasePage
     VisualWidgetService* m_visualService{};
 
     // 生命周期状态
+    bool m_deferRender{false};
     bool m_loadedOnce{false};
     bool m_hasPendingState{false};
     QVariantMap m_pendingState;
