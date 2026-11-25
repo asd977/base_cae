@@ -1742,6 +1742,43 @@ bool PickManager::pickAt(int x, int y)
         if (kind != GridKind::Solid)
             return false;
 
+        auto emitClosestNodeOnFace = [&](const QVector<vtkIdType>& pids)
+        {
+            if (!m_gridSolid || pids.isEmpty())
+                return;
+
+            vtkIntArray* nodeIdArr = m_nodeIdArrSolid;
+            if (!nodeIdArr)
+                nodeIdArr = vtkIntArray::SafeDownCast(m_gridSolid->GetPointData()->GetArray("node_id"));
+            if (!nodeIdArr)
+                return;
+
+            vtkIdType bestPid = -1;
+            double bestD2 = std::numeric_limits<double>::max();
+            for (vtkIdType pid : pids)
+            {
+                if (pid < 0 || pid >= m_gridSolid->GetNumberOfPoints())
+                    continue;
+                double p[3];
+                m_gridSolid->GetPoint(pid, p);
+                const double d2 = vtkMath::Distance2BetweenPoints(p, pickPos);
+                if (d2 < bestD2)
+                {
+                    bestD2 = d2;
+                    bestPid = pid;
+                }
+            }
+
+            if (bestPid < 0)
+                return;
+
+            double p[3];
+            m_gridSolid->GetPoint(bestPid, p);
+            const int nodeId = nodeIdArr->GetValue(int(bestPid));
+            emit nodePicked(m_currentDomain, m_currentUUid, GridKind::Solid, bestPid, nodeId,
+                            p[0], p[1], p[2], QString());
+        };
+
         int faceLocalId = 15;
         QVector<vtkIdType> facePids;
         if (auto* ug = vtkUnstructuredGrid::SafeDownCast(ds))
@@ -1752,6 +1789,7 @@ bool PickManager::pickAt(int x, int y)
                 if (!computePickedFace(ug, cellId, pickPos, faceLocalId, facePids))
                     return false;
                 toggleSelectFace(kind, packFaceKey(cellId, faceLocalId));
+                emitClosestNodeOnFace(facePids);
                 return true;
             }
         }
@@ -1764,6 +1802,21 @@ bool PickManager::pickAt(int x, int y)
         // 2D 面单元统一使用 localId=15，不能再改成 0，否则点选/框选生成的 faceKey
         // 会和下拉框中的 MeshTagSet.faceKeys 不一致，表现为高亮乱跳。
         toggleSelectFace(kind, packFaceKey(origCellId, origFaceLocalId));
+
+        if (m_gridSolid && origCellId >= 0 && origCellId < m_gridSolid->GetNumberOfCells())
+        {
+            QVector<vtkIdType> fallbackPids;
+            if (auto* srcCell = m_gridSolid->GetCell(origCellId))
+            {
+                if (auto* pointIds = srcCell->GetPointIds())
+                {
+                    fallbackPids.reserve(pointIds->GetNumberOfIds());
+                    for (vtkIdType i = 0; i < pointIds->GetNumberOfIds(); ++i)
+                        fallbackPids.push_back(pointIds->GetId(i));
+                }
+            }
+            emitClosestNodeOnFace(fallbackPids);
+        }
         return true;
     }
 
