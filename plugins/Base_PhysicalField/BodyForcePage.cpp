@@ -1,6 +1,8 @@
-﻿#include "BodyForcePage.h"
+#include "BodyForcePage.h"
 
 #include <CustomComboBox.h>
+#include <PublicConstants.h>
+#include <PublicVariables.h>
 #include <ServiceRegistry.h>
 #include <services/MeshModuleControllerService.h>
 #include <struct/MeshMap.h>
@@ -68,10 +70,15 @@ BodyForcePage::BodyForcePage(QWidget* parent) : BasePage("BodyForcePage")
     // 兼容：你当前 UI 没有 spinII，但你以后加上也无需改代码
     m_ii = this->findChild<QSpinBox*>("spinII");
 
-    // 默认值
+    // 默认重力方向与当前网格竖向轴一致（2D 固定 -Y，3D 按 verticalAxis 选 -Y 或 -Z）
+    int vAxis = 2;
+    if (auto* meshSvc = ServiceRegistry::instance().getService<MeshModuleControllerService>())
+        vAxis = meshSvc->verticalAxis();
+    const int ndim = PublicVariables::instance().get(PublicConstants::kMeshDimension).toInt();
+    const bool useZ = (ndim != 2 && vAxis == 3);
     m_fbx->setValue(0.0);
-    m_fby->setValue(0.0);
-    m_fbz->setValue(-9.81);
+    m_fby->setValue(useZ ? 0.0 : -9.81);
+    m_fbz->setValue(useZ ? -9.81 : 0.0);
     if (m_ii)
         m_ii->setValue(1);
 

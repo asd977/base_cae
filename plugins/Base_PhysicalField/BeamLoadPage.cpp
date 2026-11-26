@@ -227,7 +227,7 @@ void BeamLoadPage::onGroupChanged(int index)
     if (!meshSvc)
         return;
     const MeshTagKey key = comboTagKey(ui->comboBoxGroup, index);
-    PickManager::instance().setSelectedPointIds(getPageType(), m_uuid, GridKind::Solid,
+    PickManager::instance().setSelectedPointIds(getPageType(), m_uuid, GridKind::Line,
                                                 toVtkIds(meshSvc->pointIdsOfTag(key)), false);
 }
 

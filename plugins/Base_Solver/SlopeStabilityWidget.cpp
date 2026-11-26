@@ -481,6 +481,16 @@ void SlopeStabilityWidget::setGravityLineValue(const QString& value)
 
 QString SlopeStabilityWidget::defaultValueByLine(int lineNo) const
 {
+    if (lineNo == 4)
+    {
+        int vAxis = 2;
+        if (auto* meshSvc = ServiceRegistry::instance().getService<MeshModuleControllerService>())
+            vAxis = meshSvc->verticalAxis();
+        const int ndim = PublicVariables::instance().get(PublicConstants::kMeshDimension).toInt();
+        if (ndim != 2 && vAxis == 3)
+            return QStringLiteral("0.0   0.0   -9.81");
+        return QStringLiteral("0.0   -9.81   0.0");
+    }
     static const QStringList defaults = {"", "MACB.DAT", "3",
                                          "0.0   -9.81   0.0", "1", "500", "0.0001", "1", "IIWL.DAT",
                                          "1", "---", "JDTRACE.DAT", "KETRACE.DAT",

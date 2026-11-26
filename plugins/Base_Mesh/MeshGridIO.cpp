@@ -706,7 +706,8 @@ static bool buildSolverEightSlotConnectivity(int vtkCellType,
 
 static int normalizedVerticalAxis(int axis, int fallback = 2)
 {
-    return (axis >= 1 && axis <= 3) ? axis : fallback;
+    // SOLVER only supports IVERTICAL = 2 (Y) or 3 (Z); IVERTICAL = 1 aborts in MODSIGN.
+    return (axis == 2 || axis == 3) ? axis : (fallback == 3 ? 3 : 2);
 }
 
 static inline bool parseInt(const QString& s, int& v)
@@ -3537,6 +3538,39 @@ bool MeshGridIO::exportIiinFile(const QString& fileName, vtkUnstructuredGrid* gr
                 signedTetraVolume(grid, c) < 0.0)
             {
                 std::swap(vtkNodeIds[1], vtkNodeIds[2]);
+            }
+            else if (c->GetCellType() == VTK_WEDGE && vtkNodeIds.size() == 6)
+            {
+                // Ensure bottom triangle (0,1,2) normal points toward top (3,4,5) for positive Jacobian.
+                double p0[3], p1[3], p2[3], p3[3];
+                grid->GetPoint(c->GetPointId(0), p0);
+                grid->GetPoint(c->GetPointId(1), p1);
+                grid->GetPoint(c->GetPointId(2), p2);
+                grid->GetPoint(c->GetPointId(3), p3);
+                const double ax = p1[0]-p0[0], ay = p1[1]-p0[1], az = p1[2]-p0[2];
+                const double bx = p2[0]-p0[0], by = p2[1]-p0[1], bz = p2[2]-p0[2];
+                const double cx = p3[0]-p0[0], cy = p3[1]-p0[1], cz = p3[2]-p0[2];
+                const double det = (ay*bz - az*by)*cx + (az*bx - ax*bz)*cy + (ax*by - ay*bx)*cz;
+                if (det < 0.0)
+                {
+                    std::swap(vtkNodeIds[1], vtkNodeIds[2]);
+                    std::swap(vtkNodeIds[4], vtkNodeIds[5]);
+                }
+            }
+            else if (c->GetCellType() == VTK_PYRAMID && vtkNodeIds.size() == 5)
+            {
+                // Ensure base quad (0,1,2,3) normal points toward apex (4) for positive Jacobian.
+                double p0[3], p1[3], p2[3], p4[3];
+                grid->GetPoint(c->GetPointId(0), p0);
+                grid->GetPoint(c->GetPointId(1), p1);
+                grid->GetPoint(c->GetPointId(2), p2);
+                grid->GetPoint(c->GetPointId(4), p4);
+                const double ax = p1[0]-p0[0], ay = p1[1]-p0[1], az = p1[2]-p0[2];
+                const double bx = p2[0]-p0[0], by = p2[1]-p0[1], bz = p2[2]-p0[2];
+                const double cx = p4[0]-p0[0], cy = p4[1]-p0[1], cz = p4[2]-p0[2];
+                const double det = (ay*bz - az*by)*cx + (az*bx - ax*bz)*cy + (ax*by - ay*bx)*cz;
+                if (det < 0.0)
+                    std::swap(vtkNodeIds[1], vtkNodeIds[3]);
             }
             if (!buildSolverEightSlotConnectivity(c->GetCellType(), vtkNodeIds, outConn))
             {

@@ -1224,9 +1224,9 @@ bool DamAnalysisWidget::validateInputs(QString* errorMessage) const
 
     bool axisOk = false;
     const int upstreamAxis = m_comboUpstreamAxis->currentData().toString().toInt(&axisOk);
-    if (!axisOk || upstreamAxis < 1 || upstreamAxis > 3)
+    if (!axisOk || (upstreamAxis != 1 && upstreamAxis != 2))
     {
-        setError("上下游轴向必须选择 X、Y、Z 中的一个。");
+        setError(QStringLiteral("求解器蓄水浮托力与填筑位移修正仅支持 X 或 Y 轴作为上下游方向，请将模型上下游对齐到 X 或 Y 轴。"));
         return false;
     }
     if (auto* meshSvc = ServiceRegistry::instance().getService<MeshModuleControllerService>())

@@ -47,15 +47,21 @@ inline bool hasValidFileAtPath(const QString& path)
     bool faceCountOk = false;
     bool nodeCountOk = false;
     const int count = header.at(0).toInt(&faceCountOk);
-    const int nodesPerFace = header.at(1).toInt(&nodeCountOk);
+    const int makod = header.at(1).toInt(&nodeCountOk);
+    // SOLVER MAFAJD = MAKOD - 2 (2D edge >= 4, 3D face >= 5).
     if (!faceCountOk || !nodeCountOk || count <= 0 || count > 2000000
-        || nodesPerFace < 2
-        || nodesPerFace > 32 || reader.atEnd())
+        || makod < 4
+        || makod > 34 || reader.atEnd())
         return false;
     reader.readLine(); // solver's second header row
     for (int index = 0; index < count; ++index)
     {
-        if (reader.atEnd() || reader.readLine().trimmed().isEmpty())
+        if (reader.atEnd())
+            return false;
+        const QStringList cols = reader.readLine().trimmed().split(
+            QRegularExpression(QStringLiteral("\\s+")), Qt::SkipEmptyParts);
+        bool idxOk = false;
+        if (cols.size() < makod + 2 || cols.at(0).toInt(&idxOk) != index + 1 || !idxOk)
             return false;
     }
     return true;

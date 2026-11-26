@@ -5887,6 +5887,7 @@ void Solver::onComputeCaveExcavation(ProjectNode* analysisNode)
 
         if (!caveCtx.grid || caveCtx.calculationElemToCellId.isEmpty())
         {
+            clearSolverRunDirectory();
             solverWarning(
                 nullptr, QStringLiteral("请检查开挖区域"),
                 QStringLiteral("部分开挖区域与当前网格不一致。请重新选择开挖区域后重试。"));
@@ -5901,6 +5902,7 @@ void Solver::onComputeCaveExcavation(ProjectNode* analysisNode)
                 normalizeExcavationElems(selectedSourceElements[level]);
             if (calculationIds.size() != selectedSourceElements[level].size())
             {
+                clearSolverRunDirectory();
                 solverWarning(
                     nullptr, QStringLiteral("请检查开挖区域"),
                     QStringLiteral("第 %1 级开挖体与当前网格不一致。请重新选择该区域后重试。")
@@ -7019,6 +7021,7 @@ void Solver::consumeSolverOutput()
     // blocks until a non-whitespace token is received.
     if (rawOutput.contains(QStringLiteral("输入任意键"))
         || rawOutput.contains(QStringLiteral("输入0，退出"))
+        || rawOutput.contains(QStringLiteral("是否继续"))
         || rawOutput.contains(QStringLiteral("PRESS ANY LETTER"), Qt::CaseInsensitive)
         || rawOutput.contains(QStringLiteral("PRESS ANY KEY"), Qt::CaseInsensitive)
         || rawOutput.contains(QStringLiteral("INPUT ANY KEY"), Qt::CaseInsensitive)
@@ -7044,8 +7047,14 @@ void Solver::handleSolverProcessFinished(int exitCode, QProcess::ExitStatus exit
     if (!m_solverErrorOutputSeen)
     {
         const QString error = solverErrorContextFromRunLogs(m_activeAnalysisWorkspace, m_solverStartedAtMs);
-        if (!error.isEmpty()) printSolverOutput(m_activeAnalysisWorkspace, error);
+        if (!error.isEmpty())
+        {
+            printSolverOutput(m_activeAnalysisWorkspace, error);
+            m_solverErrorOutputSeen = true;
+        }
     }
+    if (m_solverErrorOutputSeen && m_solverFailureDetail.isEmpty())
+        m_solverFailureDetail = QStringLiteral("求解器输出了中止错误信息，请查看日志。");
     if (m_solverFailureDetail.isEmpty() && exitCode == 0
         && exitStatus == QProcess::NormalExit
         && m_activeAnalysisKind == QStringLiteral("SeepageAnalysis"))
@@ -7119,8 +7128,11 @@ void Solver::handleSolverProcessFinished(int exitCode, QProcess::ExitStatus exit
                               m_activeAnalysisType, QStringLiteral("failed"));
 
         printSolverOutput(m_activeAnalysisWorkspace, QStringLiteral("计算失败，请查看求解器日志。"));
-        QMessageBox::warning(nullptr, QStringLiteral("计算失败"),
-            QStringLiteral("%1失败，请查看求解器日志。").arg(m_activeAnalysisType));
+        if (!m_batchActive)
+        {
+            QMessageBox::warning(nullptr, QStringLiteral("计算失败"),
+                QStringLiteral("%1失败，请查看求解器日志。").arg(m_activeAnalysisType));
+        }
     }
 
     const bool batchItemFinished = m_batchActive && !m_batchCurrentUuid.isEmpty();
@@ -8901,6 +8913,20 @@ bool Solver::updateCaveBlockIiiDirDat(const QString& sliderDir) const
     // 注意：这不是 PCCAE_CPU 的 IAUTO，也不会自动点击第三方程序。
     if (lines.size() < 9)
         return false;
+    if (nativeSliderDir.toLocal8Bit().size() > 120)
+    {
+        qCWarning(caeSolverLog) << "块体稳定目录超过 Fortran CHARACTER*120 字节上限:" << nativeSliderDir;
+        return false;
+    }
+    const QDir runtime(QDir(QCoreApplication::applicationDirPath()).filePath(QStringLiteral("solver/Runtime")));
+    QString runtimeError;
+    if (SolverDirectoryProtocol::validateRuntime(runtime, &runtimeError))
+    {
+        QString runtimePath = QDir::toNativeSeparators(runtime.absolutePath());
+        if (!runtimePath.endsWith(QDir::separator())) runtimePath += QDir::separator();
+        if (runtimePath.toLocal8Bit().size() <= 120)
+            lines[3] = QStringLiteral("'%1'").arg(runtimePath);
+    }
     lines[0] = QStringLiteral("'%1'").arg(nativeSliderDir);
     lines[8] = QStringLiteral("        6  IOBJECT");
 
@@ -8940,9 +8966,22 @@ bool Solver::updateIiiDirDat(const QString& projectDir, int solverMode, int devi
     if (!inputDir.endsWith(QDir::separator()))
         inputDir += QDir::separator();
 
+    // SOLVER Fortran path buffers are CHARACTER*120 (GBK bytes), and subdirs append up to 20 bytes.
+    if (projectWithSlash.toLocal8Bit().size() > 100)
+        return fail(QStringLiteral("工程工作目录路径过长（超过求解器 100 字节安全上限），请移至更短路径：%1").arg(projectWithSlash));
+    if (inputDir.toLocal8Bit().size() > 120)
+        return fail(QStringLiteral("求解器输入目录路径超过 120 字节上限，请移至更短路径：%1").arg(inputDir));
     lines[0] = QString("'%1'").arg(projectWithSlash);
     if (lines.size() < 9)
         return fail(QStringLiteral("求解器目录文件 %1 内容不完整：只有 %2 行，至少需要9行。").arg(file.fileName()).arg(lines.size()));
+    // Ensure line 3 GRAVITY stays within SOLVER [9.0, 10.1] range to prevent blocking READ(*,*) prompt.
+    {
+        const QStringList gParts = lines[2].trimmed().split(QRegularExpression(QStringLiteral("\\s+")), Qt::SkipEmptyParts);
+        bool gOk = false;
+        const double gVal = !gParts.isEmpty() ? gParts.at(0).toDouble(&gOk) : 0.0;
+        if (!gOk || std::abs(gVal) < 9.0 || std::abs(gVal) > 10.1)
+            lines[2] = QStringLiteral("9.81   GRAVITY");
+    }
     lines[4] = QString("%1  IDEVICE").arg(qBound(0, deviceCode, 2), 9);
     lines[5] = QString("%1  ILOG_GZKZR").arg(0, 9);
     lines[6] = QString("%1  ILOG_SOLVE").arg(0, 9);
@@ -8953,6 +8992,8 @@ bool Solver::updateIiiDirDat(const QString& projectDir, int solverMode, int devi
     // fall back to the obsolete C-drive mirror when deployment is incomplete.
     QString runtimePath = QDir::toNativeSeparators(runtime.absolutePath());
     if (!runtimePath.endsWith(QDir::separator())) runtimePath += QDir::separator();
+    if (runtimePath.toLocal8Bit().size() > 120)
+        return fail(QStringLiteral("求解器运行时目录路径超过 120 字节上限，请将软件安装至更短路径：%1").arg(runtimePath));
     lines[3] = QStringLiteral("'%1'").arg(runtimePath);
     QSaveFile primary(QStringLiteral("D:/IIIDIR.DAT"));
     const QByteArray updated = lines.join("\n").toLocal8Bit();
@@ -9442,8 +9483,8 @@ bool Solver::exportInouseDatFile()
 
         const auto& rel0 = pointToSolidElems[static_cast<int>(p0)];
         const auto& rel1 = pointToSolidElems[static_cast<int>(p1)];
-        const bool s0 = rel0.isEmpty();
-        const bool s1 = rel1.isEmpty();
+        bool s0 = rel0.isEmpty();
+        bool s1 = rel1.isEmpty();
 
         double xyz0[3] = {0.0, 0.0, 0.0};
         double xyz1[3] = {0.0, 0.0, 0.0};
@@ -9454,7 +9495,15 @@ bool Solver::exportInouseDatFile()
         row.ke = calculationElementByCell.value(cid);
         row.ke1 = pickRelatedSolid(p0, xyz0, xyz1);
         row.ke2 = pickRelatedSolid(p1, xyz1, xyz0);
-        if (!s0 && !s1)
+        // Never emit LXBAR=2/3/4 with KE1==0 or KE2==0 (causes JM(0,:) out-of-bounds in SOLVER).
+        if ((s0 && row.ke1 <= 0) || (s1 && row.ke2 <= 0))
+        {
+            qCWarning(caeSolverLog) << "Bar element" << row.ke << "has floating endpoint outside solid mesh; clamping to LXBAR=1.";
+            row.lx = 1;
+            s0 = false;
+            s1 = false;
+        }
+        else if (!s0 && !s1)
             row.lx = 1;
         else if (s0 && !s1)
             row.lx = 2;

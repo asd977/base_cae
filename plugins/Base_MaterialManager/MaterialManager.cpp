@@ -4547,6 +4547,8 @@ bool MaterialManager::importIMATFile(const QString& filePath, int* importedCount
         if (ib == 1 && (nearlyEqual(rowValue(matIndex, 13), 2.0) || isNonZero(matIndex, 38) ||
                         isNonZero(matIndex, 93)))
             return findModel(QStringLiteral("huangjinping_bar_element"));
+        if (ib == 1 && isNonZero(matIndex, 46))
+            return findModel(QStringLiteral("planar_elastic_beam"));
         if (ib == 2)
         {
             if (isNonZero(matIndex, 58) || isNonZero(matIndex, 59) || isNonZero(matIndex, 77) ||
@@ -4727,6 +4729,14 @@ bool MaterialManager::importIMATFile(const QString& filePath, int* importedCount
             setProperty(entry, QStringLiteral("剪胀角(°)"), rowValue(matIndex, 99));
             setProperty(entry, QStringLiteral("洞室边缘松弛系数α0"), rowValue(matIndex, 77));
             setProperty(entry, QStringLiteral("松弛距离d0"), rowValue(matIndex, 78));
+        }
+        else if (model->key == QStringLiteral("planar_elastic_beam"))
+        {
+            setProperty(entry, QStringLiteral("材料编号"), matype);
+            setProperty(entry, QStringLiteral("弹性模量E（GPa）"), rowValue(matIndex, 2) / 1.0e9);
+            setProperty(entry, QStringLiteral("容重t/m3"), rowValue(matIndex, 7) / 1.0e3);
+            setProperty(entry, QStringLiteral("截面积A（m2）"), rowValue(matIndex, 8));
+            setProperty(entry, QStringLiteral("截面惯性矩Iz（m4）"), rowValue(matIndex, 46));
         }
         else if (model->key == QStringLiteral("dagangshan_isotropic"))
         {

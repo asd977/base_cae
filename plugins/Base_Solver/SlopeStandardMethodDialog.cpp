@@ -2029,7 +2029,8 @@ void SlopeStandardAnalysisWidget::buildCasePage()
     m_outsideWaterSpin->setEnabled(false);
     m_earthquakeCheck = new QCheckBox(QStringLiteral("考虑地震作用"), conditionGroup);
     m_earthquakeIntensitySpin = new QSpinBox(conditionGroup);
-    m_earthquakeIntensitySpin->setRange(0, 20);
+    // SOLVER EARTHQUICK only handles intensity <= 9 (LD > 9 zeroes seismic load).
+    m_earthquakeIntensitySpin->setRange(0, 9);
     m_earthquakeIntensitySpin->setEnabled(false);
     conditionForm->addRow(QStringLiteral("地下水"), m_poreMethodCombo);
     conditionForm->addRow(QStringLiteral("浸润线"), phreaticButtons);

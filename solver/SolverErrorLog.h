@@ -17,7 +17,13 @@ inline std::string nativeSolverErrorTail(const std::string& text)
         {
             line=line.substr(first);
             std::transform(line.begin(),line.end(),line.begin(),[](unsigned char c){return char(std::toupper(c));});
-            if(line=="ERROR"||line.rfind("ERROR ",0)==0||line.rfind("ERROR:",0)==0||line.rfind("FORRTL: SEVERE",0)==0)
+            const std::string rawLine=text.substr(pos+first,(end==std::string::npos?text.size():end)-(pos+first));
+            if(line=="ERROR"||line.rfind("ERROR ",0)==0||line.rfind("ERROR:",0)==0||
+               line.rfind("EROR ",0)==0||line.rfind("FORRTL: SEVERE",0)==0||
+               line.rfind("FAILED TO CREATE SUBDIRECTORY",0)==0||
+               line.rfind("UN-EXPECTED",0)==0||
+               line.rfind("IN-COMPATIBLE",0)==0||
+               rawLine.find("\xE5\x8F\x91\xE7\x8E\xB0\xE9\x94\x99\xE8\xAF\xAF")!=std::string::npos)
                 error=pos;
         }
         if(end==std::string::npos)break;

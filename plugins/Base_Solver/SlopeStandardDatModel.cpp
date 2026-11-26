@@ -312,6 +312,8 @@ bool SlopeStandardDatModel::validate(QString* errorMessage) const
     }
     if (earthquakeEnabled != 0 && earthquakeEnabled != 1)
         return fail(errorMessage, QStringLiteral("地震开关无效。"));
+    if (earthquakeEnabled == 1 && (earthquakeIntensity < 0 || earthquakeIntensity > 9))
+        return fail(errorMessage, QStringLiteral("地震烈度必须在 0～9 之间（大于 9 时求解器地震力清零）。"));
     if (earthquakeMode < 0 || earthquakeMode > 2)
         return fail(errorMessage, QStringLiteral("地震组合模式无效。"));
     if (std::abs(earthquakeDirectionH) > 1 || std::abs(earthquakeDirectionV) > 1)

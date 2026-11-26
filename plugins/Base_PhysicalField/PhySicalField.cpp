@@ -1035,18 +1035,35 @@ void PhysicalField::writeIIWL_Part3_BodyForce(QTextStream& os)
     }
     else if (!localRows.isEmpty())
     {
+        // Merge overlapping local node rows by node_id.
+        QMap<int, BodyForcePage::Part3Row> mergedByNode;
         if (hasGlobal)
-            qWarning() << "Part3 BodyForce: global and local body forces mixed; applying global sum to local rows.";
-        for (auto r : localRows)
         {
-            if (hasGlobal)
+            // When global & local coexist, populate all mesh nodes with mergedGlobal
+            // so GE_FBG does not zero out non-selected elements.
+            auto* meshSvc = ServiceRegistry::instance().getService<MeshModuleControllerService>();
+            auto grid = meshSvc ? meshSvc->getVtkUnstructuredGrid() : nullptr;
+            if (grid && grid->GetNumberOfPoints() > 0)
             {
-                r.fbx += mergedGlobal.fbx;
-                r.fby += mergedGlobal.fby;
-                r.fbz += mergedGlobal.fbz;
+                auto* nodeIdArr = grid->GetPointData() ? grid->GetPointData()->GetArray("node_id") : nullptr;
+                for (vtkIdType p = 0; p < grid->GetNumberOfPoints(); ++p)
+                {
+                    const int nid = nodeIdArr ? static_cast<int>(nodeIdArr->GetTuple1(p)) : static_cast<int>(p + 1);
+                    mergedByNode.insert(nid, BodyForcePage::Part3Row{nid, mergedGlobal.fbx, mergedGlobal.fby, mergedGlobal.fbz});
+                }
             }
-            finalRows.push_back(r);
         }
+        for (const auto& r : localRows)
+        {
+            auto& dst = mergedByNode[r.jd];
+            if (dst.jd == 0)
+                dst.jd = r.jd;
+            dst.fbx += r.fbx;
+            dst.fby += r.fby;
+            dst.fbz += r.fbz;
+        }
+        for (auto it = mergedByNode.cbegin(); it != mergedByNode.cend(); ++it)
+            finalRows.push_back(it.value());
         if (finalRows.size() == 1)
         {
             qWarning() << "Part3 BodyForce: single-node local body force cannot form a full element in GE_FBG; dropping.";
@@ -1899,8 +1916,9 @@ void PhysicalField::writeIIWL_Part1_GeoStressPoint(QTextStream& os)
     // ---- Part1 输出 ----
     os << QString("%1\t%2\t%3\tNUM_GEO\tNDIM\tNCOM\n").arg(NUM_GEO).arg(NDIM).arg(NCOM);
 
+    // SOLVER READ_IIWL 2D order: XP YP SGX SGY TXY SGZ II (NCOM=3 reads first 3 stress cols)
     if (NDIM == DIMENSION_2D)
-        os << "XP\tYP\tSGX\tSGY\tSGZ\tTXY\tII\n";
+        os << "XP\tYP\tSGX\tSGY\tTXY\tSGZ\tII\n";
     else
         os << "XP\tYP\tZP\tSGX\tSGY\tSGZ\tTXY\tTYZ\tTZX\tII\n";
 
@@ -1916,7 +1934,7 @@ void PhysicalField::writeIIWL_Part1_GeoStressPoint(QTextStream& os)
         if (NDIM == DIMENSION_2D)
         {
             os << fmtE(xyz.x) << "\t" << fmtE(xyz.y) << "\t" << fmtE(s.sx) << "\t" << fmtE(s.sy)
-               << "\t" << fmtE(s.sz) << "\t" << fmtE(s.sxy) << "\t" << II << "\n";
+               << "\t" << fmtE(s.sxy) << "\t" << fmtE(s.sz) << "\t" << II << "\n";
         }
         else
         {
@@ -2161,22 +2179,28 @@ void PhysicalField::writeIIWL_Part4_PointForce(QTextStream& os)
             vtkDataArray* elemArr = nullptr;
             vtkIdType pid = -1;
 
+            // For 2D nodes with non-zero moment M, prefer the line (KETYPE=21 beam) grid
+            // so MAKEFC dispatches to FC1D2N_BEAM instead of dropping M on a 2-DOF solid cell.
+            const bool preferBeam = (NDIM == DIMENSION_2D && std::abs(mz) > 1.0e-12);
+            auto itL = mapLine.find(nodeId);
             auto itS = mapSolid.find(nodeId);
-            if (itS != mapSolid.end())
+            if (preferBeam && itL != mapLine.end())
+            {
+                g = gLine;
+                elemArr = elemIdLine;
+                pid = itL.value();
+            }
+            else if (itS != mapSolid.end())
             {
                 g = gSolid;
                 elemArr = elemIdSolid;
                 pid = itS.value();
             }
-            else
+            else if (itL != mapLine.end())
             {
-                auto itL = mapLine.find(nodeId);
-                if (itL != mapLine.end())
-                {
-                    g = gLine;
-                    elemArr = elemIdLine;
-                    pid = itL.value();
-                }
+                g = gLine;
+                elemArr = elemIdLine;
+                pid = itL.value();
             }
             if (!g || pid < 0)
                 continue;
@@ -2649,12 +2673,20 @@ void PhysicalField::writeIIWL_Part8_BeamSpecialDistributedLoad(QTextStream& os)
 
         bool wroteByNode = false;
 
+        if (NDIM == DIMENSION_2D && ldType == 4)
+        {
+            qWarning() << "[Part8] 2D beam distributed load does not support LDTYPE=4; skipping page" << uuid;
+            continue;
+        }
+        const int safeIdir = (NDIM == DIMENSION_2D) ? 1 : idir;
         auto consumeNodes = [&](vtkUnstructuredGrid* g, vtkDataArray* elemIdArr,
                                 const QHash<int, vtkIdType>& map, const QVector<vtkIdType>& nodeIds,
                                 const char* tag)
         {
             if (!g)
                 return;
+            // Deduplicate beam element IDs so selecting both endpoints does not double-load a beam.
+            QSet<int> emittedElems;
             for (vtkIdType v : nodeIds)
             {
                 const int nodeId = int(v);
@@ -2670,6 +2702,9 @@ void PhysicalField::writeIIWL_Part8_BeamSpecialDistributedLoad(QTextStream& os)
                 g->GetPoint(pid, pt);
 
                 const int ke = chooseElemIdForPid(g, elemIdArr, pid);
+                if (ke <= 0 || emittedElems.contains(ke))
+                    continue;
+                emittedElems.insert(ke);
 
                 Row r;
                 r.jmfg = ke;
@@ -2679,7 +2714,7 @@ void PhysicalField::writeIIWL_Part8_BeamSpecialDistributedLoad(QTextStream& os)
                 r.ldType = ldType;
                 r.a = a;
                 r.p = p;
-                r.idir = idir;
+                r.idir = safeIdir;
                 rows.push_back(r);
 
                 wroteByNode = true;

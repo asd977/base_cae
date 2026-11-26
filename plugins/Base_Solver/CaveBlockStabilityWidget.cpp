@@ -286,22 +286,25 @@ bool CaveBlockStabilityWidget::exportDatFiles(QVector<CaveBlockPlanePage*>& plan
     os << quoteValue(valueOrDefault(ui->icutFileEdit, "ICUT.DAT")) << "\n";
     os << quoteValue(valueOrDefault(ui->safeFileEdit, "SAFE_CAVEBLK.DAT")) << "\n";
     os << quoteValue(valueOrDefault(ui->weightEdit, "23.52")) << "\n";
+    // SOLVER TUT(5..8) are CHARACTER*30; format compactly so joined strings never exceed 30 bytes.
+    auto compactNum = [](const QDoubleSpinBox* edit, const char* fallback) -> QString
+    {
+        if (!edit) return QString::fromLatin1(fallback);
+        return QString::number(edit->value(), 'g', 7);
+    };
     os << quoteValue(QString("%1 %2")
-                         .arg(valueOrDefault(ui->xMinEdit, "-1.0E6"))
-                         .arg(valueOrDefault(ui->xMaxEdit, "1.0E6")))
+                         .arg(compactNum(ui->xMinEdit, "-1.0E6"), compactNum(ui->xMaxEdit, "1.0E6")))
        << "\n";
     os << quoteValue(QString("%1 %2")
-                         .arg(valueOrDefault(ui->yMinEdit, "-1.0E6"))
-                         .arg(valueOrDefault(ui->yMaxEdit, "1.0E6")))
+                         .arg(compactNum(ui->yMinEdit, "-1.0E6"), compactNum(ui->yMaxEdit, "1.0E6")))
        << "\n";
     os << quoteValue(QString("%1 %2")
-                         .arg(valueOrDefault(ui->zMinEdit, "-1.0E6"))
-                         .arg(valueOrDefault(ui->zMaxEdit, "1.0E6")))
+                         .arg(compactNum(ui->zMinEdit, "-1.0E6"), compactNum(ui->zMaxEdit, "1.0E6")))
        << "\n";
     os << quoteValue(QString("%1 %2 %3")
-                         .arg(valueOrDefault(ui->fxEdit, "-50.0"))
-                         .arg(valueOrDefault(ui->fyEdit, "0.0"))
-                         .arg(valueOrDefault(ui->fzEdit, "0.0")))
+                         .arg(compactNum(ui->fxEdit, "-50.0"),
+                              compactNum(ui->fyEdit, "0.0"),
+                              compactNum(ui->fzEdit, "0.0")))
        << "\n";
     os << quoteValue(QStringLiteral("0")) << "\n";
     os << quoteValue(QString("%1 %2 %3")

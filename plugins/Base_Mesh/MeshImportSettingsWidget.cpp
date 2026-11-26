@@ -9,10 +9,11 @@ MeshImportSettingsWidget::MeshImportSettingsWidget(QWidget* parent)
 {
     ui->setupUi(this);
 
-    ui->comboVerticalAxis->setItemData(0, 1);
-    ui->comboVerticalAxis->setItemData(1, 2);
-    ui->comboVerticalAxis->setItemData(2, 3);
-    ui->comboVerticalAxis->setCurrentIndex(1);
+    // SOLVER only supports Y (2) or Z (3) as vertical axis; X (1) aborts in MODSIGN.
+    ui->comboVerticalAxis->clear();
+    ui->comboVerticalAxis->addItem(QStringLiteral("Y 轴"), 2);
+    ui->comboVerticalAxis->addItem(QStringLiteral("Z 轴"), 3);
+    ui->comboVerticalAxis->setCurrentIndex(0);
 
     connect(ui->buttonImport, &QPushButton::clicked, this,
             &MeshImportSettingsWidget::importRequested);
