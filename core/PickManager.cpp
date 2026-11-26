@@ -1,5 +1,6 @@
 ﻿#include "PickManager.h"
 
+#include <QCursor>
 #include <PublicVariables.h>
 #include <ServiceRegistry.h>
 #include <services/MeshModuleControllerService.h>
@@ -527,6 +528,14 @@ PickManager::PickManager(QObject* parent) : QObject(parent)
     m_cbLeftRelease->SetClientData(this);
     m_cbLeftRelease->SetCallback(&PickManager::OnLeftButtonRelease);
 
+    m_cbRightPress = vtkSmartPointer<vtkCallbackCommand>::New();
+    m_cbRightPress->SetClientData(this);
+    m_cbRightPress->SetCallback(&PickManager::OnRightButtonPress);
+
+    m_cbRightRelease = vtkSmartPointer<vtkCallbackCommand>::New();
+    m_cbRightRelease->SetClientData(this);
+    m_cbRightRelease->SetCallback(&PickManager::OnRightButtonRelease);
+
     m_cbMouseMove = vtkSmartPointer<vtkCallbackCommand>::New();
     m_cbMouseMove->SetClientData(this);
     m_cbMouseMove->SetCallback(&PickManager::OnMouseMove);
@@ -867,7 +876,7 @@ void PickManager::updateStructure()
         }
 
         // 某些页面/显示切换会拆掉交互观察器；结构更新时顺手保证当前拾取链仍有效。
-        if (!m_leftPressTag || !m_leftReleaseTag || !m_mouseMoveTag)
+        if (!m_leftPressTag || !m_leftReleaseTag || !m_rightPressTag || !m_rightReleaseTag || !m_mouseMoveTag)
             setupPicking();
     }
 }
@@ -880,6 +889,15 @@ QSet<DomainKey> PickManager::appliedDomains(const QString& domain, const QString
 DomainKey PickManager::selectedDomain(const QString& domain, const QString& uuid) const
 {
     return m_selectedDomainByDomainUuid.value(domain).value(uuid, DomainKey{});
+}
+
+QSet<DomainKey> PickManager::selectedDomains(const QString& domain, const QString& uuid) const
+{
+    QSet<DomainKey> keys = m_selectedDomainsByDomainUuid.value(domain).value(uuid);
+    const DomainKey single = m_selectedDomainByDomainUuid.value(domain).value(uuid, DomainKey{});
+    if (domainKeyIsValidForDisplay(single))
+        keys.insert(single);
+    return keys;
 }
 
 DomainKey PickManager::previewDomain(const QString& domain, const QString& uuid) const
@@ -967,10 +985,37 @@ void PickManager::setAppliedDomains(const QString& domain, const QString& uuid,
 
 void PickManager::setSelectedDomain(const QString& domain, const QString& uuid, const DomainKey& key)
 {
-    if (m_selectedDomainByDomainUuid.value(domain).value(uuid, DomainKey{}) == key)
+    const QSet<DomainKey> nextSet =
+        domainKeyIsValidForDisplay(key) ? QSet<DomainKey>{key} : QSet<DomainKey>{};
+    if (m_selectedDomainByDomainUuid.value(domain).value(uuid, DomainKey{}) == key &&
+        m_selectedDomainsByDomainUuid.value(domain).value(uuid) == nextSet)
         return;
     m_selectedDomainByDomainUuid[domain][uuid] = key;
+    m_selectedDomainsByDomainUuid[domain][uuid] = nextSet;
     emit domainSelected(domain, uuid, key);
+    emit domainsSelected(domain, uuid, nextSet);
+    rebuildDomainHighlightActors();
+}
+
+void PickManager::setSelectedDomains(const QString& domain, const QString& uuid,
+                                     const QSet<DomainKey>& keys)
+{
+    QSet<DomainKey> validKeys;
+    for (const DomainKey& k : keys)
+    {
+        if (domainKeyIsValidForDisplay(k))
+            validKeys.insert(k);
+    }
+    const DomainKey primary = validKeys.isEmpty() ? DomainKey{} : *validKeys.cbegin();
+    if (m_selectedDomainsByDomainUuid.value(domain).value(uuid) == validKeys &&
+        m_selectedDomainByDomainUuid.value(domain).value(uuid, DomainKey{}) == primary)
+        return;
+
+    m_selectedDomainsByDomainUuid[domain][uuid] = validKeys;
+    m_selectedDomainByDomainUuid[domain][uuid] = primary;
+    if (domainKeyIsValidForDisplay(primary))
+        emit domainSelected(domain, uuid, primary);
+    emit domainsSelected(domain, uuid, validKeys);
     rebuildDomainHighlightActors();
 }
 
@@ -1001,6 +1046,7 @@ void PickManager::clearDomainSelection(const QString& domain, const QString& uui
         m_ownerDomainByDomain.remove(domain);
         m_prevOwnerDomainByDomain.remove(domain);
         m_selectedDomainByDomainUuid.remove(domain);
+        m_selectedDomainsByDomainUuid.remove(domain);
         m_previewDomainByDomainUuid.remove(domain);
         m_preDeleteDomainByDomainUuid.remove(domain);
         rebuildDomainHighlightActors();
@@ -1027,6 +1073,7 @@ void PickManager::clearDomainSelection(const QString& domain, const QString& uui
 
     uuid2set.remove(uuid);
     m_selectedDomainByDomainUuid[domain].remove(uuid);
+    m_selectedDomainsByDomainUuid[domain].remove(uuid);
     m_previewDomainByDomainUuid[domain].remove(uuid);
     m_preDeleteDomainByDomainUuid[domain].remove(uuid);
     rebuildDomainHighlightActors();
@@ -1181,6 +1228,7 @@ void PickManager::resetProjectState()
     m_pickMode = PickMode::Node;
     m_styleDisabledByBoxSelect = false;
     m_leftDown = false;
+    m_rightDown = false;
     m_dragMoved = false;
     m_dragUseBox = false;
     m_dragBoxDeselect = false;
@@ -1219,6 +1267,7 @@ void PickManager::resetProjectState()
     m_ownerDomainByDomain.clear();
     m_prevOwnerDomainByDomain.clear();
     m_selectedDomainByDomainUuid.clear();
+    m_selectedDomainsByDomainUuid.clear();
     m_previewDomainByDomainUuid.clear();
     m_preDeleteDomainByDomainUuid.clear();
 
@@ -1450,6 +1499,8 @@ void PickManager::setupPicking()
            // 全装，逻辑在回调里分流：不按Shift拖拽=相机；Shift拖拽=框选
     m_leftPressTag = iren->AddObserver(vtkCommand::LeftButtonPressEvent, m_cbLeftPress, 1.0);
     m_leftReleaseTag = iren->AddObserver(vtkCommand::LeftButtonReleaseEvent, m_cbLeftRelease, 1.0);
+    m_rightPressTag = iren->AddObserver(vtkCommand::RightButtonPressEvent, m_cbRightPress, 0.5);
+    m_rightReleaseTag = iren->AddObserver(vtkCommand::RightButtonReleaseEvent, m_cbRightRelease, 0.5);
     m_mouseMoveTag = iren->AddObserver(vtkCommand::MouseMoveEvent, m_cbMouseMove, 1.0);
 }
 
@@ -1470,6 +1521,16 @@ void PickManager::teardownPicking()
     {
         iren->RemoveObserver(m_leftReleaseTag);
         m_leftReleaseTag = 0;
+    }
+    if (m_rightPressTag)
+    {
+        iren->RemoveObserver(m_rightPressTag);
+        m_rightPressTag = 0;
+    }
+    if (m_rightReleaseTag)
+    {
+        iren->RemoveObserver(m_rightReleaseTag);
+        m_rightReleaseTag = 0;
     }
     if (m_mouseMoveTag)
     {
@@ -1500,7 +1561,7 @@ void PickManager::OnLeftButtonPress(vtkObject* caller, unsigned long, void* clie
     const bool ctrlBox = iren->GetControlKey() != 0;
     self->m_dragUseBox =
         ((self->m_pickMode == PickMode::Node || self->m_pickMode == PickMode::Edge ||
-          self->m_pickMode == PickMode::Face) &&
+          self->m_pickMode == PickMode::Face || self->m_pickMode == PickMode::Domain) &&
          self->isBoxSelectEnabledForActive() && (shiftBox || ctrlBox));
     self->m_dragBoxDeselect = ctrlBox;
     if (!self->m_dragUseBox)
@@ -1590,6 +1651,150 @@ void PickManager::OnLeftButtonRelease(vtkObject* caller, unsigned long, void* cl
     self->updateDragRect(0,0,0,0,false);
 }
 
+void PickManager::OnRightButtonPress(vtkObject* caller, unsigned long, void* clientData, void*)
+{
+    auto* self = static_cast<PickManager*>(clientData);
+    auto iren = vtkRenderWindowInteractor::SafeDownCast(caller);
+    if (!self || !iren)
+        return;
+    int xy[2];
+    iren->GetEventPosition(xy);
+    self->m_rightDown = true;
+    self->m_rightStart[0] = xy[0];
+    self->m_rightStart[1] = xy[1];
+}
+
+void PickManager::OnRightButtonRelease(vtkObject* caller, unsigned long, void* clientData, void*)
+{
+    auto* self = static_cast<PickManager*>(clientData);
+    auto iren = vtkRenderWindowInteractor::SafeDownCast(caller);
+    if (!self || !iren || !self->m_rightDown)
+        return;
+    self->m_rightDown = false;
+
+    int xy[2];
+    iren->GetEventPosition(xy);
+    const int dx = std::abs(xy[0] - self->m_rightStart[0]);
+    const int dy = std::abs(xy[1] - self->m_rightStart[1]);
+    if (dx > 4 || dy > 4 || self->m_currentDomain.isEmpty())
+        return;
+
+    // Right-click on an unselected domain selects it first so the context menu acts immediately.
+    if (self->m_pickMode == PickMode::Domain && self->isClickPickEnabledForActive())
+    {
+        if (self->m_cellPicker && self->m_visual && self->m_visual->renderer() &&
+            self->m_cellPicker->Pick(xy[0], xy[1], 0.0, self->m_visual->renderer()))
+        {
+            vtkProp* prop = self->m_cellPicker->GetViewProp();
+            vtkDataSet* ds = self->m_cellPicker->GetDataSet();
+            const vtkIdType cid = self->m_cellPicker->GetCellId();
+            if (ds && cid >= 0 && (prop == self->m_solidProp || prop == self->m_lineProp))
+            {
+                const GridKind kind = (prop == self->m_lineProp) ? GridKind::Line : GridKind::Solid;
+                const DomainKey hitKey = self->resolveDomainKeyForCell(kind, ds, cid);
+                if (domainKeyIsValidForDisplay(hitKey))
+                {
+                    const QSet<DomainKey> cur =
+                        self->selectedDomains(self->m_currentDomain, self->m_currentUUid);
+                    if (!cur.contains(hitKey))
+                        self->setSelectedDomain(self->m_currentDomain, self->m_currentUUid, hitKey);
+                }
+            }
+        }
+    }
+
+    const QString domain = self->m_currentDomain;
+    const QString uuid = self->m_currentUUid;
+    const PickMode mode = self->m_pickMode;
+    const QPoint globalPos = QCursor::pos();
+    QTimer::singleShot(0, self, [self, domain, uuid, mode, globalPos]()
+    {
+        emit self->contextMenuRequested(domain, uuid, mode, globalPos);
+    });
+}
+
+DomainKey PickManager::resolveDomainKeyForCell(GridKind kind, vtkDataSet* ds, vtkIdType cellId) const
+{
+    if (!ds || cellId < 0 || cellId >= ds->GetNumberOfCells())
+        return DomainKey{};
+
+    int pickedDomainDim = (kind == GridKind::Line) ? 1 : 3;
+    vtkIdType origCellId = cellId;
+    vtkDataArray* origCellArr = findArray(ds->GetCellData(), "vtkOriginalCellIds", "orig_cell_id");
+    if (origCellArr && cellId >= 0 && cellId < origCellArr->GetNumberOfTuples())
+        origCellId = static_cast<vtkIdType>(origCellArr->GetTuple1(cellId));
+
+    DomainKey pickedKey;
+    if (auto* meshSvc = ServiceRegistry::instance().getService<MeshModuleControllerService>())
+    {
+        QVector<DomainKey> candidates;
+        const QVector<DomainKey> domains = meshSvc->availableDomains(QString());
+        if (kind == GridKind::Solid)
+        {
+            const int actualDim = meshSvc->mshPickMapSolid().meshDim;
+            if (actualDim == 2 || actualDim == 3)
+                pickedDomainDim = actualDim;
+        }
+        for (const DomainKey& key : domains)
+        {
+            if (key.dim != pickedDomainDim || key.id == 0)
+                continue;
+            const QSet<MeshIdType> cells = meshSvc->domainCells(key);
+            if (cells.contains(static_cast<MeshIdType>(origCellId)))
+                candidates.push_back(key);
+        }
+
+        const QString preferred = m_preferredDomainCategoryByDomainUuid
+            .value(m_currentDomain).value(m_currentUUid);
+        if (!preferred.isEmpty())
+        {
+            for (const DomainKey& key : candidates)
+            {
+                if (key.category.compare(preferred, Qt::CaseInsensitive) == 0 &&
+                    domainKeyIsValidForDisplay(key))
+                {
+                    pickedKey = key;
+                    break;
+                }
+            }
+            return pickedKey;
+        }
+
+        for (const DomainKey& key : candidates)
+        {
+            if (key.category.compare(QStringLiteral("LAYER"), Qt::CaseInsensitive) == 0 && key.id < 0)
+            {
+                pickedKey = key;
+                break;
+            }
+        }
+        if (!domainKeyIsValidForDisplay(pickedKey))
+        {
+            for (const DomainKey& key : candidates)
+            {
+                if (key.category.compare(QStringLiteral("MATYPE"), Qt::CaseInsensitive) == 0 &&
+                    domainKeyIsValidForDisplay(key))
+                {
+                    pickedKey = key;
+                    break;
+                }
+            }
+        }
+        if (!domainKeyIsValidForDisplay(pickedKey))
+        {
+            for (const DomainKey& key : candidates)
+            {
+                if (domainKeyIsValidForDisplay(key))
+                {
+                    pickedKey = key;
+                    break;
+                }
+            }
+        }
+    }
+    return pickedKey;
+}
+
 bool PickManager::pickAt(int x, int y)
 {
     if (!m_visual || !m_cellPicker)
@@ -1640,93 +1845,27 @@ bool PickManager::pickAt(int x, int y)
 
     if (m_pickMode == PickMode::Domain)
     {
-        int pickedDomainDim = (kind == GridKind::Line) ? 1 : 3;
-
-        vtkIdType origCellId = cellId;
-        vtkDataArray* origCellArr = findArray(ds->GetCellData(), "vtkOriginalCellIds", "orig_cell_id");
-        if (origCellArr && cellId >= 0 && cellId < origCellArr->GetNumberOfTuples())
-            origCellId = static_cast<vtkIdType>(origCellArr->GetTuple1(cellId));
-
-        DomainKey pickedKey;
-        if (auto* meshSvc = ServiceRegistry::instance().getService<MeshModuleControllerService>())
-        {
-            QVector<DomainKey> candidates;
-            const QVector<DomainKey> domains = meshSvc->availableDomains(QString());
-            // Solid actor also displays 2D meshes. Do not hard-code dimension 3.
-            if (kind == GridKind::Solid)
-            {
-                const int actualDim = meshSvc->mshPickMapSolid().meshDim;
-                if (actualDim == 2 || actualDim == 3)
-                    pickedDomainDim = actualDim;
-            }
-            for (const DomainKey& key : domains)
-            {
-                if (key.dim != pickedDomainDim || key.id == 0)
-                    continue;
-                const QSet<MeshIdType> cells = meshSvc->domainCells(key);
-                if (cells.contains(static_cast<MeshIdType>(origCellId)))
-                    candidates.push_back(key);
-            }
-
-            // Materials, excavation and other pages do not use the same category.
-            // A preferred category prevents clicking a cave LAYER from selecting MATYPE.
-            const QString preferred = m_preferredDomainCategoryByDomainUuid
-                .value(m_currentDomain).value(m_currentUUid);
-            if (!preferred.isEmpty())
-            {
-                for (const DomainKey& key : candidates)
-                {
-                    if (key.category.compare(preferred, Qt::CaseInsensitive) == 0 &&
-                        domainKeyIsValidForDisplay(key))
-                    {
-                        pickedKey = key;
-                        break;
-                    }
-                }
-                if (!domainKeyIsValidForDisplay(pickedKey))
-                    return false; // Never silently select a different business category.
-            }
-
-                   // 负数目前主要出现在 LAYER 中；先识别负数 LAYER，避免被同一单元上的 MATYPE 抢先选走。
-            for (const DomainKey& key : candidates)
-            {
-                if (!preferred.isEmpty()) break;
-                if (key.category.compare(QStringLiteral("LAYER"), Qt::CaseInsensitive) == 0 && key.id < 0)
-                {
-                    pickedKey = key;
-                    break;
-                }
-            }
-
-            if (!domainKeyIsValidForDisplay(pickedKey))
-            {
-                for (const DomainKey& key : candidates)
-                {
-                    if (key.category.compare(QStringLiteral("MATYPE"), Qt::CaseInsensitive) == 0)
-                    {
-                        pickedKey = key;
-                        break;
-                    }
-                }
-            }
-
-            if (!domainKeyIsValidForDisplay(pickedKey))
-            {
-                for (const DomainKey& key : candidates)
-                {
-                    if (domainKeyIsValidForDisplay(key))
-                    {
-                        pickedKey = key;
-                        break;
-                    }
-                }
-            }
-        }
-
+        const DomainKey pickedKey = resolveDomainKeyForCell(kind, ds, cellId);
         if (!domainKeyIsValidForDisplay(pickedKey))
             return false;
 
-        setSelectedDomain(m_currentDomain, m_currentUUid, pickedKey);
+        bool additive = false;
+        if (auto* iren = m_visual ? m_visual->interactor() : nullptr)
+            additive = (iren->GetControlKey() != 0) || (iren->GetShiftKey() != 0);
+
+        if (additive)
+        {
+            QSet<DomainKey> next = selectedDomains(m_currentDomain, m_currentUUid);
+            if (next.contains(pickedKey))
+                next.remove(pickedKey);
+            else
+                next.insert(pickedKey);
+            setSelectedDomains(m_currentDomain, m_currentUUid, next);
+        }
+        else
+        {
+            setSelectedDomain(m_currentDomain, m_currentUUid, pickedKey);
+        }
         return true;
     }
 
@@ -3159,14 +3298,13 @@ void PickManager::rebuildDomainHighlightActors()
     }
 
     const QSet<DomainKey> applied = m_domainsByDomainUuid.value(m_currentDomain).value(m_currentUUid);
-    const DomainKey selected =
-        m_selectedDomainByDomainUuid.value(m_currentDomain).value(m_currentUUid, DomainKey{});
+    const QSet<DomainKey> selectedSet = selectedDomains(m_currentDomain, m_currentUUid);
     const DomainKey preview =
         m_previewDomainByDomainUuid.value(m_currentDomain).value(m_currentUUid, DomainKey{});
     const DomainKey preDelete =
         m_preDeleteDomainByDomainUuid.value(m_currentDomain).value(m_currentUUid, DomainKey{});
 
-    const bool hasAny = !applied.isEmpty() || domainKeyIsValidForDisplay(selected) ||
+    const bool hasAny = !applied.isEmpty() || !selectedSet.isEmpty() ||
                         domainKeyIsValidForDisplay(preview) || domainKeyIsValidForDisplay(preDelete);
     if (!hasAny)
     {
@@ -3185,7 +3323,8 @@ void PickManager::rebuildDomainHighlightActors()
     };
     const bool isMaterialSelection =
         std::any_of(applied.cbegin(), applied.cend(), isMaterialDomain) ||
-        isMaterialDomain(selected) || isMaterialDomain(preview) || isMaterialDomain(preDelete);
+        std::any_of(selectedSet.cbegin(), selectedSet.cend(), isMaterialDomain) ||
+        isMaterialDomain(preview) || isMaterialDomain(preDelete);
     // CaveExcavationBody 的实际 pick domain 为 "CaveExcavationBody/<uuid>"。
     // 不能使用完全相等判断，否则开挖体分组选择时不会进入材料选择同款的
     // 半透明上下文显示，内部开挖体会被外层模型遮挡。
@@ -3237,8 +3376,26 @@ void PickManager::rebuildDomainHighlightActors()
         addCellsByDim(key, appliedSolidCells, appliedLineCells);
 
     addCellsByDim(preview, previewSolidCells, previewLineCells);
-    addCellsByDim(selected, selectedSolidCells, selectedLineCells);
     addCellsByDim(preDelete, preDeleteSolidCells, preDeleteLineCells);
+
+    QSet<vtkIdType> selectedAppliedSolidCells;
+    QSet<vtkIdType> selectedAppliedLineCells;
+    QSet<vtkIdType> selectedUnappliedSolidCells;
+    QSet<vtkIdType> selectedUnappliedLineCells;
+    for (const DomainKey& selKey : selectedSet)
+    {
+        const bool selectedIsApplied = std::any_of(
+            applied.cbegin(), applied.cend(),
+            [&selKey](const DomainKey& key)
+            {
+                return key.category.compare(selKey.category, Qt::CaseInsensitive) == 0 &&
+                       key.id == selKey.id;
+            });
+        if (selectedIsApplied)
+            addCellsByDim(selKey, selectedAppliedSolidCells, selectedAppliedLineCells);
+        else
+            addCellsByDim(selKey, selectedUnappliedSolidCells, selectedUnappliedLineCells);
+    }
 
     QHash<vtkIdType, RgbColor> solidFocusColors;
     QHash<vtkIdType, RgbColor> lineFocusColors;
@@ -3253,19 +3410,10 @@ void PickManager::rebuildDomainHighlightActors()
 
     // 已施加域始终可见；当前项、悬停项和待移除项按顺序覆盖基础色。
     appendCells(appliedSolidCells, appliedLineCells, kDomainAppliedColor);
-
-    if (domainKeyIsValidForDisplay(selected))
-    {
-        const bool selectedIsApplied = std::any_of(
-            applied.cbegin(), applied.cend(),
-            [&selected](const DomainKey& key)
-            {
-                return key.category.compare(selected.category, Qt::CaseInsensitive) == 0 &&
-                       key.id == selected.id;
-            });
-        appendCells(selectedSolidCells, selectedLineCells,
-                    selectedIsApplied ? kDomainSelectedColor : kDomainPreviewColor);
-    }
+    if (!selectedUnappliedSolidCells.isEmpty() || !selectedUnappliedLineCells.isEmpty())
+        appendCells(selectedUnappliedSolidCells, selectedUnappliedLineCells, kDomainPreviewColor);
+    if (!selectedAppliedSolidCells.isEmpty() || !selectedAppliedLineCells.isEmpty())
+        appendCells(selectedAppliedSolidCells, selectedAppliedLineCells, kDomainSelectedColor);
 
     if (domainKeyIsValidForDisplay(preview))
         appendCells(previewSolidCells, previewLineCells, kDomainPreviewColor);
@@ -4456,6 +4604,28 @@ bool PickManager::hardwareBoxSelect(int x0, int y0, int x1, int y1, bool deselec
             markDirty(DirtyNode);
         notifySelectionChanged();
         return changed;
+    }
+
+    if (m_pickMode == PickMode::Domain)
+    {
+        QSet<DomainKey> hitKeys;
+        for (const VisibleCell& candidate : std::as_const(visibleCells))
+        {
+            const DomainKey key =
+                resolveDomainKeyForCell(candidate.kind, candidate.dataSet, candidate.cellId);
+            if (domainKeyIsValidForDisplay(key))
+                hitKeys.insert(key);
+        }
+        if (hitKeys.isEmpty())
+            return false;
+
+        QSet<DomainKey> next = selectedDomains(m_currentDomain, m_currentUUid);
+        if (deselect)
+            next.subtract(hitKeys);
+        else
+            next.unite(hitKeys);
+        setSelectedDomains(m_currentDomain, m_currentUUid, next);
+        return true;
     }
 
     if (m_pickMode == PickMode::Face)

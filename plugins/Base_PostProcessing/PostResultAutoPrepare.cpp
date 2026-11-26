@@ -1,3 +1,4 @@
+#include "PostTecplotUtils.h"
 #include "PostResultAutoPrepare.h"
 
 #include "PostResultGenerator.h"
@@ -740,6 +741,9 @@ GeneratedFileInfo generatedFileInfo(const QString& fileName, bool strengthReduct
         {"tec_rap_pls", "principal_plastic_strain"},
         {"tec_rai_pls", "plastic_strain"},
         {"tec_rupt", "failure_zone"},
+        {"tec_dvelo", "dynamic_velocity"},
+        {"tec_dacce", "dynamic_acceleration"},
+        {"tec_p1p3", "principal_stress_envelope"},
         {"tec_velo", "velocity"},
         {"tec_disp", "displacement"},
         {"tec_prs", "principal_stress"},
@@ -1015,7 +1019,10 @@ QVector<PostResultAutoPrepare::ResultFile> fallbackSourceFiles(const QDir& proje
                                QStringLiteral("TEC_RAI_PLS.DAT"),
                                QStringLiteral("TEC_RAP_PLS.DAT"),
                                QStringLiteral("TEC_SL.DAT"), QStringLiteral("TEC_CMM.DAT"),
-                               QStringLiteral("TEC_RUPT.DAT"), QStringLiteral("*.tec")};
+                               QStringLiteral("TEC_RUPT.DAT"), QStringLiteral("TEC_DVELO.DAT"),
+                               QStringLiteral("TEC_DACCE.DAT"), QStringLiteral("TEC_P1P3.DAT"),
+                               QStringLiteral("TEC_FUN.DAT"), QStringLiteral("TEC_PLS_STRESS.DAT"),
+                               QStringLiteral("*.tec")};
     QSet<QString> seenPaths;
     for (const QString& pattern : names)
     {
@@ -1767,6 +1774,7 @@ bool prepareDirectory(const QString& projectDir, const QString& sourceDir)
     }
 
     clearRecentlyValidatedFresh(prepared);
+    PostTecplotUtils::clearCache(prepared.absolutePath());
     const QStringList staleFiles =
         prepared.entryList({QStringLiteral("*.tec"), QStringLiteral("*.vtu"),
                             QStringLiteral("*.vtm"), QStringLiteral("*.vtp")}, QDir::Files);
@@ -1809,6 +1817,10 @@ bool prepareDirectory(const QString& projectDir, const QString& sourceDir)
 
 bool prepareResultRoot(const QString& projectDir, const QString& resultRoot)
 {
+    {
+        QMutexLocker locker(&recentFreshMutex());
+        recentFreshManifests().clear();
+    }
     const QDir project(QDir::fromNativeSeparators(projectDir.trimmed()));
     const QDir root(QDir::fromNativeSeparators(resultRoot.trimmed()));
     if (!project.exists() || !root.exists())

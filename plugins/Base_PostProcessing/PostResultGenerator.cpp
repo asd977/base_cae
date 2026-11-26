@@ -85,7 +85,44 @@ struct RuptureFlags
 {
     bool shear = false;
     bool tensile = false;
+    int jointOrYieldCode = 0;
 };
+
+int readHeaderNcom(const QString& filePath)
+{
+    QFile file(filePath);
+    if (!file.open(QIODevice::ReadOnly | QIODevice::Text))
+        return 0;
+    const QString firstLine = QString::fromLocal8Bit(file.readLine()).trimmed();
+    const QStringList parts = firstLine.split(QRegularExpression(QStringLiteral("\\s+")), Qt::SkipEmptyParts);
+    if (parts.size() < 2)
+        return 0;
+    bool ok = false;
+    const int ncom = parts.at(1).toInt(&ok);
+    return ok ? ncom : 0;
+}
+
+QString readHeaderBanner(const QString& filePath)
+{
+    QFile file(filePath);
+    if (!file.open(QIODevice::ReadOnly | QIODevice::Text))
+        return QString();
+    QString banner;
+    for (int i = 0; i < 4 && !file.atEnd(); ++i)
+    {
+        const QByteArray raw = file.readLine();
+        banner += QString::fromLocal8Bit(raw) + QLatin1Char('\n') + QString::fromUtf8(raw) + QLatin1Char('\n');
+    }
+    return banner;
+}
+
+bool isSeepageDispFile(const QString& filePath)
+{
+    const QString banner = readHeaderBanner(filePath);
+    return banner.contains(QStringLiteral("HEAD(m)"), Qt::CaseInsensitive) ||
+           banner.contains(QStringLiteral("PORE_P(Pa)"), Qt::CaseInsensitive) ||
+           banner.contains(QStringLiteral("水头和渗压"));
+}
 
 bool filesHaveSameContents(const QString& leftPath, const QString& rightPath)
 {
@@ -1242,14 +1279,15 @@ QVector<QVector<double>> buildDisplacement(const QVector<QVector<double>>& raw, 
     return values;
 }
 
-QVector<QVector<double>> buildPrincipalStress(const QVector<QVector<double>>& raw, int dimension)
+QVector<QVector<double>> buildPrincipalStress(const QVector<QVector<double>>& raw, int dimension,
+                                               bool hasThreePrincipals)
 {
     QVector<QVector<double>> values(raw.size());
     for (int i = 0; i < raw.size(); ++i)
     {
         if (dimension == 2)
         {
-            if (raw.at(i).size() >= 3)
+            if (hasThreePrincipals)
             {
                 double s[3] = {-safeValue(raw.at(i), 0) * 1.0e-6,
                                -safeValue(raw.at(i), 1) * 1.0e-6,
@@ -1259,8 +1297,9 @@ QVector<QVector<double>> buildPrincipalStress(const QVector<QVector<double>>& ra
             }
             else
             {
-                const double p1 = -safeValue(raw.at(i), 1) * 1.0e-6;
-                const double p2 = -safeValue(raw.at(i), 0) * 1.0e-6;
+                double p1 = -safeValue(raw.at(i), 1) * 1.0e-6;
+                double p2 = -safeValue(raw.at(i), 0) * 1.0e-6;
+                if (p1 < p2) std::swap(p1, p2);
                 values[i] = {p1, p2, std::abs(p1 - p2) * 0.5};
             }
         }
@@ -1295,6 +1334,8 @@ QVector<QVector<double>> buildPlasticStrainComponents(const QVector<QVector<doub
             values[i] = {safeValue(raw.at(i), 0) * microstrain,
                          safeValue(raw.at(i), 1) * microstrain,
                          safeValue(raw.at(i), 2) * microstrain};
+            if (raw.at(i).size() >= 4)
+                values[i].push_back(safeValue(raw.at(i), 3) * microstrain);
         }
         else
         {
@@ -1310,7 +1351,7 @@ QVector<QVector<double>> buildPlasticStrainComponents(const QVector<QVector<doub
 }
 
 QVector<QVector<double>> buildPrincipalPlasticStrain(const QVector<QVector<double>>& raw,
-                                                      int dimension)
+                                                      int dimension, bool hasThreePe)
 {
     constexpr double microstrain = -1.0e6;
     QVector<QVector<double>> values(raw.size());
@@ -1318,20 +1359,29 @@ QVector<QVector<double>> buildPrincipalPlasticStrain(const QVector<QVector<doubl
     {
         if (dimension == 2)
         {
-            const double pe1 = safeValue(raw.at(i), 1) * microstrain;
-            const double pe3 = safeValue(raw.at(i), 0) * microstrain;
-            const double pe2 = raw.at(i).size() >= 3 ? safeValue(raw.at(i), 2) * microstrain : 0.0;
-            const double hi = std::max({pe1, pe2, pe3});
-            const double lo = std::min({pe1, pe2, pe3});
-            const double maximum = std::abs(hi - lo) * 0.5;
-            const double equivalent = std::sqrt(
-                0.5 * ((pe1 - pe2) * (pe1 - pe2) +
-                       (pe2 - pe3) * (pe2 - pe3) +
-                       (pe3 - pe1) * (pe3 - pe1))) * 2.0 / 3.0;
-            if (raw.at(i).size() >= 3)
-                values[i] = {pe1, pe2, pe3, maximum, equivalent};
+            if (hasThreePe)
+            {
+                double pe[3] = {safeValue(raw.at(i), 0) * microstrain,
+                                safeValue(raw.at(i), 1) * microstrain,
+                                safeValue(raw.at(i), 2) * microstrain};
+                std::sort(pe, pe + 3, std::greater<double>());
+                const double maximum = std::abs(pe[0] - pe[2]) * 0.5;
+                const double equivalent = std::sqrt(
+                    0.5 * ((pe[0] - pe[1]) * (pe[0] - pe[1]) +
+                           (pe[1] - pe[2]) * (pe[1] - pe[2]) +
+                           (pe[2] - pe[0]) * (pe[2] - pe[0]))) * 2.0 / 3.0;
+                values[i] = {pe[0], pe[1], pe[2], maximum, equivalent};
+            }
             else
+            {
+                double pe1 = safeValue(raw.at(i), 1) * microstrain;
+                double pe3 = safeValue(raw.at(i), 0) * microstrain;
+                if (pe1 < pe3) std::swap(pe1, pe3);
+                const double maximum = std::abs(pe1 - pe3) * 0.5;
+                const double equivalent = std::sqrt(
+                    0.5 * (pe1 * pe1 + pe3 * pe3 + (pe3 - pe1) * (pe3 - pe1))) * 2.0 / 3.0;
                 values[i] = {pe1, pe3, maximum, equivalent};
+            }
         }
         else
         {
@@ -1388,9 +1438,9 @@ QHash<int, QVector<double>> readElementRuptureValues(const QString& filePath, co
 
         ++rowsRead;
         // Dynamic soil (IB=-4) writes continuous max shear stress QGEN (Pa) into column 6;
-        // only discrete integer failure codes (1=shear, 2=tensile) represent failure zones.
+        // accept discrete integer failure codes: 1=shear, 2=tensile, 3..5=joint/1D bar yield.
         const double rounded = std::round(rupture);
-        if (std::abs(rupture - rounded) > 1.0e-3 || rounded < 0.0 || rounded > 2.0)
+        if (std::abs(rupture - rounded) > 1.0e-3 || rounded < 0.0 || rounded > 5.0)
             continue;
         const int ruptureCode = static_cast<int>(rounded);
         RuptureFlags& flags = flagsByElement[elementId];
@@ -1398,6 +1448,8 @@ QHash<int, QVector<double>> readElementRuptureValues(const QString& filePath, co
             flags.tensile = true;
         else if (ruptureCode == 1)
             flags.shear = true;
+        else if (ruptureCode >= 3)
+            flags.jointOrYieldCode = std::max(flags.jointOrYieldCode, ruptureCode);
     }
 
     if (rowsRead == 0)
@@ -1411,7 +1463,7 @@ QHash<int, QVector<double>> readElementRuptureValues(const QString& filePath, co
     for (const Element& element : mesh.elements)
     {
         const RuptureFlags flags = flagsByElement.value(element.id);
-        const double failureType = flags.tensile ? 2.0 : (flags.shear ? 1.0 : 0.0);
+        const double failureType = flags.tensile ? 2.0 : (flags.shear ? 1.0 : static_cast<double>(flags.jointOrYieldCode));
         values.insert(element.id, {failureType});
     }
     return values;
@@ -2194,7 +2246,8 @@ PostResultGenerator::Result PostResultGenerator::generate(const Options& options
                                      [](const FieldSource& source)
                                      {
                                          return source.suffix.startsWith(QStringLiteral("METHOD"),
-                                                                         Qt::CaseInsensitive);
+                                                                         Qt::CaseInsensitive) ||
+                                                isSeepageDispFile(source.path);
                                      });
 
     QVector<QVector<double>> preferredHeadPressure;
@@ -2207,16 +2260,17 @@ PostResultGenerator::Result PostResultGenerator::generate(const Options& options
             const auto raw = readNodeValues(source.path, mesh, 1, &warning);
             if (!warning.isEmpty())
                 result.warnings << warning;
-            headPressureBySuffix.insert(source.suffix.toCaseFolded(), raw);
+            const auto hp = buildHeadPressure(raw);
+            headPressureBySuffix.insert(source.suffix.toCaseFolded(), hp);
             if (preferredHeadPressure.isEmpty() ||
                 source.suffix.compare(QStringLiteral("METHOD2"), Qt::CaseInsensitive) == 0)
-                preferredHeadPressure = raw;
+                preferredHeadPressure = hp;
             generateField(outputDir, mesh, expanded, groups, noMasks,
                           outputName(external, QStringLiteral("TEC_HP.DAT"),
                                      QStringLiteral("head_pressure"), source.suffix),
                            QStringLiteral("HP-SEEPAGE (MPa)"),
                            {QStringLiteral("HEAD(m)"), QStringLiteral("P(MPa)")},
-                           buildHeadPressure(raw), result, optionalExpandedWithExcavated);
+                           hp, result, optionalExpandedWithExcavated);
         }
 
         for (const FieldSource& source : velocitySources)
@@ -2252,19 +2306,41 @@ PostResultGenerator::Result PostResultGenerator::generate(const Options& options
             const auto raw = readNodeValues(source.path, mesh, mesh.dimension, &warning);
             if (!warning.isEmpty())
                 result.warnings << warning;
-            const QStringList variables = mesh.dimension == 3
-                                              ? QStringList{QStringLiteral("UX(cm)"),
-                                                            QStringLiteral("UY(cm)"),
-                                                            QStringLiteral("UZ(cm)"),
-                                                            QStringLiteral("UH(cm)")}
-                                              : QStringList{QStringLiteral("UX(cm)"),
-                                                            QStringLiteral("UY(cm)"),
-                                                            QStringLiteral("UH(cm)")};
+            const QString dispBanner = readHeaderBanner(source.path);
+            const bool hasPore = dispBanner.contains(QStringLiteral("PORE"), Qt::CaseInsensitive);
+            const bool isPlateBending = (mesh.dimension == 2) &&
+                                        dispBanner.contains(QStringLiteral("THETA-X"), Qt::CaseInsensitive);
+            QStringList variables;
+            QVector<QVector<double>> dispValues;
+            if (isPlateBending)
+            {
+                variables = {QStringLiteral("UZ(cm)"), QStringLiteral("THETA-X(rad)"),
+                             QStringLiteral("THETA-Y(rad)"), QStringLiteral("THETA-XY(rad)")};
+                dispValues.resize(raw.size());
+                for (int i = 0; i < raw.size(); ++i)
+                    dispValues[i] = {safeValue(raw.at(i), 0) * 100.0, safeValue(raw.at(i), 1),
+                                     safeValue(raw.at(i), 2), safeValue(raw.at(i), 3)};
+            }
+            else
+            {
+                variables = mesh.dimension == 3
+                                ? QStringList{QStringLiteral("UX(cm)"), QStringLiteral("UY(cm)"),
+                                              QStringLiteral("UZ(cm)"), QStringLiteral("UH(cm)")}
+                                : QStringList{QStringLiteral("UX(cm)"), QStringLiteral("UY(cm)"),
+                                              QStringLiteral("UH(cm)")};
+                dispValues = buildDisplacement(raw, mesh.dimension);
+                if (hasPore)
+                {
+                    variables.push_back(QStringLiteral("P(MPa)"));
+                    for (int i = 0; i < raw.size(); ++i)
+                        dispValues[i].push_back(safeValue(raw.at(i), mesh.dimension) * 1.0e-6);
+                }
+            }
             generateField(outputDir, mesh, expanded, groups, commonMasks,
                           outputName(external, QStringLiteral("TEC_DISP.DAT"),
                                      QStringLiteral("displacement"), source.suffix),
                            QStringLiteral("DISP (cm)"), variables,
-                           buildDisplacement(raw, mesh.dimension), result,
+                           dispValues, result,
                            optionalExpandedWithExcavated);
         }
         for (const FieldSource& source : fieldSources(resultDir, QStringLiteral("IIVELO"), false))
@@ -2329,12 +2405,15 @@ PostResultGenerator::Result PostResultGenerator::generate(const Options& options
                 result.warnings << warning;
             QVector<QVector<double>> values(raw.size());
             for (int i = 0; i < raw.size(); ++i)
-                values[i] = {safeValue(raw.at(i), 0) * 1.0e-6, safeValue(raw.at(i), 1) * 1.0e-6};
+                values[i] = {-safeValue(raw.at(i), 1) * 1.0e-6,
+                             -safeValue(raw.at(i), 0) * 1.0e-6,
+                              safeValue(raw.at(i), 2) * 1.0e-6};
             generateField(outputDir, mesh, expanded, groups, commonMasks,
                           outputName(external, QStringLiteral("TEC_P1P3.DAT"),
                                      QStringLiteral("principal_stress_envelope"), source.suffix),
                           QStringLiteral("DYNAMIC PRINCIPAL STRESS ENVELOPE (MPa)"),
-                          {QStringLiteral("P1MAX(MPa)"), QStringLiteral("P3MIN(MPa)")},
+                          {QStringLiteral("P1MAX(MPa)"), QStringLiteral("P3MIN(MPa)"),
+                           QStringLiteral("TAUMAX(MPa)")},
                           values, result, optionalExpandedWithExcavated);
         }
     }
@@ -2346,9 +2425,10 @@ PostResultGenerator::Result PostResultGenerator::generate(const Options& options
         const auto raw = readNodeValues(source.path, mesh, mesh.dimension == 3 ? 3 : 2, &warning);
         if (!warning.isEmpty())
             result.warnings << warning;
-        const bool hasThreePrincipals = mesh.dimension == 3 ||
-            std::any_of(raw.cbegin(), raw.cend(),
-                        [](const QVector<double>& row) { return row.size() >= 3; });
+        const int ncom = readHeaderNcom(source.path);
+        const bool hasThreePrincipals = mesh.dimension == 3 || ncom == 4 ||
+            (ncom == 0 && std::any_of(raw.cbegin(), raw.cend(),
+                                      [](const QVector<double>& row) { return row.size() >= 7; }));
         const QStringList variables = hasThreePrincipals
                                           ? QStringList{QStringLiteral("PRS1(MPa)"),
                                                         QStringLiteral("PRS2(MPa)"),
@@ -2361,7 +2441,7 @@ PostResultGenerator::Result PostResultGenerator::generate(const Options& options
                       outputName(external, QStringLiteral("TEC_PRS.DAT"),
                                  QStringLiteral("principal_stress"), source.suffix),
                        QStringLiteral("PRS (MPa)"), variables,
-                       buildPrincipalStress(raw, mesh.dimension), result,
+                       buildPrincipalStress(raw, mesh.dimension, hasThreePrincipals), result,
                        optionalExpandedWithExcavated);
     }
 
@@ -2374,6 +2454,10 @@ PostResultGenerator::Result PostResultGenerator::generate(const Options& options
         const auto raw = readNodeValues(source.path, mesh, componentCount, &warning);
         if (!warning.isEmpty())
             result.warnings << warning;
+        const int ncomPl = readHeaderNcom(source.path);
+        const bool has2d4th = (mesh.dimension == 2) &&
+            (ncomPl == 4 || std::any_of(raw.cbegin(), raw.cend(),
+                                        [](const QVector<double>& row) { return row.size() >= 4; }));
         const QStringList variables = mesh.dimension == 3
             ? QStringList{QStringLiteral("PEXX(1.0e-6eps)"),
                           QStringLiteral("PEYY(1.0e-6eps)"),
@@ -2381,9 +2465,14 @@ PostResultGenerator::Result PostResultGenerator::generate(const Options& options
                           QStringLiteral("PEXY(1.0e-6eps)"),
                           QStringLiteral("PEYZ(1.0e-6eps)"),
                           QStringLiteral("PEZX(1.0e-6eps)")}
-            : QStringList{QStringLiteral("PEXX(1.0e-6eps)"),
-                          QStringLiteral("PEYY(1.0e-6eps)"),
-                          QStringLiteral("PEXY(1.0e-6eps)")};
+            : (has2d4th
+                   ? QStringList{QStringLiteral("PEXX(1.0e-6eps)"),
+                                 QStringLiteral("PEYY(1.0e-6eps)"),
+                                 QStringLiteral("PEXY(1.0e-6eps)"),
+                                 QStringLiteral("PEZZ(1.0e-6eps)")}
+                   : QStringList{QStringLiteral("PEXX(1.0e-6eps)"),
+                                 QStringLiteral("PEYY(1.0e-6eps)"),
+                                 QStringLiteral("PEXY(1.0e-6eps)")});
         generateField(outputDir, mesh, expanded, groups, commonMasks,
                       outputName(external, QStringLiteral("TEC_RAI_PLS.DAT"),
                                  QStringLiteral("plastic_strain"), source.suffix),
@@ -2400,9 +2489,10 @@ PostResultGenerator::Result PostResultGenerator::generate(const Options& options
         const auto raw = readNodeValues(source.path, mesh, mesh.dimension == 3 ? 3 : 2, &warning);
         if (!warning.isEmpty())
             result.warnings << warning;
-        const bool hasThreePe = mesh.dimension == 3 ||
-            std::any_of(raw.cbegin(), raw.cend(),
-                        [](const QVector<double>& row) { return row.size() >= 3; });
+        const int ncomPe = readHeaderNcom(source.path);
+        const bool hasThreePe = mesh.dimension == 3 || ncomPe == 4 ||
+            (ncomPe == 0 && std::any_of(raw.cbegin(), raw.cend(),
+                                        [](const QVector<double>& row) { return row.size() >= 7; }));
         const QStringList variables = hasThreePe
             ? QStringList{QStringLiteral("PE1(1.0e-6eps)"),
                           QStringLiteral("PE2(1.0e-6eps)"),
@@ -2417,7 +2507,7 @@ PostResultGenerator::Result PostResultGenerator::generate(const Options& options
                       outputName(external, QStringLiteral("TEC_RAP_PLS.DAT"),
                                  QStringLiteral("principal_plastic_strain"), source.suffix),
                       QStringLiteral("PRINCIPAL PLASTIC STRAIN"), variables,
-                      buildPrincipalPlasticStrain(raw, mesh.dimension), result,
+                      buildPrincipalPlasticStrain(raw, mesh.dimension, hasThreePe), result,
                       optionalExpandedWithExcavated);
     }
 
@@ -2493,7 +2583,12 @@ PostResultGenerator::Result PostResultGenerator::generate(const Options& options
         if (rawStress.isEmpty() || rupture.isEmpty())
             continue;
 
-        const auto principalStress = buildPrincipalStress(rawStress, mesh.dimension);
+        const int ncom = readHeaderNcom(stressSource.path);
+        const bool hasThreePrincipals = mesh.dimension == 3 || ncom == 4 ||
+            (ncom == 0 && std::any_of(rawStress.cbegin(), rawStress.cend(),
+                                      [](const QVector<double>& row) { return row.size() >= 7; }));
+        const auto principalStress = buildPrincipalStress(rawStress, mesh.dimension,
+                                                         hasThreePrincipals);
         const auto plasticZoneStress = buildPlasticZoneStressValues(
             mesh, principalStress, rupture);
         generateField(outputDir, mesh, expanded, groups, stressMasks,

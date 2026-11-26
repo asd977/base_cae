@@ -4,6 +4,7 @@
 #include <core_global.h>
 
 #include <QHash>
+#include <QPoint>
 #include <QStringList>
 #include <QObject>
 #include <QSet>
@@ -86,6 +87,7 @@ class CORE_EXPORT PickManager : public QObject
                                               bool* hasConflict = nullptr) const;
     QSet<DomainKey> appliedDomains(const QString& domain, const QString& uuid);
     DomainKey selectedDomain(const QString& domain, const QString& uuid) const;
+    QSet<DomainKey> selectedDomains(const QString& domain, const QString& uuid) const;
     DomainKey previewDomain(const QString& domain, const QString& uuid) const;
     DomainKey preDeleteDomain(const QString& domain, const QString& uuid) const;
 
@@ -98,6 +100,8 @@ class CORE_EXPORT PickManager : public QObject
 
     static void OnLeftButtonPress(vtkObject* caller, unsigned long, void* clientData, void*);
     static void OnLeftButtonRelease(vtkObject* caller, unsigned long, void* clientData, void*);
+    static void OnRightButtonPress(vtkObject* caller, unsigned long, void* clientData, void*);
+    static void OnRightButtonRelease(vtkObject* caller, unsigned long, void* clientData, void*);
     static void OnMouseMove(vtkObject* caller, unsigned long, void* clientData, void*);
 
     // ---- face key ----
@@ -168,12 +172,16 @@ class CORE_EXPORT PickManager : public QObject
     void setAppliedDomains(const QString& domain, const QString& uuid,
                            const QSet<DomainKey>& keys);
     void setSelectedDomain(const QString& domain, const QString& uuid, const DomainKey& key);
+    void setSelectedDomains(const QString& domain, const QString& uuid, const QSet<DomainKey>& keys);
     void setPreviewDomain(const QString& domain, const QString& uuid, const DomainKey& key);
     void setPreDeleteDomain(const QString& domain, const QString& uuid, const DomainKey& key);
     void clearDomainSelection(const QString& domain, const QString& uuid = QString());
 
   signals:
     void domainSelected(const QString& domain, const QString& uuid, const DomainKey& key);
+    void domainsSelected(const QString& domain, const QString& uuid, const QSet<DomainKey>& keys);
+    void contextMenuRequested(const QString& domain, const QString& uuid, PickMode mode,
+                              const QPoint& globalPos);
     void selectionChanged(const QString& domain, const QString& uuid, PickMode mode, GridKind kind);
 
   private:
@@ -188,6 +196,7 @@ class CORE_EXPORT PickManager : public QObject
     void setupPicking();
     void teardownPicking();
     bool pickAt(int x, int y);
+    DomainKey resolveDomainKeyForCell(GridKind kind, vtkDataSet* ds, vtkIdType cellId) const;
     bool hardwareBoxSelect(int x0, int y0, int x1, int y1, bool deselect = false);
     void updateDragRect(int x0, int y0, int x1, int y1, bool visible);
     bool isBoxSelectEnabledForActive() const;
@@ -264,15 +273,21 @@ class CORE_EXPORT PickManager : public QObject
     // ============ observers / pickers ============
     vtkSmartPointer<vtkCallbackCommand> m_cbLeftPress;
     vtkSmartPointer<vtkCallbackCommand> m_cbLeftRelease;
+    vtkSmartPointer<vtkCallbackCommand> m_cbRightPress;
+    vtkSmartPointer<vtkCallbackCommand> m_cbRightRelease;
     vtkSmartPointer<vtkCallbackCommand> m_cbMouseMove;
 
     vtkSmartPointer<vtkCellPicker> m_cellPicker;
     vtkSmartPointer<vtkHardwareSelector> m_hwSelector;
     unsigned long m_leftPressTag = 0;
     unsigned long m_leftReleaseTag = 0;
+    unsigned long m_rightPressTag = 0;
+    unsigned long m_rightReleaseTag = 0;
     unsigned long m_mouseMoveTag = 0;
 
     bool m_leftDown = false;
+    bool m_rightDown = false;
+    int m_rightStart[2] = {0, 0};
     bool m_dragMoved = false;
     bool m_dragUseBox = false;
     bool m_dragBoxDeselect = false;
@@ -416,6 +431,7 @@ class CORE_EXPORT PickManager : public QObject
     QHash<QString, QHash<DomainKey, QString>> m_ownerDomainByDomain;
     QHash<QString, QHash<DomainKey, QString>> m_prevOwnerDomainByDomain;
     QHash<QString, QHash<QString, DomainKey>> m_selectedDomainByDomainUuid;
+    QHash<QString, QHash<QString, QSet<DomainKey>>> m_selectedDomainsByDomainUuid;
     QHash<QString, QHash<QString, DomainKey>> m_previewDomainByDomainUuid;
     QHash<QString, QHash<QString, DomainKey>> m_preDeleteDomainByDomainUuid;
     vtkSmartPointer<vtkDataArray> m_savedDomainCellScalarsSolid;

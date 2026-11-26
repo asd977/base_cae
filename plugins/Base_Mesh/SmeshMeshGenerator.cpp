@@ -1192,6 +1192,7 @@ bool SmeshMeshGenerator::generate(const SmeshMeshingRequest& originalRequest, Sm
                                  QString* errMsg)
 {
     SmeshMeshingRequest request = originalRequest;
+    request.elemType = elementTypeForDimension(request.dimension, request.elemType);
     static std::mutex generationMutex;
     const std::lock_guard<std::mutex> guard(generationMutex);
     if (errMsg) errMsg->clear();

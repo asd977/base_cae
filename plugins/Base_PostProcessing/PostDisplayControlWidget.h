@@ -61,6 +61,8 @@ class PostDisplayControlWidget : public QWidget
     QDoubleSpinBox* m_meshEdgeWidth{nullptr};
     QSpinBox* m_meshEdgeOpacity{nullptr};
     QCheckBox* m_showOutlineCheckBox{nullptr};
+    QCheckBox* m_showContextOutlineCheckBox{nullptr};
+    QCheckBox* m_showContextLinesCheckBox{nullptr};
     QComboBox* m_surfaceInterpolationComboBox{nullptr};
     QCheckBox* m_scalarInterpolationCheckBox{nullptr};
     QCheckBox* m_computeNormalsCheckBox{nullptr};

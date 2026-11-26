@@ -77,6 +77,9 @@ class IsosurfaceSegmentationWidget : public BasePage
     // 生命周期状态
     bool m_deferRender{false};
     bool m_loadedOnce{false};
+    QString m_loadedFilePath;
+    qint64 m_loadedFileSize{-1};
+    qint64 m_loadedFileModified{-1};
     bool m_hasPendingState{false};
     QVariantMap m_pendingState;
     bool m_attachedLow{false};

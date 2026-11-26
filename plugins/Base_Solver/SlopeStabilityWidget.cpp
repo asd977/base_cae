@@ -1,4 +1,5 @@
 #include "SlopeStabilityWidget.h"
+#include <cmath>
 #include "SlopeExcavationSettings.h"
 #include "SlopeExcavationProtocol.h"
 #include <ServiceRegistry.h>
@@ -292,6 +293,7 @@ void SlopeStabilityWidget::setupStableModeSections()
     ui->dynamicForm->addRow(m_quietBoundarySelection);
     m_quietBoundarySelection->setEnabled(false);
     connect(m_quietBoundaryCheck,&QCheckBox::toggled,this,[this](bool enabled){
+        if(!m_quietBoundarySelection)return;
         m_quietBoundarySelection->setEnabled(enabled);
         if(!enabled)m_quietBoundarySelection->stop();
     });
@@ -717,6 +719,7 @@ bool SlopeStabilityWidget::validateInputs(QString* errorMessage) const
     {
         bool ok = false;
         const double parsed = edit->text().trimmed().toDouble(&ok);
+        ok = ok && std::isfinite(parsed);
         if (ok && value)
             *value = parsed;
         return ok;
@@ -725,7 +728,7 @@ bool SlopeStabilityWidget::validateInputs(QString* errorMessage) const
     if (m_quietBoundaryCheck && m_quietBoundaryCheck->isChecked()
         && (ui->line19Combo->currentData().toString() == QStringLiteral("2")
             || ui->line19Combo->currentData().toString() == QStringLiteral("3"))
-        && !m_quietBoundarySelection->generate())
+        && (!m_quietBoundarySelection || !m_quietBoundarySelection->generate()))
         return fail(QStringLiteral("请在模型中选择粘弹性边界区域；当前支持线性边界面（二维选择边）。"));
     const int type = ui->line19Combo->currentData().toString().toInt();
     if (type == 1 || type == 3)
@@ -751,17 +754,20 @@ bool SlopeStabilityWidget::validateInputs(QString* errorMessage) const
                 const auto* item = ui->strengthReserveTable->item(row, 0);
                 bool ok = false;
                 const double factor = item ? item->text().trimmed().toDouble(&ok) : 0.0;
-                if (!ok || factor <= 0.0)
+                if (!ok || !std::isfinite(factor) || factor <= 0.0)
                     return fail(QStringLiteral("第 %1 个强度储备系数必须为正数。").arg(row + 1));
             }
         }
     }
-    if (type == 2)
+    if (type == 2 || type == 3)
     {
         const QString rawMode = ui->ifModeCombo->currentText().trimmed().section(QLatin1Char(' '), 0, 0);
-        const int modeCount = rawMode.toInt();
+        bool modeOk = false;
+        const int modeCount = rawMode.toInt(&modeOk);
+        if (!modeOk || modeCount < 0)
+            return fail(QStringLiteral("振动模态阶数必须为非负整数。"));
         const bool hasWave = ui->ifWaveCombo->currentData().toString() == QStringLiteral("1");
-        if (modeCount <= 0 && !hasWave)
+        if (type == 2 && modeCount <= 0 && !hasWave)
             return fail(QStringLiteral("仅动力计算模式下至少需要启用振动模态或时程分析之一。"));
     }
     if ((type == 2 || type == 3) &&
@@ -860,7 +866,8 @@ QJsonObject SlopeStabilityWidget::saveJson()
 void SlopeStabilityWidget::loadJson(const QJsonObject& obj)
 {
     m_excavation->load(obj.value("excavation").toObject());
-    m_quietBoundarySelection->load(obj.value("quiet_boundary_selection").toObject(),obj.value("quiet_boundary_enabled").toBool(false));
+    if(m_quietBoundarySelection)
+        m_quietBoundarySelection->load(obj.value("quiet_boundary_selection").toObject(),obj.value("quiet_boundary_enabled").toBool(false));
     const QJsonArray arr = obj.value("base_values").toArray();
     for (int lineNo = 1; lineNo <= 30; ++lineNo)
     {

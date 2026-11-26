@@ -195,6 +195,8 @@ void CurveSettingsWidget::reloadAndShowCurve()
     const QString traceFile = selectedTraceFilePath();
     if (traceFile.isEmpty())
     {
+        if (m_visualService)
+            m_visualService->showCurveFromTraceFile(QString(), QStringLiteral("ISTEP"), {}, nullptr);
         setStatus(QStringLiteral("当前结果阶段没有可用的计算曲线数据。"), true);
         return;
     }
@@ -248,7 +250,9 @@ void CurveSettingsWidget::initResultDirectoryOptions()
         PostResultAutoPrepare::resultGroups(root.absolutePath());
     for (const PostResultAutoPrepare::ResultGroup& group : groups)
     {
-        const QFileInfo trace(QDir(group.sourcePath).filePath(QStringLiteral("TRACE.TXT")));
+        QFileInfo trace(QDir(group.sourcePath).filePath(QStringLiteral("TRACE.TXT")));
+        if (!trace.exists())
+            trace = QFileInfo(QDir(group.sourcePath).filePath(QStringLiteral("trace.txt")));
         if (!trace.exists() || !trace.isFile() || trace.size() == 0)
             continue;
         ui->resultDirComboBox->addItem(group.displayName, group.sourcePath);
@@ -258,7 +262,9 @@ void CurveSettingsWidget::initResultDirectoryOptions()
 
     if (ui->resultDirComboBox->count() == 0)
     {
-        const QFileInfo trace(root.filePath(QStringLiteral("TRACE.TXT")));
+        QFileInfo trace(root.filePath(QStringLiteral("TRACE.TXT")));
+        if (!trace.exists())
+            trace = QFileInfo(root.filePath(QStringLiteral("trace.txt")));
         if (trace.exists() && trace.isFile() && trace.size() > 0)
             ui->resultDirComboBox->addItem(QStringLiteral("计算过程结果"),
                                            root.absolutePath());

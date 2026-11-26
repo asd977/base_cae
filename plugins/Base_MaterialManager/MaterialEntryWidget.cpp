@@ -17,6 +17,7 @@
 #include <QGroupBox>
 #include <QHBoxLayout>
 #include <QLabel>
+#include <QMenu>
 #include <QMessageBox>
 #include <QPainter>
 #include <QMetaObject>
@@ -831,6 +832,14 @@ void MaterialEntryWidget::beforeUnload()
 
     disconnect(&pm, &PickManager::domainSelected, this,
                &MaterialEntryWidget::onDomainPicked);
+    disconnect(&pm, &PickManager::domainsSelected, this,
+               &MaterialEntryWidget::onDomainsPicked);
+    disconnect(&pm, &PickManager::contextMenuRequested, this,
+               &MaterialEntryWidget::onViewContextMenu);
+
+    m_selectedViewMatypes.clear();
+    if (m_materialManager)
+        m_materialManager->setSelectedMatypesForEntry(m_entryId, {});
 
     pm.setAppliedDomains(getPageType(), m_uuid, QSet<DomainKey>{});
     pm.setSelectedDomain(getPageType(), m_uuid, DomainKey{});
@@ -1357,10 +1366,11 @@ void MaterialEntryWidget::rebuildForm(MaterialModel* model, MaterialEntry* entry
                              assignmentCard),
         m_matypeCombo);
 
-    m_viewPickCheck = new QCheckBox(QStringLiteral("启用视图点选"), assignmentCard);
+    m_viewPickCheck = new QCheckBox(QStringLiteral("启用视图点选/框选"), assignmentCard);
     m_viewPickCheck->setChecked(m_viewPickEnabled);
-    m_viewPickCheck->setToolTip(QStringLiteral("勾选后可在视图中点击一个网格材料区域，"
-        "自动选中其 MATYPE；仍需点击“施加到网格”才能完成材料关联。"));
+    m_viewPickCheck->setToolTip(QStringLiteral(
+        "勾选后可在视图中单击、Ctrl多选或Shift拖拽框选多个网格区域，也可右键快捷赋材；"
+        "点击“施加到网格”完成材料关联。"));
     rowLayout->addWidget(m_viewPickCheck);
     rowLayout->addStretch();
     rowLayout->addWidget(m_applyButton);
@@ -1369,7 +1379,10 @@ void MaterialEntryWidget::rebuildForm(MaterialModel* model, MaterialEntry* entry
     {
         m_viewPickEnabled = enabled;
         if (m_pickInteractionReady)
+        {
             PickManager::instance().setClickPickEnabled(getPageType(), m_uuid, enabled);
+            PickManager::instance().setBoxSelectEnabled(getPageType(), m_uuid, enabled);
+        }
     });
 
     QWidget* appliedRowWidget = new QWidget(assignmentCard);
@@ -2132,14 +2145,40 @@ void MaterialEntryWidget::ensurePickInteractionReady()
     // 仍由“施加到网格”按钮确认关联，避免点击时误修改求解器数据。
     auto& picker = PickManager::instance();
     picker.activate(getPageType(), m_uuid, PickMode::Domain);
-    picker.setBoxSelectEnabled(getPageType(), m_uuid, false);
+    picker.setBoxSelectEnabled(getPageType(), m_uuid, m_viewPickEnabled);
     picker.setPreferredDomainCategory(getPageType(), m_uuid, QStringLiteral("MATYPE"));
     picker.setClickPickEnabled(getPageType(), m_uuid, m_viewPickEnabled);
 
     connect(&picker, &PickManager::domainSelected, this,
             &MaterialEntryWidget::onDomainPicked, Qt::UniqueConnection);
+    connect(&picker, &PickManager::domainsSelected, this,
+            &MaterialEntryWidget::onDomainsPicked, Qt::UniqueConnection);
+    connect(&picker, &PickManager::contextMenuRequested, this,
+            &MaterialEntryWidget::onViewContextMenu, Qt::UniqueConnection);
 
     m_pickInteractionReady = true;
+}
+
+void MaterialEntryWidget::invalidateMatypeOptions()
+{
+    m_matypeOptionsLoaded = false;
+    if (m_matypeCombo)
+    {
+        const QVariant cur = m_matypeCombo->currentData();
+        const QSignalBlocker blocker(m_matypeCombo);
+        m_matypeCombo->clear();
+        m_matypeCombo->addItem(QStringLiteral("未选择"), QVariant());
+        if (MaterialEntry* entry = lookupEntry())
+        {
+            QList<int> appliedList = entry->appliedMatypes.values();
+            std::sort(appliedList.begin(), appliedList.end());
+            for (int v : appliedList)
+                appendMatypeOption(v);
+        }
+        ensureMatypeOptionsLoaded();
+        const int idx = cur.isValid() ? m_matypeCombo->findData(cur) : 0;
+        m_matypeCombo->setCurrentIndex(idx >= 0 ? idx : 0);
+    }
 }
 
 void MaterialEntryWidget::refreshMatypeHighlightSafe()
@@ -2267,11 +2306,26 @@ void MaterialEntryWidget::onMatypeActivated(int)
 
 void MaterialEntryWidget::onApplyMatypeClicked()
 {
-    if (!m_matypeCombo)
+    if (!m_matypeCombo || !m_materialManager)
         return;
+
+    if (m_selectedViewMatypes.size() > 1)
+    {
+        const QSet<int> batch = m_selectedViewMatypes;
+        m_selectedViewMatypes.clear();
+        m_materialManager->setSelectedMatypesForEntry(m_entryId, {});
+        if (m_applyButton)
+            m_applyButton->setText(QStringLiteral("施加到网格"));
+        m_materialManager->applyMatypesToEntry(m_entryId, batch);
+        return;
+    }
 
     QVariant data = m_matypeCombo->currentData();
     int matype = data.isValid() ? data.toInt() : -1;
+    m_selectedViewMatypes.clear();
+    m_materialManager->setSelectedMatypesForEntry(m_entryId, {});
+    if (m_applyButton)
+        m_applyButton->setText(QStringLiteral("施加到网格"));
 
     m_materialManager->applyMatypeToEntry(m_entryId, matype);
 }
@@ -2497,6 +2551,140 @@ void MaterialEntryWidget::onDomainPicked(const QString& domain, const QString& u
     m_materialManager->setSelectedMatypeForEntry(m_entryId, matype);
     refreshMatypeHighlightSafe();
     updateAppliedListColors();
+}
+
+void MaterialEntryWidget::onDomainsPicked(const QString& domain, const QString& uuid,
+                                          const QSet<DomainKey>& keys)
+{
+    if (!m_materialManager || !m_matypeCombo || m_beforeUnloadHandled || !m_viewPickEnabled)
+        return;
+    if (domain != getPageType() || uuid != m_uuid)
+        return;
+    if (m_assignmentWidget && !m_assignmentWidget->isEnabled())
+        return;
+
+    ensureMatypeOptionsLoaded();
+    QSet<int> matypes;
+    for (const DomainKey& key : keys)
+    {
+        if (key.category.compare(QStringLiteral("MATYPE"), Qt::CaseInsensitive) == 0 &&
+            isComputableMatype(key.id))
+        {
+            matypes.insert(key.id);
+        }
+    }
+    m_selectedViewMatypes = matypes;
+    m_materialManager->setSelectedMatypesForEntry(m_entryId, matypes);
+    if (m_applyButton)
+    {
+        m_applyButton->setText(matypes.size() > 1
+                                   ? QStringLiteral("批量施加(%1组)").arg(matypes.size())
+                                   : QStringLiteral("施加到网格"));
+    }
+    refreshMatypeHighlightSafe();
+}
+
+void MaterialEntryWidget::onViewContextMenu(const QString& domain, const QString& uuid,
+                                            PickMode mode, const QPoint& globalPos)
+{
+    if (!m_materialManager || m_beforeUnloadHandled || !m_viewPickEnabled)
+        return;
+    if (domain != getPageType() || uuid != m_uuid || mode != PickMode::Domain)
+        return;
+    if (m_assignmentWidget && !m_assignmentWidget->isEnabled())
+        return;
+
+    QSet<int> targets = m_selectedViewMatypes;
+    if (targets.isEmpty() && m_matypeCombo && m_matypeCombo->currentData().isValid())
+    {
+        const int cur = m_matypeCombo->currentData().toInt();
+        if (isComputableMatype(cur))
+            targets.insert(cur);
+    }
+
+    MaterialEntry* entry = lookupEntry();
+    const QString curName = (entry && !entry->name.trimmed().isEmpty())
+                                ? entry->name.trimmed()
+                                : QStringLiteral("当前材料");
+
+    QMenu menu(this);
+    if (!targets.isEmpty())
+    {
+        QList<int> sorted = targets.values();
+        std::sort(sorted.begin(), sorted.end());
+        QStringList labels;
+        for (int m : sorted)
+            labels << QString::number(m);
+        const QString summary = sorted.size() <= 4
+                                    ? labels.join(QStringLiteral(", "))
+                                    : QStringLiteral("%1 等 %2 组").arg(labels.mid(0, 3).join(", ")).arg(sorted.size());
+
+        menu.addAction(QStringLiteral("赋予“%1” [MATYPE: %2]").arg(curName, summary),
+                       this, [this, targets]()
+                       {
+                           m_selectedViewMatypes.clear();
+                           m_materialManager->setSelectedMatypesForEntry(m_entryId, {});
+                           if (m_applyButton)
+                               m_applyButton->setText(QStringLiteral("施加到网格"));
+                           m_materialManager->applyMatypesToEntry(m_entryId, targets);
+                       });
+
+        const auto allEntries = m_materialManager->assignableMaterialEntries();
+        if (allEntries.size() > 1)
+        {
+            QMenu* otherMenu = menu.addMenu(QStringLiteral("批量赋予其他材料"));
+            for (const auto& pair : allEntries)
+            {
+                if (pair.first == m_entryId)
+                    continue;
+                otherMenu->addAction(pair.second, this, [this, entryId = pair.first, targets]()
+                {
+                    m_selectedViewMatypes.clear();
+                    m_materialManager->setSelectedMatypesForEntry(m_entryId, {});
+                    if (m_applyButton)
+                        m_applyButton->setText(QStringLiteral("施加到网格"));
+                    m_materialManager->applyMatypesToEntry(entryId, targets);
+                    refreshMatypeHighlightSafe();
+                });
+            }
+        }
+
+        if (entry)
+        {
+            bool anyAppliedHere = false;
+            for (int m : targets)
+                if (entry->appliedMatypes.contains(m))
+                    anyAppliedHere = true;
+            if (anyAppliedHere)
+            {
+                menu.addAction(QStringLiteral("从“%1”移除所选网格组").arg(curName),
+                               this, [this, targets]()
+                               {
+                                   for (int m : targets)
+                                       m_materialManager->removeMatypeFromEntry(m_entryId, m);
+                                   m_selectedViewMatypes.clear();
+                                   m_materialManager->setSelectedMatypesForEntry(m_entryId, {});
+                                   if (m_applyButton)
+                                       m_applyButton->setText(QStringLiteral("施加到网格"));
+                                   refreshMatypeHighlightSafe();
+                               });
+            }
+        }
+        menu.addSeparator();
+    }
+
+    menu.addAction(QStringLiteral("清空视图选择"), this, [this]()
+    {
+        m_selectedViewMatypes.clear();
+        m_materialManager->setSelectedMatypesForEntry(m_entryId, {});
+        m_materialManager->setSelectedMatypeForEntry(m_entryId, -1);
+        PickManager::instance().setSelectedDomains(getPageType(), m_uuid, {});
+        if (m_applyButton)
+            m_applyButton->setText(QStringLiteral("施加到网格"));
+        refreshMatypeHighlightSafe();
+    });
+
+    menu.exec(globalPos);
 }
 
 void MaterialEntryWidget::updateAppliedListColors()

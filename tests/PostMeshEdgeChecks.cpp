@@ -19,6 +19,12 @@ int main(int argc,char** argv)
     QApplication app(argc,argv);
     try {
         TestVisual visual;postSceneStyle()=PostSceneStyle{};postSceneStyle().representationMode=1;
+        check(!postSceneStyle().showContextLines,"reference model defaults to no outline lines");
+        postSceneStyle().showContextOutline=false;postSceneStyle().showContextLines=true;
+        const auto contextSettings=savePostDisplaySettings();postSceneStyle()=PostSceneStyle{};loadPostDisplaySettings(contextSettings);
+        check(!postSceneStyle().showContextOutline && postSceneStyle().showContextLines,"independent model and line settings persist");
+        loadPostDisplaySettings(QJsonObject{{"showContextOutline",true}});
+        check(postSceneStyle().showContextOutline && !postSceneStyle().showContextLines,"legacy model preference does not turn on lines");
         auto data=surface();const auto time=data->GetMTime();
         auto mapper=vtkSmartPointer<vtkDataSetMapper>::New();mapper->SetInputData(data);
         auto actor=vtkSmartPointer<vtkActor>::New();actor->SetMapper(mapper);

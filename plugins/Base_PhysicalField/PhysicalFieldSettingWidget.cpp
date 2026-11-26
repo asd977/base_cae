@@ -9,6 +9,7 @@
 
 #include <QCheckBox>
 #include <QDir>
+#include <QDoubleSpinBox>
 #include <QFileDialog>
 #include <QGroupBox>
 #include <QGridLayout>
@@ -27,8 +28,11 @@
 #include <QHBoxLayout>
 
 #include <vtkActor.h>
+#include <vtkArrowSource.h>
 #include <vtkCellArray.h>
 #include <vtkDataArray.h>
+#include <vtkFloatArray.h>
+#include <vtkGlyph3DMapper.h>
 #include <vtkPointData.h>
 #include <vtkPoints.h>
 #include <vtkPolyData.h>
@@ -40,6 +44,7 @@
 
 #include <algorithm>
 #include <array>
+#include <cmath>
 #include <utility>
 
 #include "ui_PhysicalFieldSettingWidget.h"
@@ -171,6 +176,165 @@ vtkSmartPointer<vtkActor> buildColoredPointActor(
     actor->GetProperty()->SetRenderPointsAsSpheres(true);
     return actor;
 }
+
+// 估算约束节点的典型网格间距，使默认箭头长度贴合局部网格尺度，避免密集节点糊成色块墙。
+double estimateNodeSpacing(const QVector<int>& orderedIds,
+                           const QHash<int, std::array<double, 3>>& nodePositions,
+                           double modelDiag)
+{
+    struct ProjectedPt
+    {
+        double key;
+        std::array<double, 3> p;
+    };
+    std::vector<ProjectedPt> pts;
+    pts.reserve(orderedIds.size());
+    for (int id : orderedIds)
+    {
+        auto it = nodePositions.constFind(id);
+        if (it == nodePositions.cend())
+            continue;
+        const auto& v = it.value();
+        pts.push_back({v[0] * 1.0 + v[1] * 1.13 + v[2] * 1.27, v});
+    }
+    const double fallback = modelDiag > 1.0e-9 ? modelDiag * 0.012 : 1.0;
+    if (pts.size() < 2)
+        return fallback;
+
+    std::sort(pts.begin(), pts.end(),
+              [](const ProjectedPt& a, const ProjectedPt& b) { return a.key < b.key; });
+
+    std::vector<double> dists;
+    dists.reserve(pts.size());
+    constexpr size_t kWindow = 20;
+    for (size_t i = 0; i < pts.size(); ++i)
+    {
+        double best2 = std::numeric_limits<double>::max();
+        const size_t lo = i > kWindow ? i - kWindow : 0;
+        const size_t hi = std::min(pts.size(), i + kWindow + 1);
+        for (size_t j = lo; j < hi; ++j)
+        {
+            if (i == j)
+                continue;
+            const double dx = pts[i].p[0] - pts[j].p[0];
+            const double dy = pts[i].p[1] - pts[j].p[1];
+            const double dz = pts[i].p[2] - pts[j].p[2];
+            const double d2 = dx * dx + dy * dy + dz * dz;
+            if (d2 > 1.0e-18 && d2 < best2)
+                best2 = d2;
+        }
+        if (best2 < std::numeric_limits<double>::max())
+            dists.push_back(std::sqrt(best2));
+    }
+    if (dists.empty())
+        return fallback;
+    const size_t mid = dists.size() / 2;
+    std::nth_element(dists.begin(), dists.begin() + mid, dists.end());
+    const double median = dists[mid];
+    if (modelDiag > 1.0e-9)
+        return std::clamp(median, modelDiag * 0.0025, modelDiag * 0.035);
+    return std::max(median, 1.0e-4);
+}
+
+// 使用 vtkGlyph3DMapper 在 GPU 端实例化绘制支座反力式约束箭头：
+// 箭尖精准指向被约束节点、箭杆朝模型外侧展开，按局部节点间距自适应缩放并开启三维光照。
+vtkSmartPointer<vtkActor> buildDirectionArrowActor(
+    const QVector<int>& orderedIds,
+    const QHash<int, CombinedDirections>& combined,
+    const QHash<int, std::array<double, 3>>& nodePositions,
+    const std::array<bool, 8>& enabled,
+    int axisCount,
+    const std::array<double, 3>& modelCenter,
+    double modelDiag,
+    double userScale)
+{
+    static constexpr unsigned char kAxisRgb[3][3] = {
+        {222, 23, 56},   // X 红
+        {0, 136, 62},    // Y 绿
+        {19, 100, 189}   // Z 蓝
+    };
+
+    const double spacing = estimateNodeSpacing(orderedIds, nodePositions, modelDiag);
+    const double length = std::max(1.0e-5, spacing * 0.85 * std::clamp(userScale, 0.1, 10.0));
+
+    auto points = vtkSmartPointer<vtkPoints>::New();
+    auto dirs = vtkSmartPointer<vtkFloatArray>::New();
+    dirs->SetNumberOfComponents(3);
+    dirs->SetName("constraint_direction");
+    auto colors = vtkSmartPointer<vtkUnsignedCharArray>::New();
+    colors->SetNumberOfComponents(3);
+    colors->SetName("constraint_axis_rgb");
+
+    points->Allocate(orderedIds.size() * axisCount);
+    dirs->Allocate(orderedIds.size() * axisCount * 3);
+    colors->Allocate(orderedIds.size() * axisCount * 3);
+
+    int arrowCount = 0;
+    for (int id : orderedIds)
+    {
+        auto dirIt = combined.constFind(id);
+        auto posIt = nodePositions.constFind(id);
+        if (dirIt == combined.cend() || posIt == nodePositions.cend())
+            continue;
+        const unsigned int mask = dirIt->mask & 0x07u;
+        if (!enabled[mask])
+            continue;
+
+        const auto& pos = posIt.value();
+        for (int axis = 0; axis < axisCount; ++axis)
+        {
+            if ((mask & (1u << axis)) == 0)
+                continue;
+            // 箭杆置于模型外侧，箭尖指向受约束节点，避免扎入模型内部或糊成平面墙
+            const double outSign = (pos[axis] < modelCenter[axis]) ? -1.0 : 1.0;
+            double tail[3]{pos[0], pos[1], pos[2]};
+            tail[axis] += outSign * length;
+            float dir[3]{0.0f, 0.0f, 0.0f};
+            dir[axis] = static_cast<float>(-outSign);
+
+            points->InsertNextPoint(tail);
+            dirs->InsertNextTuple(dir);
+            colors->InsertNextTypedTuple(kAxisRgb[axis]);
+            ++arrowCount;
+        }
+    }
+    if (arrowCount == 0)
+        return {};
+
+    auto poly = vtkSmartPointer<vtkPolyData>::New();
+    poly->SetPoints(points);
+    poly->GetPointData()->AddArray(dirs);
+    poly->GetPointData()->SetScalars(colors);
+
+    auto arrow = vtkSmartPointer<vtkArrowSource>::New();
+    arrow->SetTipResolution(8);
+    arrow->SetShaftResolution(8);
+    arrow->SetTipLength(0.36);
+    arrow->SetTipRadius(0.068);
+    arrow->SetShaftRadius(0.018);
+
+    auto mapper = vtkSmartPointer<vtkGlyph3DMapper>::New();
+    mapper->SetInputData(poly);
+    mapper->SetSourceConnection(arrow->GetOutputPort());
+    mapper->OrientOn();
+    mapper->SetOrientationModeToDirection();
+    mapper->SetOrientationArray("constraint_direction");
+    mapper->SetScaleModeToNoDataScaling();
+    mapper->SetScaleFactor(length);
+    mapper->SetScalarModeToUsePointData();
+    mapper->SetColorModeToDirectScalars();
+    mapper->ScalarVisibilityOn();
+
+    auto actor = vtkSmartPointer<vtkActor>::New();
+    actor->SetMapper(mapper);
+    actor->PickableOff();
+    actor->GetProperty()->LightingOn();
+    actor->GetProperty()->SetAmbient(0.38);
+    actor->GetProperty()->SetDiffuse(0.72);
+    actor->GetProperty()->SetSpecular(0.18);
+    actor->GetProperty()->SetSpecularPower(16.0);
+    return actor;
+}
 }
 
 PhysicalFieldSettingWidget::PhysicalFieldSettingWidget(QWidget* parent)
@@ -183,9 +347,25 @@ PhysicalFieldSettingWidget::PhysicalFieldSettingWidget(QWidget* parent)
 
     auto* panel = new QGroupBox(QStringLiteral("位移约束总览"), this);
     auto* layout = new QVBoxLayout(panel);
+    auto* topToggleRow = new QHBoxLayout();
     m_showAll = new QCheckBox(QStringLiteral("显示全部位移约束"), panel);
     m_showAll->setChecked(true);
-    layout->addWidget(m_showAll);
+    m_showArrows = new QCheckBox(QStringLiteral("显示约束方向箭头"), panel);
+    m_showArrows->setChecked(true);
+    auto* scaleLabel = new QLabel(QStringLiteral("比例"), panel);
+    m_arrowScaleSpin = new QDoubleSpinBox(panel);
+    m_arrowScaleSpin->setRange(0.2, 5.0);
+    m_arrowScaleSpin->setSingleStep(0.2);
+    m_arrowScaleSpin->setDecimals(1);
+    m_arrowScaleSpin->setSuffix(QStringLiteral("x"));
+    m_arrowScaleSpin->setValue(1.0);
+    m_arrowScaleSpin->setToolTip(QStringLiteral("基于局部边界节点间距缩放约束箭头大小。"));
+    topToggleRow->addWidget(m_showAll);
+    topToggleRow->addWidget(m_showArrows);
+    topToggleRow->addWidget(scaleLabel);
+    topToggleRow->addWidget(m_arrowScaleSpin);
+    topToggleRow->addStretch();
+    layout->addLayout(topToggleRow);
 
     auto* hint = new QLabel(QStringLiteral("勾选约束后按最终固定方向着色；单击选择，双击编辑。"), panel);
     hint->setWordWrap(true);
@@ -238,7 +418,9 @@ PhysicalFieldSettingWidget::PhysicalFieldSettingWidget(QWidget* parent)
     m_info->setWordWrap(true);
     layout->addWidget(m_info);
     auto* bottom = new QHBoxLayout();
+    auto* autoConstrainButton = new QPushButton(QStringLiteral("一键自动约束"), panel);
     auto* refreshButton = new QPushButton(QStringLiteral("刷新列表"), panel);
+    bottom->addWidget(autoConstrainButton);
     bottom->addWidget(refreshButton);
     bottom->addStretch();
     layout->addLayout(bottom);
@@ -250,6 +432,32 @@ PhysicalFieldSettingWidget::PhysicalFieldSettingWidget(QWidget* parent)
     ui->contentLayout->insertWidget(0, panel);
 
     connect(m_showAll, &QCheckBox::toggled, this, [this](bool) { updateOverviewOverlay(); });
+    connect(m_showArrows, &QCheckBox::toggled, this, [this](bool on)
+    {
+        if (m_arrowScaleSpin)
+            m_arrowScaleSpin->setEnabled(on);
+        updateOverviewOverlay();
+    });
+    connect(m_arrowScaleSpin, QOverload<double>::of(&QDoubleSpinBox::valueChanged),
+            this, [this](double) { updateOverviewOverlay(); });
+    connect(autoConstrainButton, &QPushButton::clicked, this, [this]()
+    {
+        PhysicalFieldService* service = ServiceRegistry::instance().getService<PhysicalFieldService>();
+        if (!service)
+        {
+            QMessageBox::warning(this, QStringLiteral("一键自动约束"),
+                                 QStringLiteral("约束与荷载服务不可用。"));
+            return;
+        }
+        QString msg;
+        if (!service->autoGenerateDisplacementConstraints(&msg))
+        {
+            QMessageBox::warning(this, QStringLiteral("一键自动约束"), msg);
+            return;
+        }
+        refreshOverview();
+        QMessageBox::information(this, QStringLiteral("一键自动约束"), msg);
+    });
     connect(refreshButton, &QPushButton::clicked, this, [this]() { refreshOverview(); });
     connect(m_table, &QTableWidget::cellChanged, this, [this](int row, int column)
     {
@@ -430,6 +638,27 @@ void PhysicalFieldSettingWidget::updateOverviewOverlay()
     if (actor)
         m_visual->addProp(kNodes, actor, QStringLiteral("{constraint} 位移约束总览"),
                           QStringLiteral("位移约束组合着色"), false, false);
+
+    if (m_showArrows && m_showArrows->isChecked())
+    {
+        double modelDiag = 0.0;
+        std::array<double, 3> modelCenter{{0.0, 0.0, 0.0}};
+        if (vtkUnstructuredGrid* grid = pick.solidGrid() ? pick.solidGrid() : pick.lineGrid())
+        {
+            double b[6]{0.0, 0.0, 0.0, 0.0, 0.0, 0.0};
+            grid->GetBounds(b);
+            modelCenter = {0.5 * (b[0] + b[1]), 0.5 * (b[2] + b[3]), 0.5 * (b[4] + b[5])};
+            modelDiag = std::sqrt((b[1] - b[0]) * (b[1] - b[0]) +
+                                  (b[3] - b[2]) * (b[3] - b[2]) +
+                                  (b[5] - b[4]) * (b[5] - b[4]));
+        }
+        const double userScale = m_arrowScaleSpin ? m_arrowScaleSpin->value() : 1.0;
+        auto arrowActor = buildDirectionArrowActor(
+            orderedIds, combined, nodePositions, enabled, axisCount, modelCenter, modelDiag, userScale);
+        if (arrowActor)
+            m_visual->addProp(kDirections, arrowActor, QStringLiteral("{constraint} 位移约束方向箭头"),
+                              QStringLiteral("位移约束方向箭头"), false, false);
+    }
 
     m_info->setText(QStringLiteral("显示 %1/%2 项，约束节点 %3 个；按颜色筛选后可见 %4 个。")
                     .arg(visibleGroups).arg(m_items.size())

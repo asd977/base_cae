@@ -23,6 +23,7 @@ inline std::string nativeSolverErrorTail(const std::string& text)
                line.rfind("FAILED TO CREATE SUBDIRECTORY",0)==0||
                line.rfind("UN-EXPECTED",0)==0||
                line.rfind("IN-COMPATIBLE",0)==0||
+               rawLine.find("\xB7\xA2\xCF\xD6\xB4\xED\xCE\xF3")!=std::string::npos||
                rawLine.find("\xE5\x8F\x91\xE7\x8E\xB0\xE9\x94\x99\xE8\xAF\xAF")!=std::string::npos)
                 error=pos;
         }

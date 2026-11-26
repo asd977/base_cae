@@ -15,6 +15,8 @@ namespace PostTecplotUtils
 vtkSmartPointer<vtkUnstructuredGrid> normalizeSolverTopology(
     vtkUnstructuredGrid* source);
 
+void clearCache(const QString& directoryOrFile = QString());
+
 vtkSmartPointer<vtkUnstructuredGrid> readGrid(const QString& fileName,
                                               QString* errorMessage = nullptr);
 

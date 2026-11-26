@@ -612,6 +612,8 @@ QJsonObject CaveBlockPlanePage::saveJson()
         const auto keys = selectedFaceKeys();
         if (!keys.isEmpty())
             obj["face_key"] = static_cast<qint64>(keys.first());
+        else if (m_selectedFaceKey >= 0)
+            obj["face_key"] = static_cast<qint64>(m_selectedFaceKey);
     }
     return obj;
 }

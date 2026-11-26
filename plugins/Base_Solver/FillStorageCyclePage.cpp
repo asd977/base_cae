@@ -1790,7 +1790,8 @@ QString FillStorageCyclePage::seepageResultType() const
 
 QString FillStorageCyclePage::seepageTransientStep() const
 {
-    return ui->comboSeepageTransientStep->currentData().toString().trimmed();
+    const QString data = ui->comboSeepageTransientStep->currentData().toString().trimmed();
+    return data.isEmpty() ? m_savedSeepageTransientStep : data;
 }
 
 QString FillStorageCyclePage::seepageTransientResultLabel() const
@@ -1889,8 +1890,9 @@ void FillStorageCyclePage::setAvailableTransientResults(
                     ? 0
                     : ui->comboSeepageTransientStep->findData(selectedStep);
     ui->comboSeepageTransientStep->setCurrentIndex(index >= 0 ? index : 0);
-    m_savedSeepageTransientStep =
-        ui->comboSeepageTransientStep->currentData().toString().trimmed();
+    if (index >= 0 || selectedStep.isEmpty())
+        m_savedSeepageTransientStep =
+            ui->comboSeepageTransientStep->currentData().toString().trimmed();
 
     ui->labelSeepageTransientHint->setText(
         ui->comboSeepageTransientStep->count() > 1

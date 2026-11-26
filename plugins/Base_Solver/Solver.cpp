@@ -116,10 +116,14 @@ QJsonObject restoreQuietBoundaryState(QJsonObject object)
     object["state"]=state;object["children"]=children;return object;
 }
 
+bool g_solverBatchSuppressModal = false;
+
 QMessageBox::StandardButton solverWarning(QWidget* parent, const QString& title, const QString& text,
     QMessageBox::StandardButtons buttons=QMessageBox::Ok, QMessageBox::StandardButton defaultButton=QMessageBox::NoButton)
 {
     qCWarning(caeSolverLog).noquote()<<title+QStringLiteral(": ")+text;
+    if (g_solverBatchSuppressModal)
+        return defaultButton != QMessageBox::NoButton ? defaultButton : QMessageBox::Ok;
     return QMessageBox::warning(parent,title,text,buttons,defaultButton);
 }
 
@@ -2489,6 +2493,7 @@ bool Solver::loadProject()
 void Solver::closeProject()
 {
     m_batchActive = false;
+    g_solverBatchSuppressModal = false;
     m_batchDispatching = false;
     m_batchQueue.clear();
     m_batchCurrentUuid.clear();
@@ -2914,9 +2919,15 @@ void Solver::removeNodeByUuid(const QString& uuid)
     {
         int bodyCount = 0;
         for (ProjectNode* c : parent->getChildren())
-            if (c && c->getPage() && c->getPage()->getPageType() == QStringLiteral("CaveExcavationBody"))
+        {
+            if (auto* bodyPage = c ? dynamic_cast<CaveExcavationBodyPage*>(c->getPage()) : nullptr)
+            {
                 ++bodyCount;
+                bodyPage->setExcavationLayer(-bodyCount);
+            }
+        }
         supportPage->setExcavationLevelCount(qMax(1, bodyCount));
+        syncChildNodeNames(parent);
     }
     if (parent == m_root)
         syncAnalysisNodeNames();
@@ -3321,6 +3332,7 @@ void Solver::onBatchComputeRequested(const QStringList& analysisUuids)
     m_batchFinished = 0;
     m_batchFailed = 0;
     m_batchActive = true;
+    g_solverBatchSuppressModal = true;
 
     if (auto* page = dynamic_cast<SolverSettingWidget*>(m_root->getPage()))
     {
@@ -3419,6 +3431,7 @@ void Solver::finishBatchCompute(bool cancelled)
     const int succeeded = qMax(0, finished - failed);
 
     m_batchActive = false;
+    g_solverBatchSuppressModal = false;
     m_batchDispatching = false;
     m_batchQueue.clear();
     m_batchCurrentUuid.clear();
@@ -6732,6 +6745,13 @@ void Solver::onComputeGeoStressRegression(ProjectNode* analysisNode)
         }
     }
 
+    QString geoParamError;
+    if (!page->validateInputs(&geoParamError))
+    {
+        solverWarning(nullptr, QStringLiteral("请检查地应力回归参数"), geoParamError);
+        return;
+    }
+
     const int minimumSideFaces = minimumGeoStressSideFaceCount();
     const bool regression = page->calculationModeCode() != 0;
     if (regression && (sideFaceCount < minimumSideFaces || sideFaceCount > 4))
@@ -8555,6 +8575,20 @@ bool Solver::beginCommonCompute(
         failedInputs << QStringLiteral("材料分区设置");
     if (!exportKetraceDatFile() || !exportJdtraceDatFile())
         failedInputs << QStringLiteral("结果跟踪设置");
+    {
+        const QString tdtracePath = QDir(SolverFilePaths::outputInputDirectory(projectDir))
+                                        .filePath(QStringLiteral("TDTRACE.DAT"));
+        if (!QFileInfo::exists(tdtracePath))
+        {
+            QSaveFile tdFile(tdtracePath);
+            if (tdFile.open(QIODevice::WriteOnly | QIODevice::Text))
+            {
+                QTextStream tdOut(&tdFile);
+                tdOut << "           0   NUM\n";
+                tdFile.commit();
+            }
+        }
+    }
     if (!failedInputs.isEmpty())
     {
         solverWarning(
@@ -8974,13 +9008,26 @@ bool Solver::updateIiiDirDat(const QString& projectDir, int solverMode, int devi
     lines[0] = QString("'%1'").arg(projectWithSlash);
     if (lines.size() < 9)
         return fail(QStringLiteral("求解器目录文件 %1 内容不完整：只有 %2 行，至少需要9行。").arg(file.fileName()).arg(lines.size()));
-    // Ensure line 3 GRAVITY stays within SOLVER [9.0, 10.1] range to prevent blocking READ(*,*) prompt.
+    // Ensure line 3 ('GRAVITY BULK_F NPRI') stays quoted with 3 tokens and GRAVITY in [9.0, 10.1].
     {
-        const QStringList gParts = lines[2].trimmed().split(QRegularExpression(QStringLiteral("\\s+")), Qt::SkipEmptyParts);
-        bool gOk = false;
-        const double gVal = !gParts.isEmpty() ? gParts.at(0).toDouble(&gOk) : 0.0;
-        if (!gOk || std::abs(gVal) < 9.0 || std::abs(gVal) > 10.1)
-            lines[2] = QStringLiteral("9.81   GRAVITY");
+        QString gLine = lines[2].trimmed();
+        if (gLine.size() >= 2 && gLine.startsWith(QLatin1Char('\'')) && gLine.endsWith(QLatin1Char('\'')))
+            gLine = gLine.mid(1, gLine.size() - 2).trimmed();
+        const QStringList gParts = gLine.split(QRegularExpression(QStringLiteral("\\s+")), Qt::SkipEmptyParts);
+        bool gOk = false, bOk = false, nOk = false;
+        const double gVal = gParts.size() >= 1 ? gParts.at(0).toDouble(&gOk) : 0.0;
+        const double bVal = gParts.size() >= 2 ? gParts.at(1).toDouble(&bOk) : 0.0;
+        if (gParts.size() >= 3)
+            gParts.at(2).toInt(&nOk);
+        if (gParts.size() < 3 || !gOk || !std::isfinite(gVal) || !bOk || !std::isfinite(bVal) || !nOk ||
+            std::abs(gVal) < 9.0 || std::abs(gVal) > 10.1)
+        {
+            lines[2] = QStringLiteral("'9.81 0.0 1'");
+        }
+        else if (!lines[2].trimmed().startsWith(QLatin1Char('\'')))
+        {
+            lines[2] = QStringLiteral("'%1'").arg(gLine);
+        }
     }
     lines[4] = QString("%1  IDEVICE").arg(qBound(0, deviceCode, 2), 9);
     lines[5] = QString("%1  ILOG_GZKZR").arg(0, 9);
@@ -9099,7 +9146,7 @@ bool Solver::updatePrepDatFiles(const QString& projectDir, int solverMode, int v
         line.replace(layerMatch.capturedStart(), layerMatch.capturedLength(), replacement);
     }
 
-    const int safeVerticalAxis = (verticalAxis >= 1 && verticalAxis <= 3) ? verticalAxis : 2;
+    const int safeVerticalAxis = (verticalAxis == 2 || verticalAxis == 3) ? verticalAxis : 2;
     const QRegularExpression headerRe(R"(^\s*\d+\s+\d+)");
     const QRegularExpressionMatch match = headerRe.match(lines[1]);
     if (match.hasMatch())
@@ -9109,7 +9156,7 @@ bool Solver::updatePrepDatFiles(const QString& projectDir, int solverMode, int v
     }
     else
     {
-        lines[1].replace(QRegularExpression(R"(^\s*\d+)"), QString("%8").arg(solverMode));
+        lines[1].replace(QRegularExpression(R"(^\s*\d+)"), QString("%1").arg(solverMode, 8));
     }
     if (!file.open(QIODevice::WriteOnly | QIODevice::Text | QIODevice::Truncate))
         return false;
@@ -9451,16 +9498,128 @@ bool Solver::exportInouseDatFile()
         if (!solid)
             return;
 
-        std::array<double, 3> closestPt{0.0, 0.0, 0.0};
-        std::array<double, 3> pcoords{0.0, 0.0, 0.0};
-        int subId = 0;
-        double dist2 = 0.0;
-        const vtkIdType wn = (solid->GetNumberOfPoints() > 0) ? solid->GetNumberOfPoints() : 1;
-        std::vector<double> weights(static_cast<size_t>(wn), 0.0);
-        solid->EvaluatePosition(const_cast<double*>(xyz), closestPt.data(), subId, pcoords.data(), dist2,
-                                weights.data());
-        for (int d = 0; d < ndim && d < 3; ++d)
-            rst[d] = 2.0 * pcoords[d] - 1.0;
+        // Map physical point to SOLVER KETYPE=3 (2D 4-node) or KETYPE=6 (3D 8-node) local coordinates.
+        const int ctype = solid->GetCellType();
+        vtkPoints* pts = solid->GetPoints();
+        if (!pts || pts->GetNumberOfPoints() <= 0)
+            return;
+        auto getPt = [&](int idx, double out[3]) {
+            const int clamped = qBound(0, idx, static_cast<int>(pts->GetNumberOfPoints()) - 1);
+            pts->GetPoint(clamped, out);
+        };
+        if (ndim == 2)
+        {
+            const int nodeSlots[4] = {0, 1, 2, (ctype == VTK_TRIANGLE ? 2 : 3)};
+            double X[4][3] = {};
+            for (int i = 0; i < 4; ++i)
+                getPt(nodeSlots[i], X[i]);
+            double xi = 0.0, eta = 0.0;
+            if (ctype == VTK_QUAD)
+            {
+                std::array<double, 3> closestPt{0.0, 0.0, 0.0}, pcoords{0.0, 0.0, 0.0};
+                int subId = 0; double dist2 = 0.0;
+                std::vector<double> weights(static_cast<size_t>(pts->GetNumberOfPoints()), 0.0);
+                solid->EvaluatePosition(const_cast<double*>(xyz), closestPt.data(), subId, pcoords.data(), dist2, weights.data());
+                xi = 2.0 * pcoords[1] - 1.0;
+                eta = 2.0 * pcoords[0] - 1.0;
+            }
+            for (int iter = 0; iter < 15; ++iter)
+            {
+                const double xim = 1.0 - xi, xip = 1.0 + xi, etam = 1.0 - eta, etap = 1.0 + eta;
+                const double N[4] = {0.25*xim*etam, 0.25*xim*etap, 0.25*xip*etap, 0.25*xip*etam};
+                const double dNdXi[4] = {-0.25*etam, -0.25*etap, 0.25*etap, 0.25*etam};
+                const double dNdEta[4] = {-0.25*xim, 0.25*xim, 0.25*xip, -0.25*xip};
+                double fx = -xyz[0], fy = -xyz[1], j00 = 0.0, j01 = 0.0, j10 = 0.0, j11 = 0.0;
+                for (int i = 0; i < 4; ++i)
+                {
+                    fx += N[i] * X[i][0]; fy += N[i] * X[i][1];
+                    j00 += dNdXi[i] * X[i][0]; j01 += dNdEta[i] * X[i][0];
+                    j10 += dNdXi[i] * X[i][1]; j11 += dNdEta[i] * X[i][1];
+                }
+                const double det = j00 * j11 - j01 * j10;
+                if (std::abs(det) < 1.0e-18) break;
+                const double dxi = -(j11 * fx - j01 * fy) / det;
+                const double deta = -(-j10 * fx + j00 * fy) / det;
+                xi = qBound(-1.0, xi + dxi, 1.0);
+                eta = qBound(-1.0, eta + deta, 1.0);
+                if (std::abs(dxi) + std::abs(deta) < 1.0e-9) break;
+            }
+            rst[0] = xi; rst[1] = eta;
+        }
+        else
+        {
+            int nodeSlots[8] = {0, 1, 2, 3, 4, 5, 6, 7};
+            if (ctype == VTK_TETRA) { const int s[8] = {0, 1, 2, 2, 3, 3, 3, 3}; std::copy(s, s + 8, nodeSlots); }
+            else if (ctype == VTK_PYRAMID) { const int s[8] = {0, 1, 2, 3, 4, 4, 4, 4}; std::copy(s, s + 8, nodeSlots); }
+            else if (ctype == VTK_WEDGE) { const int s[8] = {0, 1, 2, 2, 3, 4, 5, 5}; std::copy(s, s + 8, nodeSlots); }
+            double X[8][3] = {};
+            for (int i = 0; i < 8; ++i)
+                getPt(nodeSlots[i], X[i]);
+            double xi = 0.0, eta = 0.0, zeta = 0.0;
+            if (ctype == VTK_HEXAHEDRON)
+            {
+                std::array<double, 3> closestPt{0.0, 0.0, 0.0}, pcoords{0.0, 0.0, 0.0};
+                int subId = 0; double dist2 = 0.0;
+                std::vector<double> weights(static_cast<size_t>(pts->GetNumberOfPoints()), 0.0);
+                solid->EvaluatePosition(const_cast<double*>(xyz), closestPt.data(), subId, pcoords.data(), dist2, weights.data());
+                xi = 2.0 * pcoords[1] - 1.0;
+                eta = 2.0 * pcoords[2] - 1.0;
+                zeta = 2.0 * pcoords[0] - 1.0;
+            }
+            for (int iter = 0; iter < 15; ++iter)
+            {
+                const double xim = 1.0 - xi, xip = 1.0 + xi;
+                const double etam = 1.0 - eta, etap = 1.0 + eta;
+                const double zm = 1.0 - zeta, zp = 1.0 + zeta;
+                const double N[8] = {
+                    0.125*xim*etam*zm, 0.125*xim*etam*zp, 0.125*xip*etam*zp, 0.125*xip*etam*zm,
+                    0.125*xim*etap*zm, 0.125*xim*etap*zp, 0.125*xip*etap*zp, 0.125*xip*etap*zm
+                };
+                const double dXi[8] = {
+                    -0.125*etam*zm, -0.125*etam*zp, 0.125*etam*zp, 0.125*etam*zm,
+                    -0.125*etap*zm, -0.125*etap*zp, 0.125*etap*zp, 0.125*etap*zm
+                };
+                const double dEta[8] = {
+                    -0.125*xim*zm, -0.125*xim*zp, -0.125*xip*zp, -0.125*xip*zm,
+                     0.125*xim*zm,  0.125*xim*zp,  0.125*xip*zp,  0.125*xip*zm
+                };
+                const double dZeta[8] = {
+                    -0.125*xim*etam, 0.125*xim*etam, 0.125*xip*etam, -0.125*xip*etam,
+                    -0.125*xim*etap, 0.125*xim*etap, 0.125*xip*etap, -0.125*xip*etap
+                };
+                double f[3] = {-xyz[0], -xyz[1], -xyz[2]};
+                double J[3][3] = {};
+                for (int i = 0; i < 8; ++i)
+                {
+                    for (int c = 0; c < 3; ++c)
+                    {
+                        f[c] += N[i] * X[i][c];
+                        J[c][0] += dXi[i] * X[i][c];
+                        J[c][1] += dEta[i] * X[i][c];
+                        J[c][2] += dZeta[i] * X[i][c];
+                    }
+                }
+                const double c00 = J[1][1]*J[2][2] - J[1][2]*J[2][1];
+                const double c01 = -(J[1][0]*J[2][2] - J[1][2]*J[2][0]);
+                const double c02 = J[1][0]*J[2][1] - J[1][1]*J[2][0];
+                const double det = J[0][0]*c00 + J[0][1]*c01 + J[0][2]*c02;
+                if (std::abs(det) < 1.0e-18) break;
+                const double c10 = -(J[0][1]*J[2][2] - J[0][2]*J[2][1]);
+                const double c11 = J[0][0]*J[2][2] - J[0][2]*J[2][0];
+                const double c12 = -(J[0][0]*J[2][1] - J[0][1]*J[2][0]);
+                const double c20 = J[0][1]*J[1][2] - J[0][2]*J[1][1];
+                const double c21 = -(J[0][0]*J[1][2] - J[0][2]*J[1][0]);
+                const double c22 = J[0][0]*J[1][1] - J[0][1]*J[1][0];
+                const double dxi   = -(c00*f[0] + c10*f[1] + c20*f[2]) / det;
+                const double deta  = -(c01*f[0] + c11*f[1] + c21*f[2]) / det;
+                const double dzeta = -(c02*f[0] + c12*f[1] + c22*f[2]) / det;
+                xi   = qBound(-1.0, xi + dxi, 1.0);
+                eta  = qBound(-1.0, eta + deta, 1.0);
+                zeta = qBound(-1.0, zeta + dzeta, 1.0);
+                if (std::abs(dxi) + std::abs(deta) + std::abs(dzeta) < 1.0e-9) break;
+            }
+            rst[0] = xi; rst[1] = eta; rst[2] = zeta;
+        }
     };
 
     for (vtkIdType cid = 0; cid < nCells; ++cid)

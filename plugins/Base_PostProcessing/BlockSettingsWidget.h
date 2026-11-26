@@ -66,6 +66,9 @@ class BlockSettingsWidget : public BasePage
     // 生命周期状态
     bool m_deferRender{false};
     bool m_loadedOnce{false}; // 是否已完成首次加载与建管线
+    QString m_loadedFilePath;
+    qint64 m_loadedFileSize{-1};
+    qint64 m_loadedFileModified{-1};
     bool m_isAttached{false}; // 当前 actor 是否已挂到场景
     bool m_hasPendingState{false};
     QVariantMap m_pendingState;

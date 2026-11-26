@@ -118,7 +118,7 @@ QString canonicalFieldName(QString field)
     return field;
 }
 
-bool parseTraceHeader(const QString& line, QHash<QString, int>& columnIndices)
+bool parseTraceHeader(const QString& line, QHash<QString, int>& columnIndices, int& headerTokenCount)
 {
     if (line.contains(QLatin1Char('=')))
         return false;
@@ -144,10 +144,12 @@ bool parseTraceHeader(const QString& line, QHash<QString, int>& columnIndices)
         return false;
 
     columnIndices = detected;
+    headerTokenCount = tokens.size();
     return true;
 }
 
 bool parseTraceTableRow(const QString& line, const QHash<QString, int>& columnIndices,
+                        int headerTokenCount,
                         QVector<double>& parsedValues, QStringList& parsedFields)
 {
     if (columnIndices.isEmpty() || line.contains(QLatin1Char('=')))
@@ -162,7 +164,11 @@ bool parseTraceTableRow(const QString& line, const QHash<QString, int>& columnIn
     parsedFields.clear();
     for (auto it = columnIndices.constBegin(); it != columnIndices.constEnd(); ++it)
     {
-        const int col = it.value();
+        int col = it.value();
+        // When MADOF > MADIM (e.g. Biot consolidation or beam/shell), SOLVER appends extra DOFs
+        // before MAX_UR, so MAX_UR is always the trailing token.
+        if (it.key() == QStringLiteral("MAX UR") && headerTokenCount > 0 && tokens.size() > headerTokenCount)
+            col = tokens.size() - 1;
         if (col < 0 || col >= tokens.size())
             return false;
 
@@ -274,9 +280,18 @@ bool CurvePlotWidget::loadDataFromTraceFile(const QString& filePath, const QStri
         m_summaryLabel->setVisible(false);
     }
 
+    auto clearChart = [this]() {
+        m_points.clear();
+        if (m_chart)
+            m_chart->ClearPlots();
+        if (m_renderWindow)
+            m_renderWindow->Render();
+    };
+
     QFile file(filePath);
     if (!file.open(QIODevice::ReadOnly | QIODevice::Text))
     {
+        clearChart();
         const QString msg = tr("打开 TRACE 文件失败：%1").arg(QDir::toNativeSeparators(filePath));
         if (errMsg)
             *errMsg = msg;
@@ -287,6 +302,7 @@ bool CurvePlotWidget::loadDataFromTraceFile(const QString& filePath, const QStri
     QVector<TracePoint> parsed;
     parsed.reserve(1024);
     QHash<QString, int> tableColumns;
+    int headerTokenCount = 0;
     QVector<double> rowValues;
     QStringList rowFields;
 
@@ -296,7 +312,7 @@ bool CurvePlotWidget::loadDataFromTraceFile(const QString& filePath, const QStri
         if (line.isEmpty())
             continue;
 
-        if (parseTraceHeader(line, tableColumns))
+        if (parseTraceHeader(line, tableColumns, headerTokenCount))
             continue;
 
         TracePoint point;
@@ -306,7 +322,7 @@ bool CurvePlotWidget::loadDataFromTraceFile(const QString& filePath, const QStri
             continue;
         }
 
-        if (parseTraceTableRow(line, tableColumns, rowValues, rowFields))
+        if (parseTraceTableRow(line, tableColumns, headerTokenCount, rowValues, rowFields))
         {
             for (int i = 0; i < rowFields.size(); ++i)
             {
@@ -344,6 +360,7 @@ bool CurvePlotWidget::loadDataFromTraceFile(const QString& filePath, const QStri
 
     if (parsed.isEmpty())
     {
+        clearChart();
         const QString msg = tr("TRACE 文件中没有识别到 ISTEP、FOS、PTOT、MAX UR 或 LOOP 数据。");
         if (errMsg)
             *errMsg = msg;

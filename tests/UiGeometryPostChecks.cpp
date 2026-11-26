@@ -29,6 +29,7 @@
 #include <vtkDataSetMapper.h>
 #include <vtkCamera.h>
 #include <vtkXMLUnstructuredGridWriter.h>
+#include <vtkUnstructuredGridWriter.h>
 #include <vtkXMLPolyDataWriter.h>
 #include <vtkWindowToImageFilter.h>
 #include <vtkPNGWriter.h>
@@ -40,6 +41,7 @@
 #include <vtkFXAAOptions.h>
 #include <iostream>
 #include <stdexcept>
+#include <array>
 
 static void check(bool ok, const char* message) { if (!ok) throw std::runtime_error(message); }
 using namespace GeometrySketch;
@@ -226,6 +228,82 @@ public:
     void setNodeDimmed(const QString&,bool) override {}
 };
 
+static void meshDomainRebuildChecks(QTreeWidget* tree,VisualWidgetService* visual)
+{
+    auto& registry=ServiceRegistry::instance();
+    auto* loader=new QPluginLoader(QCoreApplication::applicationDirPath()+"/plugins/Base_Mesh.dll");
+    check(loader->load(),qPrintable(loader->errorString()));
+    auto* plugin=qobject_cast<PluginInterface*>(loader->instance());check(plugin,"domain mesh plugin");plugin->start();
+    GeometryTestTree testTree(tree);auto* previousTree=registry.getService<ProjectManagerService>();
+    registry.registerService<ProjectManagerService>(&testTree);
+    auto* mesh=registry.getService<MeshModuleControllerService>();check(mesh,"domain mesh service");
+    QTemporaryDir project;check(project.isValid(),"domain temporary project");
+    check(QDir().mkpath(QFileInfo(QDir(project.path()).filePath(PublicConstants::kMeshProjectFileName)).absolutePath()),
+          "domain project data directory");
+    PublicVariables::instance().set(PublicConstants::kProjectDirectoryKey,project.path(),"domain-test");
+    mesh->newProject();
+
+    // Create early wedge members, then hex members after many other groups
+    // have been inserted. Growing the group hash must preserve both batches.
+    auto grid=vtkSmartPointer<vtkUnstructuredGrid>::New();auto points=vtkSmartPointer<vtkPoints>::New();
+    QHash<QString,vtkSmartPointer<vtkIntArray>> arrays;
+    for(const QString name:{"MATYPE","LAYER","src_part","KETYPE","CELL_DIM","elem_id"}) {
+        auto array=vtkSmartPointer<vtkIntArray>::New();array->SetName(name.toUtf8());arrays.insert(name,array);
+        grid->GetCellData()->AddArray(array);
+    }
+    QHash<MeshTagKey,QSet<MeshIdType>> expected;
+    constexpr int groups=96;
+    for(int batch=0;batch<3;++batch)for(int group=0;group<groups;++group) {
+        const double x=group*2.,z=batch*2.;const vtkIdType start=points->GetNumberOfPoints();
+        for(const auto& p:std::array<std::array<double,3>,8>{{{x,0,z},{x+1,0,z},{x+1,1,z},{x,1,z},
+                                                           {x,0,z+1},{x+1,0,z+1},{x+1,1,z+1},{x,1,z+1}}})
+            points->InsertNextPoint(p.data());
+        vtkIdType hex[8]={start,start+1,start+2,start+3,start+4,start+5,start+6,start+7};
+        vtkIdType wedge[6]={start,start+1,start+3,start+4,start+5,start+7};
+        const vtkIdType cid=grid->InsertNextCell(batch==0?VTK_WEDGE:VTK_HEXAHEDRON,batch==0?6:8,batch==0?wedge:hex);
+        const int matype=group+3,layer=group%17+1,region=group+101;
+        arrays["MATYPE"]->InsertNextValue(matype);arrays["LAYER"]->InsertNextValue(layer);
+        arrays["src_part"]->InsertNextValue(region);arrays["KETYPE"]->InsertNextValue(6);
+        arrays["CELL_DIM"]->InsertNextValue(3);arrays["elem_id"]->InsertNextValue(cid+1);
+        expected[{"MATYPE",3,matype}].insert(cid);expected[{"LAYER",3,layer}].insert(cid);
+        expected[{"REGION",3,region}].insert(cid);
+    }
+    grid->SetPoints(points);
+    const QString path=project.filePath("mixed.vtk");auto writer=vtkSmartPointer<vtkUnstructuredGridWriter>::New();
+    writer->SetFileName(path.toUtf8());writer->SetInputData(grid);check(writer->Write(),"write domain fixture");
+    QString error;check(mesh->importGeneratedSmeshMesh(path,&error),qPrintable(error));
+    const auto verify=[&](bool reloaded) {
+        const auto map=mesh->mshPickMapSolid();
+        for(auto it=expected.cbegin();it!=expected.cend();++it) {
+            const auto& key=it.key();
+            // This fixture's IIIN snapshot stores MATYPE/LAYER, but not src_part.
+            // Check REGION at import and the solver fields again after reload.
+            if(reloaded && key.category=="REGION")continue;
+            const auto actual=mesh->domainCells({key.category,key.dim,key.id});
+            if(actual!=it.value())std::cerr<<"Incomplete "<<key.category.toStdString()<<'/'<<key.id<<" actual="<<actual.size()<<" expected="<<it.value().size()<<'\n';
+            check(actual==it.value(),"all group members retained");
+            for(MeshIdType cid:it.value())check(map.cellIdToDomainTags.value(cid).contains(key),"group reverse index complete");
+        }
+        auto& picker=PickManager::instance();picker.updateStructure();picker.activate("DomainRebuild","fixture",PickMode::Domain);
+        auto* surface=vtkActor::SafeDownCast(visual->getProp("mesh.imported.surface"));
+        auto* data=surface?vtkDataSet::SafeDownCast(surface->GetMapper()->GetInputDataObject(0,0)):nullptr;
+        check(data,"domain displayed surface");auto* matypes=data->GetCellData()->GetArray("MATYPE");
+        for(int group=0;group<groups;++group) {
+            const int matype=group+3;picker.setSelectedDomain("DomainRebuild","fixture",{"MATYPE",3,matype});
+            auto* focus=vtkActor::SafeDownCast(visual->getProp("pick.domain.focus"));
+            auto* selected=focus?vtkDataSet::SafeDownCast(focus->GetMapper()->GetInputDataObject(0,0)):nullptr;
+            vtkIdType expectedFaces=0;for(vtkIdType cid=0;cid<data->GetNumberOfCells();++cid)
+                if(int(matypes->GetTuple1(cid))==matype)++expectedFaces;
+            check(expectedFaces>0 && focus && focus->GetVisibility() && selected && selected->GetNumberOfCells()==expectedFaces,
+                  "mixed domain highlights every displayed face");
+        }
+        picker.deactivate("DomainRebuild","fixture",PickMode::Domain);
+    };
+    verify(false);check(mesh->saveProject(),"save mixed domain project");check(mesh->loadProject(),"reload mixed domain project");verify(true);
+    mesh->closeProject();registry.registerService<ProjectManagerService>(previousTree);
+    std::cout<<"Mesh: 96 mixed wedge/hex groups retain membership on import and material/layer membership and highlights after reload\n";
+}
+
 class ScenePickingPage final : public BasePage
 {
 public:
@@ -251,6 +329,12 @@ private:
 static void sceneVisibilityChecks(QApplication& app,QWidget* frame,VisualWidgetService* visual,const QString& output)
 {
     auto& registry=ServiceRegistry::instance();
+    // Keep the actual mesh display panel subscribed to post-view events, as it
+    // is after opening a project in the application.
+    auto* meshLoader=new QPluginLoader(QCoreApplication::applicationDirPath()+"/plugins/Base_Mesh.dll");
+    check(meshLoader->load(),qPrintable(meshLoader->errorString()));
+    auto* meshPlugin=qobject_cast<PluginInterface*>(meshLoader->instance());
+    check(meshPlugin,"scene mesh plugin");meshPlugin->start();
     auto* tree=frame->findChild<QTreeWidget*>("projectTreeWidget");check(tree,"real project tree");
     GeometryTestTree testTree(tree);auto* originalTree=registry.getService<ProjectManagerService>();
     registry.registerService<ProjectManagerService>(&testTree);
@@ -279,6 +363,7 @@ static void sceneVisibilityChecks(QApplication& app,QWidget* frame,VisualWidgetS
     auto context=actorForGrid();visual->addProp("mesh.imported.surface",context,QStringLiteral("网格"),"context",false,false);
     auto hidden=actorForGrid();visual->addProp("mesh.user-hidden",hidden,QStringLiteral("网格"),"hidden",false,false);
     visual->setVisible("mesh.user-hidden",false,false);
+    auto legacy=actorForGrid();visual->addProp("mesh.global.surf",legacy,QStringLiteral("{mesh} 表面网格"),"legacy",false,false);
     auto& picker=PickManager::instance();picker.updateStructure();
     auto* post=registry.getService<PostProcessingService>();check(post,"scene post service");post->newProject();
     EventManager::instance().sendEvent(PublicConstants::kActionPostProcessNephogram);
@@ -292,6 +377,8 @@ static void sceneVisibilityChecks(QApplication& app,QWidget* frame,VisualWidgetS
         node->setData(0,ProjectNode::RoleModule,module);tree->addTopLevelItem(node);return node;
     };
     auto* geometry=addPage("SceneGeometry","Geometry",false);
+    auto* meshPage=addPage("SceneMesh","Mesh",false);
+    auto* solver=addPage("SceneSolver","Solver",false);
     auto* material=addPage("SceneMaterial","MaterialManager",true,PickMode::Domain);
     auto* boundary=addPage("SceneBoundary","PhysicalField",true);
     auto* camera=visual->renderer()->GetActiveCamera();camera->SetPosition(-3,-4,3);camera->SetFocalPoint(1.5,.5,.5);
@@ -303,6 +390,15 @@ static void sceneVisibilityChecks(QApplication& app,QWidget* frame,VisualWidgetS
     bool materialVisible=true,boundaryVisible=true,userHidden=true;
     QJsonArray cycles;
     for(int cycle=0;cycle<2;++cycle) {
+        tree->setCurrentItem(meshPage);app.processEvents();check(context->GetVisibility(),"initial cloud exit restores mesh");
+        check(legacy->GetVisibility(),"cloud exit restores legacy mesh outside standard group masks");
+        tree->setCurrentItem(cloud);app.processEvents();check(!context->GetVisibility(),"cloud isolates restored mesh");
+        tree->setCurrentItem(meshPage);app.processEvents();
+        check(context->GetVisibility(),"leaving cloud restores mesh on mesh page");
+        tree->setCurrentItem(cloud);app.processEvents();
+        tree->setCurrentItem(solver);app.processEvents();
+        check(context->GetVisibility(),"leaving cloud restores mesh on solver page");
+        check(!hidden->GetVisibility(),"cloud transition preserves deliberately hidden mesh");
         tree->setCurrentItem(geometry);app.processEvents();check(!context->GetVisibility(),"geometry masks mesh");
         tree->setCurrentItem(cloud);app.processEvents();check(!context->GetVisibility(),"cloud isolates mesh");
         tree->setCurrentItem(material);app.processEvents();
@@ -924,6 +1020,10 @@ static void integrationChecks(QApplication& app, const QString& output, const QS
     auto* frame=dynamic_cast<QWidget*>(frameService);
     auto* visual=registry.getService<VisualWidgetService>();
     check(frame && visual,"actual main frame and visualization");
+    if(project==QLatin1String("--mesh-domains")) {
+        auto* tree=frame->findChild<QTreeWidget*>("projectTreeWidget");check(tree,"domain project tree");
+        meshDomainRebuildChecks(tree,visual);return;
+    }
     if(project==QLatin1String("--layout-audit")) {
         frame->resize(1500,950);frame->show();app.processEvents();QDir().mkpath(output);
         settingsLayoutAudit(app,frame,output);frame->hide();return;

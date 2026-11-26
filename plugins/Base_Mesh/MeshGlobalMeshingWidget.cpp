@@ -437,11 +437,13 @@ void MeshGlobalMeshingWidget::initCombos()
 
 void MeshGlobalMeshingWidget::refreshElemCombo(int dim)
 {
+    const int previousType = ui->cmbElemType->currentData().toInt();
+    const QSignalBlocker blocker(ui->cmbElemType);
     ui->cmbElemType->clear();
     if (dim == 2)
     {
         ui->cmbElemType->addItem(QStringLiteral("三角形单元"), 1);
-        ui->cmbElemType->addItem(QStringLiteral("四边形为主"), 2);
+        ui->cmbElemType->addItem(QStringLiteral("四边形为主的面网格"), 2);
         ui->cmbElemType->setCurrentIndex(0);
     }
     else
@@ -451,6 +453,11 @@ void MeshGlobalMeshingWidget::refreshElemCombo(int dim)
                                  kElemTypeHex8FromTet);
         ui->cmbElemType->setCurrentIndex(0);
     }
+    const int index = ui->cmbElemType->findData(
+        SmeshMeshGenerator::elementTypeForDimension(dim, previousType));
+    if (index >= 0)
+        ui->cmbElemType->setCurrentIndex(index);
+    onElemTypeChanged(ui->cmbElemType->currentIndex());
 }
 
 void MeshGlobalMeshingWidget::refreshAlgoCombo(int dim)
@@ -877,7 +884,9 @@ void MeshGlobalMeshingWidget::loadJson(const QJsonObject& o)
     m_scopeMode->setCurrentIndex(o.value("all_geometry").toBool(true)?0:1);
     m_autoPartition->setChecked(o.value("auto_partition").toBool(true));
     ui->cmbDim->setCurrentIndex(qMax(0,ui->cmbDim->findData(o.value("dimension").toInt(3))));
-    ui->cmbElemType->setCurrentIndex(qMax(0,ui->cmbElemType->findData(o.value("element_type").toInt(3))));
+    const int elementType = SmeshMeshGenerator::elementTypeForDimension(
+        ui->cmbDim->currentData().toInt(), o.value("element_type").toInt(3));
+    ui->cmbElemType->setCurrentIndex(qMax(0,ui->cmbElemType->findData(elementType)));
     ui->dsMin->setValue(o.value("min_size").toDouble(.5));ui->dsMax->setValue(o.value("max_size").toDouble(5));
     ui->dsFactor->setValue(o.value("fineness").toDouble(.5));ui->spOrder->setValue(o.value("element_order").toInt(1));
     ui->chkOptimize->setChecked(o.value("optimize").toBool(true));ui->chkCurvature->setChecked(o.value("curvature").toBool(true));

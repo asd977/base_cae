@@ -287,10 +287,12 @@ bool CaveBlockStabilityWidget::exportDatFiles(QVector<CaveBlockPlanePage*>& plan
     os << quoteValue(valueOrDefault(ui->safeFileEdit, "SAFE_CAVEBLK.DAT")) << "\n";
     os << quoteValue(valueOrDefault(ui->weightEdit, "23.52")) << "\n";
     // SOLVER TUT(5..8) are CHARACTER*30; format compactly so joined strings never exceed 30 bytes.
-    auto compactNum = [](const QDoubleSpinBox* edit, const char* fallback) -> QString
+    auto compactNum = [this](auto* edit, const char* fallback) -> QString
     {
-        if (!edit) return QString::fromLatin1(fallback);
-        return QString::number(edit->value(), 'g', 7);
+        const QString text = valueOrDefault(edit, QString::fromLatin1(fallback));
+        bool ok = false;
+        const double value = text.toDouble(&ok);
+        return ok ? QString::number(value, 'g', 7) : text;
     };
     os << quoteValue(QString("%1 %2")
                          .arg(compactNum(ui->xMinEdit, "-1.0E6"), compactNum(ui->xMaxEdit, "1.0E6")))
@@ -308,14 +310,14 @@ bool CaveBlockStabilityWidget::exportDatFiles(QVector<CaveBlockPlanePage*>& plan
        << "\n";
     os << quoteValue(QStringLiteral("0")) << "\n";
     os << quoteValue(QString("%1 %2 %3")
-                         .arg(valueOrDefault(ui->axEdit, "0.0"))
-                         .arg(valueOrDefault(ui->ayEdit, "0.0"))
-                         .arg(valueOrDefault(ui->azEdit, "0.0")))
+                         .arg(compactNum(ui->axEdit, "0.0"),
+                              compactNum(ui->ayEdit, "0.0"),
+                              compactNum(ui->azEdit, "0.0")))
        << "\n";
     os << quoteValue(QString("%1 %2 %3")
-                         .arg(valueOrDefault(ui->bxEdit, "-1.0"))
-                         .arg(valueOrDefault(ui->byEdit, "-1.0"))
-                         .arg(valueOrDefault(ui->bzEdit, "-1.0")))
+                         .arg(compactNum(ui->bxEdit, "-1.0"),
+                              compactNum(ui->byEdit, "-1.0"),
+                              compactNum(ui->bzEdit, "-1.0")))
        << "\n";
     os << quoteValue(QString("%1 %2")
                          .arg(valueOrDefault(ui->im1Edit, "1"))

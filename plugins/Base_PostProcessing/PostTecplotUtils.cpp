@@ -1565,6 +1565,29 @@ vtkSmartPointer<vtkUnstructuredGrid> normalizeSolverTopology(
     return orientStandardLinear3DCells(tetrahedralized);
 }
 
+void clearCache(const QString& directoryOrFile)
+{
+    QMutexLocker locker(&gridCacheMutex());
+    auto& cache = gridCache();
+    if (directoryOrFile.isEmpty())
+    {
+        cache.clear();
+        return;
+    }
+    const QFileInfo info(directoryOrFile);
+    const QString target = QDir::fromNativeSeparators(
+        info.canonicalFilePath().isEmpty() ? info.absoluteFilePath() : info.canonicalFilePath());
+    for (auto it = cache.begin(); it != cache.end();)
+    {
+        const QString key = QDir::fromNativeSeparators(it.key());
+        if (key.compare(target, Qt::CaseInsensitive) == 0 ||
+            key.startsWith(target + QLatin1Char('/'), Qt::CaseInsensitive))
+            it = cache.erase(it);
+        else
+            ++it;
+    }
+}
+
 vtkSmartPointer<vtkUnstructuredGrid> readGrid(const QString& fileName,
                                               QString* errorMessage)
 {

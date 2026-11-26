@@ -89,6 +89,9 @@ class SliceSettingsWidget : public BasePage
     VisualWidgetService* m_visualService{};
 
     bool m_loadedOnce{false};
+    QString m_loadedFilePath;
+    qint64 m_loadedFileSize{-1};
+    qint64 m_loadedFileModified{-1};
     bool m_hasPendingState{false};
     QVariantMap m_pendingState;
     QString m_dataPath;
@@ -100,10 +103,13 @@ class SliceSettingsWidget : public BasePage
 
     // 整体云图
     vtkSmartPointer<vtkActor> m_actor;
+    vtkSmartPointer<vtkActor> m_contextActor;
+    vtkSmartPointer<vtkActor> m_contextOutlineActor;
 
     // 单切面结果
     vtkSmartPointer<vtkPlane> m_plane;
     vtkSmartPointer<vtkActor> m_sliceActor;
+    vtkSmartPointer<vtkActor> m_cutIndicatorActor;
     vtkSmartPointer<vtkActor> m_sliceContourActor;
     vtkSmartPointer<vtkActor2D> m_sliceContourLabelActor;
 
@@ -112,6 +118,7 @@ class SliceSettingsWidget : public BasePage
     QVector<vtkSmartPointer<vtkCutter>> m_multiCutters;
     QVector<vtkSmartPointer<vtkPolyDataMapper>> m_multiMappers;
     QVector<vtkSmartPointer<vtkActor>> m_multiActors;
+    QVector<vtkSmartPointer<vtkActor>> m_multiCutIndicatorActors;
     QVector<vtkSmartPointer<vtkActor>> m_multiContourActors;
     QVector<vtkSmartPointer<vtkActor2D>> m_multiContourLabelActors;
 

@@ -215,6 +215,26 @@ int main(int argc,char** argv) {
   if(restoredNodes!=checks.size())return 15;
   std::cout<<"QUIET_BOUNDARY_CHECK pages="<<checks.size()<<" reload_nodes="<<restoredNodes<<std::endl;return checks.isEmpty()?14:0;
  }
+ if(args[4]=="check-mesh-dimension"){
+  for(QTreeWidgetItemIterator i(&tree.tree);*i;++i) {
+   auto* n=dynamic_cast<ProjectNode*>(*i);auto* page=n?n->getPage():nullptr;
+   if(!page)continue;
+   auto* dimension=page->findChild<QComboBox*>("cmbDim");
+   auto* elements=page->findChild<QComboBox*>("cmbElemType");
+   if(!dimension||!elements)continue;
+   const auto original=page->saveJson();
+   dimension->setCurrentIndex(dimension->findData(3));elements->setCurrentIndex(elements->findData(4));
+   dimension->setCurrentIndex(dimension->findData(2));
+   if(elements->currentData().toInt()!=2)return 43;
+   dimension->setCurrentIndex(dimension->findData(3));
+   if(elements->currentData().toInt()!=4)return 44;
+   auto legacy=original;legacy["dimension"]=2;legacy["element_type"]=4;page->loadJson(legacy);
+   if(elements->currentData().toInt()!=2||page->saveJson()["element_type"].toInt()!=2)return 45;
+   page->loadJson(original);
+   std::cout<<"PASS: actual meshing controls retain quad/hex selection across dimensions and restore legacy 2D settings"<<std::endl;return 0;
+  }
+  return 46;
+ }
  if(args[4]=="validate-project"){
   QJsonArray pages;
   for(QTreeWidgetItemIterator i(&tree.tree);*i;++i)if(auto* n=dynamic_cast<ProjectNode*>(*i);n&&n->getPage())

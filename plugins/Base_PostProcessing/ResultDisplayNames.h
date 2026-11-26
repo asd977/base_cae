@@ -118,7 +118,8 @@ inline QString displayName(const QString& rawName)
             {QStringLiteral("PEMAX"), QStringLiteral("最大塑性剪应变")},
             {QStringLiteral("PEEQ"), QStringLiteral("等效塑性应变")},
             {QStringLiteral("PLASTIC_ZONE_PRS1"), QStringLiteral("最大塑性应力")},
-            {QStringLiteral("FAILURE_ZONE"), QStringLiteral("塑性破坏类型（0未破坏，1剪破坏，2拉破坏）")},
+            {QStringLiteral("FAILURE_ZONE"), QStringLiteral("塑性破坏类型（0未破坏，1剪破坏，2拉破坏，3-5节理/杆件屈服）")},
+            {QStringLiteral("TAUMAX"), QStringLiteral("最大剪应力包络 τ_max")},
 
             {QStringLiteral("HEAD"), QStringLiteral("水头 H")},
             {QStringLiteral("HP"), QStringLiteral("水头 H")},

@@ -1,3 +1,4 @@
+#include <QDateTime>
 #include "IsosurfaceSettingsWidget.h"
 #include "PostComboBoxPerformance.h"
 
@@ -198,17 +199,20 @@ void IsosurfaceSettingsWidget::beforeLoad()
     {
         m_loadedOnce = false;
     }
-    if (!m_loadedOnce)
+    const QString curStepFile = ui->stepComboBox->currentData().toString();
+    const QFileInfo stepInfo(curStepFile.isEmpty() ? m_loadedFilePath : curStepFile);
+    const bool fileStale = !m_loadedOnce || !m_grid || m_loadedFilePath.isEmpty() || !stepInfo.isFile() ||
+                           QDir::cleanPath(stepInfo.absoluteFilePath()) != QDir::cleanPath(m_loadedFilePath) ||
+                           stepInfo.size() != m_loadedFileSize ||
+                           stepInfo.lastModified().toMSecsSinceEpoch() != m_loadedFileModified;
+    if (fileStale)
     {
-        // <project>/data
         const QString projectDir =
             PublicVariables::instance().get(PublicConstants::kProjectDirectoryKey).toString();
         if (m_dataPath.isEmpty())
             m_dataPath = PostResultAutoPrepare::firstResultDirectory(projectDir);
-        //        readTecplotLatest();
         loadFileName(m_dataPath);
-        //        fillScalarCombo();
-        updateOverallColoring(); // 显示整体云图
+        updateOverallColoring();
         m_loadedOnce = true;
     }
 
@@ -518,6 +522,10 @@ bool IsosurfaceSettingsWidget::readTecplot(const QString& file)
         return false;
     }
     m_grid = newGrid;
+    const QFileInfo fi(file);
+    m_loadedFilePath = fi.absoluteFilePath();
+    m_loadedFileSize = fi.size();
+    m_loadedFileModified = fi.lastModified().toMSecsSinceEpoch();
     return true;
 }
 

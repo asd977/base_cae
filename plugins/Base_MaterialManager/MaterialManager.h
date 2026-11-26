@@ -40,6 +40,9 @@ class MaterialManager : public QObject, public MaterialManagerService
     QMap<int, QString> damStaticMaterialLabels() const override;
     QMap<int, QString> damWetMaterialLabels(int sourceMatype) const override;
     QMap<int, QString> damDynamicMaterialLabels() const override;
+    QVector<QPair<QString, QString>> assignableMaterialEntries() const override;
+    bool assignMatypesToMaterial(const QString& entryId, const QSet<int>& matypes,
+                                 QString* message = nullptr) override;
     bool generateIMATFile(const QMap<int, int>& damDynamicSourceMappings = {}) override;
     bool hasConfiguredMaterials() const override;
 
@@ -74,6 +77,8 @@ class MaterialManager : public QObject, public MaterialManagerService
 
     int selectedMatypeForEntry(const QString& entryId) const;
     void setSelectedMatypeForEntry(const QString& entryId, int matype);
+    QSet<int> selectedMatypesForEntry(const QString& entryId) const;
+    void setSelectedMatypesForEntry(const QString& entryId, const QSet<int>& matypes);
 
     int previewMatypeForEntry(const QString& entryId) const;
     void setPreviewMatypeForEntry(const QString& entryId, int matype);
@@ -82,6 +87,10 @@ class MaterialManager : public QObject, public MaterialManagerService
     void setPreDeleteMatypeForEntry(const QString& entryId, int matype);
 
     void applyMatypeToEntry(const QString& entryId, int matype);
+    bool applyMatypesToEntry(const QString& entryId, const QSet<int>& matypes,
+                             QString* message = nullptr);
+    bool mergeEntryIntoEntry(const QString& sourceEntryId, const QString& targetEntryId);
+    void onMeshGroupsChanged();
     void removeMatypeFromEntry(const QString& entryId, int matype);
 
     void refreshEntryWidgetMatypes(const QString& entryId, const QSet<int>& applied,
@@ -136,6 +145,7 @@ class MaterialManager : public QObject, public MaterialManagerService
 
     // ===== 3态：Selected / Preview / PreDelete =====
     QHash<QString, int> m_selectedMatypes;
+    QHash<QString, QSet<int>> m_selectedMatypeSets;
     QHash<QString, int> m_previewMatypes;
     QHash<QString, int> m_preDeleteMatypes;
     QHash<int, QString> m_matypeOwnerById;

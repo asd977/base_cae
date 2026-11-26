@@ -76,6 +76,34 @@ template<class Page>static void pageChecks(const QString& name,const QString& fi
     if(clip)check(clipExecutions==0,"changing color field does not rerun clipping");
     if(auto* position=page.template findChild<QDoubleSpinBox*>("slicePositionSpin"))
         oneFrame(visual,name+" position",[&]{position->setValue(.6);});
+    if constexpr(std::is_same_v<Page,SliceSettingsWidget>) {
+        const auto checkContext=[&] {
+            const double position=page.template findChild<QDoubleSpinBox*>("slicePositionSpin")->value();
+            for(bool model : {false,true})for(bool lines : {false,true}) {
+                postSceneStyle().showContextOutline=model;postSceneStyle().showContextLines=lines;
+                EventManager::instance().sendEvent(postDisplaySettingsChangedEvent(),{{"reason","context-outline"}});
+                check(bool(visual.getProp(postActorId(page.getUuid(),"context-model")))==model,"slice reference model visibility is independent");
+                check(bool(visual.getProp(postActorId(page.getUuid(),"context-outline")))==lines,"slice outline line visibility is independent");
+                bool hasSlice=false,hasIndicator=false;
+                for(const QString& id:visual.allIds()) {
+                    const bool slice=id.startsWith(postActorId(page.getUuid(),"slice"));
+                    const bool indicator=id.startsWith(postActorId(page.getUuid(),"cut-indicator"));
+                    hasSlice=hasSlice||slice;
+                    hasIndicator=hasIndicator||indicator;
+                }
+                check(hasSlice,"reference model toggles keep the selected slice results visible");
+                check(hasIndicator==model,"cutting-plane backplates follow reference model visibility without hiding slices");
+                check(page.template findChild<QDoubleSpinBox*>("slicePositionSpin")->value()==position,"visibility toggles retain slice position");
+            }
+        };
+        checkContext();
+        auto* multi=page.template findChild<QRadioButton*>("multiSliceRadioButton");
+        check(multi,"multi-slice mode");multi->setChecked(true);
+        check(QMetaObject::invokeMethod(&page,"on_confirmButton_clicked"),"generate multi-slices");
+        checkContext();
+        page.beforeUnload();
+        check(!visual.getProp(postActorId(page.getUuid(),"context-model")) && !visual.getProp(postActorId(page.getUuid(),"context-outline")),"leaving slices removes both context layers");
+    }
     if(auto* position=page.template findChild<QDoubleSpinBox*>("blockPositionSpin"))
         oneFrame(visual,name+" position",[&]{position->setValue(.6);});
     if(auto* percent=page.template findChild<QRadioButton*>("percentModeRadioButton")) {

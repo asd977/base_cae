@@ -73,6 +73,7 @@ DamAnalysisWidget::DamAnalysisWidget(QWidget* parent)
     ui->formLayoutDynamic->addRow(m_quietBoundarySelection);
     m_quietBoundarySelection->setEnabled(false);
     connect(m_quietBoundaryCheck,&QCheckBox::toggled,this,[this](bool enabled){
+        if(!m_quietBoundarySelection)return;
         m_quietBoundarySelection->setEnabled(enabled);
         if(!enabled)m_quietBoundarySelection->stop();
     });
@@ -1127,7 +1128,7 @@ bool DamAnalysisWidget::validateInputs(QString* errorMessage) const
     if (m_quietBoundaryCheck && m_quietBoundaryCheck->isChecked()
         && (ui->comboLine19->currentData().toString() == QStringLiteral("2")
             || ui->comboLine19->currentData().toString() == QStringLiteral("3"))
-        && !m_quietBoundarySelection->generate())
+        && (!m_quietBoundarySelection || !m_quietBoundarySelection->generate()))
     {
         setError(QStringLiteral("请在模型中选择粘弹性边界区域；当前支持线性边界面（二维选择边）。"));
         return false;
@@ -1196,8 +1197,8 @@ bool DamAnalysisWidget::validateInputs(QString* errorMessage) const
             for (const QString& part : parts)
             {
                 bool numberOk = false;
-                part.toDouble(&numberOk);
-                if (!numberOk)
+                const double parsed = part.toDouble(&numberOk);
+                if (!numberOk || !std::isfinite(parsed))
                 {
                     setError(QString("%1必须填写数值。").arg(descriptionByLine(lineNo)));
                     return false;
@@ -1208,7 +1209,7 @@ bool DamAnalysisWidget::validateInputs(QString* errorMessage) const
 
     bool iceExpansionOk = false;
     const double iceExpansion = m_editIceExpansion->text().toDouble(&iceExpansionOk);
-    if (freezeThawEnabled() && (!iceExpansionOk || iceExpansion < 0.0))
+    if (freezeThawEnabled() && (!iceExpansionOk || !std::isfinite(iceExpansion) || iceExpansion < 0.0))
     {
         setError("冰线膨胀率必须为不小于零的数值。");
         return false;
@@ -1250,8 +1251,8 @@ bool DamAnalysisWidget::validateInputs(QString* errorMessage) const
     auto isNumber = [](const QLineEdit* edit)
     {
         bool ok = false;
-        edit->text().trimmed().toDouble(&ok);
-        return ok;
+        const double v = edit->text().trimmed().toDouble(&ok);
+        return ok && std::isfinite(v);
     };
     if (m_upliftReductionRequired &&
         (!isNumber(m_editX1) || !isNumber(m_editX2) || !isNumber(m_editX3)))
@@ -1563,7 +1564,8 @@ void DamAnalysisWidget::loadJson(const QJsonObject& obj)
     const auto roles = obj.value("construction_region_roles").toObject();
     for (auto it = roles.begin(); it != roles.end(); ++it)
         m_constructionRegionRoles.insert(it.key(), it.value().toInt());
-    m_quietBoundarySelection->load(obj.value("quiet_boundary_selection").toObject(),obj.value("quiet_boundary_enabled").toBool(false));
+    if(m_quietBoundarySelection)
+        m_quietBoundarySelection->load(obj.value("quiet_boundary_selection").toObject(),obj.value("quiet_boundary_enabled").toBool(false));
     const QJsonArray arr = obj.value("base_values").toArray();
     for (int lineNo = 1; lineNo <= 40; ++lineNo)
     {

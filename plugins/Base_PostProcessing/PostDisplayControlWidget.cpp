@@ -40,6 +40,30 @@ PostDisplayControlWidget::PostDisplayControlWidget(VisualWidgetService* visualSe
     ui->displayModeComboBox->addItem(QStringLiteral("表面 + 单元边线"), 1);
     ui->displayModeComboBox->addItem(QStringLiteral("线框"), 2);
 
+    m_showContextOutlineCheckBox = new QCheckBox(QStringLiteral("显示模型轮廓"), ui->visibilityGroupBox);
+    m_showContextOutlineCheckBox->setObjectName(QStringLiteral("postContextOutline"));
+    m_showContextOutlineCheckBox->setToolTip(QStringLiteral("控制半透明模型参考和切割平面底板；关闭后保留真实切面结果、数值标注和独立的轮廓线设置。"));
+    ui->visibilityLayout->insertWidget(1, m_showContextOutlineCheckBox);
+    connect(m_showContextOutlineCheckBox, &QCheckBox::toggled, this, [this](bool enabled)
+    {
+        if (m_syncing)
+            return;
+        postSceneStyle().showContextOutline = enabled;
+        notifyRefresh(QStringLiteral("context-outline"));
+    });
+
+    m_showContextLinesCheckBox = new QCheckBox(QStringLiteral("显示轮廓线"), ui->visibilityGroupBox);
+    m_showContextLinesCheckBox->setObjectName(QStringLiteral("postContextLines"));
+    m_showContextLinesCheckBox->setToolTip(QStringLiteral("单独显示整体模型的边界和特征轮廓线。"));
+    ui->visibilityLayout->insertWidget(2, m_showContextLinesCheckBox);
+    connect(m_showContextLinesCheckBox, &QCheckBox::toggled, this, [this](bool enabled)
+    {
+        if (m_syncing)
+            return;
+        postSceneStyle().showContextLines = enabled;
+        notifyRefresh(QStringLiteral("context-outline"));
+    });
+
     m_meshEdgeSettings=new QWidget(ui->visibilityGroupBox);
     m_meshEdgeForm=new QFormLayout(m_meshEdgeSettings);
     m_meshEdgeForm->setContentsMargins(0,0,0,0);
@@ -54,7 +78,7 @@ PostDisplayControlWidget::PostDisplayControlWidget(VisualWidgetService* visualSe
     m_meshEdgeOpacity->setToolTip(QStringLiteral("仅控制单元边线；0% 不显示，100% 完全不透明，不改变云图表面的透明度。"));
     m_meshEdgeForm->addRow(QStringLiteral("边线粗细"),m_meshEdgeWidth);
     m_meshEdgeForm->addRow(QStringLiteral("边线不透明度"),m_meshEdgeOpacity);
-    ui->visibilityLayout->insertWidget(2,m_meshEdgeSettings);
+    ui->visibilityLayout->insertWidget(3,m_meshEdgeSettings);
 
     const auto updateMeshEdges=[this] {
         m_meshEdgeSettings->setVisible(postSceneStyle().representationMode!=0);
@@ -383,7 +407,16 @@ PostDisplayControlWidget::PostDisplayControlWidget(VisualWidgetService* visualSe
 
     connectScalarSpin(ui->titleFontSpinBox, [](int value) { postScalarBarStyle().titleFont = value; });
     connectScalarSpin(ui->labelFontSpinBox, [](int value) { postScalarBarStyle().labelFont = value; });
-    connectScalarSpin(ui->precisionSpinBox, [](int value) { postScalarBarStyle().precision = value; });
+    connect(ui->precisionSpinBox, QOverload<int>::of(&QSpinBox::valueChanged), this,
+            [this](int value)
+            {
+                if (m_syncing)
+                    return;
+                postScalarBarStyle().precision = value;
+                applyScalarBarAppearance();
+                if (postContourStyle().enabled && postContourStyle().labels)
+                    notifyRefresh(QStringLiteral("contour"));
+            });
     connectScalarSpin(ui->tickCountSpinBox, [](int value) { postScalarBarStyle().tickCount = value; });
     connectScalarSpin(ui->barWidthSpinBox, [](int value) { postScalarBarStyle().widthPercent = value; });
     connectScalarSpin(ui->barHeightSpinBox, [](int value) { postScalarBarStyle().heightPercent = value; });
@@ -475,6 +508,10 @@ void PostDisplayControlWidget::syncFromState()
     m_meshEdgeForm->setRowVisible(m_meshEdgeOpacity,postSceneStyle().representationMode==1);
     m_showOutlineCheckBox->setChecked(postSceneStyle().showSurfaceOutline);
     m_showOutlineCheckBox->setEnabled(false);
+    if (m_showContextOutlineCheckBox)
+        m_showContextOutlineCheckBox->setChecked(postSceneStyle().showContextOutline);
+    if (m_showContextLinesCheckBox)
+        m_showContextLinesCheckBox->setChecked(postSceneStyle().showContextLines);
     m_surfaceInterpolationComboBox->setCurrentIndex(m_surfaceInterpolationComboBox->findData(postSceneStyle().surfaceInterpolation));
     m_scalarInterpolationCheckBox->setChecked(postSceneStyle().interpolateScalarsBeforeMapping);
     m_computeNormalsCheckBox->setChecked(postSceneStyle().computePointNormals);

@@ -57,6 +57,10 @@ class MeshGroupingWidget : public BasePage
     void selectGroupsFromTable();
     void updateGroupActionState();
     void mergeSelectedGroups();
+    void splitSelectedGroups();
+    void onViewContextMenu(const QString& domain, const QString& uuid, int mode,
+                           const QPoint& globalPos);
+    int nextAvailableGroupId(const QString& field) const;
     void syncGroupTab();
     void applyManualGrouping();
     void writeSelectionSet(const QString& action);
@@ -88,6 +92,7 @@ class MeshGroupingWidget : public BasePage
     QLabel* m_targetLabel = nullptr;
     QPushButton* m_clearButton = nullptr;
     QPushButton* m_mergeButton = nullptr;
+    QPushButton* m_splitButton = nullptr;
     QSpinBox* m_mergeTargetId = nullptr;
     QLineEdit* m_mergeTargetName = nullptr;
     bool m_advancedCellMode = false;

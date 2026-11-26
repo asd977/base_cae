@@ -254,6 +254,7 @@ void CaveSupportComputationPage::setupBusinessUi()
     ui->formLayoutDyna->addRow(m_quietBoundarySelection);
     m_quietBoundarySelection->setEnabled(false);
     connect(m_quietBoundaryCheck,&QCheckBox::toggled,this,[this](bool enabled){
+        if(!m_quietBoundarySelection)return;
         m_quietBoundarySelection->setEnabled(enabled);
         if(!enabled)m_quietBoundarySelection->stop();
     });
@@ -1058,7 +1059,7 @@ bool CaveSupportComputationPage::validateInputs(QString* errorMessage) const
     const int type = calculationTypeCode();
     if (m_quietBoundaryCheck && m_quietBoundaryCheck->isChecked()
         && (type == 2 || type == 3)
-        && !m_quietBoundarySelection->generate())
+        && (!m_quietBoundarySelection || !m_quietBoundarySelection->generate()))
         return fail(QStringLiteral("请在模型中选择粘弹性边界区域；当前支持线性边界面（二维选择边）。"));
     if (type == 1 || type == 3)
     {
@@ -1303,7 +1304,8 @@ QJsonObject CaveSupportComputationPage::saveJson()
 
 void CaveSupportComputationPage::loadJson(const QJsonObject& obj)
 {
-    m_quietBoundarySelection->load(obj.value("quiet_boundary_selection").toObject(),obj.value("quiet_boundary_enabled").toBool(false));
+    if(m_quietBoundarySelection)
+        m_quietBoundarySelection->load(obj.value("quiet_boundary_selection").toObject(),obj.value("quiet_boundary_enabled").toBool(false));
     m_isUpdatingUi = true;
     m_caseData = CaseData();
     if (m_excavationDaysTable)

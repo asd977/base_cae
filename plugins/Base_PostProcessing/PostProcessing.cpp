@@ -792,9 +792,24 @@ class CaveBlockStabilityResultPage final : public BasePage
         return QDir(m_resultRoot).filePath(fileName);
     }
 
+    QString configuredMesg227FileName(int lineIndex, const QString& fallback) const
+    {
+        QFile mesg(workingFilePath(QStringLiteral("MESG227.DAT")));
+        if (!mesg.open(QIODevice::ReadOnly | QIODevice::Text))
+            return fallback;
+        const QStringList lines = QString::fromLocal8Bit(mesg.readAll())
+                                      .split(QRegularExpression(QStringLiteral("\\r?\\n")));
+        if (lineIndex < 0 || lineIndex >= lines.size())
+            return fallback;
+        QString val = lines.at(lineIndex).trimmed();
+        if (val.size() >= 2 && val.startsWith(QLatin1Char('\'')) && val.endsWith(QLatin1Char('\'')))
+            val = val.mid(1, val.size() - 2).trimmed();
+        return (val.isEmpty() || val == QStringLiteral("---")) ? fallback : val;
+    }
+
     QString resultFilePath() const
     {
-        return workingFilePath(QStringLiteral("SAFE_CAVEBLK.DAT"));
+        return workingFilePath(configuredMesg227FileName(2, QStringLiteral("SAFE_CAVEBLK.DAT")));
     }
 
     static QString formatFactor(const QString& value)
@@ -846,7 +861,7 @@ class CaveBlockStabilityResultPage final : public BasePage
     QVector<PlaneSegment> readPlaneSegments() const
     {
         QVector<PlaneSegment> segments;
-        QFile file(workingFilePath(QStringLiteral("ICUT.DAT")));
+        QFile file(workingFilePath(configuredMesg227FileName(1, QStringLiteral("ICUT.DAT"))));
         if (!file.open(QIODevice::ReadOnly | QIODevice::Text))
             return segments;
 
@@ -872,7 +887,7 @@ class CaveBlockStabilityResultPage final : public BasePage
     QVector<PlaneTriangle> readPlaneTriangles() const
     {
         QVector<PlaneTriangle> planes;
-        QFile file(workingFilePath(QStringLiteral("ICUT.DAT")));
+        QFile file(workingFilePath(configuredMesg227FileName(1, QStringLiteral("ICUT.DAT"))));
         if (!file.open(QIODevice::ReadOnly | QIODevice::Text))
             return planes;
 

@@ -73,6 +73,20 @@ struct SmeshMeshingResult
 class SmeshMeshGenerator
 {
   public:
+    // Preserve the element family when changing between surface and volume
+    // meshing, including older projects that retained the other dimension's ID.
+    static int elementTypeForDimension(int dimension, int elementType)
+    {
+        if (dimension == 2) {
+            if (elementType == 4) return 2;
+            if (elementType == 3) return 1;
+        } else if (dimension == 3) {
+            if (elementType == 2) return 4;
+            if (elementType == 1) return 3;
+        }
+        return elementType;
+    }
+
     static bool generate(const SmeshMeshingRequest& request, SmeshMeshingResult* result,
                          QString* errMsg = nullptr);
 

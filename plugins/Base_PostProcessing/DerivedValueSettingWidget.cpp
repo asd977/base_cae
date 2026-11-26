@@ -202,19 +202,15 @@ void DerivedValueSettingWidget::beforeLoad()
         PublicVariables::instance().get(PublicConstants::kProjectDirectoryKey).toString();
     m_dataPath = PostResultAutoPrepare::firstResultDirectory(projectDir);
 
-    if (!m_loadedOnce)
+    refreshDatasets();
+    rebuildScalarCatalog();
+    rebuildScalarComboForAssoc();
+    m_loadedOnce = true;
+    if (m_hasPendingState)
     {
-        refreshDatasets();
-        rebuildScalarCatalog();
-        rebuildScalarComboForAssoc();
-        m_loadedOnce = true;
-
-        if (m_hasPendingState)
-        {
-            applyState(m_pendingState);
-            m_pendingState.clear();
-            m_hasPendingState = false;
-        }
+        applyState(m_pendingState);
+        m_pendingState.clear();
+        m_hasPendingState = false;
     }
     updateSelectionInfo();
 }

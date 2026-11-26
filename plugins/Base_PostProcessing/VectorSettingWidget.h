@@ -53,6 +53,7 @@ class VectorSettingWidget : public BasePage
                                          double& magMax);
     void rebuildPipeline();
     void updateDisplayAppearance();
+    void updateContextOutline(vtkUnstructuredGrid* displayGrid);
     void requestRender() const;
     static vtkDataArray* arrayByName(vtkUnstructuredGrid* grid, const QString& name);
     void loadFileName(QString dataPath);
@@ -69,6 +70,9 @@ class VectorSettingWidget : public BasePage
     QString m_fileName;
     vtkSmartPointer<vtkUnstructuredGrid> m_grid;
     vtkSmartPointer<vtkActor> m_vectorActor;
+    vtkSmartPointer<vtkActor> m_contextActor;
+    vtkSmartPointer<vtkActor> m_contextOutlineActor;
+    QString m_outlineCacheKey;
     vtkSmartPointer<vtkGlyph3D> m_glyph;
     vtkSmartPointer<vtkArrowSource> m_arrowSource;
 
@@ -83,6 +87,9 @@ class VectorSettingWidget : public BasePage
     QCheckBox* m_scaleByMagCheck{nullptr};
     QString m_dataPath;
     bool m_loadedOnce{false};
+    QString m_loadedFilePath;
+    qint64 m_loadedFileSize{-1};
+    qint64 m_loadedFileModified{-1};
     bool m_displayDirty{true};
     bool m_hasPendingState{false};
     bool m_updatingControls{false};

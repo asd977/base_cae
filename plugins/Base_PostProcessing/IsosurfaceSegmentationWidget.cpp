@@ -1,3 +1,5 @@
+#include <QFileInfo>
+#include <QDateTime>
 #include "IsosurfaceSegmentationWidget.h"
 #include "PostComboBoxPerformance.h"
 
@@ -167,9 +169,14 @@ void IsosurfaceSegmentationWidget::beforeLoad()
                 m_dataPath = PostResultAutoPrepare::firstResultDirectory(projectDir);
         }
 
-        if (ui->stepComboBox->count() == 0)
+        const QString curStepFile = ui->stepComboBox->currentData().toString();
+        const QFileInfo stepInfo(curStepFile.isEmpty() ? m_loadedFilePath : curStepFile);
+        const bool fileStale = !m_grid || m_loadedFilePath.isEmpty() || !stepInfo.isFile() ||
+                               QDir::cleanPath(stepInfo.absoluteFilePath()) != QDir::cleanPath(m_loadedFilePath) ||
+                               stepInfo.size() != m_loadedFileSize ||
+                               stepInfo.lastModified().toMSecsSinceEpoch() != m_loadedFileModified;
+        if (ui->stepComboBox->count() == 0 || fileStale)
         {
-            // 首次进入：列步号 -> 读取 -> 建管线 -> 绑定色标/阈值/显隐
             loadFileName(m_dataPath);
             m_loadedOnce = true;
         }
@@ -480,6 +487,10 @@ bool IsosurfaceSegmentationWidget::readTecplot(const QString& file)
         return false;
     }
     m_grid = newGrid;
+    const QFileInfo fi(file);
+    m_loadedFilePath = fi.absoluteFilePath();
+    m_loadedFileSize = fi.size();
+    m_loadedFileModified = fi.lastModified().toMSecsSinceEpoch();
     return true;
 }
 

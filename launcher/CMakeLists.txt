@@ -83,6 +83,13 @@ set(CAE_SOLVER_EXECUTABLE
     "Prebuilt solver executable deployed with CAE_BASE"
 )
 
+set(CAE_SOLVER_GPU_EXECUTABLE "${CMAKE_SOURCE_DIR}/solver/PCCAE_GPU/PCCAE_GPU.exe"
+    CACHE FILEPATH "Prebuilt GPU solver executable deployed with CAE_BASE")
+set(CAE_FEM_ANALYSIS_EXECUTABLE "${CMAKE_SOURCE_DIR}/solver/FEMAnalysis/A0_FEMANALYSIS.exe"
+    CACHE FILEPATH "Prebuilt block analysis executable deployed with CAE_BASE")
+set(CAE_SOLVER_DEPENDENCY_DIRS "" CACHE STRING
+    "Additional directories containing native solver runtime DLLs")
+
 set(CAE_SLOPE_ENGINE_EXECUTABLE
     "${CMAKE_SOURCE_DIR}/solver/SlopeEngine/SlopeEngine.exe"
     CACHE FILEPATH
@@ -169,23 +176,30 @@ if(WIN32)
 
     cae_copy_gdal_runtime(CAE_BASE)
 
-    if(EXISTS "${CAE_SOLVER_EXECUTABLE}")
-        add_custom_target(CAE_DEPLOY_SOLVER ALL
-            COMMAND ${CMAKE_COMMAND} -E make_directory
-                "${CAE_RUNTIME_DIR}/solver/PCCAE_CPU"
-            COMMAND ${CMAKE_COMMAND} -E copy_if_different
-                "${CAE_SOLVER_EXECUTABLE}"
-                "${CAE_RUNTIME_DIR}/solver/PCCAE_CPU/PCCAE_CPU.exe"
-            DEPENDS "${CAE_SOLVER_EXECUTABLE}"
-            COMMENT "Deploying solver executable"
-            VERBATIM
-        )
-        add_dependencies(CAE_BASE CAE_DEPLOY_SOLVER)
-    else()
-        message(WARNING
-            "Solver executable was not found at ${CAE_SOLVER_EXECUTABLE}; "
-            "set CAE_SOLVER_EXECUTABLE to a valid prebuilt solver")
-    endif()
+    # Run for incremental builds as well. Deploy the DLL dependency closure for
+    # each native program, including externally delivered Debug builds.
+    get_filename_component(_cae_compiler_dir "${CMAKE_CXX_COMPILER}" DIRECTORY)
+    find_program(CAE_SOLVER_DUMPBIN NAMES dumpbin HINTS "${_cae_compiler_dir}")
+    function(cae_deploy_native_solver target source destination)
+        if(EXISTS "${source}")
+            add_custom_target(${target} ALL
+                COMMAND "${CMAKE_COMMAND}"
+                    "-DCAE_SOLVER_SOURCE=${source}"
+                    "-DCAE_SOLVER_DESTINATION=${CAE_RUNTIME_DIR}/solver/${destination}"
+                    "-DCAE_SOLVER_DEPENDENCY_DIRS=${CAE_SOLVER_DEPENDENCY_DIRS}"
+                    "-DCAE_SOLVER_DUMPBIN=${CAE_SOLVER_DUMPBIN}"
+                    -P "${CMAKE_SOURCE_DIR}/cmake/DeployNativeSolver.cmake"
+                DEPENDS "${source}"
+                COMMENT "Deploying native solver: ${destination}"
+                VERBATIM)
+            add_dependencies(CAE_BASE ${target})
+        else()
+            message(WARNING "Native solver was not found at ${source}; deployment skipped")
+        endif()
+    endfunction()
+    cae_deploy_native_solver(CAE_DEPLOY_SOLVER "${CAE_SOLVER_EXECUTABLE}" "PCCAE_CPU/PCCAE_CPU.exe")
+    cae_deploy_native_solver(CAE_DEPLOY_GPU_SOLVER "${CAE_SOLVER_GPU_EXECUTABLE}" "PCCAE_GPU/PCCAE_GPU.exe")
+    cae_deploy_native_solver(CAE_DEPLOY_FEM_ANALYSIS "${CAE_FEM_ANALYSIS_EXECUTABLE}" "FEMAnalysis/A0_FEMANALYSIS.exe")
 
     if(EXISTS "${CAE_SLOPE_ENGINE_EXECUTABLE}")
         add_custom_target(CAE_DEPLOY_SLOPE_ENGINE ALL

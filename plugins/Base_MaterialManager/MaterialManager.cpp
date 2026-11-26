@@ -6,6 +6,7 @@
 #include <SolverFilePaths.h>
 #include <PickManager.h>
 #include <ContextMenuHub.h>
+#include <EventManager.h>
 #include <ServiceRegistry.h>
 #include <services/MeshModuleControllerService.h>
 #include <struct/MeshMap.h>
@@ -35,6 +36,7 @@
 #include <QLabel>
 #include <QLineEdit>
 #include <QListWidget>
+#include <QMenu>
 #include <QMessageBox>
 #include <QPushButton>
 #include <QRegularExpression>
@@ -610,6 +612,13 @@ MaterialManager::MaterialManager()
     m_seepageModels = createSeepageSubModels();
     loadDefaultLibrary();
     ensureEntryIds();
+
+    EventManager::instance().registerHandler(
+        QStringLiteral("mesh.groups.changed"), this,
+        [this](const QVariantMap&)
+        {
+            onMeshGroupsChanged();
+        });
 }
 
 BasePage* MaterialManager::getMaterialManagerWidget()
@@ -1116,6 +1125,21 @@ void MaterialManager::setupTreeWidget()
                                           {
                                               renameEntryFromProjectTree(uuid);
                                           });
+                const auto targets = assignableMaterialEntries();
+                if (targets.size() > 1)
+                {
+                    QMenu* mergeMenu = menu->addMenu(QStringLiteral("合并到其他材料"));
+                    for (const auto& pair : targets)
+                    {
+                        if (pair.first == uuid)
+                            continue;
+                        mergeMenu->addAction(pair.second, this,
+                                             [this, uuid, targetId = pair.first]
+                                             {
+                                                 mergeEntryIntoEntry(uuid, targetId);
+                                             });
+                    }
+                }
                 ContextMenuHub::addAction(menu, this, "删除",
                                           [this, uuid]
                                           {
@@ -2137,6 +2161,19 @@ void MaterialManager::clearEntryProjectState(const QString& entryId)
     MaterialEntry* entry = findEntry(entryId, &model);
     if (entry)
     {
+        QSet<int> removedMatypes(entry->appliedMatypes.cbegin(), entry->appliedMatypes.cend());
+        if (entry->transitionMatype > 0)
+            removedMatypes.insert(entry->transitionMatype);
+        if (!removedMatypes.isEmpty())
+        {
+            m_materialTransitions.erase(
+                std::remove_if(m_materialTransitions.begin(), m_materialTransitions.end(),
+                               [&](const QPair<int, int>& pair) {
+                                   return removedMatypes.contains(pair.first) ||
+                                          removedMatypes.contains(pair.second);
+                               }),
+                m_materialTransitions.end());
+        }
         entry->appliedMatypes.clear();
         entry->transitionOnly = false;
         entry->transitionMatype = -1;
@@ -2284,10 +2321,25 @@ void MaterialManager::highlightMatypes(const QString& entryId, const QSet<int>& 
 
     PickManager::instance().setAppliedDomains(domain, uuid, applied);
 
-    PickManager::instance().setSelectedDomain(
-        domain,
-        uuid,
-        selectedMatype > 0 ? preferredKeyForMatype(selectedMatype) : DomainKey{});
+    const QSet<int> multiSelected = m_selectedMatypeSets.value(entryId);
+    if (multiSelected.size() > 1)
+    {
+        QSet<DomainKey> selKeys;
+        for (int m : multiSelected)
+        {
+            const DomainKey k = preferredKeyForMatype(m);
+            if (k.isValid())
+                selKeys.insert(k);
+        }
+        PickManager::instance().setSelectedDomains(domain, uuid, selKeys);
+    }
+    else
+    {
+        PickManager::instance().setSelectedDomain(
+            domain,
+            uuid,
+            selectedMatype > 0 ? preferredKeyForMatype(selectedMatype) : DomainKey{});
+    }
 
     PickManager::instance().setPreviewDomain(
         domain,
@@ -2329,6 +2381,279 @@ void MaterialManager::setSelectedMatypeForEntry(const QString& entryId, int maty
         return;
     }
     m_selectedMatypes.insert(entryId, matype);
+}
+
+QSet<int> MaterialManager::selectedMatypesForEntry(const QString& entryId) const
+{
+    return m_selectedMatypeSets.value(entryId);
+}
+
+void MaterialManager::setSelectedMatypesForEntry(const QString& entryId, const QSet<int>& matypes)
+{
+    if (entryId.isEmpty())
+        return;
+    QSet<int> clean;
+    for (int m : matypes)
+    {
+        if (isComputableMatype(m))
+            clean.insert(m);
+    }
+    if (clean.isEmpty())
+    {
+        m_selectedMatypeSets.remove(entryId);
+        return;
+    }
+    m_selectedMatypeSets.insert(entryId, clean);
+    m_selectedMatypes.insert(entryId, *clean.cbegin());
+}
+
+QVector<QPair<QString, QString>> MaterialManager::assignableMaterialEntries() const
+{
+    QVector<QPair<QString, QString>> out;
+    for (const auto& model : m_models)
+    {
+        for (const auto& entry : model.materials)
+        {
+            if (!m_addedEntryIds.contains(entry.id) || entry.transitionOnly)
+                continue;
+            const QString label = entry.name.trimmed().isEmpty()
+                                      ? QStringLiteral("未命名材料")
+                                      : entry.name.trimmed();
+            out.push_back({entry.id, label});
+        }
+    }
+    return out;
+}
+
+bool MaterialManager::assignMatypesToMaterial(const QString& entryId, const QSet<int>& matypes,
+                                              QString* message)
+{
+    return applyMatypesToEntry(entryId, matypes, message);
+}
+
+bool MaterialManager::applyMatypesToEntry(const QString& entryId, const QSet<int>& matypes,
+                                          QString* message)
+{
+    auto fail = [message](const QString& text)
+    {
+        if (message)
+            *message = text;
+        return false;
+    };
+
+    MaterialModel* model = nullptr;
+    MaterialEntry* entry = findEntry(entryId, &model);
+    if (!entry || !model)
+        return fail(QStringLiteral("未找到目标材料。"));
+    if (entry->transitionOnly)
+        return fail(QStringLiteral("该材料已作为计算阶段材料使用，不能直接施加到网格。"));
+
+    QList<int> validList;
+    for (int m : matypes)
+    {
+        if (m >= 3 && m <= MAX_SOLVER_MATYPE)
+            validList.push_back(m);
+    }
+    std::sort(validList.begin(), validList.end());
+    if (validList.isEmpty())
+        return fail(QStringLiteral("所选网格组不包含可施加的材料编号（3～300）。"));
+
+    // Filter out transition-occupied IDs
+    QSet<int> transitionLocked;
+    for (const auto& candidateModel : m_models)
+    {
+        for (const auto& candidateEntry : candidateModel.materials)
+        {
+            if (m_addedEntryIds.contains(candidateEntry.id) &&
+                candidateEntry.id != entryId && candidateEntry.transitionOnly)
+            {
+                transitionLocked.insert(candidateEntry.transitionMatype);
+            }
+        }
+    }
+
+    QList<int> actionable;
+    for (int m : validList)
+    {
+        if (!transitionLocked.contains(m))
+            actionable.push_back(m);
+    }
+    if (actionable.isEmpty())
+        return fail(QStringLiteral("所选编号已被计算阶段材料占用，无法直接施加。"));
+
+    auto findOwnerEntryId = [&](int targetMatype) -> QString
+    {
+        for (const auto& mdl : m_models)
+            for (const auto& e : mdl.materials)
+                if (m_addedEntryIds.contains(e.id) && e.appliedMatypes.contains(targetMatype))
+                    return e.id;
+        return {};
+    };
+
+    QMap<int, QString> conflictOwners;
+    for (int m : actionable)
+    {
+        QString ownerId = m_matypeOwnerById.value(m);
+        if (!ownerId.isEmpty() && !m_addedEntryIds.contains(ownerId))
+        {
+            m_matypeOwnerById.remove(m);
+            ownerId.clear();
+        }
+        if (ownerId.isEmpty())
+            ownerId = findOwnerEntryId(m);
+        if (!ownerId.isEmpty() && ownerId != entryId)
+            conflictOwners.insert(m, ownerId);
+    }
+
+    if (!conflictOwners.isEmpty())
+    {
+        QStringList conflictIds;
+        for (auto it = conflictOwners.cbegin(); it != conflictOwners.cend(); ++it)
+            conflictIds << QString::number(it.key());
+        const QString targetName = entry->name.trimmed().isEmpty()
+                                       ? QStringLiteral("未命名材料")
+                                       : entry->name.trimmed();
+        const auto answer = QMessageBox::question(
+            nullptr, QStringLiteral("批量转移材料分组"),
+            QStringLiteral("材料分组 [%1] 当前已关联其他材料。继续施加会将它们统一转移到“%2”，是否继续？")
+                .arg(conflictIds.join(QStringLiteral(", ")), targetName),
+            QMessageBox::Yes | QMessageBox::No, QMessageBox::No);
+        if (answer != QMessageBox::Yes)
+            return false;
+    }
+
+    QSet<QString> touchedOwners;
+    for (auto it = conflictOwners.cbegin(); it != conflictOwners.cend(); ++it)
+    {
+        const int m = it.key();
+        const QString& ownerId = it.value();
+        MaterialModel* ownerModel = nullptr;
+        if (MaterialEntry* ownerEntry = findEntry(ownerId, &ownerModel))
+        {
+            ownerEntry->appliedMatypes.remove(m);
+            if (m_selectedMatypes.value(ownerId, -1) == m)
+                m_selectedMatypes.remove(ownerId);
+            m_selectedMatypeSets[ownerId].remove(m);
+            if (m_previewMatypes.value(ownerId, -1) == m)
+                m_previewMatypes.remove(ownerId);
+            if (m_preDeleteMatypes.value(ownerId, -1) == m)
+                m_preDeleteMatypes.remove(ownerId);
+            syncAutoNumberProperties(ownerModel, ownerEntry);
+            touchedOwners.insert(ownerId);
+        }
+    }
+    for (const QString& ownerId : touchedOwners)
+    {
+        if (MaterialEntry* ownerEntry = findEntry(ownerId))
+        {
+            refreshEntryWidgetMatypes(ownerId, ownerEntry->appliedMatypes,
+                                      m_selectedMatypes.value(ownerId, -1));
+            refreshMatypeHighlight(ownerId);
+        }
+    }
+
+    int lastMatype = actionable.last();
+    for (int m : actionable)
+    {
+        entry->appliedMatypes.insert(m);
+        m_matypeOwnerById.insert(m, entryId);
+    }
+    setSelectedMatypesForEntry(entryId, {});
+    setSelectedMatypeForEntry(entryId, lastMatype);
+    syncAutoNumberProperties(model, entry);
+    setPreviewMatypeForEntry(entryId, -1);
+    setPreDeleteMatypeForEntry(entryId, -1);
+
+    refreshEntryWidgetMatypes(entryId, entry->appliedMatypes, lastMatype);
+    notifyEntryUpdated(entryId, false);
+    refreshMatypeHighlight(entryId);
+    EventManager::instance().sendEvent(QStringLiteral("material.assignment.changed"),
+                                       {{QStringLiteral("entryId"), entryId}});
+    if (message)
+        *message = QStringLiteral("已将 %1 个网格组赋予“%2”。")
+                       .arg(actionable.size())
+                       .arg(entry->name.trimmed().isEmpty() ? QStringLiteral("当前材料")
+                                                            : entry->name.trimmed());
+    return true;
+}
+
+bool MaterialManager::mergeEntryIntoEntry(const QString& sourceEntryId, const QString& targetEntryId)
+{
+    if (sourceEntryId.isEmpty() || targetEntryId.isEmpty() || sourceEntryId == targetEntryId)
+        return false;
+    MaterialModel* srcModel = nullptr;
+    MaterialEntry* srcEntry = findEntry(sourceEntryId, &srcModel);
+    MaterialModel* dstModel = nullptr;
+    MaterialEntry* dstEntry = findEntry(targetEntryId, &dstModel);
+    if (!srcEntry || !dstEntry || dstEntry->transitionOnly)
+        return false;
+
+    const QString srcName = srcEntry->name.trimmed().isEmpty()
+                                ? QStringLiteral("未命名材料")
+                                : srcEntry->name.trimmed();
+    const QString dstName = dstEntry->name.trimmed().isEmpty()
+                                ? QStringLiteral("未命名材料")
+                                : dstEntry->name.trimmed();
+    if (QMessageBox::question(
+            nullptr, QStringLiteral("合并材料"),
+            QStringLiteral("确定将“%1”合并到“%2”吗？\n\n“%1”已关联的 %3 个网格区域将全部转归“%2”，并移除“%1”。")
+                .arg(srcName, dstName)
+                .arg(srcEntry->appliedMatypes.size()),
+            QMessageBox::Yes | QMessageBox::No, QMessageBox::No) != QMessageBox::Yes)
+    {
+        return false;
+    }
+
+    const QSet<int> transferred = srcEntry->appliedMatypes;
+    srcEntry->appliedMatypes.clear();
+    for (int m : transferred)
+    {
+        dstEntry->appliedMatypes.insert(m);
+        m_matypeOwnerById.insert(m, targetEntryId);
+    }
+    syncAutoNumberProperties(dstModel, dstEntry);
+    removeEntryFromProjectTree(sourceEntryId);
+    refreshEntryWidgetMatypes(targetEntryId, dstEntry->appliedMatypes,
+                              m_selectedMatypes.value(targetEntryId, -1));
+    notifyEntryUpdated(targetEntryId, false);
+    focusOnMaterial(targetEntryId);
+    refreshMatypeHighlight(targetEntryId);
+    EventManager::instance().sendEvent(QStringLiteral("material.assignment.changed"),
+                                       {{QStringLiteral("entryId"), targetEntryId}});
+    return true;
+}
+
+void MaterialManager::onMeshGroupsChanged()
+{
+    const QSet<int> currentMatypes = availableMatypes();
+    for (auto& mdl : m_models)
+    {
+        for (auto& entry : mdl.materials)
+        {
+            if (!m_addedEntryIds.contains(entry.id))
+                continue;
+            QSet<int> validApplied;
+            for (int m : entry.appliedMatypes)
+            {
+                if (currentMatypes.contains(m))
+                    validApplied.insert(m);
+                else if (m_matypeOwnerById.value(m) == entry.id)
+                    m_matypeOwnerById.remove(m);
+            }
+            if (validApplied != entry.appliedMatypes)
+            {
+                entry.appliedMatypes = validApplied;
+                syncAutoNumberProperties(&mdl, &entry);
+            }
+            if (MaterialEntryWidget* w = m_entryWidgets.value(entry.id, nullptr))
+            {
+                w->invalidateMatypeOptions();
+                w->refreshAppliedMatypes(entry.appliedMatypes, -1);
+            }
+        }
+    }
+    if (!m_pickUuid.isEmpty())
+        refreshMatypeHighlight(m_pickUuid);
 }
 
 void MaterialManager::applyMatypeToEntry(const QString& entryId, int matype)
@@ -2653,10 +2978,16 @@ bool MaterialManager::generateCaculateFile(
                                      .arg(info.entry->name).arg(it.key()).arg(message));
             return false;
         };
-        const bool elasticSolid = modelKey == QStringLiteral("hoek_brown_rock") ||
+        const bool elasticSolid = modelKey == QStringLiteral("linear_elastic") ||
+                                  modelKey == QStringLiteral("hoek_brown_rock") ||
                                   modelKey == QStringLiteral("drucker_prager_rock") ||
                                   modelKey == QStringLiteral("dagangshan_isotropic") ||
                                   modelKey == QStringLiteral("huangjinping_underground_plant");
+        if (modelKey == QStringLiteral("huangjinping_bar_element") &&
+            (number(QStringLiteral("变模E1,E2（GPa）")) <= 0.0 ||
+             number(QStringLiteral("杆面积（m2）")) <= 0.0 ||
+             number(QStringLiteral("容重t/m3")) < 0.0))
+            return invalid(QStringLiteral("锚杆的初始弹性模量E1和截面积必须大于0，容重不能为负。"));
         if(modelKey==QStringLiteral("planar_elastic_beam") &&
             (number(QStringLiteral("弹性模量E（GPa）"))<=0 || number(QStringLiteral("截面积A（m2）"))<=0 ||
              number(QStringLiteral("截面惯性矩Iz（m4）"))<=0 || number(QStringLiteral("容重t/m3"))<0))
@@ -4732,7 +5063,7 @@ bool MaterialManager::importIMATFile(const QString& filePath, int* importedCount
         }
         else if (model->key == QStringLiteral("planar_elastic_beam"))
         {
-            setProperty(entry, QStringLiteral("材料编号"), matype);
+            setProperty(entry, QStringLiteral("序号"), matype);
             setProperty(entry, QStringLiteral("弹性模量E（GPa）"), rowValue(matIndex, 2) / 1.0e9);
             setProperty(entry, QStringLiteral("容重t/m3"), rowValue(matIndex, 7) / 1.0e3);
             setProperty(entry, QStringLiteral("截面积A（m2）"), rowValue(matIndex, 8));

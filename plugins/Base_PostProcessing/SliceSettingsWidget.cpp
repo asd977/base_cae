@@ -1,3 +1,5 @@
+#include <QFileInfo>
+#include <QDateTime>
 #include "SliceSettingsWidget.h"
 #include "PostComboBoxPerformance.h"
 
@@ -20,6 +22,7 @@
 #include <vtkLookupTable.h>
 #include <vtkMultiBlockDataSet.h>
 #include <vtkPlane.h>
+#include <vtkPlaneSource.h>
 #include <vtkPointData.h>
 #include <vtkPoints.h>
 #include <vtkPolyData.h>
@@ -251,6 +254,91 @@ static vtkSmartPointer<vtkActor2D> createSliceContourLabelActor(
     return labelActor;
 }
 
+static vtkSmartPointer<vtkActor> createContextModelActor(vtkUnstructuredGrid* displayGrid)
+{
+    return createPostContextModelActor(displayGrid);
+}
+
+static vtkSmartPointer<vtkActor> createCutPlaneIndicatorActor(vtkPlane* plane, const double bounds[6])
+{
+    if (!plane || !bounds)
+        return {};
+    double n[3]{0.0, 0.0, 1.0};
+    double orig[3]{0.0, 0.0, 0.0};
+    plane->GetNormal(n);
+    plane->GetOrigin(orig);
+    const double nLen = std::sqrt(n[0] * n[0] + n[1] * n[1] + n[2] * n[2]);
+    if (nLen <= 1.0e-12)
+        return {};
+    n[0] /= nLen;
+    n[1] /= nLen;
+    n[2] /= nLen;
+
+    const double cx = 0.5 * (bounds[0] + bounds[1]);
+    const double cy = 0.5 * (bounds[2] + bounds[3]);
+    const double cz = 0.5 * (bounds[4] + bounds[5]);
+    const double dx = std::max(bounds[1] - bounds[0], 1.0e-6);
+    const double dy = std::max(bounds[3] - bounds[2], 1.0e-6);
+    const double dz = std::max(bounds[5] - bounds[4], 1.0e-6);
+
+    // Project bounding-box center onto the cutting plane so the indicator quad covers the model.
+    const double dist = (cx - orig[0]) * n[0] + (cy - orig[1]) * n[1] + (cz - orig[2]) * n[2];
+    const double pc[3]{cx - dist * n[0], cy - dist * n[1], cz - dist * n[2]};
+
+    double u[3]{0.0, 0.0, 0.0};
+    double v[3]{0.0, 0.0, 0.0};
+    double sizeU = 1.0;
+    double sizeV = 1.0;
+    if (std::abs(n[0]) >= std::abs(n[1]) && std::abs(n[0]) >= std::abs(n[2]))
+    {
+        u[1] = 1.0;
+        v[2] = 1.0;
+        sizeU = dy * 1.06;
+        sizeV = dz * 1.06;
+    }
+    else if (std::abs(n[1]) >= std::abs(n[0]) && std::abs(n[1]) >= std::abs(n[2]))
+    {
+        u[0] = 1.0;
+        v[2] = 1.0;
+        sizeU = dx * 1.06;
+        sizeV = dz * 1.06;
+    }
+    else
+    {
+        u[0] = 1.0;
+        v[1] = 1.0;
+        sizeU = dx * 1.06;
+        sizeV = dy * 1.06;
+    }
+
+    auto planeSource = vtkSmartPointer<vtkPlaneSource>::New();
+    planeSource->SetOrigin(pc[0] - 0.5 * sizeU * u[0] - 0.5 * sizeV * v[0],
+                           pc[1] - 0.5 * sizeU * u[1] - 0.5 * sizeV * v[1],
+                           pc[2] - 0.5 * sizeU * u[2] - 0.5 * sizeV * v[2]);
+    planeSource->SetPoint1(pc[0] + 0.5 * sizeU * u[0] - 0.5 * sizeV * v[0],
+                           pc[1] + 0.5 * sizeU * u[1] - 0.5 * sizeV * v[1],
+                           pc[2] + 0.5 * sizeU * u[2] - 0.5 * sizeV * v[2]);
+    planeSource->SetPoint2(pc[0] - 0.5 * sizeU * u[0] + 0.5 * sizeV * v[0],
+                           pc[1] - 0.5 * sizeU * u[1] + 0.5 * sizeV * v[1],
+                           pc[2] - 0.5 * sizeU * u[2] + 0.5 * sizeV * v[2]);
+    planeSource->Update();
+
+    auto mapper = vtkSmartPointer<vtkPolyDataMapper>::New();
+    mapper->SetInputConnection(planeSource->GetOutputPort());
+    mapper->ScalarVisibilityOff();
+
+    auto actor = vtkSmartPointer<vtkActor>::New();
+    actor->SetMapper(mapper);
+    actor->PickableOff();
+    actor->GetProperty()->SetColor(0.95, 0.48, 0.10);
+    actor->GetProperty()->SetOpacity(0.14);
+    actor->GetProperty()->EdgeVisibilityOn();
+    actor->GetProperty()->SetEdgeColor(0.95, 0.45, 0.08);
+    actor->GetProperty()->SetLineWidth(1.8);
+    actor->GetProperty()->LightingOff();
+    return actor;
+}
+
 SliceSettingsWidget::SliceSettingsWidget(VisualWidgetService* postProcessingWidget, QWidget* parent)
     : ui(new Ui::SliceSettingsWidget), BasePage(PublicConstants::kPagePostProcessSlice),
       m_visualService(postProcessingWidget)
@@ -350,9 +438,14 @@ void SliceSettingsWidget::beforeLoad()
     ui->showScalarBarCheckBox->setChecked(postScalarBarStyle().visible);
     ui->showContourCheckBox->setChecked(postContourStyle().enabled);
     refreshResultGroups();
-    if (!m_loadedOnce)
+    const QString curStepFile = ui->stepComboBox->currentData().toString();
+    const QFileInfo stepInfo(curStepFile.isEmpty() ? m_loadedFilePath : curStepFile);
+    const bool fileStale = !m_loadedOnce || !m_grid || m_loadedFilePath.isEmpty() || !stepInfo.isFile() ||
+                           QDir::cleanPath(stepInfo.absoluteFilePath()) != QDir::cleanPath(m_loadedFilePath) ||
+                           stepInfo.size() != m_loadedFileSize ||
+                           stepInfo.lastModified().toMSecsSinceEpoch() != m_loadedFileModified;
+    if (fileStale)
     {
-        // 初始化一次
         if (!m_plane)
             m_plane = vtkSmartPointer<vtkPlane>::New();
 
@@ -662,6 +755,10 @@ void SliceSettingsWidget::on_stepComboBox_currentIndexChanged(int idx)
         return;
     }
     m_grid = newGrid;
+    const QFileInfo fi(file);
+    m_loadedFilePath = fi.absoluteFilePath();
+    m_loadedFileSize = fi.size();
+    m_loadedFileModified = fi.lastModified().toMSecsSinceEpoch();
 
     // 范围
     double b[6];
@@ -923,6 +1020,12 @@ void SliceSettingsWidget::on_singleSliceRadioButton_toggled(bool checked)
     {
         if (m_sliceActor)
             removeActorByService(m_visualService, postActorId(getUuid(), QStringLiteral("slice")), false);
+        if (m_cutIndicatorActor)
+            removeActorByService(m_visualService, postActorId(getUuid(), QStringLiteral("cut-indicator")), false);
+        if (m_contextActor)
+            removeActorByService(m_visualService, postActorId(getUuid(), QStringLiteral("context-model")), false);
+        if (m_contextOutlineActor)
+            removeActorByService(m_visualService, postActorId(getUuid(), QStringLiteral("context-outline")), false);
         if (m_sliceContourActor)
             removeActorByService(m_visualService, postActorId(getUuid(), QStringLiteral("slice-contour")), false);
         if (m_sliceContourLabelActor)
@@ -1052,6 +1155,12 @@ void SliceSettingsWidget::buildSingleSliceResult()
 
     if (m_sliceActor)
         removeActorByService(m_visualService, postActorId(getUuid(), QStringLiteral("slice")), false);
+    if (m_cutIndicatorActor)
+        removeActorByService(m_visualService, postActorId(getUuid(), QStringLiteral("cut-indicator")), false);
+    if (m_contextActor)
+        removeActorByService(m_visualService, postActorId(getUuid(), QStringLiteral("context-model")), false);
+    if (m_contextOutlineActor)
+        removeActorByService(m_visualService, postActorId(getUuid(), QStringLiteral("context-outline")), false);
     if (m_sliceContourActor)
         removeActorByService(m_visualService, postActorId(getUuid(), QStringLiteral("slice-contour")), false);
     if (m_sliceContourLabelActor)
@@ -1059,6 +1168,9 @@ void SliceSettingsWidget::buildSingleSliceResult()
             m_visualService,
             postActorId(getUuid(), QStringLiteral("slice-contour-labels")),
             m_sliceContourLabelActor, false);
+    m_cutIndicatorActor = nullptr;
+    m_contextActor = nullptr;
+    m_contextOutlineActor = nullptr;
     m_sliceContourActor = nullptr;
     m_sliceContourLabelActor = nullptr;
 
@@ -1078,6 +1190,27 @@ void SliceSettingsWidget::buildSingleSliceResult()
 
     addActorByService(m_visualService, postActorId(getUuid(), QStringLiteral("slice")),
                       m_sliceActor, QStringLiteral("切面"), false);
+    if (postSceneStyle().showContextOutline)
+    {
+        m_contextActor = createContextModelActor(displayGrid);
+        if (m_contextActor)
+            addActorByService(m_visualService, postActorId(getUuid(), QStringLiteral("context-model")),
+                              m_contextActor, QStringLiteral("整体模型参考"), false);
+    }
+    if (postSceneStyle().showContextLines)
+    {
+        m_contextOutlineActor = createPostContextOutlineActor(displayGrid);
+        if (m_contextOutlineActor)
+            addActorByService(m_visualService, postActorId(getUuid(), QStringLiteral("context-outline")),
+                              m_contextOutlineActor, QStringLiteral("轮廓线"), false);
+    }
+    double bounds[6]{0.0, 0.0, 0.0, 0.0, 0.0, 0.0};
+    displayGrid->GetBounds(bounds);
+    m_cutIndicatorActor = postSceneStyle().showContextOutline
+        ? createCutPlaneIndicatorActor(m_plane, bounds) : nullptr;
+    if (m_cutIndicatorActor)
+        addActorByService(m_visualService, postActorId(getUuid(), QStringLiteral("cut-indicator")),
+                          m_cutIndicatorActor, QStringLiteral("切割位置"), false);
     double contourRange[2]{0.0, 0.0};
     if (postContourStyle().enabled &&
         resolveSliceContourRange(cutter->GetOutput(), sliceArrayName, range, contourRange))
@@ -1237,9 +1370,38 @@ void SliceSettingsWidget::buildMultiSliceResult()
         m_multiCutters << cutter;
         m_multiMappers << mapper;
         m_multiActors << actor;
+        if (auto indicator = postSceneStyle().showContextOutline
+                ? createCutPlaneIndicatorActor(plane, bounds) : vtkSmartPointer<vtkActor>{})
+        {
+            addActorByService(m_visualService,
+                              postActorId(getUuid(), QStringLiteral("cut-indicator-%1").arg(sliceIndex)),
+                              indicator, QStringLiteral("切割位置 %1").arg(sliceIndex + 1), false);
+            m_multiCutIndicatorActors << indicator;
+        }
+        else
+        {
+            m_multiCutIndicatorActors << nullptr;
+        }
         // 保持与 m_multiActors 的索引严格对齐；空切面/常量切面没有真实等值线。
         m_multiContourActors << contourActor;
         m_multiContourLabelActors << contourLabelActor;
+    }
+
+    m_contextActor = nullptr;
+    m_contextOutlineActor = nullptr;
+    if (postSceneStyle().showContextOutline)
+    {
+        m_contextActor = createContextModelActor(displayGrid);
+        if (m_contextActor)
+            addActorByService(m_visualService, postActorId(getUuid(), QStringLiteral("context-model")),
+                              m_contextActor, QStringLiteral("整体模型参考"), false);
+    }
+    if (postSceneStyle().showContextLines)
+    {
+        m_contextOutlineActor = createPostContextOutlineActor(displayGrid);
+        if (m_contextOutlineActor)
+            addActorByService(m_visualService, postActorId(getUuid(), QStringLiteral("context-outline")),
+                              m_contextOutlineActor, QStringLiteral("轮廓线"), false);
     }
 
     applyStandardPostScalarBar(m_visualService, ResultDisplayNames::scalarBarName(field.name));
@@ -1248,12 +1410,23 @@ void SliceSettingsWidget::buildMultiSliceResult()
 
 void SliceSettingsWidget::hideMultiSlicesFromScene()
 {
+    if (m_contextActor)
+        removeActorByService(m_visualService, postActorId(getUuid(), QStringLiteral("context-model")), false);
+    if (m_contextOutlineActor)
+        removeActorByService(m_visualService, postActorId(getUuid(), QStringLiteral("context-outline")), false);
     for (int i = 0; i < m_multiActors.size(); ++i)
     {
         if (m_multiActors[i])
             removeActorByService(
                 m_visualService,
                 postActorId(getUuid(), QStringLiteral("slice-%1").arg(i)), false);
+    }
+    for (int i = 0; i < m_multiCutIndicatorActors.size(); ++i)
+    {
+        if (m_multiCutIndicatorActors[i])
+            removeActorByService(
+                m_visualService,
+                postActorId(getUuid(), QStringLiteral("cut-indicator-%1").arg(i)), false);
     }
     for (int i = 0; i < m_multiContourActors.size(); ++i)
     {
@@ -1279,6 +1452,7 @@ void SliceSettingsWidget::clearMultiSlicesAll()
     m_multiCutters.clear();
     m_multiMappers.clear();
     m_multiActors.clear();
+    m_multiCutIndicatorActors.clear();
     m_multiContourActors.clear();
     m_multiContourLabelActors.clear();
 }
@@ -1299,6 +1473,22 @@ void SliceSettingsWidget::reattachAccordingToDisplayState()
                     m_visualService,
                     postActorId(getUuid(), QStringLiteral("slice-%1").arg(i)),
                     m_multiActors[i], QStringLiteral("切面 %1").arg(i + 1), false);
+        for (int i = 0; i < m_multiCutIndicatorActors.size(); ++i)
+            if (postSceneStyle().showContextOutline && m_multiCutIndicatorActors[i])
+                addActorByService(
+                    m_visualService,
+                    postActorId(getUuid(), QStringLiteral("cut-indicator-%1").arg(i)),
+                    m_multiCutIndicatorActors[i], QStringLiteral("切割位置 %1").arg(i + 1), false);
+        if (postSceneStyle().showContextOutline && m_contextActor)
+                addActorByService(
+                    m_visualService,
+                    postActorId(getUuid(), QStringLiteral("context-model")),
+                    m_contextActor, QStringLiteral("整体模型参考"), false);
+        if (postSceneStyle().showContextLines && m_contextOutlineActor)
+                addActorByService(
+                    m_visualService,
+                    postActorId(getUuid(), QStringLiteral("context-outline")),
+                    m_contextOutlineActor, QStringLiteral("轮廓线"), false);
         for (int i = 0; i < m_multiContourActors.size(); ++i)
             if (m_multiContourActors[i])
                 addActorByService(
@@ -1319,6 +1509,15 @@ void SliceSettingsWidget::reattachAccordingToDisplayState()
     {
         addActorByService(m_visualService, postActorId(getUuid(), QStringLiteral("slice")),
                       m_sliceActor, QStringLiteral("切面"), false);
+        if (postSceneStyle().showContextOutline && m_contextActor)
+                addActorByService(m_visualService, postActorId(getUuid(), QStringLiteral("context-model")),
+                                  m_contextActor, QStringLiteral("整体模型参考"), false);
+        if (postSceneStyle().showContextLines && m_contextOutlineActor)
+                addActorByService(m_visualService, postActorId(getUuid(), QStringLiteral("context-outline")),
+                                  m_contextOutlineActor, QStringLiteral("轮廓线"), false);
+        if (postSceneStyle().showContextOutline && m_cutIndicatorActor)
+            addActorByService(m_visualService, postActorId(getUuid(), QStringLiteral("cut-indicator")),
+                              m_cutIndicatorActor, QStringLiteral("切割位置"), false);
         if (m_sliceContourActor)
             addActorByService(m_visualService, postActorId(getUuid(), QStringLiteral("slice-contour")),
                           m_sliceContourActor, QStringLiteral("切面等值线"), false);
@@ -1346,8 +1545,14 @@ void SliceSettingsWidget::detachAllFromScene()
 {
     if (m_actor)
         removeActorByService(m_visualService, postActorId(getUuid(), QStringLiteral("surface")), false);
+    if (m_contextActor)
+        removeActorByService(m_visualService, postActorId(getUuid(), QStringLiteral("context-model")), false);
+    if (m_contextOutlineActor)
+        removeActorByService(m_visualService, postActorId(getUuid(), QStringLiteral("context-outline")), false);
     if (m_sliceActor)
         removeActorByService(m_visualService, postActorId(getUuid(), QStringLiteral("slice")), false);
+    if (m_cutIndicatorActor)
+        removeActorByService(m_visualService, postActorId(getUuid(), QStringLiteral("cut-indicator")), false);
     if (m_sliceContourActor)
         removeActorByService(m_visualService, postActorId(getUuid(), QStringLiteral("slice-contour")), false);
     if (m_sliceContourLabelActor)

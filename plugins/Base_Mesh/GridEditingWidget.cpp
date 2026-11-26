@@ -736,6 +736,54 @@ GridEditingWidget::GridEditingWidget(QWidget* parent)
                 buildFilterTreeFromGrid();
         });
     EventManager::instance().registerHandler(
+        QStringLiteral("mesh.groups.changed"), this,
+        [this](const QVariantMap&)
+        {
+            if (postResultFilterActive())
+                return;
+            auto* svc = ServiceRegistry::instance().getService<MeshModuleControllerService>();
+            vtkUnstructuredGrid* latest = svc ? svc->getVtkUnstructuredGrid().GetPointer() : nullptr;
+            if (!latest)
+                return;
+            m_fullGrid = latest;
+            m_colorMode = globalColorMode();
+            if (ui && ui->comboBoxColorMode)
+            {
+                const QSignalBlocker blocker(ui->comboBoxColorMode);
+                const int idx = ui->comboBoxColorMode->findData(static_cast<int>(m_colorMode));
+                if (idx >= 0)
+                    ui->comboBoxColorMode->setCurrentIndex(idx);
+            }
+            buildFilterTreeFromGrid();
+            refreshMeshActors();
+            applyColorMode();
+            if (m_visualWidgetService)
+                m_visualWidgetService->render();
+        });
+    EventManager::instance().registerHandler(
+        QStringLiteral("material.assignment.changed"), this,
+        [this](const QVariantMap&)
+        {
+            if (postResultFilterActive())
+                return;
+            if (m_colorMode == ColorMode::None)
+            {
+                m_colorMode = ColorMode::Matype;
+                setGlobalValue(kGlobalColorModeKey, static_cast<int>(m_colorMode));
+                if (ui && ui->comboBoxColorMode)
+                {
+                    const QSignalBlocker blocker(ui->comboBoxColorMode);
+                    const int idx = ui->comboBoxColorMode->findData(static_cast<int>(m_colorMode));
+                    if (idx >= 0)
+                        ui->comboBoxColorMode->setCurrentIndex(idx);
+                }
+                refreshMeshActors();
+            }
+            applyColorMode();
+            if (m_visualWidgetService)
+                m_visualWidgetService->render();
+        });
+    EventManager::instance().registerHandler(
         PublicConstants::kEventBrandingVisibilityChanged, this,
         [this](const QVariantMap& data)
         {
@@ -1150,8 +1198,16 @@ void GridEditingWidget::presentView()
     if(m_surfaceMapper)setMapperInput(m_surfaceMapper,m_viewSurface);
     if(m_lineMapper)setMapperInput(m_lineMapper,m_viewLineGrid);
     const bool postActive=PublicVariables::instance().get(QStringLiteral("post.display.view.active")).toBool();
-    m_visualWidgetService->setVisible(kImportedMeshSurfacePropId,!postActive&&m_viewSurface&&m_viewSurface->GetNumberOfCells()>0,false);
-    m_visualWidgetService->setVisible(kImportedMeshLinePropId,!postActive&&m_viewLineGrid&&m_viewLineGrid->GetNumberOfCells()>0,false);
+    if (postActive)
+    {
+        m_visualWidgetService->setTemporaryVisible(kImportedMeshSurfacePropId, false, false);
+        m_visualWidgetService->setTemporaryVisible(kImportedMeshLinePropId, false, false);
+    }
+    else
+    {
+        m_visualWidgetService->setVisible(kImportedMeshSurfacePropId,m_viewSurface&&m_viewSurface->GetNumberOfCells()>0,false);
+        m_visualWidgetService->setVisible(kImportedMeshLinePropId,m_viewLineGrid&&m_viewLineGrid->GetNumberOfCells()>0,false);
+    }
     publishFilter();applyColorMode();PickManager::instance().updateStructure();m_visualWidgetService->render();
 }
 
@@ -1844,10 +1900,11 @@ void GridEditingWidget::updateContextPresentation()
     if (postViewActive && m_visualWidgetService)
     {
         cancelPendingFilter();
-        m_visualWidgetService->setVisible(QStringLiteral("mesh.global.surf"), false, false);
-        m_visualWidgetService->setVisible(QStringLiteral("mesh.global.wire"), false, false);
-        m_visualWidgetService->setVisible(kImportedMeshSurfacePropId, false, false);
-        m_visualWidgetService->setVisible(kImportedMeshLinePropId, false, false);
+        // 云图只临时隔离网格，不能改写对象本身的显示选择。
+        m_visualWidgetService->setTemporaryVisible(QStringLiteral("mesh.global.surf"), false, false);
+        m_visualWidgetService->setTemporaryVisible(QStringLiteral("mesh.global.wire"), false, false);
+        m_visualWidgetService->setTemporaryVisible(kImportedMeshSurfacePropId, false, false);
+        m_visualWidgetService->setTemporaryVisible(kImportedMeshLinePropId, false, false);
         m_visualWidgetService->render();
     }
 

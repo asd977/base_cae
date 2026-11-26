@@ -3,6 +3,7 @@
 
 #include <QString>
 #include <QMap>
+#include <QSet>
 #include <QVector>
 #include <QPair>
 class BasePage;
@@ -33,6 +34,15 @@ struct MaterialManagerService
     virtual QMap<int, QString> damStaticMaterialLabels() const = 0;
     virtual QMap<int, QString> damWetMaterialLabels(int sourceMatype) const = 0;
     virtual QMap<int, QString> damDynamicMaterialLabels() const = 0;
+    virtual QVector<QPair<QString, QString>> assignableMaterialEntries() const { return {}; }
+    virtual bool assignMatypesToMaterial(const QString& entryId, const QSet<int>& matypes,
+                                         QString* message = nullptr)
+    {
+        Q_UNUSED(entryId);
+        Q_UNUSED(matypes);
+        Q_UNUSED(message);
+        return false;
+    }
 };
 
 #endif // MATERIALMANAGERSERVICE_H

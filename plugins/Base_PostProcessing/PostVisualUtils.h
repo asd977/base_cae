@@ -16,7 +16,10 @@
 #include <vtkDataArray.h>
 #include <vtkDoubleArray.h>
 #include <vtkExtractCells.h>
+#include <vtkFeatureEdges.h>
+#include <vtkGeometryFilter.h>
 #include <vtkIdList.h>
+#include <vtkStaticCleanUnstructuredGrid.h>
 #include <vtkLookupTable.h>
 #include <vtkLight.h>
 #include <vtkLightCollection.h>
@@ -116,6 +119,8 @@ struct PostSceneStyle
     // 0=表面，1=表面+单元边线，2=线框。
     int representationMode{0};
     static constexpr bool showSurfaceOutline=false; // Temporarily unavailable, including saved projects.
+    bool showContextOutline{true};
+    bool showContextLines{false};
     int surfaceInterpolation{1}; // 0=Flat, 1=Gouraud (ParaView default).
     bool interpolateScalarsBeforeMapping{true};
     bool computePointNormals{false}; // ParaView Surface Normals defaults.
@@ -565,6 +570,8 @@ inline QJsonObject savePostDisplaySettings()
     obj[QStringLiteral("meshEdgeWidth")] = scene.meshEdgeWidth;
     obj[QStringLiteral("meshEdgeOpacity")] = scene.meshEdgeOpacity;
     obj[QStringLiteral("showSurfaceOutline")] = scene.showSurfaceOutline;
+    obj[QStringLiteral("showContextOutline")] = scene.showContextOutline;
+    obj[QStringLiteral("showContextLines")] = scene.showContextLines;
     obj[QStringLiteral("surfaceInterpolation")] = PostSceneStyle{}.surfaceInterpolation;
     obj[QStringLiteral("interpolateScalarsBeforeMapping")] = PostSceneStyle{}.interpolateScalarsBeforeMapping;
     obj[QStringLiteral("computePointNormals")] = PostSceneStyle{}.computePointNormals;
@@ -624,6 +631,8 @@ inline void loadPostDisplaySettings(const QJsonObject& obj)
     PostSceneStyle& scene = postSceneStyle();
     scene.visible = obj.value(QStringLiteral("postVisible")).toBool(scene.visible);
     scene.followMeshFilter = obj.value(QStringLiteral("followMeshFilter")).toBool(scene.followMeshFilter);
+    scene.showContextOutline = obj.value(QStringLiteral("showContextOutline")).toBool(scene.showContextOutline);
+    scene.showContextLines = obj.value(QStringLiteral("showContextLines")).toBool(false);
     scene.representationMode = qBound(0, obj.value(QStringLiteral("representationMode")).toInt(scene.representationMode), 2);
     // These are application defaults, not project/user settings. Ignore older
     // projects that persisted the advanced controls while they were available.
@@ -1352,6 +1361,7 @@ inline bool postActorSupportsRepresentationControl(const QString& id)
            !lower.contains(QStringLiteral("glyph")) &&
            !lower.contains(QStringLiteral("probe")) &&
            !lower.contains(QStringLiteral("mesh-edges")) &&
+           !lower.contains(QStringLiteral("context-model")) &&
            !lower.contains(QStringLiteral("outline"));
 }
 
@@ -1836,6 +1846,75 @@ inline vtkSmartPointer<vtkActor> createPostContourActor(vtkAlgorithmOutput* inpu
     return actor;
 }
 
+inline vtkSmartPointer<vtkActor> createPostContextModelActor(vtkUnstructuredGrid* displayGrid)
+{
+    if (!displayGrid || displayGrid->GetNumberOfCells() <= 0)
+        return nullptr;
+    auto mapper = vtkSmartPointer<vtkDataSetMapper>::New();
+    mapper->SetInputData(displayGrid);
+    mapper->ScalarVisibilityOff();
+    auto actor = vtkSmartPointer<vtkActor>::New();
+    actor->SetMapper(mapper);
+    actor->PickableOff();
+    actor->GetProperty()->SetRepresentationToSurface();
+    actor->GetProperty()->EdgeVisibilityOff();
+    actor->GetProperty()->SetColor(0.76, 0.80, 0.86);
+    actor->GetProperty()->SetOpacity(0.14);
+    actor->GetProperty()->LightingOff();
+    return actor;
+}
+
+inline vtkSmartPointer<vtkActor> createPostContextOutlineActor(vtkUnstructuredGrid* displayGrid)
+{
+    if (!displayGrid || displayGrid->GetNumberOfCells() <= 0 || displayGrid->GetNumberOfPoints() <= 0)
+        return nullptr;
+
+    auto geometryOnly = vtkSmartPointer<vtkUnstructuredGrid>::New();
+    geometryOnly->ShallowCopy(displayGrid);
+    geometryOnly->GetPointData()->Initialize();
+    geometryOnly->GetCellData()->Initialize();
+    geometryOnly->GetFieldData()->Initialize();
+
+    auto weld = vtkSmartPointer<vtkStaticCleanUnstructuredGrid>::New();
+    weld->SetInputData(geometryOnly);
+    weld->SetTolerance(0.0);
+    weld->Update();
+
+    auto surface = vtkSmartPointer<vtkGeometryFilter>::New();
+    surface->SetInputConnection(weld->GetOutputPort());
+    surface->Update();
+
+    auto edges = vtkSmartPointer<vtkFeatureEdges>::New();
+    edges->SetInputConnection(surface->GetOutputPort());
+    edges->BoundaryEdgesOn();
+    edges->FeatureEdgesOn();
+    edges->SetFeatureAngle(42.0);
+    edges->ManifoldEdgesOff();
+    edges->NonManifoldEdgesOff();
+    edges->ColoringOff();
+    edges->Update();
+
+    auto lines = vtkSmartPointer<vtkPolyData>::New();
+    if (edges->GetOutput())
+        lines->ShallowCopy(edges->GetOutput());
+    if (lines->GetNumberOfLines() <= 0 && lines->GetNumberOfCells() <= 0)
+        return nullptr;
+
+    auto mapper = vtkSmartPointer<vtkPolyDataMapper>::New();
+    mapper->SetInputData(lines);
+    mapper->ScalarVisibilityOff();
+    mapper->StaticOn();
+
+    auto actor = vtkSmartPointer<vtkActor>::New();
+    actor->SetMapper(mapper);
+    actor->PickableOff();
+    actor->GetProperty()->LightingOff();
+    actor->GetProperty()->SetColor(0.20, 0.25, 0.32);
+    actor->GetProperty()->SetOpacity(0.68);
+    actor->GetProperty()->SetLineWidth(1.2);
+    return actor;
+}
+
 inline QString postActorId(const QString& ownerUuid, const QString& actorRole)
 {
     const QString owner = ownerUuid.trimmed();
@@ -1923,6 +2002,9 @@ inline bool removeActorByService(VisualWidgetService* service, const QString& id
 
 inline void showPostProcessingOnly(VisualWidgetService* service, bool renderNow = true)
 {
+    // 先记录进入前的显隐，再广播后处理状态；显示控制面板的事件处理器
+    // 会临时压住网格，不能把事件处理后的隐藏状态当作原始状态保存。
+    isolatePostProcessingScene(service);
     setPostViewActive(true);
     if (!service)
         return;

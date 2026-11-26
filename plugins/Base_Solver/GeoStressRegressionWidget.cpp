@@ -1,4 +1,5 @@
 #include "GeoStressRegressionWidget.h"
+#include <cmath>
 
 #include <PublicConstants.h>
 #include <PublicVariables.h>
@@ -74,6 +75,30 @@ void GeoStressRegressionWidget::updateModeUi()
 
 void GeoStressRegressionWidget::beforeUnload()
 {
+}
+
+bool GeoStressRegressionWidget::validateInputs(QString* errorMessage) const
+{
+    auto fail = [errorMessage](const QString& msg) {
+        if (errorMessage)
+            *errorMessage = msg;
+        return false;
+    };
+    if (calculationModeCode() != 0)
+    {
+        bool ok = false;
+        const double factor = ui->factorEdit->text().trimmed().toDouble(&ok);
+        if (!ok || !std::isfinite(factor))
+            return fail(QStringLiteral("回归系数/比例因子必须为有效有限数值。"));
+    }
+    else
+    {
+        bool ok = false;
+        const double lambda = ui->lambdaEdit->text().trimmed().toDouble(&ok);
+        if (!ok || !std::isfinite(lambda))
+            return fail(QStringLiteral("侧压力系数必须为有效有限数值。"));
+    }
+    return true;
 }
 
 int GeoStressRegressionWidget::calculationModeCode() const

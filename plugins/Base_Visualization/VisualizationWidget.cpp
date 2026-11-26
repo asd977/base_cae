@@ -462,15 +462,23 @@ void VisualizationWidget::updateScalarBarTitlePlacement()
     const int viewHeight = m_vtkWidget->height();
     const double* pos = m_scalarBar->GetPosition();
     const double top = 1.0 - pos[1] - m_scalarBar->GetHeight();
-    // On vertical scalar bars, the native VTK title is above the color ramp.
-    // Both the Qt overlay and the VTK actor use the normalized viewport.
-    // Center above the scalar bar's *whole footprint* (ramp + numeric labels),
-    // and keep the title fully inside the view after a middle-mouse drag.
+    const double bottom = 1.0 - pos[1];
+    // Place the rich-text title outside the scalar bar footprint so subscripts
+    // like σ₁（MPa） never overlap the top tick value or color ramp.
     const double centerX = (pos[0] + m_scalarBar->GetWidth() * 0.5) * viewWidth;
     const int titleX = qRound(centerX - m_scalarBarRichTitle->width() * 0.5);
     const int x = qBound(0, titleX, qMax(0, viewWidth - m_scalarBarRichTitle->width() - 2));
-    const int y = qBound(0, qRound(top * viewHeight) - 2,
-                         qMax(0, viewHeight - m_scalarBarRichTitle->height()));
+    const int titleHeight = m_scalarBarRichTitle->height();
+    const int aboveY = qRound(top * viewHeight) - titleHeight - 4;
+    const int belowY = qRound(bottom * viewHeight) + 4;
+    int y = aboveY;
+    if (aboveY < 2)
+    {
+        if (belowY + titleHeight <= viewHeight - 2)
+            y = belowY;
+        else
+            y = qBound(0, aboveY, qMax(0, viewHeight - titleHeight));
+    }
     if (m_scalarBarRichTitle->pos() != QPoint(x, y))
         m_scalarBarRichTitle->move(x, y);
     if (!m_scalarBarRichTitle->isVisible())

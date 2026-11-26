@@ -1,6 +1,7 @@
 ﻿#pragma once
 
 #include <BasePage.h>
+#include <PickManager.h>
 
 #include <QFormLayout>
 #include <QLineEdit>
@@ -54,6 +55,12 @@ class MaterialEntryWidget : public BasePage
     void onTransitionModeChanged(int state);
     void onTransitionMatypeChanged(int value);
     void onDomainPicked(const QString& domain, const QString& uuid, const DomainKey& key);
+    void onDomainsPicked(const QString& domain, const QString& uuid, const QSet<DomainKey>& keys);
+    void onViewContextMenu(const QString& domain, const QString& uuid, PickMode mode,
+                           const QPoint& globalPos);
+
+  public:
+    void invalidateMatypeOptions();
 
   private:
     void ensurePickInteractionReady();
@@ -118,6 +125,7 @@ class MaterialEntryWidget : public BasePage
     // ===== 两个临时态（不写入材料数据，只影响高亮）=====
     int m_previewMatype = -1;   // 下拉悬浮
     int m_preDeleteMatype = -1; // list 选中
+    QSet<int> m_selectedViewMatypes;
 
     bool m_matypeDropdownOpen = false;
     bool m_ignoreNextMatypeChanged = false; // 忽略下拉关闭后可能触发的伪 currentIndexChanged

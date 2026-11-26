@@ -1,3 +1,4 @@
+#include <QDateTime>
 #include "VectorSettingWidget.h"
 #include "PostComboBoxPerformance.h"
 
@@ -168,7 +169,8 @@ VectorSettingWidget::VectorSettingWidget(VisualWidgetService* postProcessingWidg
                 QStringLiteral("range"), QStringLiteral("color-map"), QStringLiteral("scalar-bar"),
                 QStringLiteral("visibility"), QStringLiteral("representation"), QStringLiteral("contour"),
                 QStringLiteral("surface-lighting"), QStringLiteral("surface-normals"),
-                QStringLiteral("surface-outline"), QStringLiteral("scalar-interpolation"),
+                QStringLiteral("surface-outline"), QStringLiteral("context-outline"),
+                QStringLiteral("scalar-interpolation"),
                 QStringLiteral("threshold"), QStringLiteral("zero-display")};
             m_displayDirty = m_displayDirty || !appearanceReasons.contains(data.value(QStringLiteral("reason")).toString());
             if (!property("postDisplayActive").toBool() || !m_grid)
@@ -176,7 +178,12 @@ VectorSettingWidget::VectorSettingWidget(VisualWidgetService* postProcessingWidg
             const QSignalBlocker blocker(ui->showScalarBarCheckBox);
             ui->showScalarBarCheckBox->setChecked(postScalarBarStyle().visible);
             if(m_displayDirty || !m_vectorActor)rebuildPipeline();
-            else {updateDisplayAppearance();requestRender();}
+            else {
+                vtkSmartPointer<vtkUnstructuredGrid> displayGrid = postFilteredResultGrid(m_grid, true);
+                updateContextOutline(displayGrid);
+                updateDisplayAppearance();
+                requestRender();
+            }
         });
 
     m_visualService = postProcessingWidget;
@@ -228,6 +235,9 @@ QString VectorSettingWidget::vectorLegendTitle() const
              key == QStringLiteral("V") || key == QStringLiteral("VEL") ||
              key == QStringLiteral("VELOCITY") || key == QStringLiteral("VMAG"))
         title = QStringLiteral("|V|");
+    else if (key == QStringLiteral("AX") || key == QStringLiteral("A1") ||
+             key == QStringLiteral("ACC") || key == QStringLiteral("AMAG"))
+        title = QStringLiteral("|A|");
     else if (key == QStringLiteral("U") || key == QStringLiteral("DISP") ||
              key == QStringLiteral("DISPLACEMENT") || key == QStringLiteral("UMAG"))
         title = QStringLiteral("|U|");
@@ -261,9 +271,14 @@ void VectorSettingWidget::beforeLoad()
             m_displayDirty = true;
     }
 
-    if (ui->stepComboBox->count() == 0)
+    const QString currentStepFile = ui->stepComboBox->currentData().toString();
+    const QFileInfo stepFileInfo(currentStepFile.isEmpty() ? m_loadedFilePath : currentStepFile);
+    const bool fileStale = !m_grid || m_loadedFilePath.isEmpty() || !stepFileInfo.isFile() ||
+                           QDir::cleanPath(stepFileInfo.absoluteFilePath()) != QDir::cleanPath(m_loadedFilePath) ||
+                           stepFileInfo.size() != m_loadedFileSize ||
+                           stepFileInfo.lastModified().toMSecsSinceEpoch() != m_loadedFileModified;
+    if (ui->stepComboBox->count() == 0 || fileStale)
     {
-        // 首次进入：加载文件列表并默认读第一个
         loadFileName(m_dataPath);
     }
     else if (m_vectorActor && m_grid && !m_hasPendingState && !m_displayDirty)
@@ -275,6 +290,8 @@ void VectorSettingWidget::beforeLoad()
         {
             addActorByService(m_visualService, postActorId(getUuid(), QStringLiteral("vector")),
                               m_vectorActor, QStringLiteral("矢量"), false);
+            vtkSmartPointer<vtkUnstructuredGrid> displayGrid = postFilteredResultGrid(m_grid, true);
+            updateContextOutline(displayGrid);
             updateDisplayAppearance();
             requestRender();
         }
@@ -514,6 +531,10 @@ void VectorSettingWidget::beforeUnload()
     // 页面被切换：仅隐藏当前向量箭头，保留对象以便回来后快速恢复。
     if (m_visualService && m_vectorActor)
         removeActorByService(m_visualService, postActorId(getUuid(), QStringLiteral("vector")), false);
+    if (m_visualService && m_contextOutlineActor)
+        removeActorByService(m_visualService, postActorId(getUuid(), QStringLiteral("context-outline")), false);
+    if (m_visualService && m_contextActor)
+        removeActorByService(m_visualService, postActorId(getUuid(), QStringLiteral("context-model")), false);
     if (m_visualService)
         m_visualService->showScalarBar(false, false);
     requestRender();
@@ -567,6 +588,10 @@ void VectorSettingWidget::on_stepComboBox_currentIndexChanged(int index)
     // 切文件时移除旧箭头，并直接按当前设置生成新结果。
     if (m_visualService && m_vectorActor)
         removeActorByService(m_visualService, postActorId(getUuid(), QStringLiteral("vector")), false);
+    if (m_visualService && m_contextOutlineActor)
+        removeActorByService(m_visualService, postActorId(getUuid(), QStringLiteral("context-outline")), false);
+    if (m_visualService && m_contextActor)
+        removeActorByService(m_visualService, postActorId(getUuid(), QStringLiteral("context-model")), false);
 
     if (ensureDataLoaded())
         rebuildPipeline();
@@ -606,6 +631,9 @@ bool VectorSettingWidget::ensureDataLoaded()
 
     if (!grid || grid->GetNumberOfPoints() == 0)
         return false;
+    m_loadedFilePath = info.absoluteFilePath();
+    m_loadedFileSize = info.size();
+    m_loadedFileModified = info.lastModified().toMSecsSinceEpoch();
 
     // 单元结果插值到节点；已有的节点位移/速度必须保留。
     if (grid->GetCellData()->GetNumberOfArrays() > 0)
@@ -704,6 +732,12 @@ void VectorSettingWidget::populateComponentCombos()
         ix = findKey(ui->xComboBox, {QStringLiteral("VX"), QStringLiteral("V1")});
         iy = findKey(ui->yComboBox, {QStringLiteral("VY"), QStringLiteral("V2")});
         iz = findKey(ui->zComboBox, {QStringLiteral("VZ"), QStringLiteral("V3")});
+    }
+    if (ix < 0 || iy < 0)
+    {
+        ix = findKey(ui->xComboBox, {QStringLiteral("AX"), QStringLiteral("A1")});
+        iy = findKey(ui->yComboBox, {QStringLiteral("AY"), QStringLiteral("A2")});
+        iz = findKey(ui->zComboBox, {QStringLiteral("AZ"), QStringLiteral("A3")});
     }
 
     // 若结果直接提供三分量数组，则三个选择框指向同一数组。
@@ -1117,10 +1151,52 @@ void VectorSettingWidget::rebuildPipeline()
     if (m_visualService)
         addActorByService(m_visualService, postActorId(getUuid(), QStringLiteral("vector")),
                           m_vectorActor, QStringLiteral("矢量"), false);
+    updateContextOutline(displayGrid);
 
     m_displayDirty = false;
     m_cachedFilterSignature = postMeshFilterSignature();
     requestRender();
+}
+
+void VectorSettingWidget::updateContextOutline(vtkUnstructuredGrid* displayGrid)
+{
+    if (!m_visualService)
+        return;
+    const QString outlineId = postActorId(getUuid(), QStringLiteral("context-outline"));
+    const QString modelId = postActorId(getUuid(), QStringLiteral("context-model"));
+    if (!postSceneStyle().visible || !displayGrid ||
+        displayGrid->GetNumberOfCells() <= 0)
+    {
+        removeActorByService(m_visualService, outlineId, false);
+        removeActorByService(m_visualService, modelId, false);
+        return;
+    }
+
+    const QString key = QStringLiteral("%1|%2|%3|%4")
+                            .arg(m_loadedFilePath)
+                            .arg(displayGrid->GetNumberOfPoints())
+                            .arg(displayGrid->GetNumberOfCells())
+                            .arg(postSceneStyle().followMeshFilter ? postMeshFilterSignature() : QString());
+    if (m_outlineCacheKey != key)
+    {
+        m_contextActor = nullptr;
+        m_contextOutlineActor = nullptr;
+        m_outlineCacheKey = key;
+    }
+    if (postSceneStyle().showContextOutline && !m_contextActor)
+        m_contextActor = createPostContextModelActor(displayGrid);
+    if (postSceneStyle().showContextLines && !m_contextOutlineActor)
+        m_contextOutlineActor = createPostContextOutlineActor(displayGrid);
+    if (postSceneStyle().showContextOutline && m_contextActor)
+        addActorByService(m_visualService, modelId, m_contextActor,
+                          QStringLiteral("模型轮廓"), false);
+    else
+        removeActorByService(m_visualService, modelId, false);
+    if (postSceneStyle().showContextLines && m_contextOutlineActor)
+        addActorByService(m_visualService, outlineId, m_contextOutlineActor,
+                          QStringLiteral("轮廓线"), false);
+    else
+        removeActorByService(m_visualService, outlineId, false);
 }
 
 void VectorSettingWidget::updateDisplayAppearance()

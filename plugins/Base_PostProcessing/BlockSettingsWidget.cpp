@@ -1,3 +1,5 @@
+#include <QFileInfo>
+#include <QDateTime>
 #include "BlockSettingsWidget.h"
 #include "PostComboBoxPerformance.h"
 
@@ -138,9 +140,14 @@ void BlockSettingsWidget::beforeLoad()
                 m_dataPath = PostResultAutoPrepare::firstResultDirectory(workPath);
         }
 
-        if (ui->stepComboBox->count() == 0)
+        const QString curStepFile = ui->stepComboBox->currentData().toString();
+        const QFileInfo stepInfo(curStepFile.isEmpty() ? m_loadedFilePath : curStepFile);
+        const bool fileStale = !m_grid || m_loadedFilePath.isEmpty() || !stepInfo.isFile() ||
+                               QDir::cleanPath(stepInfo.absoluteFilePath()) != QDir::cleanPath(m_loadedFilePath) ||
+                               stepInfo.size() != m_loadedFileSize ||
+                               stepInfo.lastModified().toMSecsSinceEpoch() != m_loadedFileModified;
+        if (ui->stepComboBox->count() == 0 || fileStale)
         {
-            // 首次进入：列出 step，并触发一次读取
             loadFileName(m_dataPath);
             m_loadedOnce = true;
         }
@@ -447,6 +454,10 @@ bool BlockSettingsWidget::readTecplot(const QString& fileName)
     }
 
     m_grid = newGrid;
+    const QFileInfo fi(fileName);
+    m_loadedFilePath = fi.absoluteFilePath();
+    m_loadedFileSize = fi.size();
+    m_loadedFileModified = fi.lastModified().toMSecsSinceEpoch();
 
     // 缓存范围
     double b[6];

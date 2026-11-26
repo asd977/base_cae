@@ -60,8 +60,9 @@ BeamLoadPage::BeamLoadPage(QWidget* parent) : BasePage("BeamLoadPage"), ui(new U
     ui->doubleSpinBoxA->setDecimals(6);ui->doubleSpinBoxA->setRange(0,1.e9);
     ui->doubleSpinBoxP->setDecimals(6);ui->doubleSpinBoxP->setRange(-1.e15,1.e15);
 
-    // 一些默认值（你可按需要改）
-    ui->spinBoxLDTYPE->setValue(0);
+    ui->spinBoxLDTYPE->setRange(1, 4);
+    ui->spinBoxIDIR->setRange(1, 3);
+    ui->spinBoxLDTYPE->setValue(1);
     ui->doubleSpinBoxA->setValue(0.0);
     ui->doubleSpinBoxP->setValue(0.0);
     ui->spinBoxIDIR->setValue(1);
@@ -180,7 +181,7 @@ void BeamLoadPage::setupBatchGroupCombo()
                     if (!meshSvc || row < 0)
                         return;
                     const MeshTagKey key = comboTagKey(ui->comboBoxGroup, row);
-                    PickManager::instance().setPreviewPointIds(getPageType(), m_uuid, GridKind::Solid,
+                    PickManager::instance().setPreviewPointIds(getPageType(), m_uuid, GridKind::Line,
                                                                toVtkIds(meshSvc->pointIdsOfTag(key)));
                 });
         connect(groupCombo, &CustomComboBox::dropdownClosed, this,

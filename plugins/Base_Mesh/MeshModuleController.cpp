@@ -2908,7 +2908,7 @@ void MeshModuleController::newProject()
     connect(m_importSettingsWidget, &MeshImportSettingsWidget::verticalAxisChanged, this,
             [this](int axis)
             {
-                if (axis < 1 || axis > 3)
+                if (axis != 2 && axis != 3)
                     return;
                 m_verticalAxis = axis;
                 MeshGridIO::setVerticalAxis(m_importedGrid, m_verticalAxis);
@@ -3177,7 +3177,7 @@ bool MeshModuleController::loadProject()
     connect(m_importSettingsWidget, &MeshImportSettingsWidget::verticalAxisChanged, this,
             [this](int axis)
             {
-                if (axis < 1 || axis > 3)
+                if (axis != 2 && axis != 3)
                     return;
                 m_verticalAxis = axis;
                 MeshGridIO::setVerticalAxis(m_importedGrid, m_verticalAxis);
@@ -3203,7 +3203,7 @@ bool MeshModuleController::loadProject()
 
     const bool hasSavedVerticalAxis = root.contains("vertical_axis");
     m_verticalAxis = root.value("vertical_axis").toInt(2);
-    if (m_verticalAxis < 1 || m_verticalAxis > 3)
+    if (m_verticalAxis != 2 && m_verticalAxis != 3)
         m_verticalAxis = 2;
     if (m_importSettingsWidget)
         m_importSettingsWidget->setVerticalAxis(m_verticalAxis);
@@ -4272,7 +4272,7 @@ void MeshModuleController::importGridFile(const QString& fileName)
     openGridDisplayControlPage();
     updateQualityCheckContext(true);
 
-    PickManager::instance().clearDomainSelection(QStringLiteral("MaterialManager"));
+    PickManager::instance().resetProjectState();
 }
 
 bool MeshModuleController::importGeneratedSmeshMesh(const QString& vtkPath, QString* errMsg)
@@ -4309,7 +4309,7 @@ bool MeshModuleController::importGeneratedSmeshMesh(const QString& vtkPath, QStr
     displayCurrentGrid(true);
     openGridDisplayControlPage();
     updateQualityCheckContext(true);
-    PickManager::instance().clearDomainSelection(QStringLiteral("MaterialManager"));
+    PickManager::instance().resetProjectState();
     return true;
 }
 MshPickMap MeshModuleController::mshPickMapSolid()
@@ -5137,7 +5137,7 @@ void MeshModuleController::openImportSettingsPage(bool setCurrent)
         connect(m_importSettingsWidget, &MeshImportSettingsWidget::verticalAxisChanged, this,
                 [this](int axis)
                 {
-                    if (axis < 1 || axis > 3)
+                    if (axis != 2 && axis != 3)
                         return;
                     m_verticalAxis = axis;
                     MeshGridIO::setVerticalAxis(m_importedGrid, m_verticalAxis);
@@ -5360,6 +5360,7 @@ void MeshModuleController::displayCurrentGrid(bool fitView)
 
            // 必须在网格 prop 完成更新后再同步 PickManager 结构，否则会抓到旧 actor/mapper。
     PickManager::instance().updateStructure();
+    EventManager::instance().sendEvent(QStringLiteral("mesh.groups.changed"), {});
 
     // 仅在导入、生成或工程恢复时自动适应；普通显示刷新保留当前视角。
     if (fitView)
@@ -5933,15 +5934,13 @@ static void syncPickMapGroupingFromGrid(vtkUnstructuredGrid* grid)
     auto* groupNameArr =
         vtkStringArray::SafeDownCast(grid->GetCellData()->GetAbstractArray("GroupName"));
 
-    struct TagEntry {
-        MeshTagKey key;
-        MeshTagSet* setPtr = nullptr;
-    };
-    QHash<quint64, TagEntry> matTagCache;
-    QHash<quint64, TagEntry> layTagCache;
-    QHash<quint64, TagEntry> regTagCache;
+    // QHash 插入新分组时可能移动已有值，不能跨单元缓存 tagSets 内的指针。
+    // 只缓存分组键，每次追加单元都通过键取得当前有效的 MeshTagSet。
+    QHash<quint64, MeshTagKey> matTagCache;
+    QHash<quint64, MeshTagKey> layTagCache;
+    QHash<quint64, MeshTagKey> regTagCache;
 
-    auto getOrCreateTag = [&](const QString& category, int dim, int id, QHash<quint64, TagEntry>& cache, vtkIdType cid) -> TagEntry&
+    auto getOrCreateTag = [&](const QString& category, int dim, int id, QHash<quint64, MeshTagKey>& cache, vtkIdType cid) -> const MeshTagKey&
     {
         const quint64 ckey = (static_cast<quint64>(dim) << 32) | static_cast<quint64>(static_cast<quint32>(id));
         auto it = cache.find(ckey);
@@ -5971,10 +5970,7 @@ static void syncPickMapGroupingFromGrid(vtkUnstructuredGrid* grid)
             pick.tagSets.insert(key, set);
         }
 
-        TagEntry entry;
-        entry.key = key;
-        entry.setPtr = &pick.tagSets[key];
-        return *cache.insert(ckey, entry);
+        return *cache.insert(ckey, key);
     };
 
     auto* dimArr = grid->GetCellData() ? grid->GetCellData()->GetArray("CELL_DIM") : nullptr;
@@ -6002,21 +5998,21 @@ static void syncPickMapGroupingFromGrid(vtkUnstructuredGrid* grid)
 
         if (mat > 0)
         {
-            auto& entry = getOrCreateTag(QStringLiteral("MATYPE"), cellDim, mat, matTagCache, cid);
-            entry.setPtr->cellIds.push_back(static_cast<MeshIdType>(cid));
-            tags.push_back(entry.key);
+            const auto& key = getOrCreateTag(QStringLiteral("MATYPE"), cellDim, mat, matTagCache, cid);
+            pick.tagSets[key].cellIds.push_back(static_cast<MeshIdType>(cid));
+            tags.push_back(key);
         }
         if (lay != 0)
         {
-            auto& entry = getOrCreateTag(QStringLiteral("LAYER"), cellDim, lay, layTagCache, cid);
-            entry.setPtr->cellIds.push_back(static_cast<MeshIdType>(cid));
-            tags.push_back(entry.key);
+            const auto& key = getOrCreateTag(QStringLiteral("LAYER"), cellDim, lay, layTagCache, cid);
+            pick.tagSets[key].cellIds.push_back(static_cast<MeshIdType>(cid));
+            tags.push_back(key);
         }
         if (region > 0)
         {
-            auto& entry = getOrCreateTag(QStringLiteral("REGION"), cellDim, region, regTagCache, cid);
-            entry.setPtr->cellIds.push_back(static_cast<MeshIdType>(cid));
-            tags.push_back(entry.key);
+            const auto& key = getOrCreateTag(QStringLiteral("REGION"), cellDim, region, regTagCache, cid);
+            pick.tagSets[key].cellIds.push_back(static_cast<MeshIdType>(cid));
+            tags.push_back(key);
         }
     }
 
@@ -6442,6 +6438,20 @@ bool MeshModuleController::assignSelectedCellsToGroup(
         m_importedGrid->Modified();
         MeshGridIO::instance().setMeshMap(pick);
         syncPickMapGroupingFromGrid(m_importedGrid);
+        // Ensure newly assigned/split group IDs stay visible under custom filter and show group colors.
+        if (PublicVariables::instance().get(QStringLiteral("mesh.display.filter.custom")).toBool())
+        {
+            const QString filterKey = QStringLiteral("mesh.display.filter.region.checked");
+            QString cur = PublicVariables::instance().get(filterKey).toString();
+            QStringList parts = cur.split(',', Qt::SkipEmptyParts);
+            if (!parts.contains(QString::number(groupId)))
+            {
+                parts << QString::number(groupId);
+                PublicVariables::instance().set(filterKey, parts.join(','), QStringLiteral("project_dir"));
+            }
+        }
+        if (PublicVariables::instance().get(QStringLiteral("mesh.display.color.mode")).toInt() == 0)
+            PublicVariables::instance().set(QStringLiteral("mesh.display.color.mode"), 5, QStringLiteral("project_dir"));
         displayCurrentGrid();
         return true;
     }
@@ -6500,6 +6510,26 @@ bool MeshModuleController::assignSelectedCellsToGroup(
         pick.groupDisplayNames.insert(key, displayName.trimmed());
     MeshGridIO::instance().setMeshMap(pick);
     syncPickMapGroupingFromGrid(m_importedGrid);
+    if (PublicVariables::instance().get(QStringLiteral("mesh.display.filter.custom")).toBool())
+    {
+        const QString filterKey = sourceRegion
+            ? QStringLiteral("mesh.display.filter.region.checked")
+            : (field == QStringLiteral("LAYER")
+                   ? QStringLiteral("mesh.display.filter.layer.checked")
+                   : QStringLiteral("mesh.display.filter.matype.checked"));
+        QString cur = PublicVariables::instance().get(filterKey).toString();
+        QStringList parts = cur.split(',', Qt::SkipEmptyParts);
+        if (!parts.contains(QString::number(groupId)))
+        {
+            parts << QString::number(groupId);
+            PublicVariables::instance().set(filterKey, parts.join(','), QStringLiteral("project_dir"));
+        }
+    }
+    if (PublicVariables::instance().get(QStringLiteral("mesh.display.color.mode")).toInt() == 0)
+    {
+        const int mode = sourceRegion ? 5 : (field == QStringLiteral("LAYER") ? 4 : 3);
+        PublicVariables::instance().set(QStringLiteral("mesh.display.color.mode"), mode, QStringLiteral("project_dir"));
+    }
     displayCurrentGrid();
     return true;
 }

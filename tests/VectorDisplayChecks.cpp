@@ -114,7 +114,7 @@ int main(int argc, char** argv)
         check(std::abs(arrows->GetScaleFactor() - originalScale * 2) < 1e-10, "length control preserves normalization");
         page.beforeLoad();
         auto retained = vtkSmartPointer<vtkGlyph3D>(glyph(visual));
-        auto* retainedMapper = vtkActor::SafeDownCast(visual.props.constBegin().value())->GetMapper();
+        auto* retainedMapper = vtkActor::SafeDownCast(visual.getProp(postActorId(page.getUuid(),"vector")))->GetMapper();
         const auto retainedLut = vtkSmartPointer<vtkScalarsToColors>(retainedMapper->GetLookupTable());
         page.beforeUnload();
         auto otherLut = vtkSmartPointer<vtkLookupTable>::New();otherLut->SetRange(100, 200);otherLut->Build();
@@ -130,6 +130,21 @@ int main(int argc, char** argv)
         auto appearanceActor=vtkSmartPointer<vtkActor>(vtkActor::SafeDownCast(visual.getProp(postActorId(page.getUuid(),"vector"))));
         auto appearanceInput=vtkSmartPointer<vtkPolyData>(vtkPolyData::SafeDownCast(appearanceGlyph->GetInput()));
         const auto appearanceTime=appearanceInput->GetMTime();
+        for (bool model : {false, true}) for (bool lines : {false, true}) {
+            postSceneStyle().showContextOutline=model;postSceneStyle().showContextLines=lines;
+            EventManager::instance().sendEvent(postDisplaySettingsChangedEvent(),{{"reason","context-outline"}});
+            check(bool(visual.getProp(postActorId(page.getUuid(),"context-model")))==model,"vector reference model has independent visibility");
+            check(bool(visual.getProp(postActorId(page.getUuid(),"context-outline")))==lines,"vector outline lines have independent visibility");
+            check(glyph(visual)==appearanceGlyph && appearanceInput->GetMTime()==appearanceTime,"context toggles preserve arrow geometry");
+        }
+        postSceneStyle().showContextLines=false;
+        EventManager::instance().sendEvent(postDisplaySettingsChangedEvent(),{{"reason","context-outline"}});
+        auto* contextModel=vtkActor::SafeDownCast(visual.getProp(postActorId(page.getUuid(),"context-model")));
+        check(contextModel && !contextModel->GetProperty()->GetEdgeVisibility(),"reference model contains no edge overlay");
+        const int oldRepresentation=postSceneStyle().representationMode;
+        postSceneStyle().representationMode=1;applyPostSceneRepresentation(&visual,false);
+        check(contextModel->GetProperty()->GetRepresentation()==VTK_SURFACE && !contextModel->GetProperty()->GetEdgeVisibility(),"result representation does not enable reference model lines");
+        postSceneStyle().representationMode=oldRepresentation;
         auto& displayRange=postFieldRangeStyle("VectorMag");displayRange.automatic=false;
         displayRange.initialized=true;displayRange.minimum=0;displayRange.maximum=5;
         const auto beforeAppearance=visual.totalRenderRequests();

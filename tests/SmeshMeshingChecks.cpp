@@ -86,6 +86,20 @@ int main(int argc, char** argv)
         auto quad=generate(request); int quads=0;
         for(vtkIdType i=0;i<quad.grid->GetNumberOfCells();++i) if(quad.grid->GetCellType(i)==VTK_QUAD) ++quads;
         check(quads>0,"Quad-dominated surface output");
+        request.elemType=4; // Legacy/cross-dimension Hex8 selection must mean quads in 2D.
+        request.exportNas=true;request.nasPath=work.filePath("surface_quad.nas");
+        const auto legacyQuad=generate(request);
+        int legacyQuads=0;
+        for(vtkIdType i=0;i<legacyQuad.grid->GetNumberOfCells();++i) {
+            const int type=legacyQuad.grid->GetCellType(i);
+            check(type==VTK_QUAD||type==VTK_TRIANGLE,"2D hex-family selection produces only surface elements");
+            if(type==VTK_QUAD)++legacyQuads;
+        }
+        check(legacyQuads>0 && legacyQuad.volumeElementCount==0,"legacy Hex8 setting maps to quad-dominated surfaces");
+        QFile surfaceNas(request.nasPath);
+        check(surfaceNas.open(QIODevice::ReadOnly)&&surfaceNas.readAll().contains("CQUAD4"),"quad surface exports as CQUAD4");
+        check(SmeshMeshGenerator::elementTypeForDimension(3,2)==4 &&
+              SmeshMeshGenerator::elementTypeForDimension(2,4)==2,"switching dimensions retains the quad/hex family");
         std::cout << "PASS: conformal surfaces, native local sizes, quadratic and quad elements\n";
 
         builder.MakeCompound(compound);

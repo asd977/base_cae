@@ -8,6 +8,7 @@
 #include <functional>
 
 class QCheckBox;
+class QDoubleSpinBox;
 class QLabel;
 class QTableWidget;
 class QWidget;
@@ -47,6 +48,8 @@ class PhysicalFieldSettingWidget : public BasePage
     Ui::PhysicalFieldSettingWidget* ui;
     QTableWidget* m_table = nullptr;
     QCheckBox* m_showAll = nullptr;
+    QCheckBox* m_showArrows = nullptr;
+    QDoubleSpinBox* m_arrowScaleSpin = nullptr;
     QLabel* m_info = nullptr;
     std::array<QCheckBox*, 8> m_colorChecks{};
     std::array<QLabel*, 8> m_colorCounts{};
