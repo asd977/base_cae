@@ -630,7 +630,8 @@ QMap<int, QString> transientResultLabels(const QString& workspace,
             labels.insert(step, QStringLiteral("计算时刻索引 %1").arg(step));
             continue;
         }
-        const double time = timeInfo.start + timeInfo.increment * step;
+        // SOLVER step index JD = INT(TDT / DT) already represents physical time JD * DT.
+        const double time = timeInfo.increment * step;
         QString label = QStringLiteral("计算时刻 %1 %2")
                             .arg(resultDisplayNumber(time), timeInfo.unit);
         QStringList levels;
@@ -5525,7 +5526,8 @@ void Solver::onComputeCaveExcavation(ProjectNode* analysisNode)
                     if (wf.open(QIODevice::WriteOnly | QIODevice::Text))
                     {
                         QTextStream wo(&wf);
-                        wo << "2 1.0\n0.0 0.0\n1.0 0.0\n";
+                        // SOLVER skips line 2 as header before reading NTBX samples.
+                        wo << "2 1.0\nT(S) ACC(m/s^2)\n0.0 0.0\n1.0 0.0\n";
                         wf.commit();
                     }
                 }
@@ -6523,7 +6525,8 @@ void Solver::onComputeSlopeStability(ProjectNode* analysisNode)
                     if (wf.open(QIODevice::WriteOnly | QIODevice::Text))
                     {
                         QTextStream wo(&wf);
-                        wo << "2 1.0\n0.0 0.0\n1.0 0.0\n";
+                        // SOLVER skips line 2 as header before reading NTBX samples.
+                        wo << "2 1.0\nT(S) ACC(m/s^2)\n0.0 0.0\n1.0 0.0\n";
                         wf.commit();
                     }
                 }

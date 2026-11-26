@@ -28,14 +28,15 @@ inline bool prepareMaterialSets(const QDir& input, int damType,
     QVector<double> nodeAxisCoord(numnp + 1, 0.0);
     if (damType == 2 || damType == 3)
     {
+        // SOLVER READ_IIIN reads node rows as: (XY(I,J), J=1,MADIM), II
         for (int n = 0; n < numnp; ++n)
         {
             const auto nrow = fields(lines[2 + n]);
-            if (nrow.size() > 1 + axisIndex)
+            if (nrow.size() > madim)
             {
-                const int nid = nrow[0].toInt();
+                const int nid = nrow[madim].toInt();
                 if (nid >= 1 && nid <= numnp)
-                    nodeAxisCoord[nid] = nrow[1 + axisIndex].toDouble();
+                    nodeAxisCoord[nid] = nrow[axisIndex].toDouble();
             }
         }
     }

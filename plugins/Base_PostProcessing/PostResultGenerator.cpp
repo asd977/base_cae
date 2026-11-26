@@ -35,6 +35,7 @@
 #include <vtkXMLUnstructuredGridWriter.h>
 
 #include <algorithm>
+#include <functional>
 #include <cmath>
 #include <limits>
 
@@ -429,7 +430,7 @@ ExcavationVisibility excavationVisibility(const QDir& resultDir)
     }
 
     static const QRegularExpression stageExpression(
-        QStringLiteral("[EJ](\\d+)$"), QRegularExpression::CaseInsensitiveOption);
+        QStringLiteral("[EJ](\\d+)(?:PART|DCL)?$"), QRegularExpression::CaseInsensitiveOption);
     const QRegularExpressionMatch match = stageExpression.match(leaf);
     if (match.hasMatch() &&
         (match.capturedStart() == 0 || leaf.startsWith(QStringLiteral("CASE"))))
@@ -472,7 +473,7 @@ int topologyNodeCount(int type)
 {
     switch (type)
     {
-    case 1: return 2;
+    case 1: case 2: case 10: case 14: case 15: case 21: return 2;
     case 31: return 3;
     case 3: case 35: case 38: return 4;
     case 6: return 8;
@@ -484,7 +485,7 @@ QString topologyName(int type)
 {
     switch (type)
     {
-    case 1: return QStringLiteral("LINESEG");
+    case 1: case 2: case 10: case 14: case 15: case 21: return QStringLiteral("LINESEG");
     case 31: return QStringLiteral("TRIANGLE");
     case 3: case 38: return QStringLiteral("QUADRILATERAL");
     case 35: return QStringLiteral("TETRAHEDRON");
@@ -497,6 +498,7 @@ int vtkTopologyType(int type)
 {
     switch (type)
     {
+    case 1: case 2: case 10: case 14: case 15: case 21: return VTK_LINE;
     case 31: return VTK_TRIANGLE;
     case 3: case 38: return VTK_QUAD;
     case 35: return VTK_TETRA;
@@ -1194,7 +1196,13 @@ QVector<QVector<double>> buildHeadPressure(const QVector<QVector<double>>& raw)
 {
     QVector<QVector<double>> values(raw.size());
     for (int i = 0; i < raw.size(); ++i)
-        values[i] = {safeValue(raw.at(i), 0), safeValue(raw.at(i), 1) * 1.0e-6};
+    {
+        // IPROB=22, IF_BOP=1 writes single-column pore pressure (Pa) without head.
+        if (raw.at(i).size() == 1)
+            values[i] = {0.0, safeValue(raw.at(i), 0) * 1.0e-6};
+        else
+            values[i] = {safeValue(raw.at(i), 0), safeValue(raw.at(i), 1) * 1.0e-6};
+    }
     return values;
 }
 
@@ -1241,9 +1249,20 @@ QVector<QVector<double>> buildPrincipalStress(const QVector<QVector<double>>& ra
     {
         if (dimension == 2)
         {
-            const double p1 = -safeValue(raw.at(i), 1) * 1.0e-6;
-            const double p2 = -safeValue(raw.at(i), 0) * 1.0e-6;
-            values[i] = {p1, p2, std::abs(p1 - p2) * 0.5};
+            if (raw.at(i).size() >= 3)
+            {
+                double s[3] = {-safeValue(raw.at(i), 0) * 1.0e-6,
+                               -safeValue(raw.at(i), 1) * 1.0e-6,
+                               -safeValue(raw.at(i), 2) * 1.0e-6};
+                std::sort(s, s + 3, std::greater<double>());
+                values[i] = {s[0], s[1], s[2], std::abs(s[0] - s[2]) * 0.5};
+            }
+            else
+            {
+                const double p1 = -safeValue(raw.at(i), 1) * 1.0e-6;
+                const double p2 = -safeValue(raw.at(i), 0) * 1.0e-6;
+                values[i] = {p1, p2, std::abs(p1 - p2) * 0.5};
+            }
         }
         else
         {
@@ -1301,9 +1320,18 @@ QVector<QVector<double>> buildPrincipalPlasticStrain(const QVector<QVector<doubl
         {
             const double pe1 = safeValue(raw.at(i), 1) * microstrain;
             const double pe3 = safeValue(raw.at(i), 0) * microstrain;
-            const double maximum = std::abs(pe1 - pe3) * 0.5;
-            const double equivalent = std::abs(pe1 - pe3) / std::sqrt(2.0) * 2.0 / 3.0;
-            values[i] = {pe1, pe3, maximum, equivalent};
+            const double pe2 = raw.at(i).size() >= 3 ? safeValue(raw.at(i), 2) * microstrain : 0.0;
+            const double hi = std::max({pe1, pe2, pe3});
+            const double lo = std::min({pe1, pe2, pe3});
+            const double maximum = std::abs(hi - lo) * 0.5;
+            const double equivalent = std::sqrt(
+                0.5 * ((pe1 - pe2) * (pe1 - pe2) +
+                       (pe2 - pe3) * (pe2 - pe3) +
+                       (pe3 - pe1) * (pe3 - pe1))) * 2.0 / 3.0;
+            if (raw.at(i).size() >= 3)
+                values[i] = {pe1, pe2, pe3, maximum, equivalent};
+            else
+                values[i] = {pe1, pe3, maximum, equivalent};
         }
         else
         {
@@ -1359,11 +1387,16 @@ QHash<int, QVector<double>> readElementRuptureValues(const QString& filePath, co
             continue;
 
         ++rowsRead;
-        const int ruptureCode = static_cast<int>(std::lround(rupture));
+        // Dynamic soil (IB=-4) writes continuous max shear stress QGEN (Pa) into column 6;
+        // only discrete integer failure codes (1=shear, 2=tensile) represent failure zones.
+        const double rounded = std::round(rupture);
+        if (std::abs(rupture - rounded) > 1.0e-3 || rounded < 0.0 || rounded > 2.0)
+            continue;
+        const int ruptureCode = static_cast<int>(rounded);
         RuptureFlags& flags = flagsByElement[elementId];
         if (ruptureCode == 2)
             flags.tensile = true;
-        else if (ruptureCode != 0)
+        else if (ruptureCode == 1)
             flags.shear = true;
     }
 
@@ -1396,10 +1429,16 @@ QVector<FieldSource> fieldSources(const QDir& dir, const QString& prefix, bool s
     {
         if (condition.isEmpty())
             return true;
+        static const QRegularExpression layerCond(
+            QStringLiteral("^L\\d+$"), QRegularExpression::CaseInsensitiveOption);
+        const bool isDynaOrLayer =
+            condition.compare(QStringLiteral("DYNA"), Qt::CaseInsensitive) == 0 ||
+            layerCond.match(condition).hasMatch();
         if (!seepage)
-            return condition.startsWith(QStringLiteral("CZ"), Qt::CaseInsensitive);
+            return condition.startsWith(QStringLiteral("CZ"), Qt::CaseInsensitive) || isDynaOrLayer;
         return condition.startsWith(QStringLiteral("METHOD"), Qt::CaseInsensitive) ||
-               condition.startsWith(QStringLiteral("CZ"), Qt::CaseInsensitive);
+               condition.startsWith(QStringLiteral("CZ"), Qt::CaseInsensitive) ||
+               isDynaOrLayer;
     };
 
     for (const QFileInfo& info : files)
@@ -2165,7 +2204,7 @@ PostResultGenerator::Result PostResultGenerator::generate(const Options& options
         for (const FieldSource& source : seepageHeadSources)
         {
             QString warning;
-            const auto raw = readNodeValues(source.path, mesh, 2, &warning);
+            const auto raw = readNodeValues(source.path, mesh, 1, &warning);
             if (!warning.isEmpty())
                 result.warnings << warning;
             headPressureBySuffix.insert(source.suffix.toCaseFolded(), raw);
@@ -2228,6 +2267,76 @@ PostResultGenerator::Result PostResultGenerator::generate(const Options& options
                            buildDisplacement(raw, mesh.dimension), result,
                            optionalExpandedWithExcavated);
         }
+        for (const FieldSource& source : fieldSources(resultDir, QStringLiteral("IIVELO"), false))
+        {
+            QString warning;
+            const auto raw = readNodeValues(source.path, mesh, mesh.dimension, &warning);
+            if (!warning.isEmpty())
+                result.warnings << warning;
+            QVector<QVector<double>> values(raw.size());
+            for (int i = 0; i < raw.size(); ++i)
+            {
+                const double vx = safeValue(raw.at(i), 0);
+                const double vy = safeValue(raw.at(i), 1);
+                const double vz = mesh.dimension == 3 ? safeValue(raw.at(i), 2) : 0.0;
+                values[i] = mesh.dimension == 3
+                    ? QVector<double>{vx, vy, vz, std::sqrt(vx*vx + vy*vy + vz*vz)}
+                    : QVector<double>{vx, vy, std::sqrt(vx*vx + vy*vy)};
+            }
+            const QStringList variables = mesh.dimension == 3
+                ? QStringList{QStringLiteral("VX(m/s)"), QStringLiteral("VY(m/s)"),
+                              QStringLiteral("VZ(m/s)"), QStringLiteral("VMAG(m/s)")}
+                : QStringList{QStringLiteral("VX(m/s)"), QStringLiteral("VY(m/s)"),
+                              QStringLiteral("VMAG(m/s)")};
+            generateField(outputDir, mesh, expanded, groups, commonMasks,
+                          outputName(external, QStringLiteral("TEC_DVELO.DAT"),
+                                     QStringLiteral("dynamic_velocity"), source.suffix),
+                          QStringLiteral("DYNAMIC VELOCITY (m/s)"), variables,
+                          values, result, optionalExpandedWithExcavated);
+        }
+        for (const FieldSource& source : fieldSources(resultDir, QStringLiteral("IIACCE"), false))
+        {
+            QString warning;
+            const auto raw = readNodeValues(source.path, mesh, mesh.dimension, &warning);
+            if (!warning.isEmpty())
+                result.warnings << warning;
+            QVector<QVector<double>> values(raw.size());
+            for (int i = 0; i < raw.size(); ++i)
+            {
+                const double ax = safeValue(raw.at(i), 0);
+                const double ay = safeValue(raw.at(i), 1);
+                const double az = mesh.dimension == 3 ? safeValue(raw.at(i), 2) : 0.0;
+                values[i] = mesh.dimension == 3
+                    ? QVector<double>{ax, ay, az, std::sqrt(ax*ax + ay*ay + az*az)}
+                    : QVector<double>{ax, ay, std::sqrt(ax*ax + ay*ay)};
+            }
+            const QStringList variables = mesh.dimension == 3
+                ? QStringList{QStringLiteral("AX(m/s^2)"), QStringLiteral("AY(m/s^2)"),
+                              QStringLiteral("AZ(m/s^2)"), QStringLiteral("AMAG(m/s^2)")}
+                : QStringList{QStringLiteral("AX(m/s^2)"), QStringLiteral("AY(m/s^2)"),
+                              QStringLiteral("AMAG(m/s^2)")};
+            generateField(outputDir, mesh, expanded, groups, commonMasks,
+                          outputName(external, QStringLiteral("TEC_DACCE.DAT"),
+                                     QStringLiteral("dynamic_acceleration"), source.suffix),
+                          QStringLiteral("DYNAMIC ACCELERATION (m/s^2)"), variables,
+                          values, result, optionalExpandedWithExcavated);
+        }
+        for (const FieldSource& source : fieldSources(resultDir, QStringLiteral("IIP1P3"), false))
+        {
+            QString warning;
+            const auto raw = readNodeValues(source.path, mesh, 2, &warning);
+            if (!warning.isEmpty())
+                result.warnings << warning;
+            QVector<QVector<double>> values(raw.size());
+            for (int i = 0; i < raw.size(); ++i)
+                values[i] = {safeValue(raw.at(i), 0) * 1.0e-6, safeValue(raw.at(i), 1) * 1.0e-6};
+            generateField(outputDir, mesh, expanded, groups, commonMasks,
+                          outputName(external, QStringLiteral("TEC_P1P3.DAT"),
+                                     QStringLiteral("principal_stress_envelope"), source.suffix),
+                          QStringLiteral("DYNAMIC PRINCIPAL STRESS ENVELOPE (MPa)"),
+                          {QStringLiteral("P1MAX(MPa)"), QStringLiteral("P3MIN(MPa)")},
+                          values, result, optionalExpandedWithExcavated);
+        }
     }
 
     const QVector<FieldSource> principalSources = fieldSources(resultDir, QStringLiteral("MODPRI"), false);
@@ -2237,7 +2346,10 @@ PostResultGenerator::Result PostResultGenerator::generate(const Options& options
         const auto raw = readNodeValues(source.path, mesh, mesh.dimension == 3 ? 3 : 2, &warning);
         if (!warning.isEmpty())
             result.warnings << warning;
-        const QStringList variables = mesh.dimension == 3
+        const bool hasThreePrincipals = mesh.dimension == 3 ||
+            std::any_of(raw.cbegin(), raw.cend(),
+                        [](const QVector<double>& row) { return row.size() >= 3; });
+        const QStringList variables = hasThreePrincipals
                                           ? QStringList{QStringLiteral("PRS1(MPa)"),
                                                         QStringLiteral("PRS2(MPa)"),
                                                         QStringLiteral("PRS3(MPa)"),
@@ -2288,7 +2400,10 @@ PostResultGenerator::Result PostResultGenerator::generate(const Options& options
         const auto raw = readNodeValues(source.path, mesh, mesh.dimension == 3 ? 3 : 2, &warning);
         if (!warning.isEmpty())
             result.warnings << warning;
-        const QStringList variables = mesh.dimension == 3
+        const bool hasThreePe = mesh.dimension == 3 ||
+            std::any_of(raw.cbegin(), raw.cend(),
+                        [](const QVector<double>& row) { return row.size() >= 3; });
+        const QStringList variables = hasThreePe
             ? QStringList{QStringLiteral("PE1(1.0e-6eps)"),
                           QStringLiteral("PE2(1.0e-6eps)"),
                           QStringLiteral("PE3(1.0e-6eps)"),

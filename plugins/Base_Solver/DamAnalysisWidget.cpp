@@ -1331,27 +1331,39 @@ bool DamAnalysisWidget::exportIfillDatFile(int mcase, const QString& cycleSectio
               .arg(m_editAlfa2->text().trimmed())
               .arg(m_editAlfa3->text().trimmed())
               << "    ALFA1  ALFA2  ALFA3\n";
-    double xMidAxis = x2Ok ? x2Coord : 0.0;
-    double yMinAxis = 0.0, yMaxAxis = 0.0;
+    double xA = x2Ok ? x2Coord : 0.0, yA = 0.0;
+    double xB = xA, yB = 0.0;
     if (auto* meshSvc = ServiceRegistry::instance().getService<MeshModuleControllerService>())
     {
         if (auto grid = meshSvc->getVtkUnstructuredGrid(); grid && grid->GetNumberOfPoints() > 0)
         {
             double bounds[6] = {0, 0, 0, 0, 0, 0};
             grid->GetBounds(bounds);
-            if (!x2Ok || (type != 2 && type != 3 && std::abs(x2Coord) < 1.0e-9))
-                xMidAxis = 0.5 * (bounds[0] + bounds[1]);
-            yMinAxis = bounds[2];
-            yMaxAxis = bounds[3];
+            if (upstreamAxis == 2)
+            {
+                // Upstream/downstream along Y: dam axis runs along X (yMid = const)
+                const double yMid = (x2Ok && (type == 2 || type == 3 || std::abs(x2Coord) >= 1.0e-9))
+                    ? x2Coord : 0.5 * (bounds[2] + bounds[3]);
+                xA = bounds[0]; yA = yMid;
+                xB = bounds[1]; yB = yMid;
+            }
+            else
+            {
+                // Upstream/downstream along X: dam axis runs along Y (xMid = const)
+                const double xMid = (x2Ok && (type == 2 || type == 3 || std::abs(x2Coord) >= 1.0e-9))
+                    ? x2Coord : 0.5 * (bounds[0] + bounds[1]);
+                xA = xMid; yA = bounds[2];
+                xB = xMid; yB = bounds[3];
+            }
         }
     }
     os << QString("%1 %2 %3 %4 %5 %6")
               .arg(m_comboUpstreamAxis->currentData().toString(),
                    m_comboPgen->currentData().toString(),
-                   QString::number(xMidAxis, 'f', 6),
-                   QString::number(yMinAxis, 'f', 6),
-                   QString::number(xMidAxis, 'f', 6),
-                   QString::number(yMaxAxis, 'f', 6))
+                   QString::number(xA, 'f', 6),
+                   QString::number(yA, 'f', 6),
+                   QString::number(xB, 'f', 6),
+                   QString::number(yB, 'f', 6))
               << "    IXUPDW IPGEN XAMID YAMID XBMID YBMID\n";
     QString rockSelfWeightMode = m_comboIfRock->currentData().toString();
     if (rockSelfWeightMode == QStringLiteral("0"))

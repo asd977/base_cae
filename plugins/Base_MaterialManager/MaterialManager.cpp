@@ -2678,7 +2678,6 @@ bool MaterialManager::generateCaculateFile(
         // SOLVER READ_IMAT unconditionally forces CONMAT(2,1)=0 (linear elastic).
         if (it.key() == 2 &&
             modelKey != QStringLiteral("linear_elastic") &&
-            modelKey != QStringLiteral("rod_element") &&
             modelKey != QStringLiteral("planar_elastic_beam"))
             return invalid(QStringLiteral(
                 "材料编号 2 在求解器中固定为线弹性本构（CONMAT(2,1)=0），"
@@ -2753,7 +2752,7 @@ bool MaterialManager::generateCaculateFile(
             }
             else if (modelKey == QStringLiteral("soil_kg"))
             {
-                if (number(QStringLiteral("Ki(10^5Pa)")) <= 0.0001)
+                if (number(QStringLiteral("Ki,Kie(10^5Pa)")) <= 0.0001)
                     return invalid(QStringLiteral("K-G 本构体积刚度参数 Ki 必须大于 0.0001。"));
             }
         }

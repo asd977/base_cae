@@ -317,8 +317,8 @@ bool isSupportedFieldName(const QString& fileName)
     static const QRegularExpression expression(
         QStringLiteral(
             "^(?:STEP\\d+[-_])?"
-            "(?:INVELO|IIDISP|MODPRI|MODRAI_PLS|MODRAP_PLS|NODCMM|IIICMM)"
-            "(?:[-_](?:METHOD\\d+|CZ[^.]*))?\\.TXT$"),
+            "(?:INVELO|IIDISP|IIVELO|IIACCE|IIP1P3|MODPRI|MODRAI_PLS|MODRAP_PLS|NODCMM|IIICMM)"
+            "(?:[-_](?:METHOD\\d+|CZ[^.]*|DYNA|L\\d+))?\\.TXT$"),
         QRegularExpression::CaseInsensitiveOption);
     return expression.match(fileName).hasMatch();
 }
@@ -490,6 +490,12 @@ QString baseDisplayName(const QString& kind)
         return QStringLiteral("材料函数值（FUN）");
     if (normalized == QStringLiteral("failure_zone"))
         return QStringLiteral("破坏区");
+    if (normalized == QStringLiteral("dynamic_velocity"))
+        return QStringLiteral("动速度");
+    if (normalized == QStringLiteral("dynamic_acceleration"))
+        return QStringLiteral("动加速度");
+    if (normalized == QStringLiteral("principal_stress_envelope"))
+        return QStringLiteral("动主应力极值");
     if (normalized == QStringLiteral("vtu") || normalized == QStringLiteral("vtm"))
         return QStringLiteral("网格结果");
     return QStringLiteral("其他结果");
@@ -519,6 +525,13 @@ QString suffixDisplayName(const QString& suffix, bool strengthReduction)
                                                      : QStringLiteral("荷载系数");
         return QStringLiteral("%1 %2").arg(factorName).arg(factor, 0, 'f', 2);
     }
+    if (suffix.compare(QStringLiteral("dyna"), Qt::CaseInsensitive) == 0)
+        return QStringLiteral("模态/动力");
+    static const QRegularExpression layerExpression(
+        QStringLiteral("^l(\\d+)$"), QRegularExpression::CaseInsensitiveOption);
+    const QRegularExpressionMatch layerMatch = layerExpression.match(suffix);
+    if (layerMatch.hasMatch())
+        return QStringLiteral("第 %1 层").arg(layerMatch.captured(1).toInt());
     return QStringLiteral("派生工况");
 }
 
@@ -688,7 +701,8 @@ QString sequenceFrameLabel(int step, const TimeSequenceInfo& timeInfo,
     if (!timeInfo.valid)
         return QStringLiteral("计算时刻索引 %1").arg(step);
 
-    const double value = timeInfo.start + timeInfo.increment * step;
+    // SOLVER step index JD = INT(TDT/DT) already includes TSTA.
+    const double value = timeInfo.increment * step;
     QString label = QStringLiteral("计算时刻 %1 %2").arg(displayNumber(value), timeInfo.unit);
     QStringList waterLevels;
     double level = 0.0;
@@ -718,6 +732,9 @@ GeneratedFileInfo generatedFileInfo(const QString& fileName, bool strengthReduct
         {"stress_level", "stress_level"},
         {"material_function", "material_function"},
         {"failure_zone", "failure_zone"},
+        {"dynamic_acceleration", "dynamic_acceleration"},
+        {"dynamic_velocity", "dynamic_velocity"},
+        {"principal_stress_envelope", "principal_stress_envelope"},
         {"displacement", "displacement"},
         {"velocity", "velocity"},
         {"tec_rap_pls", "principal_plastic_strain"},
@@ -894,7 +911,7 @@ bool writeManifest(const QDir& projectDir, const QDir& sourceDir, const QDir& pr
             const double frameValue = conditionFrame
                 ? metadata.frameValue
                 : (timeInfo.valid
-                       ? timeInfo.start + timeInfo.increment * metadata.frameOrder
+                       ? timeInfo.increment * metadata.frameOrder
                        : static_cast<double>(metadata.frameOrder));
             object.insert(QStringLiteral("frameKey"), metadata.frameKey);
             object.insert(QStringLiteral("frameLabel"),
@@ -1037,7 +1054,7 @@ QVector<PostResultAutoPrepare::ResultFile> fallbackSourceFiles(const QDir& proje
                                                           upstream, downstream);
                     if (timeInfo.valid)
                     {
-                        entry.frameValue = timeInfo.start + timeInfo.increment * entry.frameOrder;
+                        entry.frameValue = timeInfo.increment * entry.frameOrder;
                         entry.frameUnit = timeInfo.unit;
                     }
                 }
@@ -1186,8 +1203,82 @@ QStringList discoverResultDirectories(const QString& projectDir)
         }
     }
 
-    std::sort(result.begin(), result.end(), [](const QString& left, const QString& right)
+    auto physicalSortKey = [](const QString& relPath) -> QVector<int>
     {
+        const QString upper = relPath.toUpper();
+        const QString leaf = QFileInfo(upper).fileName();
+        // Key format: {domainGroup, caseNo, cycleOrStage, phase, subPhase, layer}
+        if (leaf == QStringLiteral("GEOSTR"))
+            return {0, 0, 0, 0, 0, 0};
+        if (leaf == QStringLiteral("DISK00"))
+            return {1, 0, 0, 0, 0, 0};
+        if (leaf == QStringLiteral("DISK01"))
+            return {1, 0, 0, 1, 0, 0};
+        if (leaf == QStringLiteral("SEEPFREE"))
+            return {2, 0, 0, 0, 0, 0};
+        static const QRegularExpression seepStatRe(QStringLiteral("^SEEPCASE(\\d+)$"));
+        if (const auto m = seepStatRe.match(leaf); m.hasMatch())
+            return {2, m.captured(1).toInt(), 1, 0, 0, 0};
+        static const QRegularExpression seepDynaRe(QStringLiteral("^SEEPDYNA(\\d+)$"));
+        if (const auto m = seepDynaRe.match(leaf); m.hasMatch())
+            return {2, m.captured(1).toInt(), 2, 0, 0, 0};
+        static const QRegularExpression damCycleRe(
+            QStringLiteral("^CASE(\\d+)(PACK|PLIU|FILL|FLIU|WETT|DROP|DICE)(\\d{1,2})?(?:L?(\\d+))?$"));
+        if (const auto m = damCycleRe.match(leaf); m.hasMatch())
+        {
+            const int c = m.captured(1).toInt();
+            const QString tag = m.captured(2);
+            const int cyc = m.captured(3).isEmpty() ? 99 : m.captured(3).toInt();
+            const int lay = m.captured(4).isEmpty() ? 9999 : m.captured(4).toInt();
+            int phase = 50;
+            if (tag == QStringLiteral("PACK")) phase = 10;
+            else if (tag == QStringLiteral("PLIU")) phase = 20;
+            else if (tag == QStringLiteral("FILL")) phase = 30;
+            else if (tag == QStringLiteral("FLIU")) phase = 40;
+            else if (tag == QStringLiteral("WETT")) return {3, c, 90, 10, 0, 0};
+            else if (tag == QStringLiteral("DROP")) return {3, c, 90, 20, cyc, 0};
+            else if (tag == QStringLiteral("DICE")) return {3, c, 90, 30, cyc, 0};
+            return {3, c, cyc, phase, lay, 0};
+        }
+        static const QRegularExpression caveStageRe(
+            QStringLiteral("^(E|J)(\\d+)(PART|DCL)?$"));
+        if (const auto m = caveStageRe.match(leaf); m.hasMatch())
+        {
+            const int isJaca = (m.captured(1) == QStringLiteral("J")) ? 1 : 0;
+            const int stage = m.captured(2).toInt();
+            const QString suf = m.captured(3);
+            const int sub = suf == QStringLiteral("PART") ? 0 : (suf == QStringLiteral("DCL") ? 1 : 2);
+            return {4, isJaca, stage, sub, 0, 0};
+        }
+        static const QRegularExpression casePostRe(
+            QStringLiteral("(?:^|/)CASE(\\d+)/?(EALL|JALL|LINE|CZ|ZH|CB|MODE|WAVE|SETT)$"));
+        if (const auto m = casePostRe.match(upper); m.hasMatch())
+        {
+            const int c = m.captured(1).toInt();
+            const QString tag = m.captured(2);
+            int ord = 95;
+            if (tag == QStringLiteral("EALL")) ord = 60;
+            else if (tag == QStringLiteral("JALL")) ord = 62;
+            else if (tag == QStringLiteral("LINE")) ord = 65;
+            else if (tag == QStringLiteral("CZ")) ord = 70;
+            else if (tag == QStringLiteral("ZH")) ord = 72;
+            else if (tag == QStringLiteral("CB")) ord = 74;
+            else if (tag == QStringLiteral("MODE")) ord = 80;
+            else if (tag == QStringLiteral("WAVE")) ord = 85;
+            else if (tag == QStringLiteral("SETT")) ord = 90;
+            return {5, c, ord, 0, 0, 0};
+        }
+        static const QRegularExpression caseBaseRe(QStringLiteral("^CASE(\\d+)$"));
+        if (const auto m = caseBaseRe.match(leaf); m.hasMatch())
+            return {3, m.captured(1).toInt(), 0, 0, 0, 0};
+        return {9, 0, 0, 0, 0, 0};
+    };
+    std::sort(result.begin(), result.end(), [&](const QString& left, const QString& right)
+    {
+        const QVector<int> lk = physicalSortKey(left);
+        const QVector<int> rk = physicalSortKey(right);
+        if (lk != rk)
+            return lk < rk;
         return left.compare(right, Qt::CaseInsensitive) < 0;
     });
     return result;
@@ -1214,7 +1305,7 @@ QString damStageDisplayName(const QString& relativePath, const QString& leafName
     // The cycle number occupies two characters and the remaining suffix is
     // the actual mesh layer number.
     static const QRegularExpression packLayerExpression(
-        QStringLiteral("^CASE\\d+PACK(\\d{2})(\\d+)$"));
+        QStringLiteral("^CASE\\d+PACK(\\d{2})L?(\\d+)$"));
     QRegularExpressionMatch match = packLayerExpression.match(leaf);
     if (match.hasMatch())
     {
@@ -1269,7 +1360,7 @@ QString damStageDisplayName(const QString& relativePath, const QString& leafName
         return QStringLiteral("湿化变形");
 
     static const QRegularExpression caseSubStageExpression(
-        QStringLiteral("(?:^|/)CASE(\\d+)/(CZ|ZH|CB|MODE|WAVE|SETT)$"));
+        QStringLiteral("(?:^|/)CASE(\\d+)/?(CZ|ZH|CB|MODE|WAVE|SETT)$"));
     match = caseSubStageExpression.match(relative);
     if (match.hasMatch())
     {
@@ -1354,26 +1445,40 @@ QString caveStageDisplayName(const QString& relativePath, const QString& leafNam
         relative.endsWith(QStringLiteral("/LINE")))
         return QStringLiteral("衬砌计算");
 
-    static const QRegularExpression excavationExpression(QStringLiteral("^E(\\d+)$"));
+    static const QRegularExpression excavationExpression(QStringLiteral("^E(\\d+)(PART|DCL)?$"));
     QRegularExpressionMatch match = excavationExpression.match(leaf);
     if (match.hasMatch())
     {
         static const QRegularExpression excavationPathExpression(
-            QStringLiteral("(?:^|/)CASE\\d+EXCA/E\\d+$"));
+            QStringLiteral("(?:^|/)CASE\\d+EXCA/E\\d+(?:PART|DCL)?$"));
         if (excavationPathExpression.match(relative).hasMatch() ||
             relative.contains(QStringLiteral("/EXCA/")))
+        {
+            const QString suf = match.captured(2);
+            if (suf == QStringLiteral("PART"))
+                return QStringLiteral("第 %1 级开挖（半释放）").arg(match.captured(1).toInt());
+            if (suf == QStringLiteral("DCL"))
+                return QStringLiteral("第 %1 级吊车梁安装").arg(match.captured(1).toInt());
             return QStringLiteral("第 %1 级开挖").arg(match.captured(1).toInt());
+        }
     }
 
-    static const QRegularExpression supportExpression(QStringLiteral("^J(\\d+)$"));
+    static const QRegularExpression supportExpression(QStringLiteral("^J(\\d+)(PART|DCL)?$"));
     match = supportExpression.match(leaf);
     if (match.hasMatch())
     {
         static const QRegularExpression supportPathExpression(
-            QStringLiteral("(?:^|/)CASE\\d+JACA/J\\d+$"));
+            QStringLiteral("(?:^|/)CASE\\d+JACA/J\\d+(?:PART|DCL)?$"));
         if (supportPathExpression.match(relative).hasMatch() ||
             relative.contains(QStringLiteral("/JACA/")))
+        {
+            const QString suf = match.captured(2);
+            if (suf == QStringLiteral("PART"))
+                return QStringLiteral("第 %1 级开挖与支护（半释放）").arg(match.captured(1).toInt());
+            if (suf == QStringLiteral("DCL"))
+                return QStringLiteral("第 %1 级吊车梁安装与支护").arg(match.captured(1).toInt());
             return QStringLiteral("第 %1 级开挖与支护").arg(match.captured(1).toInt());
+        }
     }
 
     static const QRegularExpression excaRootExpression(QStringLiteral("^CASE\\d+EXCA$"));
@@ -1398,7 +1503,7 @@ QString slopeStageDisplayName(const QString& relativePath, const QString& leafNa
     const QString leaf = leafName.toUpper();
 
     static const QRegularExpression dynamicExpression(
-        QStringLiteral("(?:^|/)CASE(\\d+)/(MODE|WAVE)$"));
+        QStringLiteral("(?:^|/)CASE(\\d+)/?(MODE|WAVE)$"));
     QRegularExpressionMatch match = dynamicExpression.match(relative);
     if (match.hasMatch())
     {
@@ -1433,7 +1538,7 @@ QString genericCaseStageDisplayName(const QString& relativePath, const QString& 
     const QString relative = relativePath.toUpper();
     const QString leaf = leafName.toUpper();
     static const QRegularExpression subStageExpression(
-        QStringLiteral("(?:^|/)CASE(\\d+)/(CZ|ZH|CB|MODE|WAVE|SETT)$"));
+        QStringLiteral("(?:^|/)CASE(\\d+)/?(CZ|ZH|CB|MODE|WAVE|SETT)$"));
     QRegularExpressionMatch match = subStageExpression.match(relative);
     if (match.hasMatch())
     {
