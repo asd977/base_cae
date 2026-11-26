@@ -136,7 +136,7 @@ bool isDamStaticMaterialModel(const QString& modelKey)
     static const QSet<QString> keys = {
         QStringLiteral("soil_eb"), QStringLiteral("soil_kg"),
         QStringLiteral("soil_emu"), QStringLiteral("soil_nanshui"),
-        QStringLiteral("soil_emu_crush")};
+        QStringLiteral("soil_emu_crush"), QStringLiteral("linear_elastic")};
     return keys.contains(modelKey);
 }
 

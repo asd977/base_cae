@@ -1,4 +1,5 @@
 #pragma once
+#include <vtkCellType.h>
 #include "StressBoundaryPage.h"
 #include "SolverQuietBoundary.h"
 #include <ServiceRegistry.h>
@@ -58,6 +59,18 @@ public:
    if(keys.isEmpty())continue;
    if(!grid)return false;
    auto* nodeIds=grid->GetPointData()->GetArray("node_id");auto* elemIds=grid->GetCellData()->GetArray("elem_id");
+   bool pureTet3D=false;
+   if(faces&&grid->GetNumberOfCells()>0)
+   {
+    bool hasTet=false,hasNonTet3D=false;
+    for(vtkIdType c=0;c<grid->GetNumberOfCells();++c)
+    {
+     const int ct=grid->GetCellType(c);
+     if(ct==VTK_TETRA)hasTet=true;
+     else if(ct==VTK_HEXAHEDRON||ct==VTK_WEDGE||ct==VTK_PYRAMID||ct==VTK_VOXEL||ct==VTK_POLYHEDRON){hasNonTet3D=true;break;}
+    }
+    pureTet3D=hasTet&&!hasNonTet3D;
+   }
    for(const auto& key:keys)
    {
     const vtkIdType packed=key.toVariant().toLongLong(),ci=packed>>4;const int local=int(packed&15);
@@ -65,9 +78,10 @@ public:
     auto* cell=grid->GetCell(ci);if(local>=(faces?cell->GetNumberOfFaces():cell->GetNumberOfEdges()))return false;
     auto* boundary=faces?cell->GetFace(local):cell->GetEdge(local);if(!boundary)return false;
     const int count=boundary->GetNumberOfPoints();
-    // Keep the node order of the established linear boundary exporter.
+    // Keep the node order of the established linear boundary exporter;
+    // pure Tet4 meshes (KETYPE=35, MAFAJD=3) require width=3 (MAKOD=5).
     if((faces&&count!=3&&count!=4)||(!faces&&count!=2))return false;
-    width=faces?4:2;
+    width=faces?(pureTet3D?3:4):2;
     QString row=QString("%1 %2 0").arg(rows.size()+1).arg(elemIds?qint64(elemIds->GetTuple1(ci)):ci+1);
     for(int i=0;i<width;++i){const auto pid=boundary->GetPointId(qMin(i,count-1));row+=QString(" %1").arg(nodeIds?qint64(nodeIds->GetTuple1(pid)):pid+1);}
     rows.append(row+" 0\n");

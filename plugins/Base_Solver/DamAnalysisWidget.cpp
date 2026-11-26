@@ -50,6 +50,7 @@
 #include <vtkUnstructuredGrid.h>
 
 #include <algorithm>
+#include <cmath>
 #include <limits>
 
 #include "ui_DamAnalysisWidget.h"
@@ -395,13 +396,20 @@ void DamAnalysisWidget::rebuildConstructionLayerPanel()
         m_constructionRegionTable->setItem(row, 1, recognizedItem);
         m_constructionRegionTable->setItem(row, 2, countItem);
 
+        const int currentDamType = damType();
         auto* purpose = new QComboBox(m_constructionRegionTable);
         purpose->addItem(QStringLiteral("请选择"), 0);
         purpose->addItem(colorIcon(foundationColor), QStringLiteral("坝基"), 1);
         purpose->addItem(colorIcon(damColor), QStringLiteral("坝体"), 2);
-        purpose->addItem(QStringLiteral("混凝土面板"), 3);
-        purpose->addItem(QStringLiteral("附属结构（趾板、接缝等）"), 4);
-        purpose->addItem(QStringLiteral("防渗心墙"), 5);
+        if (currentDamType == 1)
+        {
+            purpose->addItem(QStringLiteral("混凝土面板"), 3);
+            purpose->addItem(QStringLiteral("附属结构（趾板、接缝等）"), 4);
+        }
+        else if (currentDamType == 2 || currentDamType == 3)
+        {
+            purpose->addItem(QStringLiteral("防渗心墙"), 5);
+        }
         const QString name = nameItem->text().toCaseFolded();
         const bool nameLooksLikeDam = name.contains(QStringLiteral("坝体")) ||
                                       name.contains(QStringLiteral("填筑")) ||
@@ -424,7 +432,8 @@ void DamAnalysisWidget::rebuildConstructionLayerPanel()
             .arg(region.key.category).arg(region.key.dim).arg(region.key.id);
         if (m_constructionRegionRoles.contains(roleKey))
             purposeValue = m_constructionRegionRoles.value(roleKey);
-        purpose->setCurrentIndex(purpose->findData(purposeValue));
+        const int roleIdx = purpose->findData(purposeValue);
+        purpose->setCurrentIndex(roleIdx >= 0 ? roleIdx : 0);
         SolverUiLayoutHelper::configureComboSizing(purpose);
         purpose->setToolTip(QStringLiteral("蓝色表示坝基，橙色表示填筑区域。面板坝需区分面板与附属结构材料。"));
         connect(purpose, qOverload<int>(&QComboBox::currentIndexChanged),
@@ -791,15 +800,11 @@ void DamAnalysisWidget::initValueEditors()
     ui->editLine30->setValidator(
         new QIntValidator(1, std::numeric_limits<int>::max(), ui->editLine30));
 
-    m_comboMethodIter->setItemData(0, "1");
-    m_comboMethodIter->setItemData(1, "2");
-    m_comboMethodIter->setItemData(2, "3");
-    m_comboMethodIter->setItemData(3, "4");
-    m_comboMethodIter->setItemText(0, QStringLiteral("常刚度法（初应变法）"));
-    m_comboMethodIter->setItemText(1, QStringLiteral("常刚度法（初应力法）"));
-    m_comboMethodIter->setItemText(2, QStringLiteral("变刚度法（切线刚度法）"));
-    m_comboMethodIter->setItemText(3, QStringLiteral("中点增量法（土坝填筑）"));
-    m_comboMethodIter->setCurrentIndex(3);
+    // SOLVER AUTOPACK branches for METHOD_ITER1=1/2/3 have uninitialized HA1/HA2/ILAYER
+    // and zero out reservoir water loads; lock dam fill to METHOD_ITER1=4.
+    m_comboMethodIter->clear();
+    m_comboMethodIter->addItem(QStringLiteral("中点增量法（土坝填筑）"), QStringLiteral("4"));
+    m_comboMethodIter->setCurrentIndex(0);
 
     m_comboUpstreamAxis->setItemData(0, "1");
     m_comboUpstreamAxis->setItemData(1, "2");
@@ -830,10 +835,10 @@ void DamAnalysisWidget::initValueEditors()
     m_comboIfRock->setCurrentIndex(1);
     m_comboIfRock->setToolTip(
         QStringLiteral("可重新计算，也可复用已有基岩状态。"));
-    m_comboIfIso->setItemData(0, "0");
-    m_comboIfIso->setItemData(1, "1");
-    m_comboIfIso->setItemText(0, QStringLiteral("按建模材料计算"));
-    m_comboIfIso->setItemText(1, QStringLiteral("按替代材料计算"));
+    // SOLVER PACKIKEY interprets IFISO > 0 as a substitute material ID; IFISO=1 is VOID.
+    m_comboIfIso->clear();
+    m_comboIfIso->addItem(QStringLiteral("按建模材料计算"), QStringLiteral("0"));
+    m_comboIfIso->setCurrentIndex(0);
 
     connect(ui->comboLine19, qOverload<int>(&QComboBox::currentIndexChanged), this,
             [this]()
@@ -1275,10 +1280,14 @@ bool DamAnalysisWidget::exportIfillDatFile(int mcase, const QString& cycleSectio
     if (type == 4)
         QFile::remove(inputDir.filePath(QStringLiteral("FA_DAMBASE.DAT")));
 
+    bool x2Ok = false;
+    const double x2Coord = m_editX2 ? m_editX2->text().trimmed().toDouble(&x2Ok) : 0.0;
+    const int upstreamAxis = m_comboUpstreamAxis ? m_comboUpstreamAxis->currentData().toInt() : 1;
     QSet<int> plate, auxiliary, core;
     if ((type == 1 && !faceDamMaterialSets(plate, auxiliary, &error)) ||
         ((type == 2 || type == 3) && !coreDamMaterialSets(core, &error)) ||
-        !DamInputProtocol::prepareMaterialSets(inputDir, type, plate, auxiliary, core, &error))
+        !DamInputProtocol::prepareMaterialSets(inputDir, type, plate, auxiliary, core,
+                                               x2Ok ? x2Coord : 0.0, upstreamAxis, &error))
     {
         QMessageBox::warning(nullptr,QStringLiteral("请完善填筑材料"),error);
         return false;
@@ -1322,9 +1331,27 @@ bool DamAnalysisWidget::exportIfillDatFile(int mcase, const QString& cycleSectio
               .arg(m_editAlfa2->text().trimmed())
               .arg(m_editAlfa3->text().trimmed())
               << "    ALFA1  ALFA2  ALFA3\n";
-    os << QString("%1 %2 0.000000 0.000000 0.000000 0.000000")
+    double xMidAxis = x2Ok ? x2Coord : 0.0;
+    double yMinAxis = 0.0, yMaxAxis = 0.0;
+    if (auto* meshSvc = ServiceRegistry::instance().getService<MeshModuleControllerService>())
+    {
+        if (auto grid = meshSvc->getVtkUnstructuredGrid(); grid && grid->GetNumberOfPoints() > 0)
+        {
+            double bounds[6] = {0, 0, 0, 0, 0, 0};
+            grid->GetBounds(bounds);
+            if (!x2Ok || (type != 2 && type != 3 && std::abs(x2Coord) < 1.0e-9))
+                xMidAxis = 0.5 * (bounds[0] + bounds[1]);
+            yMinAxis = bounds[2];
+            yMaxAxis = bounds[3];
+        }
+    }
+    os << QString("%1 %2 %3 %4 %5 %6")
               .arg(m_comboUpstreamAxis->currentData().toString(),
-                   m_comboPgen->currentData().toString())
+                   m_comboPgen->currentData().toString(),
+                   QString::number(xMidAxis, 'f', 6),
+                   QString::number(yMinAxis, 'f', 6),
+                   QString::number(xMidAxis, 'f', 6),
+                   QString::number(yMaxAxis, 'f', 6))
               << "    IXUPDW IPGEN XAMID YAMID XBMID YBMID\n";
     QString rockSelfWeightMode = m_comboIfRock->currentData().toString();
     if (rockSelfWeightMode == QStringLiteral("0"))
@@ -1345,8 +1372,11 @@ bool DamAnalysisWidget::exportIfillDatFile(int mcase, const QString& cycleSectio
             rockSelfWeightMode = QStringLiteral("1");
     }
 
-    os << QString("%1 %2").arg(rockSelfWeightMode,
-                               m_comboIfIso->currentData().toString())
+    const QString safeIfIso =
+        m_comboIfIso && m_comboIfIso->currentData().toInt() >= 2
+            ? m_comboIfIso->currentData().toString()
+            : QStringLiteral("0");
+    os << QString("%1 %2").arg(rockSelfWeightMode, safeIfIso)
               << "    IFROCK IFISO\n";
 
     const int safeCaseCount = qMax(1, mcase);
@@ -1418,6 +1448,8 @@ bool DamAnalysisWidget::faceDamMaterialSets(QSet<int>& plate, QSet<int>& auxilia
         auto* choice = qobject_cast<QComboBox*>(m_constructionRegionTable->cellWidget(row, 3));
         const int role = choice ? choice->currentData().toInt() : 0;
         if (role == 0) return fail(QStringLiteral("请为面板坝的每个区域指定用途。"));
+        if (role != 1 && role != 2 && role != 3 && role != 4)
+            return fail(QStringLiteral("面板坝区域用途包含不适用的心墙角色，请重新指定。"));
         QSet<int>* target = role == 3 ? &plate : role == 4 ? &auxiliary : role == 1 ? &rock : &body;
         for (auto cell : m_constructionRegionCells[row])
             if (cell >= 0 && cell < grid->GetNumberOfCells())
@@ -1446,6 +1478,8 @@ bool DamAnalysisWidget::coreDamMaterialSets(QSet<int>& core, QString* error) con
         auto* choice = qobject_cast<QComboBox*>(m_constructionRegionTable->cellWidget(row, 3));
         const int role = choice ? choice->currentData().toInt() : 0;
         if (role == 0) return fail(QStringLiteral("请为心墙坝的每个区域指定用途。"));
+        if (role != 1 && role != 2 && role != 5)
+            return fail(QStringLiteral("心墙坝区域用途包含不适用的面板/附属结构角色，请重新指定。"));
         QSet<int>* target = role == 5 ? &core : role == 1 ? &rock : &body;
         for (auto cell : m_constructionRegionCells[row])
             if (cell >= 0 && cell < grid->GetNumberOfCells())

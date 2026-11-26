@@ -1006,14 +1006,57 @@ void PhysicalField::writeIIWL_Part3_BodyForce(QTextStream& os)
     if (iiSet.size() > 1)
         qWarning() << "Part3 BodyForce: multiple II values found, using" << II;
 
-    const int NFB = allRows.size();
+    // SOLVER GE_FBG treats NFB==1 as global uniform body force (ignoring JMFB(1))
+    // and NFB>1 as per-node local body force (requiring all element nodes in JMFB).
+    QVector<BodyForcePage::Part3Row> finalRows;
+    BodyForcePage::Part3Row mergedGlobal{0, 0.0, 0.0, 0.0};
+    bool hasGlobal = false;
+    QVector<BodyForcePage::Part3Row> localRows;
+    for (const auto& r : allRows)
+    {
+        if (r.jd <= 0)
+        {
+            hasGlobal = true;
+            mergedGlobal.fbx += r.fbx;
+            mergedGlobal.fby += r.fby;
+            mergedGlobal.fbz += r.fbz;
+        }
+        else
+        {
+            localRows.push_back(r);
+        }
+    }
+    if (hasGlobal && localRows.isEmpty())
+    {
+        finalRows.push_back(mergedGlobal);
+    }
+    else if (!localRows.isEmpty())
+    {
+        if (hasGlobal)
+            qWarning() << "Part3 BodyForce: global and local body forces mixed; applying global sum to local rows.";
+        for (auto r : localRows)
+        {
+            if (hasGlobal)
+            {
+                r.fbx += mergedGlobal.fbx;
+                r.fby += mergedGlobal.fby;
+                r.fbz += mergedGlobal.fbz;
+            }
+            finalRows.push_back(r);
+        }
+        if (finalRows.size() == 1)
+        {
+            qWarning() << "Part3 BodyForce: single-node local body force cannot form a full element in GE_FBG; dropping.";
+            finalRows.clear();
+        }
+    }
+
+    const int NFB = finalRows.size();
 
     os << NFB << "\n";
     os << "JMFB\tFBX\tFBY\tFBZ\tII\n";
 
-    // 数据行：JD FBX FBY FBZ（规范里数据行不含 II；II 在说明行体现）
-    // 如果你求解器要求每行也带 II，你把下面行末加 "\t" << II
-    for (const auto& r : allRows)
+    for (const auto& r : finalRows)
     {
         os << r.jd << "\t" << r.fbx << "\t" << r.fby << "\t" << r.fbz << "\n";
     }
@@ -1893,6 +1936,7 @@ void PhysicalField::writeIIWL_Part2_GeoStressFitFace(QTextStream& os)
     os << QString("%1\tNFA_GEO\n").arg(NFA_GEO);
     os << "FNAME\tIDIR\tHEIGHT\tGAMA\tPGROUT\tII\n";
 
+    int exportedFitFaceIndex = 0;
     for (ProjectNode* n : pages)
     {
         if (!n)
@@ -1908,7 +1952,8 @@ void PhysicalField::writeIIWL_Part2_GeoStressFitFace(QTextStream& os)
         const double height = page->height();
         const double rou = page->rou();
         const double pgrout = page->pgrout();
-        const int ii = page->ii();
+        // SOLVER READ_IIWL strictly requires II == 1..NFA_GEO.
+        const int ii = ++exportedFitFaceIndex;
 
         os << fname << "\t" << idir << "\t" << fmtE(height) << "\t" << fmtE(rou) << "\t"
            << fmtE(pgrout) << "\t" << ii << "\n";
@@ -2803,14 +2848,18 @@ void PhysicalField::generateWaveFiles()
 
         QTextStream out(&file);
         const int N = series.size();
-        out << QString("%1      %2 NUM  AM\n").arg(N, 6).arg(f4(amp), 10);
+        // SOLVER wave readers ignore column 2 (AM) and hardcode AMP_A*=1.0;
+        // pre-multiply non-zero amp directly into the acceleration samples
+        // (preserve legacy amp==0.0 projects as unscaled 1.0).
+        const double effectiveAmp = (std::abs(amp) > 1.0e-12) ? amp : 1.0;
+        out << QString("%1      %2 NUM  AM\n").arg(N, 6).arg(f4(1.0), 10);
         out << QString("   T(S)           %1(m/S^2)       II\n").arg(axisLabel);
 
         for (int i = 0; i < N; ++i)
         {
             out << QString("%1       %2%3\n")
                        .arg(f6(series[i].first), 13)
-                       .arg(f6(series[i].second), 15)
+                       .arg(f6(series[i].second * effectiveAmp), 15)
                        .arg(i + 1, 10);
         }
 

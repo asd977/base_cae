@@ -4,13 +4,15 @@
 #include <QRegularExpression>
 #include <QSaveFile>
 #include <QSet>
+#include <QVector>
 #include <algorithm>
 
 namespace DamInputProtocol
 {
 inline bool prepareMaterialSets(const QDir& input, int damType,
                                 const QSet<int>& plate, const QSet<int>& auxiliary,
-                                const QSet<int>& core, QString* error)
+                                const QSet<int>& core, double coreBoundaryCoord,
+                                int upstreamAxis, QString* error)
 {
     auto fail=[&](QString s){if(error)*error=s;return false;};
     QFile mesh(input.filePath(QStringLiteral("IIIN.DAT")));
@@ -19,9 +21,25 @@ inline bool prepareMaterialSets(const QDir& input, int damType,
     auto fields=[](QString s){return s.split(QRegularExpression(QStringLiteral("\\s+")),Qt::SkipEmptyParts);};
     if(lines.size()<2)return fail(QStringLiteral("填筑网格头无效。"));
     const auto h=fields(lines[0]);if(h.size()<5)return fail(QStringLiteral("填筑网格头无效。"));
-    const int start=2+h[0].toInt(),count=h[2].toInt(),width=h[3].toInt();
-    if(start<2||count<1||width<2||lines.size()<start+count)return fail(QStringLiteral("填筑网格不完整。"));
-    QSet<int> rock,fill;
+    const int numnp=h[0].toInt(),madim=h[1].toInt();
+    const int start=2+numnp,count=h[2].toInt(),width=h[3].toInt();
+    if(numnp<1||start<2||count<1||width<2||lines.size()<start+count)return fail(QStringLiteral("填筑网格不完整。"));
+    const int axisIndex = (upstreamAxis >= 1 && upstreamAxis <= madim) ? (upstreamAxis - 1) : 0;
+    QVector<double> nodeAxisCoord(numnp + 1, 0.0);
+    if (damType == 2 || damType == 3)
+    {
+        for (int n = 0; n < numnp; ++n)
+        {
+            const auto nrow = fields(lines[2 + n]);
+            if (nrow.size() > 1 + axisIndex)
+            {
+                const int nid = nrow[0].toInt();
+                if (nid >= 1 && nid <= numnp)
+                    nodeAxisCoord[nid] = nrow[1 + axisIndex].toDouble();
+            }
+        }
+    }
+    QSet<int> rock,fill,damUp,damDw;
     for(int i=0;i<count;++i)
     {
         const auto row=fields(lines[start+i]);if(row.size()<width+4)return fail(QStringLiteral("填筑单元属性不完整。"));
@@ -29,6 +47,33 @@ inline bool prepareMaterialSets(const QDir& input, int damType,
         if(type==1||material<=1)continue;
         if(layer<1)return fail(QStringLiteral("填筑计算的实体层号必须为正数。"));
         (layer==1?rock:fill).insert(material);
+        if ((damType == 2 || damType == 3) && layer > 1 && !core.contains(material))
+        {
+            double cmin = 1.0e30, cmax = -1.0e30;
+            bool hasNode = false;
+            for (int k = 1; k <= width; ++k)
+            {
+                const int nid = row[k].toInt();
+                if (nid >= 1 && nid <= numnp)
+                {
+                    const double c = nodeAxisCoord[nid];
+                    if (c < cmin) cmin = c;
+                    if (c > cmax) cmax = c;
+                    hasNode = true;
+                }
+            }
+            if (hasNode)
+            {
+                if (cmax <= coreBoundaryCoord)
+                    damUp.insert(material);
+                else if (cmin >= coreBoundaryCoord)
+                    damDw.insert(material);
+                else if (0.5 * (cmin + cmax) <= coreBoundaryCoord)
+                    damUp.insert(material);
+                else
+                    damDw.insert(material);
+            }
+        }
     }
     if(rock.isEmpty())return fail(QStringLiteral("缺少第1层基岩材料。"));
     if(!(rock&fill).isEmpty())return fail(QStringLiteral("基岩和填筑层共用了材料，请分别设置材料。"));
@@ -68,10 +113,19 @@ inline bool prepareMaterialSets(const QDir& input, int damType,
     }
     else if (damType == 2 || damType == 3)
     {
-        if (!save(QStringLiteral("MA_CORE.DAT"), core))
-            return fail(QStringLiteral("无法写入心墙材料分组文件。"));
-        QFile::remove(input.filePath(QStringLiteral("MA_DAMUP.DAT")));
-        QFile::remove(input.filePath(QStringLiteral("MA_DAMDW.DAT")));
+        QSet<int> shell = fill;
+        shell.subtract(core);
+        if (damUp.isEmpty() && damDw.isEmpty())
+        {
+            damUp = shell;
+            damDw = shell;
+        }
+        // SOLVER AUTOPACK deallocates XY/JM/MAT before calling FILL_MADAMUP/FILL_MADAMDW;
+        // writing MA_DAMUP.DAT and MA_DAMDW.DAT directly avoids the solver fallback crash.
+        if (!save(QStringLiteral("MA_CORE.DAT"), core) ||
+            !save(QStringLiteral("MA_DAMUP.DAT"), damUp) ||
+            !save(QStringLiteral("MA_DAMDW.DAT"), damDw))
+            return fail(QStringLiteral("无法写入心墙及上下游坝壳材料分组文件。"));
     }
     else
     {
@@ -83,9 +137,16 @@ inline bool prepareMaterialSets(const QDir& input, int damType,
 
 inline bool prepareMaterialSets(const QDir& input, int damType,
                                 const QSet<int>& plate, const QSet<int>& auxiliary,
+                                const QSet<int>& core, QString* error)
+{
+    return prepareMaterialSets(input, damType, plate, auxiliary, core, 0.0, 1, error);
+}
+
+inline bool prepareMaterialSets(const QDir& input, int damType,
+                                const QSet<int>& plate, const QSet<int>& auxiliary,
                                 QString* error)
 {
-    return prepareMaterialSets(input, damType, plate, auxiliary, {}, error);
+    return prepareMaterialSets(input, damType, plate, auxiliary, {}, 0.0, 1, error);
 }
 
 inline bool prepareMaterialSets(const QDir& input, bool homogeneous, QString* error)

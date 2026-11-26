@@ -71,7 +71,7 @@ int main(int argc, char** argv)
     try
     {
         require(CaveExcavationProtocol::dynamicStateSubdirectory(false,false,true,false,2,false)=="CASE01EXCA/E02","dynamic state must be the final excavation stage");
-        require(CaveExcavationProtocol::dynamicStateSubdirectory(false,true,true,true,3,true)=="CASE01JACA/J03PART","crane release must precede dynamics");
+        require(CaveExcavationProtocol::dynamicStateSubdirectory(false,true,true,true,3,true)=="CASE01JACA/J03","final crane stage directory precedes dynamics");
         require(CaveExcavationProtocol::dynamicStateSubdirectory(true,true,true,true,2,true)=="CASE01LINE","lining is the last static task");
         require(CaveExcavationProtocol::dynamicStateSubdirectory(false,false,false,false,1,false)=="CASE01EALL","whole excavation result");
         const auto args = app.arguments();

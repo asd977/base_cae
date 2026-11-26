@@ -2178,7 +2178,7 @@ bool FillStorageCyclePage::validateInputs(QString* errorMessage) const
     // 当前界面只允许明确选择一组渗流结果，因此只在最后一个实际蓄水阶段施加一次。
     // 求解器的 WATER DROP(ITASK=5) 也会再次进入 FILLFBLOAD2，但没有独立的骤降后
     // 渗流场输入；与单一关联场组合会重复使用同一场，不能可靠闭环。
-    if (usesImportedSeepageBody())
+    if (usesImportedSeepageBody() || usesImportedSeepageHead())
     {
         const int finalCycle = m_circleTable->rowCount();
         if (!hasEffectiveWaterFill(finalCycle))
@@ -2239,6 +2239,26 @@ bool FillStorageCyclePage::validateInputs(QString* errorMessage) const
             && fillCreepTime <= 0.0)
             return fail(QStringLiteral("第 %1 个阶段启用蓄水期流变后，流变时间必须大于 0。")
                             .arg(row + 1));
+    }
+    if (m_circleTable->rowCount() >= 2)
+    {
+        const QString firstSig = QStringLiteral("%1|%2|%3|%4")
+            .arg(tableItemText(m_circleTable, 0, 6, QStringLiteral("0")),
+                 tableItemText(m_circleTable, 0, 7, QStringLiteral("0")),
+                 tableItemText(m_circleTable, 0, 8, QStringLiteral("0")),
+                 tableItemText(m_circleTable, 0, 9, QStringLiteral("0")));
+        for (int row = 1; row < m_circleTable->rowCount(); ++row)
+        {
+            const QString sig = QStringLiteral("%1|%2|%3|%4")
+                .arg(tableItemText(m_circleTable, row, 6, QStringLiteral("0")),
+                     tableItemText(m_circleTable, row, 7, QStringLiteral("0")),
+                     tableItemText(m_circleTable, row, 8, QStringLiteral("0")),
+                     tableItemText(m_circleTable, row, 9, QStringLiteral("0")));
+            if (sig != firstSig)
+                return fail(QStringLiteral(
+                    "多循环填筑蓄水时，求解器要求各阶段的填筑/流变/蓄水开关组合保持一致"
+                    "（第 %1 个阶段与第 1 个阶段不一致）。").arg(row + 1));
+        }
     }
 
     const bool dynamicEnabled = modeEnabled || waveEnabled;
@@ -2809,7 +2829,7 @@ QString FillStorageCyclePage::sectionText(int caseIndex) const
         // 最后一个实际蓄水循环；validateInputs() 已保证最后一行确实执行 FILL。
         // 前序阶段保持 NONE，避免同一渗流场在多个增量中被重复施加。
         const bool applySeepageResult =
-            usesImportedSeepageBody() && i == nCircle - 1;
+            (usesImportedSeepageBody() || usesImportedSeepageHead()) && i == nCircle - 1;
         text += QString("%1 %2 %3 %4 %5 %6 %7 %8 %9 %10 %11 %12 %13\n")
                     // 第一组：处理前 9 个占位符
                     .arg(tableItemText(m_circleTable, i, 0, "0"),

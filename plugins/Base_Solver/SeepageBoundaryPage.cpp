@@ -47,6 +47,7 @@
 #include <vtkSmartPointer.h>
 #include <vtkSphereSource.h>
 #include <vtkTubeFilter.h>
+#include <vtkCellType.h>
 #include <vtkUnstructuredGrid.h>
 
 #include <algorithm>
@@ -741,13 +742,32 @@ bool SeepageBoundaryPage::exportDatFile()
     QFile faceFile(facePath);
     if (!faceFile.open(QIODevice::WriteOnly | QIODevice::Text))
         return false;
+    int exportNodeCount = faces.nodeCount;
+    if (exportNodeCount == 3)
+    {
+        if (auto* meshSvc = ServiceRegistry::instance().getService<MeshModuleControllerService>())
+        {
+            if (auto grid = meshSvc->getVtkUnstructuredGrid(); grid && grid->GetNumberOfCells() > 0)
+            {
+                for (vtkIdType c = 0; c < grid->GetNumberOfCells(); ++c)
+                {
+                    const int ct = grid->GetCellType(c);
+                    if (ct == VTK_HEXAHEDRON || ct == VTK_WEDGE || ct == VTK_PYRAMID || ct == VTK_VOXEL)
+                    {
+                        exportNodeCount = 4;
+                        break;
+                    }
+                }
+            }
+        }
+    }
     QTextStream os(&faceFile);
-    const int makod = faces.nodeCount + 2;
+    const int makod = exportNodeCount + 2;
     os << QStringLiteral("%1        %2     NJX   MAKOD\n")
               .arg(faces.rows.size()).arg(makod);
-    if (faces.nodeCount == 4)
+    if (exportNodeCount == 4)
         os << "    KJX     KE1     KE2     JD1     JD2     JD3     JD4  JAT\n";
-    else if (faces.nodeCount == 3)
+    else if (exportNodeCount == 3)
         os << "    KJX     KE1     KE2     JD1     JD2     JD3  JAT\n";
     else
         os << "    KJX     KE1     KE2     JD1     JD2  JAT\n";
@@ -757,8 +777,13 @@ bool SeepageBoundaryPage::exportDatFile()
         const FluxFaceRow& row = faces.rows.at(i);
         os << QStringLiteral("%1 %2 %3")
                   .arg(i + 1, 9).arg(row.elementId, 9).arg(0, 9);
-        for (int nodeId : row.nodeIds)
+        for (int k = 0; k < exportNodeCount; ++k)
+        {
+            const int nodeId = !row.nodeIds.isEmpty()
+                ? row.nodeIds.at(std::min(k, static_cast<int>(row.nodeIds.size()) - 1))
+                : 0;
             os << QStringLiteral(" %1").arg(nodeId, 9);
+        }
         os << QStringLiteral(" %1\n").arg(makod, 9);
     }
     return true;

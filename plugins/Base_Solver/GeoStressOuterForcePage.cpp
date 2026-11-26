@@ -11,6 +11,7 @@
 #include <vtkCellData.h>
 #include <vtkDataArray.h>
 #include <vtkPointData.h>
+#include <vtkCellType.h>
 #include <vtkUnstructuredGrid.h>
 
 #include <algorithm>
@@ -448,6 +449,8 @@ bool GeoStressOuterForcePage::exportForceFile() const
         return false;
 
     QTextStream forceOs(&forceDat);
+    // SOLVER GEOSIIWL skips line 1 and reads NFT from line 2.
+    forceOs << "FTLOAD_GEOSTR_OUTER_FORCE\n";
     forceOs << QString("%1       0.000       0.000   0.000000E+00  %2\n")
                    .arg(rows.size())
                    .arg(forceName);
@@ -460,7 +463,29 @@ bool GeoStressOuterForcePage::exportForceFile() const
     for (int faceIndex = 0; faceIndex < rows.size(); ++faceIndex)
     {
         const EdgeRow& row = rows.at(faceIndex);
-        const int nfaJd = isFaceMode ? row.nodeCount : 2;
+        int targetFaceNodes = isFaceMode ? row.nodeCount : 2;
+        if (isFaceMode)
+        {
+            if (auto* meshSvc = ServiceRegistry::instance().getService<MeshModuleControllerService>())
+            {
+                if (auto grid = meshSvc->getVtkUnstructuredGrid(); grid && grid->GetNumberOfCells() > 0)
+                {
+                    bool hasNonTet3D = false;
+                    for (vtkIdType c = 0; c < grid->GetNumberOfCells(); ++c)
+                    {
+                        const int ct = grid->GetCellType(c);
+                        if (ct == VTK_HEXAHEDRON || ct == VTK_WEDGE || ct == VTK_PYRAMID || ct == VTK_VOXEL)
+                        {
+                            hasNonTet3D = true;
+                            break;
+                        }
+                    }
+                    if (hasNonTet3D)
+                        targetFaceNodes = 4;
+                }
+            }
+        }
+        const int nfaJd = targetFaceNodes;
         const int nft = faceIndex + 1;
 
         // READ_IIWL 实际读取前三个整数：KE、NFT+NSHI、NFAJD。
@@ -471,7 +496,8 @@ bool GeoStressOuterForcePage::exportForceFile() const
                        .arg(nfaJd, 9)
                        .arg(nft, 9);
 
-        const int nodeIds[] = {row.jd1, row.jd2, row.jd3, row.jd4};
+        const int paddedJd4 = (row.nodeCount >= 4 && row.jd4 > 0) ? row.jd4 : row.jd3;
+        const int nodeIds[] = {row.jd1, row.jd2, row.jd3, paddedJd4};
         for (int nodeIndex = 0; nodeIndex < nfaJd; ++nodeIndex)
         {
             forceOs << QString("%1  %2  %3  %4  P=%5\n")

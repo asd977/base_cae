@@ -660,8 +660,10 @@ SolverRuntimeOptions solverRuntimeOptions()
     options.useGpu = settings.value(QStringLiteral("Solver/ComputeDevice"),
                                     QStringLiteral("cpu")).toString().trimmed().toLower()
                      == QStringLiteral("gpu");
-    const int gpuDeviceMode = qBound(
-        1, settings.value(QStringLiteral("Solver/GpuDeviceMode"), 2).toInt(), 2);
+    // SOLVER IKEY builders only branch on IDEVICE == 1 (METHOD=8) for GPU;
+    // IDEVICE == 2 falls through all branches. Normalize GPU mode to 1.
+    Q_UNUSED(settings.value(QStringLiteral("Solver/GpuDeviceMode")));
+    const int gpuDeviceMode = 1;
     options.deviceCode = options.useGpu ? gpuDeviceMode : 0;
     options.executableRelativePath = options.useGpu
         ? QStringLiteral("solver/PCCAE_GPU/PCCAE_GPU.exe")
@@ -753,7 +755,8 @@ bool replaceDirectoryTree(const QString& sourcePath, const QString& targetPath)
 }
 
 bool patchIiinElementLayers(const QString& filePath,
-                            const QHash<int, int>& layerByElementId)
+                            const QHash<int, int>& layerByElementId,
+                            int forcedObjectType = 0)
 {
     if (layerByElementId.isEmpty())
         return false;
@@ -783,6 +786,20 @@ bool patchIiinElementLayers(const QString& filePath,
     const QVector<QRegularExpressionMatch> headerMatches = integerMatches(lines.at(0));
     if (headerMatches.size() < 4)
         return false;
+
+    if (forcedObjectType > 0)
+    {
+        const QVector<QRegularExpressionMatch> objMatches = integerMatches(lines.at(1));
+        if (!objMatches.isEmpty())
+        {
+            QString objLine = lines.at(1);
+            const QRegularExpressionMatch& m = objMatches.at(0);
+            const QString replacement = QString::number(forcedObjectType)
+                .rightJustified(m.capturedLength(), QLatin1Char(' '));
+            objLine.replace(m.capturedStart(), m.capturedLength(), replacement);
+            lines[1] = objLine;
+        }
+    }
 
     const int numnp = headerMatches.at(0).captured().toInt();
     const int nelem = headerMatches.at(2).captured().toInt();
@@ -3905,6 +3922,21 @@ GeoStressRegressionWidget::ExportPayload Solver::buildGeoStressPayload(ProjectNo
             if (!file.open(QIODevice::WriteOnly) || file.write(empty) != empty.size() || !file.commit()) return {};
         }
         payload.roofFileReady = true;
+        // SOLVER GEOSIIWL reads FTLOAD.DAT exclusively when ICHOICE==0 && ITAG_FT==1.
+        for (ProjectNode* child : geostressNode->getChildren())
+        {
+            if (!child || !child->getPage())
+                continue;
+            if (auto* f = dynamic_cast<GeoStressOuterForcePage*>(child->getPage()))
+            {
+                if (f->forceEnabled() != 0 && f->exportForceFile())
+                {
+                    if (payload.forceFile.isEmpty())
+                        payload.forceFile = f->forceFile();
+                    payload.forceEnabled = 1;
+                }
+            }
+        }
         return payload;
     }
 
@@ -4817,9 +4849,10 @@ void Solver::onComputeStressStrain(ProjectNode* analysisNode)
         {
             const FillStorageCyclePage* cycle = cyclePages.at(i);
             const int caseIndex = i + 1;
+            const int lastCycle = cycle ? cycle->cycleCount() : 0;
             const bool supported =
-                cycle && cycle->cycleCount() == caseIndex
-                && cycle->hasEffectiveWaterFill(caseIndex)
+                cycle && lastCycle >= 1
+                && cycle->hasEffectiveWaterFill(lastCycle)
                 && !cycle->usesWetting()
                 && !cycle->usesWaterDrop()
                 && !cycle->lastCycleHasReservoirCreep();
@@ -4949,6 +4982,25 @@ void Solver::onComputeStressStrain(ProjectNode* analysisNode)
     }
 
     DamLayerSummary damLayerSummary;
+    if (stressPage->freezeThawEnabled() && readDamLayerSummary(damIiinPath, &damLayerSummary, nullptr))
+    {
+        for (int i = 0; i < cyclePages.size(); ++i)
+        {
+            const auto ranges = cyclePages.at(i)->fillLayerRanges();
+            if (!ranges.isEmpty() && ranges.last().second < damLayerSummary.maximumDamLayer)
+            {
+                solverWarning(
+                    nullptr, QStringLiteral("结冰区域计算限制"),
+                    QStringLiteral("第 %1 个工况启用了结冰变形，求解器要求末循环必须填筑至最高层（第 %2 层），"
+                                   "当前仅填筑至第 %3 层。")
+                        .arg(i + 1)
+                        .arg(damLayerSummary.maximumDamLayer)
+                        .arg(ranges.last().second));
+                clearSolverRunDirectory();
+                return;
+            }
+        }
+    }
     if (!readDamLayerSummary(damIiinPath, &damLayerSummary, &damLayerError))
     {
         solverWarning(
@@ -5364,32 +5416,26 @@ void Solver::onComputeCaveExcavation(ProjectNode* analysisNode)
     }
 
     const QDir projectRoot(QDir(projectDir).absolutePath());
-    const QString stressRelativePath = caveLoadMethod == 1
-                                           ? QStringLiteral("GEOSTR/MODSTR.TXT")
-                                           : QStringLiteral("GEOSTR/ISGMAR.TXT");
-    QString stressFile = QDir(analysisWorkspace(analysisNode)).filePath(stressRelativePath);
-    if (!QFileInfo::exists(stressFile))
-        stressFile = projectRoot.filePath(stressRelativePath);
-    if (!QFileInfo::exists(stressFile))
+    const QDir workspaceDir(analysisWorkspace(analysisNode));
+    // SOLVER AUTOCAVE unconditionally copies both ISGMAR.TXT and MODSTR.TXT from GEOSTR.
+    for (const QString& reqStress : {QStringLiteral("GEOSTR/MODSTR.TXT"),
+                                     QStringLiteral("GEOSTR/ISGMAR.TXT")})
     {
-        solverWarning(
-            nullptr, QStringLiteral("缺少初始地应力"),
-            QStringLiteral("当前工程还没有可用的初始地应力结果。请先完成地应力回归分析。"));
-        return;
+        const QFileInfo wsInfo(workspaceDir.filePath(reqStress));
+        const QFileInfo rootInfo(projectRoot.filePath(reqStress));
+        const bool wsOk = wsInfo.isFile() && wsInfo.size() > 0;
+        const bool rootOk = rootInfo.isFile() && rootInfo.size() > 0;
+        if (!wsOk && !rootOk)
+        {
+            solverWarning(
+                nullptr, QStringLiteral("缺少初始地应力"),
+                QStringLiteral("当前工程缺少完整的初始地应力结果（需同时具备 MODSTR.TXT 与 ISGMAR.TXT）。"
+                               "请先完成地应力回归分析。"));
+            return;
+        }
     }
 
-    const bool needsDynamicFiles = caveCalculationType != 1 ||
-                                   supportPage->modalAnalysisEnabled() ||
-                                   supportPage->timeHistoryEnabled();
-    if (needsDynamicFiles &&
-        !QFileInfo::exists(QDir(SolverFilePaths::projectInputDirectory(projectDir))
-                               .filePath(QStringLiteral("TDTRACE.DAT"))))
-    {
-        solverWarning(
-            nullptr, QStringLiteral("请完善动力设置"),
-            QStringLiteral("动力计算设置不完整。仅进行静力开挖时，请关闭模态分析和时程分析。"));
-        return;
-    }
+    const bool needsDynamicFiles = (caveCalculationType != 1);
 
     QVector<QVector<int>> selectedSourceElements;
     selectedSourceElements.reserve(excavationBodies.size());
@@ -5429,6 +5475,63 @@ void Solver::onComputeCaveExcavation(ProjectNode* analysisNode)
     supportPage->setExcavationLevelCount(excavationBodies.size());
     if (!beginCommonCompute(analysisNode, "洞室开挖"))
         return;
+    if (needsDynamicFiles)
+    {
+        const QDir caveInputDir(SolverFilePaths::outputInputDirectory(projectDir));
+        const QString tdtracePath = caveInputDir.filePath(QStringLiteral("TDTRACE.DAT"));
+        if (!QFileInfo::exists(tdtracePath))
+        {
+            QSaveFile tdFile(tdtracePath);
+            if (tdFile.open(QIODevice::WriteOnly | QIODevice::Text))
+            {
+                QTextStream tdOut(&tdFile);
+                tdOut << "           0   NUM\n";
+                tdFile.commit();
+            }
+        }
+        const bool caveHasWave = supportPage->timeHistoryEnabled();
+        const bool caveHasMode = supportPage->modalAnalysisEnabled();
+        if (caveHasWave)
+        {
+            QStringList invalidWaveFiles;
+            for (const QString& name : {QStringLiteral("WAVE-AX.DAT"),
+                                        QStringLiteral("WAVE-AY.DAT"),
+                                        QStringLiteral("WAVE-AZ.DAT")})
+            {
+                QString detail;
+                if (!waveInputHasSamples(caveInputDir.filePath(name), &detail))
+                    invalidWaveFiles << QStringLiteral("%1：%2").arg(name, detail);
+            }
+            if (!invalidWaveFiles.isEmpty())
+            {
+                clearSolverRunDirectory();
+                solverWarning(
+                    nullptr, QStringLiteral("请完善地震波设置"),
+                    QStringLiteral("洞室时程分析缺少有效的地震波文件，请先在物理场中配置地震波：\n%1")
+                        .arg(invalidWaveFiles.join(QLatin1Char('\n'))));
+                return;
+            }
+        }
+        else if (caveHasMode)
+        {
+            for (const QString& name : {QStringLiteral("WAVE-AX.DAT"),
+                                        QStringLiteral("WAVE-AY.DAT"),
+                                        QStringLiteral("WAVE-AZ.DAT")})
+            {
+                const QString wp = caveInputDir.filePath(name);
+                if (!QFileInfo::exists(wp))
+                {
+                    QSaveFile wf(wp);
+                    if (wf.open(QIODevice::WriteOnly | QIODevice::Text))
+                    {
+                        QTextStream wo(&wf);
+                        wo << "2 1.0\n0.0 0.0\n1.0 0.0\n";
+                        wf.commit();
+                    }
+                }
+            }
+        }
+    }
 
     const QString supportCaseSection = supportPage->sectionText();
     QFile iautoFile(QDir(SolverFilePaths::outputRoot(projectDir))
@@ -5793,7 +5896,7 @@ void Solver::onComputeCaveExcavation(ProjectNode* analysisNode)
         }
 
         if (!patchIiinElementLayers(inputDir.filePath(QStringLiteral("IIIN.DAT")),
-                                    caveLayerByElementId))
+                                    caveLayerByElementId, 6))
         {
             solverWarning(
                 nullptr, QStringLiteral("请检查开挖顺序"),
@@ -6366,7 +6469,68 @@ void Solver::onComputeSlopeStability(ProjectNode* analysisNode)
     }
 
     auto* slopePage = dynamic_cast<SlopeStabilityWidget*>(analysisNode->getPage());
-    if (!slopePage || (!slopePage->excavationEnabled() && !forceIiinLayersToOne(runDir)))
+    if (!slopePage)
+    {
+        clearSolverRunDirectory();
+        return;
+    }
+    {
+        QString slopeValidationError;
+        if (!slopePage->validateInputs(&slopeValidationError))
+        {
+            clearSolverRunDirectory();
+            solverWarning(nullptr, QStringLiteral("请完善边坡分析设置"), slopeValidationError);
+            return;
+        }
+        const QJsonObject slopeState = slopePage->saveJson();
+        const QJsonArray baseVals = slopeState.value(QStringLiteral("base_values")).toArray();
+        const int calcMode = baseVals.size() >= 19 ? baseVals.at(18).toString().toInt() : 1;
+        const bool slopeDynamic = (calcMode == 2 || calcMode == 3);
+        const bool slopeHasWave = slopeDynamic && slopeState.value(QStringLiteral("ifwave")).toString().toInt() > 0;
+        const bool slopeHasMode = slopeDynamic && slopeState.value(QStringLiteral("ifmode")).toString().toInt() > 0;
+        const QDir slopeInputDir(SolverFilePaths::outputInputDirectory(projectDir));
+        if (slopeHasWave)
+        {
+            QStringList invalidWaveFiles;
+            for (const QString& name : {QStringLiteral("WAVE-AX.DAT"),
+                                        QStringLiteral("WAVE-AY.DAT"),
+                                        QStringLiteral("WAVE-AZ.DAT")})
+            {
+                QString detail;
+                if (!waveInputHasSamples(slopeInputDir.filePath(name), &detail))
+                    invalidWaveFiles << QStringLiteral("%1：%2").arg(name, detail);
+            }
+            if (!invalidWaveFiles.isEmpty())
+            {
+                clearSolverRunDirectory();
+                solverWarning(
+                    nullptr, QStringLiteral("请完善地震波设置"),
+                    QStringLiteral("边坡时程分析缺少有效的地震波文件，请先在物理场中配置地震波：\n%1")
+                        .arg(invalidWaveFiles.join(QLatin1Char('\n'))));
+                return;
+            }
+        }
+        else if (slopeHasMode)
+        {
+            for (const QString& name : {QStringLiteral("WAVE-AX.DAT"),
+                                        QStringLiteral("WAVE-AY.DAT"),
+                                        QStringLiteral("WAVE-AZ.DAT")})
+            {
+                const QString wp = slopeInputDir.filePath(name);
+                if (!QFileInfo::exists(wp))
+                {
+                    QSaveFile wf(wp);
+                    if (wf.open(QIODevice::WriteOnly | QIODevice::Text))
+                    {
+                        QTextStream wo(&wf);
+                        wo << "2 1.0\n0.0 0.0\n1.0 0.0\n";
+                        wf.commit();
+                    }
+                }
+            }
+        }
+    }
+    if (!slopePage->excavationEnabled() && !forceIiinLayersToOne(runDir))
     {
         solverWarning(
             nullptr, QStringLiteral("请检查网格"),
@@ -7615,20 +7779,17 @@ void Solver::syncDamConditionalNodes(ProjectNode* analysisNode) const
     const bool staticEnabled = calculationType == 1 || calculationType == 3;
     const bool dynamicEnabled = calculationType == 2 || calculationType == 3;
 
-    FillStorageCyclePage* fillPage = nullptr;
+    QVector<FillStorageCyclePage*> fillPages;
     ProjectNode* dynamicNode = nullptr;
     DamDynamicAnalysisPage* dynamicPage = nullptr;
     for (ProjectNode* child : analysisNode->getChildren())
     {
         if (!child || !child->getPage())
             continue;
-        if (!fillPage)
+        if (auto* candidate = dynamic_cast<FillStorageCyclePage*>(child->getPage()))
         {
-            if (auto* candidate = dynamic_cast<FillStorageCyclePage*>(child->getPage()))
-            {
-                fillPage = candidate;
-                continue;
-            }
+            fillPages.append(candidate);
+            continue;
         }
         if (!dynamicPage)
         {
@@ -7676,7 +7837,7 @@ void Solver::syncDamConditionalNodes(ProjectNode* analysisNode) const
     bool usesFace = false;
     bool usesBaseUplift = false;
     bool usesLinearUplift = false;
-    if (fillPage)
+    for (FillStorageCyclePage* fillPage : fillPages)
     {
         fillPage->setDamType(page->damType());
         fillPage->setAnalysisMode(calculationType);
@@ -7711,9 +7872,9 @@ void Solver::syncDamConditionalNodes(ProjectNode* analysisNode) const
         if (fillPage->needsSeepageAssociation())
             fillPage->setAvailableTransientResults(
                 transientSteps, hasTransientFinal, transientLabels);
-        usesFace = staticEnabled && fillPage->usesDamFacePressure();
-        usesBaseUplift = staticEnabled && faceDam && fillPage->usesDamBaseUplift();
-        usesLinearUplift = staticEnabled && faceDam && fillPage->usesLinearDamBaseUplift();
+        usesFace = usesFace || (staticEnabled && fillPage->usesDamFacePressure());
+        usesBaseUplift = usesBaseUplift || (staticEnabled && faceDam && fillPage->usesDamBaseUplift());
+        usesLinearUplift = usesLinearUplift || (staticEnabled && faceDam && fillPage->usesLinearDamBaseUplift());
     }
 
     const bool usesModal = dynamicPage && dynamicPage->usesModalAnalysis();
@@ -7971,10 +8132,16 @@ bool Solver::prepareAnalysisWorkspace(ProjectNode* node, bool caveBlock, QString
         const QString ownerKind = owner->data(0, ProjectNode::RoleKind).toString();
         const QString sourceGeoStress = project.filePath(QStringLiteral("GEOSTR"));
         const QString targetGeoStress = workspace.filePath(QStringLiteral("GEOSTR"));
-        if (ownerKind == QStringLiteral("CaveExcavationAnalysis") &&
-            !QDir(targetGeoStress).exists() && QDir(sourceGeoStress).exists() &&
-            !copyDirectoryTree(sourceGeoStress, targetGeoStress))
-            return false;
+        if (ownerKind == QStringLiteral("CaveExcavationAnalysis") && QDir(sourceGeoStress).exists())
+        {
+            const QDir targetGeoDir(targetGeoStress);
+            const QFileInfo tMod(targetGeoDir.filePath(QStringLiteral("MODSTR.TXT")));
+            const QFileInfo tIsg(targetGeoDir.filePath(QStringLiteral("ISGMAR.TXT")));
+            const bool targetComplete =
+                tMod.isFile() && tMod.size() > 0 && tIsg.isFile() && tIsg.size() > 0;
+            if (!targetComplete && !copyDirectoryTree(sourceGeoStress, targetGeoStress))
+                return false;
+        }
 
         if (runDir)
             *runDir = workspace.absolutePath();

@@ -354,7 +354,9 @@ bool SeepageWidget::exportIseepDatFile(int computeTypeOverride) const
     os << "'JD_DWSEEP.DAT'\n";
     os << "'" << ui->spinMainPropertyNo->value() << "'\n";
     os << "'" << ui->spinControlledPropertyNo->value() << "'\n";
-    os << "'" << (ui->checkNaturalFreeSurface->isChecked() ? 1 : 0) << "'\n";
+    // Pure transient mode (computeType == 2) must not re-run SEEPFREE.
+    const int ifFree = (computeType != 2 && ui->checkNaturalFreeSurface->isChecked()) ? 1 : 0;
+    os << "'" << ifFree << "'\n";
     os << "'JDFREE.DAT'\n";
     os << "'FA_UPSEEP.DAT'\n";
     os << "'FA_DWSEEP.DAT'\n";
@@ -373,7 +375,9 @@ bool SeepageWidget::exportIseepDatFile(int computeTypeOverride) const
     os << "'------------'\n";
     os << "1     ICASE\n";
     os << "0     NCHANGE_CASE\n";
-    const int itagFree = naturalFreeSurfaceEnabled()
+    // SOLVER transient SEEPIIWL allocates only NIC=2 (HWUP/HWDW); ITAG_FREE=1 in
+    // transient/steady+transient causes SEEPIIID to index CONA(-(NUMJD+2)) out of bounds.
+    const int itagFree = (computeType == 1 && naturalFreeSurfaceEnabled())
                              ? ui->comboItagFree->currentData().toInt() : 0;
     os << ui->spinIter->value() << " " << itagFree
        << " ITER  ITAG_FREE\n";

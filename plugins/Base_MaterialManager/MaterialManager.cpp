@@ -2675,27 +2675,43 @@ bool MaterialManager::generateCaculateFile(
                 number(QStringLiteral("完整岩石单轴抗压强度σci（MPa）")) <= 0.0)
                 return invalid(QStringLiteral("Hoek–Brown要求mb、s、σci大于0，且0<a<=1。"));
         }
+        // SOLVER READ_IMAT unconditionally forces CONMAT(2,1)=0 (linear elastic).
+        if (it.key() == 2 &&
+            modelKey != QStringLiteral("linear_elastic") &&
+            modelKey != QStringLiteral("rod_element") &&
+            modelKey != QStringLiteral("planar_elastic_beam"))
+            return invalid(QStringLiteral(
+                "材料编号 2 在求解器中固定为线弹性本构（CONMAT(2,1)=0），"
+                "请勿将非线性或土体本构分配为编号 2，请改用编号 3 及以上。"));
+
         if (modelKey == QStringLiteral("drucker_prager_rock"))
         {
             const double dpType = number(QStringLiteral("DP子类型"));
             const double friction = number(QStringLiteral("内摩擦角φ（°）"));
+            const double cohesion = number(QStringLiteral("凝聚力C‘（MPa）"));
             if (dpType < 1 || dpType > 6 || std::floor(dpType) != dpType ||
                 friction < 0 || friction >= 90 ||
-                number(QStringLiteral("凝聚力C‘（MPa）")) < 0 ||
+                cohesion < 0 ||
                 number(QStringLiteral("剪胀角(°)")) < 0 ||
                 number(QStringLiteral("剪胀角(°)")) >= 90 ||
                 number(QStringLiteral("抗压强度Rc（MPa）")) < 0 ||
                 number(QStringLiteral("抗拉强度Rt（MPa）")) < 0)
                 return invalid(QStringLiteral("D-P子类型须为1～6，角度须在[0,90)内，强度不可为负。"));
+            if (friction <= 1.0e-5 && cohesion <= 1.0e-9)
+                return invalid(QStringLiteral("内摩擦角和凝聚力不能同时为0。"));
         }
         if (modelKey == QStringLiteral("dagangshan_isotropic") ||
             modelKey == QStringLiteral("huangjinping_underground_plant"))
         {
-            if (number(QStringLiteral("抗剪断强度内摩擦系数")) < 0 ||
-                number(QStringLiteral("凝聚力C‘（MPa）")) < 0 ||
+            const double friction = number(QStringLiteral("抗剪断强度内摩擦系数"));
+            const double cohesion = number(QStringLiteral("凝聚力C‘（MPa）"));
+            if (friction < 0 || cohesion < 0 ||
                 number(QStringLiteral("剪胀角(°)")) < 0 ||
                 number(QStringLiteral("剪胀角(°)")) >= 90)
                 return invalid(QStringLiteral("摩擦系数、凝聚力和剪胀角不能为负，剪胀角须小于90°。"));
+            if (modelKey == QStringLiteral("huangjinping_underground_plant") &&
+                friction <= 1.0e-5 && cohesion <= 1.0e-9)
+                return invalid(QStringLiteral("摩擦系数和凝聚力不能同时为0。"));
         }
         if (modelKey == QStringLiteral("dagangshan_isotropic"))
         {
@@ -2727,14 +2743,40 @@ bool MaterialManager::generateCaculateFile(
                 number(QStringLiteral("天然容重(t/m3)")) <= 0.0 ||
                 number(QStringLiteral("饱和容重(t/m3)")) <= 0.0)
                 return invalid(QStringLiteral("干、天然、饱和容重均须大于0。"));
+            if (modelKey == QStringLiteral("soil_eb") ||
+                modelKey == QStringLiteral("soil_emu") ||
+                modelKey == QStringLiteral("soil_emu_crush") ||
+                modelKey == QStringLiteral("soil_nanshui"))
+            {
+                if (number(QStringLiteral("K")) <= 0.0001)
+                    return invalid(QStringLiteral("土体模量系数 K 必须大于 0.0001。"));
+            }
+            else if (modelKey == QStringLiteral("soil_kg"))
+            {
+                if (number(QStringLiteral("Ki(10^5Pa)")) <= 0.0001)
+                    return invalid(QStringLiteral("K-G 本构体积刚度参数 Ki 必须大于 0.0001。"));
+            }
+        }
+        if (modelKey == QStringLiteral("dam_dynamic"))
+        {
+            if (number(QStringLiteral("DRYK1(KPa)")) <= 0.0001)
+                return invalid(QStringLiteral("坝料动力刚度系数 DRYK1 必须大于 0.0001（无量纲）。"));
+            if (std::lround(number(QStringLiteral("是否液化"))) == 1 &&
+                (number(QStringLiteral("RATIAO1(0.1)")) <= 1.0e-5 ||
+                 number(QStringLiteral("RATIAO2(0.3)")) <= 1.0e-5 ||
+                 number(QStringLiteral("RATIAO3(0.5)")) <= 1.0e-5))
+                return invalid(QStringLiteral("启用液化时，三个液化循环次数参数均须大于 0。"));
         }
 
         // SOLVER 的 CONMAT(14..22) 被渗流方向矩阵与前三类流变参数复用。
         // 同时导出会覆盖参数，禁止这种无法无损表达的组合。
         const bool hasSeepage = !info.entry->seepageModelKey.isEmpty();
         const QString creepKey = info.entry->creepModelKey;
-        if (hasSeepage && !creepKey.isEmpty() &&
-            creepKey != QStringLiteral("xiyuan_creep"))
+        if (creepKey == QStringLiteral("xiyuan_creep"))
+            return invalid(QStringLiteral(
+                "西源流变模型（ICREEP=4）会覆盖基体弹性参数且当前求解器分支恒输出零蠕变应变，"
+                "请改用其他流变模型或取消附加西源流变。"));
+        if (hasSeepage && !creepKey.isEmpty())
             return invalid(QStringLiteral(
                 "渗流与当前流变模型共用求解器参数位置，不能同时设置在同一种材料上。"
                 "请拆分计算工况或取消其中一个附加模型。"));
@@ -3093,6 +3135,8 @@ bool MaterialManager::generateCaculateFile(
             values[4][matIndex] = poisson;
             values[5][matIndex] = young / (2.0 * (1.0 + poisson));
             values[6][matIndex] = density * 1.0e3;
+            values[88][matIndex] = density * 1.0e3; // WETROU
+            values[89][matIndex] = density * 1.0e3; // PACROU
             values[7][matIndex] = 1.0;
             // Solver's CANYU_CF rejects materials whose DRYFAI_P (row 94) and DRYCO_P (row 95)
             // are both < 0.001 even for pure elastic IBUCK=0 materials; provide large

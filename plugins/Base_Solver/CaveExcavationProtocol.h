@@ -14,10 +14,13 @@ namespace CaveExcavationProtocol
 inline QString dynamicStateSubdirectory(bool lining, bool incrementalSupport,
     bool incrementalExcavation, bool wholeSupport, int levels, bool crane)
 {
+    Q_UNUSED(crane);
+    // In AUTOCAVE, {E|J}{NN}PART is only the intermediate release step for the crane
+    // installation stage; the completed state of stage NN is always {E|J}{NN}.
     const QString code=QStringLiteral("%1").arg(qMax(1,levels),2,10,QLatin1Char('0'));
     if(lining)return QStringLiteral("CASE01LINE");
-    if(incrementalSupport)return QStringLiteral("CASE01JACA/J%1%2").arg(code,crane?QStringLiteral("PART"):QString());
-    if(incrementalExcavation)return QStringLiteral("CASE01EXCA/E%1%2").arg(code,crane?QStringLiteral("PART"):QString());
+    if(incrementalSupport)return QStringLiteral("CASE01JACA/J%1").arg(code);
+    if(incrementalExcavation)return QStringLiteral("CASE01EXCA/E%1").arg(code);
     return wholeSupport?QStringLiteral("CASE01JALL"):QStringLiteral("CASE01EALL");
 }
 // EXCAIIWL interprets the second association as ILAY, not the adjacent KE.

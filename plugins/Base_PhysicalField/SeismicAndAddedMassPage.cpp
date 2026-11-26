@@ -37,9 +37,9 @@ SeismicAndAddedMassPage::SeismicAndAddedMassPage(QWidget* parent)
     ui->tableSeismic->horizontalHeader()->setSectionResizeMode(QHeaderView::Stretch);
     ui->tableSeismic->setVerticalScrollMode(QAbstractItemView::ScrollPerPixel);
 
-    ui->doubleSpinAmpX->setValue(0.0);
-    ui->doubleSpinAmpY->setValue(0.0);
-    ui->doubleSpinAmpZ->setValue(0.0);
+    ui->doubleSpinAmpX->setValue(1.0);
+    ui->doubleSpinAmpY->setValue(1.0);
+    ui->doubleSpinAmpZ->setValue(1.0);
 
     ensureAtLeastOneRow();
 }

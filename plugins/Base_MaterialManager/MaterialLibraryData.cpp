@@ -100,7 +100,7 @@ MaterialModel createDamDynamicModel()
                   << QStringLiteral("Kv")
                   << QStringLiteral("Kp") << QStringLiteral("nv") << QStringLiteral("np");
     model.displayColumns << QStringLiteral("编号") << QStringLiteral("是否液化")
-                         << QStringLiteral("动力刚度系数（kPa）") << QStringLiteral("动力刚度指数")
+                         << QStringLiteral("动力刚度系数（无量纲）") << QStringLiteral("动力刚度指数")
                          << QStringLiteral("内摩擦角（°）") << QStringLiteral("凝聚力（kPa）")
                          << QStringLiteral("泊松比") << QStringLiteral("最大阻尼比")
                          << QStringLiteral("液化循环次数（0.1）") << QStringLiteral("液化循环次数（0.3）")

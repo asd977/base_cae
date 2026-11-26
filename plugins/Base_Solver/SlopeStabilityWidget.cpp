@@ -14,6 +14,7 @@
 #include <QLabel>
 #include <QDir>
 #include <QFile>
+#include <QIntValidator>
 #include <QHeaderView>
 #include <QFormLayout>
 #include <QGroupBox>
@@ -156,8 +157,14 @@ SlopeStabilityWidget::SlopeStabilityWidget(QWidget* parent)
     ui->line19Combo->setItemData(0, "1");
     ui->line19Combo->setItemData(1, "2");
     ui->line19Combo->setItemData(2, "3");
-    ui->ifModeCombo->setItemData(0, "0");
-    ui->ifModeCombo->setItemData(1, "1");
+    // SOLVER AUTOSLOP passes IFMODE directly as NMODES (number of vibration modes).
+    ui->ifModeCombo->clear();
+    ui->ifModeCombo->addItem(QStringLiteral("0 - 不计算"), QStringLiteral("0"));
+    for (int modes : {1, 2, 3, 5, 10})
+        ui->ifModeCombo->addItem(QStringLiteral("%1 阶").arg(modes), QString::number(modes));
+    ui->ifModeCombo->setEditable(true);
+    if (auto* le = ui->ifModeCombo->lineEdit())
+        le->setValidator(new QIntValidator(0, 99, le));
     ui->ifWaveCombo->setItemData(0, "0");
     ui->ifWaveCombo->setItemData(1, "1");
     ui->ifModeCombo->setCurrentIndex(0);
@@ -539,15 +546,27 @@ bool SlopeStabilityWidget::exportIslopDatFile() const
     if (!QDir().mkpath(wd.absolutePath()) || !QDir().mkpath(inputDir.absolutePath()))
         return false;
 
-    // 同一边坡分析重新计算时，新结果应替换旧结果。CASE01 必须由求解器创建，
-    // 否则 GPU 求解器的 NEWDIR 会把已存在但没有 FLAG_DIR.DAT 的空目录视为创建失败。
-    QDir previousCaseDir(wd.filePath(QStringLiteral("CASE01")));
-    if (previousCaseDir.exists() && !previousCaseDir.removeRecursively())
-        return false;
-
-    for(const QString& folder:{QStringLiteral("CASE01EXCA"),QStringLiteral("CASE01JACA")})
+    const int calcMode = ui->line19Combo->currentData().toString().toInt();
+    const bool staticRun = (calcMode != 2);
+    const bool dynamicRun = (calcMode == 2 || calcMode == 3);
+    // 同一边坡分析重新计算静力时，新结果应替换旧静力目录；
+    // 仅动力模式（calcMode==2）必须保留已有静力结果目录供 DIR_DYNA 继承。
+    if (staticRun)
     {
-        QDir previous(wd.filePath(folder));if(previous.exists() && !previous.removeRecursively())return false;
+        for (const QString& folder : {QStringLiteral("CASE01"), QStringLiteral("CASE02"),
+                                      QStringLiteral("CASE01EXCA"), QStringLiteral("CASE01JACA")})
+        {
+            QDir previous(wd.filePath(folder));
+            if (previous.exists() && !previous.removeRecursively())
+                return false;
+        }
+    }
+    for (const QString& folder : {QStringLiteral("CASE01MODE"), QStringLiteral("CASE01WAVE"),
+                                  QStringLiteral("CASE02MODE"), QStringLiteral("CASE02WAVE")})
+    {
+        QDir previous(wd.filePath(folder));
+        if (previous.exists() && !previous.removeRecursively())
+            return false;
     }
 
     // 同步清理该分析的后处理缓存，计算完成后按新工况重新生成。
@@ -575,17 +594,25 @@ bool SlopeStabilityWidget::exportIslopDatFile() const
         ? QStringLiteral("CASE01%1/%2%3").arg(m_excavation->reinforced()?"JACA":"EXCA",m_excavation->reinforced()?"J":"E",QStringLiteral("%1").arg(m_excavation->stageCount(),2,10,QLatin1Char('0')))
         : QStringLiteral("CASE01");
     const QString caseDirAbs = ensureTrailingSep(wd.filePath(dynamicState));
+    const bool strengthReduction =
+        ui->line3Combo->currentData().toString() != QStringLiteral("0");
 
+    // SOLVER AUTOSLOP gates ITASK=1..6 via independent flags:
+    // NAME(19)=ITYPE_JISUAN (0 skips ITASK=1), NAME(23/24)=IF_E1TOA/IF_J1TOA,
+    // NAME(26)=ITYPE_EXSRF, IFMODE/IFWAVE control ITASK=5/6.
     for (int lineNo = 1; lineNo <= 30; ++lineNo)
     {
         QString value = lineValue(lineNo);
         if (lineNo == 1 || (lineNo == 29 && excavationEnabled()))
             value = inputDirAbs;
+        else if (lineNo == 19)
+            value = staticRun ? QStringLiteral("1") : QStringLiteral("0");
+        else if (lineNo == 23 || lineNo == 24)
+            value = staticRun ? value : QStringLiteral("0");
+        else if (lineNo == 26)
+            value = (staticRun && strengthReduction && excavationEnabled()) ? value : QStringLiteral("0");
         os << quoteValue(value) << "      " << lineNo << "\n";
     }
-
-    const bool strengthReduction =
-        ui->line3Combo->currentData().toString() != QStringLiteral("0");
     int nsrf = 0;
     for (int row = 0; strengthReduction && row < ui->strengthReserveTable->rowCount(); ++row)
     {
@@ -622,10 +649,26 @@ bool SlopeStabilityWidget::exportIslopDatFile() const
            << " SRF    IFPR   II\n";
     }
 
+    auto parsedIfMode = [this]() -> int
+    {
+        const QVariant data = ui->ifModeCombo->currentData();
+        bool ok = false;
+        if (data.isValid())
+        {
+            const int v = data.toString().toInt(&ok);
+            if (ok && v >= 0 && ui->ifModeCombo->currentText() == ui->ifModeCombo->itemText(ui->ifModeCombo->currentIndex()))
+                return v;
+        }
+        const QString raw = ui->ifModeCombo->currentText().trimmed().section(QLatin1Char(' '), 0, 0);
+        const int v = raw.toInt(&ok);
+        return (ok && v >= 0) ? v : 0;
+    };
+    const int exportedIfMode = dynamicRun ? parsedIfMode() : 0;
+    const QString exportedIfWave = dynamicRun ? ui->ifWaveCombo->currentData().toString() : QStringLiteral("0");
     os << quoteValue(caseDirAbs) << "\n";
     os << ui->dtEdit->text().trimmed() << " " << ui->tstaEdit->text().trimmed() << " "
-       << ui->tendEdit->text().trimmed() << " " << ui->ifModeCombo->currentData().toString()
-       << " " << ui->ifWaveCombo->currentData().toString() << "    DT TSTA TEND IFMODE IFWAVE\n";
+       << ui->tendEdit->text().trimmed() << " " << exportedIfMode
+       << " " << exportedIfWave << "    DT TSTA TEND IFMODE IFWAVE\n";
     os << quoteValue(QString::fromLatin1(kAccXFileName)) << "  "
        << quoteValue(QString::fromLatin1(kAccYFileName)) << "  "
        << quoteValue(QString::fromLatin1(kAccZFileName)) << "    ACCEX ACCEY ACCEZ\n";
@@ -771,7 +814,15 @@ QJsonObject SlopeStabilityWidget::saveJson()
     obj["dt"] = ui->dtEdit->text().trimmed();
     obj["tsta"] = ui->tstaEdit->text().trimmed();
     obj["tend"] = ui->tendEdit->text().trimmed();
-    obj["ifmode"] = ui->ifModeCombo->currentData().toString();
+    {
+        const QVariant data = ui->ifModeCombo->currentData();
+        const bool matchesPreset = data.isValid() &&
+            ui->ifModeCombo->currentText() == ui->ifModeCombo->itemText(ui->ifModeCombo->currentIndex());
+        const QString raw = ui->ifModeCombo->currentText().trimmed().section(QLatin1Char(' '), 0, 0);
+        bool ok = false;
+        const int v = raw.toInt(&ok);
+        obj["ifmode"] = matchesPreset ? data.toString() : QString::number((ok && v >= 0) ? v : 0);
+    }
     obj["ifwave"] = ui->ifWaveCombo->currentData().toString();
     obj["acc_x"] = QString::fromLatin1(kAccXFileName);
     obj["acc_y"] = QString::fromLatin1(kAccYFileName);
@@ -829,11 +880,14 @@ void SlopeStabilityWidget::loadJson(const QJsonObject& obj)
     ui->dtEdit->setText(obj.value("dt").toString(ui->dtEdit->text()));
     ui->tstaEdit->setText(obj.value("tsta").toString(ui->tstaEdit->text()));
     ui->tendEdit->setText(obj.value("tend").toString(ui->tendEdit->text()));
-    const QString ifMode = obj.value("ifmode").toString(ui->ifModeCombo->currentData().toString());
+    const QString ifMode = obj.value("ifmode").toString(QStringLiteral("0")).trimmed();
     const QString ifWave = obj.value("ifwave").toString(ui->ifWaveCombo->currentData().toString());
     const int ifModeIndex = ui->ifModeCombo->findData(ifMode);
     const int ifWaveIndex = ui->ifWaveCombo->findData(ifWave);
-    ui->ifModeCombo->setCurrentIndex(ifModeIndex >= 0 ? ifModeIndex : 0);
+    if (ifModeIndex >= 0)
+        ui->ifModeCombo->setCurrentIndex(ifModeIndex);
+    else
+        ui->ifModeCombo->setEditText(ifMode.isEmpty() ? QStringLiteral("0") : ifMode);
     ui->ifWaveCombo->setCurrentIndex(ifWaveIndex >= 0 ? ifWaveIndex : 0);
     updateAnalysisModeVisibility();
 }

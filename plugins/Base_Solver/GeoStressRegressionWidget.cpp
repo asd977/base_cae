@@ -125,12 +125,11 @@ bool GeoStressRegressionWidget::exportIGEOSDatFile(const ExportPayload& payload)
     os << "'" << ui->reservedEdit->text().trimmed() << "'       9\n";
     os << "'" << (payload.forceFile.isEmpty() ? kForceFileName : payload.forceFile) << "'      10\n";
 
-    // IGEOS 第 11 项是是否读取 FTLOAD.DAT，与模型维度无关。
-    // 计算方式 0 明确表示“仅计算自重应力”，此时无条件禁止读取 FTLOAD.DAT。
-    // 只有非自重模式，并且外力页面存在非零外力及有效作用边/面时才启用。
+    // SOLVER GEOSIIWL (CAE07.f90:7372-7384) reads FTLOAD.DAT exclusively when
+    // ICHOICE == 0 && ITAG_FT == 1 (for ICHOICE > 0 it unconditionally forces NFT = 0).
     const int calcMode = ui->calcModeCombo->currentIndex();
     const int forceEnabled =
-        (calcMode != 0 && payload.forceEnabled != 0) ? 1 : 0;
+        (calcMode == 0 && payload.forceEnabled != 0) ? 1 : 0;
     os << "'" << QString::number(forceEnabled) << "'      11\n";
     os << "'" << ui->lambdaEdit->text().trimmed() << "'      12\n";
 

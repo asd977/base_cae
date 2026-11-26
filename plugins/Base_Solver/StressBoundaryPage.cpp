@@ -14,6 +14,7 @@
 #include <vtkIdList.h>
 #include <vtkNew.h>
 #include <vtkPointData.h>
+#include <vtkCellType.h>
 #include <vtkUnstructuredGrid.h>
 
 #include <QComboBox>
@@ -330,6 +331,8 @@ QVector<StressBoundaryPage::EdgeRow> collectRowsFromFaces(GridKind kind, const Q
             row.jd3 = int(nodeIdArr->GetTuple1(ids->GetId(2)));
         if (cornerCount >= 4)
             row.jd4 = int(nodeIdArr->GetTuple1(ids->GetId(3)));
+        else if (cornerCount == 3)
+            row.jd4 = row.jd3;
         rows.push_back(row);
     }
 
@@ -444,8 +447,38 @@ bool StressBoundaryPage::exportDatFile()
     if (!file.open(QIODevice::WriteOnly | QIODevice::Text))
         return false;
 
-    QTextStream os(&file);
+    bool pureTet3D = false;
     if (isFaceMode)
+    {
+        if (auto* meshSvc = ServiceRegistry::instance().getService<MeshModuleControllerService>())
+        {
+            if (auto grid = meshSvc->getVtkUnstructuredGrid(); grid && grid->GetNumberOfCells() > 0)
+            {
+                bool hasTet = false;
+                bool hasNonTet3D = false;
+                for (vtkIdType c = 0; c < grid->GetNumberOfCells(); ++c)
+                {
+                    const int ct = grid->GetCellType(c);
+                    if (ct == VTK_TETRA)
+                        hasTet = true;
+                    else if (ct == VTK_HEXAHEDRON || ct == VTK_WEDGE || ct == VTK_PYRAMID ||
+                             ct == VTK_VOXEL || ct == VTK_POLYHEDRON)
+                    {
+                        hasNonTet3D = true;
+                        break;
+                    }
+                }
+                pureTet3D = hasTet && !hasNonTet3D;
+            }
+        }
+    }
+    QTextStream os(&file);
+    if (isFaceMode && pureTet3D)
+    {
+        os << QString("%1        5     NJX   MAKOD\n").arg(rows.size());
+        os << "    KJX     KE1     KE2     JD1     JD2     JD3  JAT\n";
+    }
+    else if (isFaceMode)
     {
         os << QString("%1        6     NJX   MAKOD\n").arg(rows.size());
         os << "    KJX     KE1     KE2     JD1     JD2     JD3     JD4  JAT\n";
@@ -459,8 +492,20 @@ bool StressBoundaryPage::exportDatFile()
     for (int i = 0; i < rows.size(); ++i)
     {
         const EdgeRow& row = rows[i];
-        if (isFaceMode)
+        if (isFaceMode && pureTet3D)
         {
+            os << QString("%1 %2 %3 %4 %5 %6 %7\n")
+                      .arg(i + 1, 9)
+                      .arg(row.ke1, 9)
+                      .arg(0, 9)
+                      .arg(row.jd1, 9)
+                      .arg(row.jd2, 9)
+                      .arg(row.jd3, 9)
+                      .arg(5, 9);
+        }
+        else if (isFaceMode)
+        {
+            const int safeJd4 = row.jd4 > 0 ? row.jd4 : row.jd3;
             os << QString("%1 %2 %3 %4 %5 %6 %7 %8\n")
                       .arg(i + 1, 9)
                       .arg(row.ke1, 9)
@@ -468,7 +513,7 @@ bool StressBoundaryPage::exportDatFile()
                       .arg(row.jd1, 9)
                       .arg(row.jd2, 9)
                       .arg(row.jd3, 9)
-                      .arg(row.jd4, 9)
+                      .arg(safeJd4, 9)
                       .arg(6, 9);
         }
         else

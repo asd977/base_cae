@@ -424,12 +424,13 @@ void CaveSupportComputationPage::updateCraneBeamInstallStages()
         return;
 
     const int stageCount = excavationLevelCount();
+    const int minStage = stageCount >= 2 ? 2 : 1;
     const int previousStage = m_craneBeamInstallStageCombo->currentData().toInt();
-    const int targetStage = qBound(1, previousStage > 0 ? previousStage : 1, stageCount);
+    const int targetStage = qBound(minStage, previousStage >= minStage ? previousStage : minStage, stageCount);
 
     const QSignalBlocker blocker(m_craneBeamInstallStageCombo);
     m_craneBeamInstallStageCombo->clear();
-    for (int stage = 1; stage <= stageCount; ++stage)
+    for (int stage = minStage; stage <= stageCount; ++stage)
     {
         m_craneBeamInstallStageCombo->addItem(
             QStringLiteral("第 %1 级开挖后").arg(stage), stage);
@@ -913,6 +914,8 @@ bool CaveSupportComputationPage::prepareAuxiliaryInputFiles(
     if (!output.open(QIODevice::WriteOnly | QIODevice::Text))
         return fail(QStringLiteral("无法准备洞室地下水计算数据。"));
     QTextStream stream(&output);
+    // SOLVER FREEFTVECT (IFSEEP==3) skips 3 header lines before reading NUMNP node rows.
+    stream << "IISEEP_NODE_PORE_PRESSURE\n";
     stream << outputNodeIds.size() << "     NUMNP\n";
     stream << "     JD              HEAD              PCON\n";
     for (int nodeId : std::as_const(outputNodeIds))
@@ -1098,9 +1101,11 @@ bool CaveSupportComputationPage::validateInputs(QString* errorMessage) const
 
         if (craneBeamEnabled())
         {
+            if (excavationLevelCount() < 2)
+                return fail(QStringLiteral("启用吊车梁施工时至少需要 2 级开挖体（求解器要求安装阶段不早于第 2 级）。"));
             const int stage = craneBeamInstallStage();
-            if (stage < 1 || stage > excavationLevelCount())
-                return fail(QStringLiteral("吊车梁安装阶段必须位于当前开挖级范围内。"));
+            if (stage < 2 || stage > excavationLevelCount())
+                return fail(QStringLiteral("吊车梁安装阶段必须位于第 2 级至末级开挖范围内（第 1 级会触发求解器 EXNAME 断言）。"));
             const double release = craneBeamReleaseFactor();
             if (release < 0.0 || release > 1.0)
                 return fail(QStringLiteral("吊车梁围岩荷载释放系数必须在 0～1 之间。"));
