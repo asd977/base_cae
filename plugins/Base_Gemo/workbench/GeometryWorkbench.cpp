@@ -3876,11 +3876,12 @@ bool GeometryWorkbench::prepareMeshingGeometry(int dimension, QString& outputPat
                 // Rendering actors and old BREP caches are not authoritative
                 // modelling data. Reconstruct the approved terrain surface from
                 // the saved inputs, just as approved sketch regions are rebuilt.
+                const auto builtState = GeometryTerrain::TerrainSurfaceBuilder::builtState(state);
                 const auto terrain = GeometryTerrain::TerrainSurfaceBuilder::build(
-                    GeometryTerrain::TerrainSurfaceBuilder::sourcesFromState(state),
-                    state.value(QStringLiteral("spacing")).toDouble(5),
-                    GeometryTerrain::TerrainSurfaceBuilder::domainMode(state),
-                    GeometryTerrain::TerrainSurfaceBuilder::gridOptions(state));
+                    GeometryTerrain::TerrainSurfaceBuilder::sourcesFromState(builtState),
+                    builtState.value(QStringLiteral("spacing")).toDouble(5),
+                    GeometryTerrain::TerrainSurfaceBuilder::domainMode(builtState),
+                    GeometryTerrain::TerrainSurfaceBuilder::gridOptions(builtState));
                 if (!terrain.ok())
                 {
                     diagnostic = tr("地形 %1 无法准备为网格面：%2").arg(node->text(0), terrain.error);
@@ -5031,6 +5032,43 @@ QString GeometryWorkbench::makeUniqueName(const QString& baseName, const QString
 QStringList GeometryWorkbench::listEntityIds(int dim)
 {
     return GeometryEntityTools::listEntityIds(activeGeometryUuids(), dim);
+}
+
+QVariantList GeometryWorkbench::meshingGeometryBounds(int dimension, const QVariantList& ids)
+{
+    if (dimension < 1 || dimension > 3)
+        return {};
+    const auto uuids = activeGeometryUuids();
+    Bnd_Box box;
+    if (ids.isEmpty())
+    {
+        auto* manager = GeomManager::GeomManagerInstance::getInstance();
+        for (const auto& uuid : uuids)
+            if (auto* object = manager ? manager->getGeomShapeObject(uuid) : nullptr)
+                if (object->getShape() && !object->getShape()->IsNull())
+                {
+                    TopTools_IndexedMapOfShape entities;
+                    TopExp::MapShapes(*object->getShape(), dimension==3 ? TopAbs_SOLID :
+                                     (dimension==2 ? TopAbs_FACE : TopAbs_EDGE), entities);
+                    for (int i=1;i<=entities.Extent();++i)
+                        BRepBndLib::Add(entities(i), box, false);
+                }
+    }
+    else
+    {
+        for (const auto& value : ids)
+        {
+            TopoDS_Shape shape;
+            if (!GeometryEntityTools::entityShape(uuids, dimension, value.toInt(), shape))
+                return {};
+            BRepBndLib::Add(shape, box, false);
+        }
+    }
+    if (box.IsVoid() || box.IsOpen())
+        return {};
+    double xmin, ymin, zmin, xmax, ymax, zmax;
+    box.Get(xmin, ymin, zmin, xmax, ymax, zmax);
+    return {xmin, xmax, ymin, ymax, zmin, zmax};
 }
 
 bool GeometryWorkbench::entityCenter(int dim, int id, QVector3D& center)

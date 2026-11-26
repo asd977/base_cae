@@ -53,6 +53,7 @@ class GEOMETRY_EXPORT CadBody : public QObject
     vtkSmartPointer<vtkActor> getSurfActor();
     vtkSmartPointer<vtkActor> getEdgeActor();
     void initActor();
+    void setDisplayPolyData(vtkPolyData* surface, vtkPolyData* edges);
     // Explicit Shape -> VTK presentation lifecycle transition for objects that
     // were restored hidden. It creates the first presentation; it is not a retry.
     bool materializePresentation();

@@ -375,11 +375,12 @@ const QVector<FeatureDescriptor>& descriptors()
             [](const FeatureData& feature, IGeometryService&, QString* message)
             {
                 if (!feature.state.value("generated").toBool()) return true;
+                const auto builtState = GeometryTerrain::TerrainSurfaceBuilder::builtState(feature.state);
                 const auto result = GeometryTerrain::TerrainSurfaceBuilder::build(
-                    GeometryTerrain::TerrainSurfaceBuilder::sourcesFromState(feature.state),
-                    feature.state.value("spacing").toDouble(5),
-                    GeometryTerrain::TerrainSurfaceBuilder::domainMode(feature.state),
-                    GeometryTerrain::TerrainSurfaceBuilder::gridOptions(feature.state));
+                    GeometryTerrain::TerrainSurfaceBuilder::sourcesFromState(builtState),
+                    builtState.value("spacing").toDouble(5),
+                    GeometryTerrain::TerrainSurfaceBuilder::domainMode(builtState),
+                    GeometryTerrain::TerrainSurfaceBuilder::gridOptions(builtState));
                 if (!result.ok()) { setMessage(message, result.error); return false; }
                 GeometryDisplayManager::setTerrainPresentation(feature.uuid);
                 GeometryBuildUtils::registerShape(feature.uuid,feature.title,new TopoDS_Shape(result.shape));

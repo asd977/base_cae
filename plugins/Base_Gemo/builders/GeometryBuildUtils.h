@@ -10,6 +10,7 @@
 #include <TopoDS_Wire.hxx>
 
 class CadBody;
+class vtkPolyData;
 using GeomShapeObject = CadBody;
 
 namespace GeometryBuildUtils
@@ -42,5 +43,7 @@ QString encodeStableEdgeSelection(const TopoDS_Shape& shape, const QSet<int>& ed
 QSet<int> resolveStableEdgeSelection(const TopoDS_Shape& shape, const QString& text, bool& ok);
 void registerShape(const QString& uuid, const QString& name, TopoDS_Shape* shape,
                    bool createActors = true);
+void registerPreparedShape(const QString& uuid, const QString& name, TopoDS_Shape* shape,
+                           vtkPolyData* surface, vtkPolyData* edges);
 void removeGeometryAndDimNode(const QString& key);
 } // namespace GeometryBuildUtils

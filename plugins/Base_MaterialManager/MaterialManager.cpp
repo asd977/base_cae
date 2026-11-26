@@ -3716,6 +3716,8 @@ bool MaterialManager::generateCaculateFile(
             const double coMpa = valueOf(info.entry, QStringLiteral("凝聚力C‘（MPa）"));
             const double rcInputMpa = valueOf(info.entry, QStringLiteral("抗压强度Rc（MPa）"));
             const double rtInputMpa = valueOf(info.entry, QStringLiteral("抗拉强度Rt（MPa）"));
+            const bool explicitTensileStrength = info.entry->properties.value(
+                QStringLiteral("抗拉强度按输入值"), QStringLiteral("0")) == QStringLiteral("1");
             const double residualFf =
                 valueOf(info.entry, QStringLiteral("残余抗剪断强度内摩擦系数"));
             const double residualCoMpa =
@@ -3734,11 +3736,11 @@ bool MaterialManager::generateCaculateFile(
             const double fai = std::atan(ff) * 180.0 / 3.141592653589793;
             const double gg = (std::fabs(1.0 + pu) > 1.0e-12) ? (ee / 2.0 / (1.0 + pu)) : 0.0;
 
-            // Rc/Rt 填 0 时保持旧版自动推导；大于 0 时使用用户独立输入。
+            // 默认保留旧版的零值自动推导；显式输入模式允许无抗拉材料保留 Rt=0。
             double rt = rtInputMpa > 0.0 ? rtInputMpa * 1.0e6 : 0.0;
             double rc = rcInputMpa > 0.0 ? rcInputMpa * 1.0e6 : 0.0;
 
-            if (rt <= 0.0 || rc <= 0.0)
+            if ((!explicitTensileStrength && rt <= 0.0) || rc <= 0.0)
             {
                 double autoRt = 0.0;
                 double autoRc = 0.0;
@@ -3759,7 +3761,7 @@ bool MaterialManager::generateCaculateFile(
                     autoRc = 2.0;
                 }
 
-                if (rt <= 0.0)
+                if (!explicitTensileStrength && rt <= 0.0)
                     rt = autoRt;
                 if (rc <= 0.0)
                     rc = autoRc;

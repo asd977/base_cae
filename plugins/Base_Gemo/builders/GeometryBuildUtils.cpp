@@ -937,8 +937,8 @@ QSet<int> resolveStableEdgeSelection(const TopoDS_Shape& shape,
 
 
 
-void registerShape(const QString& uuid, const QString& name, TopoDS_Shape* shape,
-                   bool createActors)
+static void registerShapeImpl(const QString& uuid, const QString& name, TopoDS_Shape* shape,
+                              bool createActors, vtkPolyData* surface, vtkPolyData* edges)
 {
     if (uuid.isEmpty() || !shape || shape->IsNull())
     {
@@ -962,6 +962,8 @@ void registerShape(const QString& uuid, const QString& name, TopoDS_Shape* shape
         createActors &&
         (!CadBody::fastDisplayMode() || GeometryDisplayManager::isVisible(uuid));
     auto* object = new GeomShapeObject(uuid, shape, name, shouldCreateActors);
+    if (surface || edges)
+        object->setDisplayPolyData(surface, edges);
     GeometryCleanup::removeExistingGeometry(uuid, false);
     mgr->appendGeomShapeObject(object);
 
@@ -971,6 +973,17 @@ void registerShape(const QString& uuid, const QString& name, TopoDS_Shape* shape
     // GeometryService performs the single final refresh/render after recreate*()
     // returns successfully.  Keep createActors semantics unchanged.
     GeometryDisplayManager::registerObject(uuid, object, false, false);
+}
+
+void registerShape(const QString& uuid, const QString& name, TopoDS_Shape* shape, bool createActors)
+{
+    registerShapeImpl(uuid, name, shape, createActors, nullptr, nullptr);
+}
+
+void registerPreparedShape(const QString& uuid, const QString& name, TopoDS_Shape* shape,
+                           vtkPolyData* surface, vtkPolyData* edges)
+{
+    registerShapeImpl(uuid, name, shape, false, surface, edges);
 }
 
 void removeGeometryAndDimNode(const QString& key)

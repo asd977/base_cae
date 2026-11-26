@@ -231,18 +231,28 @@ MeshGlobalMeshingWidget::MeshGlobalMeshingWidget(QWidget* parent)
         ui->labelFactor,ui->dsFactor,ui->labelOrder,ui->spOrder,ui->labelSmooth,ui->chkOptimize,
         ui->labelTol,ui->dsTol,ui->labelCurvature,ui->chkCurvature,ui->labelAlgo,ui->cmbAlgo})grid->removeWidget(field);
     auto row=[&](QWidget* label,QWidget* field,int index){grid->addWidget(label,index,0);grid->addWidget(field,index,1);};
-    row(ui->labelMax,ui->dsMax,2);
-    grid->addWidget(m_automaticMin,3,1);
-    ui->labelMin->setText(tr("手动最小尺寸"));row(ui->labelMin,ui->dsMin,4);
-    row(ui->labelFactor,m_fineness,5);
-    row(ui->labelCurvature,ui->chkCurvature,6);row(ui->labelSmooth,ui->chkOptimize,7);
-    row(new QLabel(tr("尺寸增长率"),this),m_growthRate,8);
-    row(new QLabel(tr("每边分段密度"),this),m_segmentsPerEdge,9);
-    row(new QLabel(tr("每曲率半径分段"),this),m_segmentsPerRadius,10);
-    row(ui->labelOrder,ui->spOrder,11);row(ui->labelTol,ui->dsTol,12);
+    m_automaticMax=new QCheckBox(tr("按模型自动确定最大尺寸"),this);
+    m_automaticMax->setObjectName("smeshAutomaticMaxSize");
+    m_automaticMax->setChecked(true);
+    grid->addWidget(m_automaticMax,2,0,1,2);
+    row(ui->labelMax,ui->dsMax,3);
+    ui->dsMax->setEnabled(false);
+    connect(m_automaticMax,&QCheckBox::toggled,this,[this](bool automatic) {
+        ui->dsMax->setEnabled(!automatic);updateAutomaticSize();
+    });
+    grid->addWidget(m_automaticMin,4,1);
+    ui->labelMin->setText(tr("手动最小尺寸"));row(ui->labelMin,ui->dsMin,5);
+    row(ui->labelFactor,m_fineness,6);
+    row(ui->labelCurvature,ui->chkCurvature,7);row(ui->labelSmooth,ui->chkOptimize,8);
+    row(new QLabel(tr("尺寸增长率"),this),m_growthRate,9);
+    row(new QLabel(tr("每边分段密度"),this),m_segmentsPerEdge,10);
+    row(new QLabel(tr("每曲率半径分段"),this),m_segmentsPerRadius,11);
+    row(ui->labelOrder,ui->spOrder,12);row(ui->labelTol,ui->dsTol,13);
     connect(m_automaticMin,&QCheckBox::toggled,ui->dsMin,&QWidget::setDisabled);
     ui->dsMin->setDisabled(true);
     connect(m_fineness,QOverload<int>::of(&QComboBox::currentIndexChanged),this,&MeshGlobalMeshingWidget::updateFinenessControls);
+    connect(m_automaticMin,&QCheckBox::toggled,this,[this] { updateAutomaticSize(); });
+    connect(ui->dsMin,qOverload<double>(&QDoubleSpinBox::valueChanged),this,[this] { updateAutomaticSize(); });
     for(auto* field:{m_growthRate,m_segmentsPerEdge,m_segmentsPerRadius})
         connect(field,QOverload<double>::of(&QDoubleSpinBox::valueChanged),this,[this]{m_fineness->setCurrentIndex(5);});
     updateFinenessControls();
@@ -385,6 +395,7 @@ void MeshGlobalMeshingWidget::updateGeometryScope()
     QList<int> ids = m_geometryIds[meshingDimension()];
     if (all) { ids.clear(); for (int i = 0; i < m_geometryList->count(); ++i) ids.append(m_geometryList->item(i)->data(Qt::UserRole).toInt()); }
     m_selectionPresentation.setSelectedEntities(meshingDimension(), ids);
+    updateAutomaticSize();
 }
 
 void MeshGlobalMeshingWidget::stopGeometryPick()
@@ -515,6 +526,39 @@ void MeshGlobalMeshingWidget::updateFinenessControls()
     m_growthRate->setEnabled(level==5);m_segmentsPerEdge->setEnabled(level==5);
     // Radius can be adjusted directly and promotes the preset to Custom.
     m_segmentsPerRadius->setEnabled(true);
+    updateAutomaticSize();
+}
+
+void MeshGlobalMeshingWidget::updateAutomaticSize()
+{
+    if (!m_automaticMax || !m_automaticMax->isChecked() || !m_fineness)
+        return;
+    auto* bridge=dynamic_cast<QObject*>(ServiceRegistry::instance().getService<PreProcessingService>());
+    if (!bridge || bridge->metaObject()->indexOfMethod("meshingGeometryBounds(int,QVariantList)")<0)
+        return;
+    QVariantList ids,bounds;
+    if (m_scopeMode && m_scopeMode->currentIndex()!=0)
+    {
+        for (int id:m_geometryIds[meshingDimension()])ids.append(id);
+        if (ids.isEmpty())return;
+    }
+    if (!QMetaObject::invokeMethod(bridge,"meshingGeometryBounds",Qt::DirectConnection,
+            Q_RETURN_ARG(QVariantList,bounds),Q_ARG(int,meshingDimension()),Q_ARG(QVariantList,ids)) || bounds.size()!=6)
+        return;
+    double span=0.0;
+    for (int axis=0;axis<3;++axis)
+    {
+        const double low=bounds[axis*2].toDouble(),high=bounds[axis*2+1].toDouble();
+        if (!std::isfinite(low)||!std::isfinite(high)||high<low)return;
+        span=std::max(span,high-low);
+    }
+    if (span<=0.0)return;
+    // Initial global resolution follows model scale; native curvature and
+    // explicit local controls still resolve the actual geometric features.
+    constexpr double divisions[]{12.,18.,25.,35.,50.,25.};
+    const int level=std::clamp(m_fineness->currentData().toInt(),0,5);
+    const double minimum=m_automaticMin && !m_automaticMin->isChecked()?ui->dsMin->value():0.0;
+    ui->dsMax->setValue(std::max({span/divisions[level],minimum,1.e-6}));
 }
 
 QString MeshGlobalMeshingWidget::tempDirPath() const
@@ -543,6 +587,7 @@ void MeshGlobalMeshingWidget::onGenerate()
         return;
     }
 
+    updateAutomaticSize();
     Params p = collectParams();
     p.allGeometry = m_scopeMode->currentIndex() == 0;
     p.autoPartition = m_autoPartition->isChecked();
@@ -572,6 +617,8 @@ void MeshGlobalMeshingWidget::onGenerate()
         return;
     }
     appendLog(geometryDiagnostic);
+    if (m_automaticMax->isChecked())
+        appendLog(tr("自动最大尺寸：%1").arg(p.lenMax,0,'g',8));
     PublicVariables::instance().set(PublicConstants::kMeshDimension, p.dimension, "mesh");
     p.inputGeometryPath = geometryPath;
 
@@ -870,12 +917,15 @@ QJsonObject MeshGlobalMeshingWidget::saveJson()
         {"fineness",p.fineness},{"element_order",p.elementOrder},{"optimize",p.optimize},
         {"curvature",p.surfaceCurvature},{"tolerance",p.tolerance},
         {"automatic_min_size",m_automaticMin->isChecked()},{"manual_min_size",ui->dsMin->value()},
+        {"automatic_max_size",m_automaticMax->isChecked()},
         {"smesh_fineness",p.nativeFineness},{"growth_rate",p.growthRate},
         {"segments_per_edge",p.segmentsPerEdge},{"segments_per_radius",p.segmentsPerRadius}};
 }
 void MeshGlobalMeshingWidget::loadJson(const QJsonObject& o)
 {
     if(o.isEmpty())return;
+    // Older saved sizes are manual choices. Do not silently replace them.
+    m_automaticMax->setChecked(false);
     for (int dimension : {2,3}) {
         m_geometryIds[dimension].clear();
         for (const auto& value : o.value(dimension==3?"geometry_solids":"geometry_faces").toArray())
@@ -904,5 +954,6 @@ void MeshGlobalMeshingWidget::loadJson(const QJsonObject& o)
         m_segmentsPerRadius->setValue(o.value("segments_per_radius").toDouble(2.));
     }
     updateFinenessControls();
+    m_automaticMax->setChecked(o.value("automatic_max_size").toBool(!o.contains("max_size")));
     refreshGeometryScope();
 }

@@ -616,13 +616,6 @@ bool CaveReinforcementFieldPage::exportFieldFiles(
                 const double configuredArea = materialValue(imat, bar.material, 8);
                 if (configuredArea <= 0.0)
                     continue;
-                if (configuredArea > 0.05)
-                {
-                    if (errorMessage)
-                        *errorMessage = QStringLiteral("杆材料 %1 的截面积大于 0.05 m²。")
-                                            .arg(bar.material);
-                    return false;
-                }
                 double xyz[3]{};
                 grid->GetPoint(cell->GetPointId(0), xyz);
                 std::copy(xyz, xyz + 3, bar.a.begin());

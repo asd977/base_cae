@@ -160,12 +160,16 @@ void CadBody::initActor()
                                          displayAngularDeflectionDeg,
                                          true,
                                          buildEdges);
+    setDisplayPolyData(disp.surface, disp.edges);
+}
 
+void CadBody::setDisplayPolyData(vtkPolyData* surface, vtkPolyData* edges)
+{
     vtkSmartPointer<vtkActor> surfActor;
-    if (disp.surface && disp.surface->GetNumberOfCells() > 0)
+    if (surface && surface->GetNumberOfCells() > 0)
     {
         auto surfMapper = vtkSmartPointer<vtkPolyDataMapper>::New();
-        surfMapper->SetInputData(disp.surface);
+        surfMapper->SetInputData(surface);
         surfMapper->ScalarVisibilityOff();
 
         // CAD 显示网格在一次几何构建完成后不会原地修改；参数修改/布尔/重新导入
@@ -188,10 +192,10 @@ void CadBody::initActor()
     }
 
     vtkSmartPointer<vtkActor> edgeActor;
-    if (buildEdges && disp.edges && disp.edges->GetNumberOfLines() > 0)
+    if (edges && edges->GetNumberOfLines() > 0)
     {
         auto edgeMapper = vtkSmartPointer<vtkPolyDataMapper>::New();
-        edgeMapper->SetInputData(disp.edges);
+        edgeMapper->SetInputData(edges);
         edgeMapper->ScalarVisibilityOff();
         edgeMapper->StaticOn();
 

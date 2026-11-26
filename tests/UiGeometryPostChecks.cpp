@@ -304,6 +304,50 @@ static void meshDomainRebuildChecks(QTreeWidget* tree,VisualWidgetService* visua
     std::cout<<"Mesh: 96 mixed wedge/hex groups retain membership on import and material/layer membership and highlights after reload\n";
 }
 
+static void materialTensileStrengthChecks(QTreeWidget* tree)
+{
+    auto& registry=ServiceRegistry::instance();GeometryTestTree testTree(tree);
+    auto* previousTree=registry.getService<ProjectManagerService>();registry.registerService<ProjectManagerService>(&testTree);
+    QTemporaryDir project;check(project.isValid(),"tensile strength temporary project");
+    QDir().mkpath(project.filePath(QStringLiteral("工程数据")));
+    PublicVariables::instance().set(PublicConstants::kProjectDirectoryKey,project.path(),"tensile-test");
+    const QJsonObject properties{{"序号","3"},{"变形模量E（GPa）","0.0065"},{"泊松比μ","0.38"},
+        {"容重t/m3","1.67"},{"抗剪断强度内摩擦系数","0.363970234266202"},{"凝聚力C‘（MPa）","0.02"},
+        {"抗压强度Rc（MPa）","0"},{"抗拉强度Rt（MPa）","0"},{"剪胀角(°)","0"},
+        {"残余摩擦系数沿用峰值","1"},{"残余凝聚力沿用峰值","1"}};
+    const QString id=QUuid::createUuid().toString();
+    const QJsonObject entry{{"id",id},{"name","No tension"},{"applied_matypes",QJsonArray{3}},{"properties",properties}};
+    const QJsonObject fixture{{"added_entry_ids",QJsonArray{id}},
+        {"models",QJsonArray{QJsonObject{{"key","dagangshan_isotropic"},{"entries",QJsonArray{entry}}}}}};
+    QFile materialFile(project.filePath(QStringLiteral("工程数据/material.json")));
+    check(materialFile.open(QIODevice::WriteOnly),"write tensile fixture");materialFile.write(QJsonDocument(fixture).toJson());materialFile.close();
+    auto* loader=new QPluginLoader(QCoreApplication::applicationDirPath()+"/plugins/Base_MaterialManager.dll");
+    check(loader->load(),qPrintable(loader->errorString()));auto* plugin=qobject_cast<PluginInterface*>(loader->instance());check(plugin,"tensile material plugin");plugin->start();
+    auto* materials=registry.getService<MaterialManagerService>();check(materials && materials->loadProject(),"load tensile fixture");
+    auto* node=testTree.findNodeByUuid(id);check(node && node->getPage(),"tensile material page");
+    auto* option=node->getPage()->findChild<QCheckBox*>("explicitTensileStrength");check(option && !option->isChecked(),"legacy auto tensile mode");
+    const auto exportedStrength=[&] {
+        check(materials->generateIMATFile(),"export tensile material");
+        QFile file(project.filePath(QStringLiteral("工程数据/计算输入/IMAT.DAT")));check(file.open(QIODevice::ReadOnly),"read tensile export");
+        QTextStream in(&file);in.readLine();in.readLine();in.readLine();QStringList row;
+        for(int parameter=1;parameter<=10;++parameter)row=in.readLine().simplified().split(' ');
+        check(row.size()==11,"native material parameter row");return row[2].toDouble();
+    };
+    check(exportedStrength()>0.,"legacy zero still derives tensile strength");
+    option->setChecked(true);check(exportedStrength()==0.,"explicit zero is exported without tensile strength");
+    check(materials->saveProject(),"save explicit tensile mode");
+    check(materialFile.open(QIODevice::ReadOnly),"read saved tensile mode");
+    const auto saved=QJsonDocument::fromJson(materialFile.readAll()).object();materialFile.close();
+    bool explicitModeSaved=false;
+    for(const auto& model:saved["models"].toArray())for(const auto& value:model.toObject()["entries"].toArray())
+        if(value.toObject()["id"].toString()==id)
+            explicitModeSaved=value.toObject()["properties"].toObject()["抗拉强度按输入值"].toString()=="1";
+    check(explicitModeSaved && exportedStrength()==0.,"explicit zero persists in project data");
+    option->setChecked(false);check(exportedStrength()>0.,"returning to legacy auto mode remains supported");
+    materials->newProject();registry.registerService<ProjectManagerService>(previousTree);
+    std::cout<<"Material: explicit zero tensile strength, legacy automatic strength and project persistence passed\n";
+}
+
 class ScenePickingPage final : public BasePage
 {
 public:
@@ -1020,6 +1064,10 @@ static void integrationChecks(QApplication& app, const QString& output, const QS
     auto* frame=dynamic_cast<QWidget*>(frameService);
     auto* visual=registry.getService<VisualWidgetService>();
     check(frame && visual,"actual main frame and visualization");
+    if(project==QLatin1String("--material-tensile")) {
+        auto* tree=frame->findChild<QTreeWidget*>("projectTreeWidget");check(tree,"tensile project tree");
+        materialTensileStrengthChecks(tree);return;
+    }
     if(project==QLatin1String("--mesh-domains")) {
         auto* tree=frame->findChild<QTreeWidget*>("projectTreeWidget");check(tree,"domain project tree");
         meshDomainRebuildChecks(tree,visual);return;

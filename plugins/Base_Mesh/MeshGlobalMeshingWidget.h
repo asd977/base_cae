@@ -110,6 +110,7 @@ class MeshGlobalMeshingWidget : public BasePage
     void refreshElemCombo(int dim);
     Params collectParams() const;
     void updateFinenessControls();
+    void updateAutomaticSize();
 
     QString tempDirPath() const;
     QString tempVtkPath() const;
@@ -123,6 +124,7 @@ class MeshGlobalMeshingWidget : public BasePage
     QThread* m_thread = nullptr;
     QString m_computeSubmeshUuid;
     QCheckBox* m_automaticMin = nullptr;
+    QCheckBox* m_automaticMax = nullptr;
     QComboBox* m_fineness = nullptr;
     QDoubleSpinBox* m_growthRate = nullptr;
     QDoubleSpinBox* m_segmentsPerEdge = nullptr;

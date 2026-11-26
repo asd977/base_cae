@@ -91,5 +91,10 @@ public:
     static DomainMode domainMode(const QJsonObject& state);
     static GridOptions gridOptions(const QJsonObject& state);
     static QVector<Source> sourcesFromState(const QJsonObject& state);
+    static QJsonObject builtState(const QJsonObject& state)
+    {
+        const auto built = state.value(QStringLiteral("builtState")).toObject();
+        return built.isEmpty() ? state : built;
+    }
 };
 }

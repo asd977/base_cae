@@ -5,6 +5,7 @@
 #include <GeometryDisplayManager.h>
 #include <GeometryCleanup.h>
 #include <GeomShapeObject.h>
+#include <OccToVtkConverter.h>
 #include "../workbench/GeometryWorkbench.h"
 #include <services/PreProcessingService.h>
 #include <services/ProjectManagerService.h>
@@ -29,6 +30,9 @@
 #include <QSignalBlocker>
 #include <QStyledItemDelegate>
 #include <QCheckBox>
+#include <QThread>
+#include <ProjectNode.h>
+#include <Standard_Failure.hxx>
 #include <vtkNew.h>
 #include <vtkPolyData.h>
 #include <vtkRenderer.h>
@@ -41,6 +45,7 @@
 #include <vtkPointData.h>
 #include <cmath>
 #include <algorithm>
+#include <memory>
 
 using namespace GeometryTerrain;
 
@@ -123,8 +128,8 @@ TerrainSurfacePanel::TerrainSurfacePanel(QWidget* parent)
 
     m_algorithm = new QComboBox(this);
     m_algorithm->setObjectName("terrainAlgorithmCombo");
-    m_algorithm->addItem(tr("反距离权重 (IDW)"), 0);
     m_algorithm->addItem(tr("线性内插 (Linear Delaunay)"), 2);
+    m_algorithm->addItem(tr("反距离权重 (IDW)"), 0);
     m_algorithm->addItem(tr("最近邻 (Nearest Neighbour)"), 1);
     form->addRow(tr("插值算法"), m_algorithm);
 
@@ -179,7 +184,7 @@ TerrainSurfacePanel::TerrainSurfacePanel(QWidget* parent)
     m_createSolid = new QCheckBox(tr("生成闭合地质体"), this);
     m_createSolid->setObjectName("terrainCreateSolidCheck");
     m_createSolid->setChecked(true);
-    m_createSolid->setToolTip(tr("勾选后将地形面与基底水平面及4个侧面缝合成闭合三维实体，可直接参与有限元体网格剖分与开挖布尔。"));
+    m_createSolid->setToolTip(tr("将地形面与基底水平面及4个侧面缝合成闭合三维实体。"));
     paramLayout->addWidget(m_createSolid);
 
     auto* baseHLayout = new QFormLayout;
@@ -202,6 +207,7 @@ TerrainSurfacePanel::TerrainSurfacePanel(QWidget* parent)
     layout->addWidget(paramGroup);
 
     auto* generateButton = new QPushButton(tr("构建三维地质体 / 地形面"), this);
+    m_generateButton = generateButton;
     generateButton->setObjectName("buildTerrainButton");
     layout->addWidget(generateButton);
 
@@ -235,11 +241,7 @@ TerrainSurfacePanel::TerrainSurfacePanel(QWidget* parent)
         updateBoundsFromSources();
     });
 
-    connect(generateButton, &QPushButton::clicked, this, [this] {
-        QString diagnostic;
-        if (!generate(diagnostic))
-            QMessageBox::warning(this, tr("无法构建地形面"), diagnostic);
-    });
+    connect(generateButton, &QPushButton::clicked, this, [this] { generateAsync(); });
 
     connect(m_showContours, &QCheckBox::toggled, this, [this] { updatePreview(); });
     connect(m_showSurface, &QCheckBox::toggled, this, [this] { updatePreview(); });
@@ -254,6 +256,8 @@ TerrainSurfacePanel::TerrainSurfacePanel(QWidget* parent)
     connect(m_xmax, qOverload<double>(&QDoubleSpinBox::valueChanged), this, onParamChanged);
     connect(m_ymin, qOverload<double>(&QDoubleSpinBox::valueChanged), this, onParamChanged);
     connect(m_ymax, qOverload<double>(&QDoubleSpinBox::valueChanged), this, onParamChanged);
+    connect(m_createSolid, &QCheckBox::toggled, this, onParamChanged);
+    connect(m_baseElevation, qOverload<double>(&QDoubleSpinBox::valueChanged), this, onParamChanged);
     connect(m_algorithm, qOverload<int>(&QComboBox::currentIndexChanged), this, [this] { invalidate(); });
     connect(m_domainMode, qOverload<int>(&QComboBox::currentIndexChanged), this, [this] {
         updateModeControls();
@@ -363,20 +367,11 @@ void TerrainSurfacePanel::updateGridStats()
 
 void TerrainSurfacePanel::invalidate()
 {
-    if (m_generated)
-    {
-        GeometryCleanup::removeExistingGeometry(getUuid(), false);
-        if (auto* visual = ServiceRegistry::instance().getService<VisualWidgetService>())
-        {
-            visual->removeProp(getUuid() + "_terrain_surface", false);
-            visual->render();
-        }
-        if (auto* project = ServiceRegistry::instance().getService<ProjectManagerService>())
-            project->setNodeDimmed(getUuid(), true);
-    }
-    m_generated = false;
-    m_result = {};
-    m_status->setText(tr("地形数据已更新"));
+    ++m_buildRevision;
+    m_dirty = true;
+    // Editing inputs does not delete the last successful CAD result. It stays
+    // available for display, save and meshing until a new build succeeds.
+    m_status->setText(m_generated ? tr("参数已修改，待重新构建") : tr("地形数据已更新"));
 }
 
 void TerrainSurfacePanel::setSources(const QVector<Source>& sources)
@@ -386,6 +381,14 @@ void TerrainSurfacePanel::setSources(const QVector<Source>& sources)
     m_sourceActor = nullptr;
     refreshTable();
     updateBoundsFromSources();
+    {
+        const QSignalBlocker guard(m_showContours);
+        m_showContours->setChecked(true);
+    }
+    GeometryDisplayManager::setVisible(getUuid(), true, false);
+    if (auto* project = ServiceRegistry::instance().getService<ProjectManagerService>())
+        if (auto* node = project->findNodeByUuid(getUuid()))
+            node->setCheckState(0, Qt::Checked);
     updatePreview(true);
 }
 
@@ -447,10 +450,8 @@ void TerrainSurfacePanel::refreshRow(int row)
     m_table->setItem(row, 4, info);
 }
 
-bool TerrainSurfacePanel::generate(QString& diagnostic)
+GridOptions TerrainSurfacePanel::currentGridOptions() const
 {
-    QApplication::setOverrideCursor(Qt::WaitCursor);
-
     GridOptions gridOpts;
     gridOpts.spacing = m_spacing->value();
     gridOpts.bounds.xmin = m_xmin->value();
@@ -462,13 +463,23 @@ bool TerrainSurfacePanel::generate(QString& diagnostic)
     gridOpts.createSolid = m_createSolid ? m_createSolid->isChecked() : true;
     gridOpts.baseElevation = m_baseElevation ? m_baseElevation->value() : 0.0;
     gridOpts.autoBaseElevation = (gridOpts.baseElevation == 0.0);
+    return gridOpts;
+}
+
+bool TerrainSurfacePanel::generate(QString& diagnostic)
+{
+    if (m_building)
+    {
+        diagnostic = tr("正在构建地形面");
+        return false;
+    }
+    const GridOptions gridOpts = currentGridOptions();
 
     DomainMode mode = DomainMode::GridInterpolation;
     if (m_domainMode)
         mode = static_cast<DomainMode>(m_domainMode->currentData().toInt());
 
     const Result result = TerrainSurfaceBuilder::build(m_sources, m_spacing->value(), mode, gridOpts);
-    QApplication::restoreOverrideCursor();
 
     if (!result.ok())
     {
@@ -478,8 +489,84 @@ bool TerrainSurfacePanel::generate(QString& diagnostic)
         return false;
     }
 
+    applyResult(result, TerrainSurfaceBuilder::state(m_sources, true, gridOpts.spacing, mode, gridOpts));
+    diagnostic = result.summary();
+    return true;
+}
+
+void TerrainSurfacePanel::generateAsync()
+{
+    if (m_building)
+        return;
+    struct BuildResult { Result result; QJsonObject state; OCC::DisplayPolyData display; };
+    const auto job = std::make_shared<BuildResult>();
+    const auto sources = m_sources;
+    const GridOptions options = currentGridOptions();
+    const auto mode = static_cast<DomainMode>(m_domainMode->currentData().toInt());
+    const bool fastDisplay = CadBody::fastDisplayMode();
+    const quint64 revision = ++m_buildRevision;
+    m_building = true;
+    setProperty("terrain.build.running", true);
+    m_generateButton->setEnabled(false);
+    m_generateButton->setText(tr("正在构建…"));
+    m_status->setText(tr("正在构建地形面"));
+    auto* thread = QThread::create([job, sources, options, mode, fastDisplay] {
+        try
+        {
+            job->result = TerrainSurfaceBuilder::build(sources, options.spacing, mode, options);
+            if (job->result.ok())
+            {
+                job->state = TerrainSurfaceBuilder::state(sources, true, options.spacing, mode, options);
+                // Tessellation and OCC -> VTK conversion are part of the slow
+                // build too. Only actor attachment and rendering stay on the UI thread.
+                job->display = OCC::BuildDisplayPolyData(job->result.shape,
+                    fastDisplay ? .60 : .20, fastDisplay ? 20.0 : 12.0, true, true);
+                if (!job->display.surface || job->display.surface->GetNumberOfCells() == 0)
+                    job->result.error = QObject::tr("无法生成地形显示数据");
+            }
+        }
+        catch (const Standard_Failure& error)
+        {
+            job->result.error = QString::fromUtf8(error.GetMessageString());
+        }
+        catch (const std::exception& error)
+        {
+            job->result.error = QString::fromUtf8(error.what());
+        }
+        catch (...)
+        {
+            job->result.error = QObject::tr("地形构建失败");
+        }
+    });
+    connect(thread, &QThread::finished, thread, &QObject::deleteLater);
+    connect(QCoreApplication::instance(), &QCoreApplication::aboutToQuit, thread,
+            [thread] { thread->wait(); }, Qt::DirectConnection);
+    connect(thread, &QThread::finished, this, [this, job, revision] {
+        m_building = false;
+        setProperty("terrain.build.running", false);
+        m_generateButton->setEnabled(true);
+        m_generateButton->setText(tr("构建三维地质体 / 地形面"));
+        // The user can edit inputs or open another project while work runs.
+        // Never replace a valid result with an obsolete worker's output.
+        if (revision != m_buildRevision)
+            return;
+        if (!job->result.ok())
+        {
+            m_status->setText(job->result.error.isEmpty() ? tr("地形构建失败") : job->result.error);
+            return;
+        }
+        applyResult(job->result, job->state, job->display.surface, job->display.edges);
+    }, Qt::QueuedConnection);
+    thread->start();
+}
+
+void TerrainSurfacePanel::applyResult(const Result& result, const QJsonObject& builtState,
+                                     vtkPolyData* surface, vtkPolyData* edges)
+{
     m_result = result;
     m_generated = true;
+    m_dirty = false;
+    m_builtState = builtState;
 
     if (result.isSolid && m_baseElevation)
     {
@@ -488,7 +575,10 @@ bool TerrainSurfacePanel::generate(QString& diagnostic)
     }
 
     GeometryDisplayManager::setTerrainPresentation(getUuid(), isSurfaceColorEnabled(), isContoursEnabled());
-    GeometryBuildUtils::registerShape(getUuid(), getDisplayName(), new TopoDS_Shape(result.shape));
+    if (surface)
+        GeometryBuildUtils::registerPreparedShape(getUuid(), getDisplayName(), new TopoDS_Shape(result.shape), surface, edges);
+    else
+        GeometryBuildUtils::registerShape(getUuid(), getDisplayName(), new TopoDS_Shape(result.shape));
     if (auto* body = GeomManager::CadDocument::getInstance()->getGeomShapeObject(getUuid()))
     {
         QVector<CadBody::FaceGroup> groups;
@@ -499,34 +589,24 @@ bool TerrainSurfacePanel::generate(QString& diagnostic)
     if (auto* workbench = dynamic_cast<GeometryWorkbench*>(ServiceRegistry::instance().getService<PreProcessingService>()))
         workbench->refreshTreePresentation(getUuid());
 
-    diagnostic = result.summary();
-    m_status->setText(diagnostic);
+    m_status->setText(result.summary());
 
-    updatePreview(false);
+    if (m_pageActive)
+        updatePreview(false);
 
     if (auto* visual = ServiceRegistry::instance().getService<VisualWidgetService>())
     {
         double b[6];
         result.mesh->GetBounds(b);
-        fitView(b);
+        if (m_pageActive)
+            fitView(b);
         visual->render();
     }
-    return true;
 }
 
 QJsonObject TerrainSurfacePanel::saveJson()
 {
-    GridOptions gridOpts;
-    gridOpts.spacing = m_spacing->value();
-    gridOpts.bounds.xmin = m_xmin->value();
-    gridOpts.bounds.xmax = m_xmax->value();
-    gridOpts.bounds.ymin = m_ymin->value();
-    gridOpts.bounds.ymax = m_ymax->value();
-    gridOpts.customBounds = gridOpts.bounds.isValid();
-    gridOpts.algorithm = m_algorithm ? m_algorithm->currentData().toInt() : 0;
-    gridOpts.createSolid = m_createSolid ? m_createSolid->isChecked() : true;
-    gridOpts.baseElevation = m_baseElevation ? m_baseElevation->value() : 0.0;
-    gridOpts.autoBaseElevation = (gridOpts.baseElevation == 0.0);
+    const GridOptions gridOpts = currentGridOptions();
 
     DomainMode mode = DomainMode::GridInterpolation;
     if (m_domainMode)
@@ -536,11 +616,15 @@ QJsonObject TerrainSurfacePanel::saveJson()
     state["sourceFileName"] = m_sourcePath;
     state["showContours"] = m_showContours->isChecked();
     state["showSurface"] = m_showSurface->isChecked();
+    state["parametersChanged"] = m_dirty;
+    if (m_generated && m_dirty && !m_builtState.isEmpty())
+        state["builtState"] = m_builtState;
     return state;
 }
 
 void TerrainSurfacePanel::loadJson(const QJsonObject& state)
 {
+    ++m_buildRevision;
     m_sources = TerrainSurfaceBuilder::sourcesFromState(state);
     m_sourceActor = nullptr;
     m_sourcePath = state["sourceFileName"].toString();
@@ -617,18 +701,22 @@ void TerrainSurfacePanel::loadJson(const QJsonObject& state)
 
     GeometryDisplayManager::setTerrainPresentation(getUuid(), isSurfaceColorEnabled(), isContoursEnabled());
     m_generated = state["generated"].toBool();
+    m_dirty = state["parametersChanged"].toBool(false);
+    m_builtState = m_generated ? TerrainSurfaceBuilder::builtState(state) : QJsonObject{};
+    m_builtState.remove("builtState");
     m_result = {};
     refreshTable();
     updateModeControls();
-    m_status->setText(m_generated ? tr("已恢复地形面") : tr("已恢复等高线"));
+    m_status->setText(m_generated ? (m_dirty ? tr("参数已修改，待重新构建") : tr("已恢复地形面")) : tr("已恢复等高线"));
 }
 
 void TerrainSurfacePanel::beforeLoad()
 {
+    m_pageActive = true;
     // The CAD presentation is also the elevation presentation. Opening the page
     // never rebuilds terrain or replaces a valid surface with an empty preview.
     updatePreview(false);
-    if (m_generated && GeometryBuildUtils::validShapeObject(getUuid()))
+    if (m_generated && !m_dirty && GeometryBuildUtils::validShapeObject(getUuid()))
         m_status->setText(tr("已恢复地形面"));
 }
 
@@ -639,6 +727,7 @@ TerrainSurfacePanel::~TerrainSurfacePanel()
 
 void TerrainSurfacePanel::beforeUnload()
 {
+    m_pageActive = false;
     if (auto* visual = ServiceRegistry::instance().getService<VisualWidgetService>())
     {
         visual->removeProp(getUuid() + "_terrain_sources", false);
@@ -758,7 +847,7 @@ void TerrainSurfacePanel::updatePreview(bool fitCamera)
     if (fitCamera)
     {
         double bounds[6];
-        if (m_result.ok() && m_result.mesh)
+        if (!m_dirty && m_result.ok() && m_result.mesh)
             m_result.mesh->GetBounds(bounds);
         else if (m_sourceActor)
             m_sourceActor->GetBounds(bounds);

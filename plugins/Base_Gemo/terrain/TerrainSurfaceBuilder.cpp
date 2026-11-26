@@ -131,10 +131,10 @@ QString Result::summary() const
 {
     if (isSolid)
     {
-        return QStringLiteral("已生成三维闭合地质体：基底高程 %1m，6 个完整物理面（地表顶面、基底底面、4个四周侧面），高程 %2～%3m。可直接进入网格模块划分体网格或执行开挖布尔。")
+        return QStringLiteral("已生成三维闭合地质体：基底高程 %1m，6 个完整物理面（地表顶面、基底底面、4个四周侧面），高程 %2～%3m。")
             .arg(baseElevation, 0, 'f', 2).arg(minElevation, 0, 'f', 2).arg(maxElevation, 0, 'f', 2);
     }
-    return QStringLiteral("已生成单张光滑地形面：%1 个面域、%2 个三角面，高程 %3～%4m。可进入网格模块设置单元尺寸并划分网格。")
+    return QStringLiteral("已生成单张光滑地形面：%1 个面域、%2 个三角面，高程 %3～%4m。")
         .arg(domains.size()).arg(triangles).arg(minElevation, 0, 'f', 2).arg(maxElevation, 0, 'f', 2);
 }
 

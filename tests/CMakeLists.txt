@@ -109,6 +109,8 @@ add_test(NAME SceneVisibilityChecks COMMAND UiGeometryPostChecks "${CMAKE_BINARY
 set_tests_properties(SceneVisibilityChecks PROPERTIES TIMEOUT 120 ENVIRONMENT "PATH=${_smesh_test_path};QT_QPA_PLATFORM=windows")
 add_test(NAME MeshDomainRebuildChecks COMMAND UiGeometryPostChecks "${CMAKE_BINARY_DIR}/test-evidence/mesh-domains" --mesh-domains)
 set_tests_properties(MeshDomainRebuildChecks PROPERTIES TIMEOUT 120 ENVIRONMENT "PATH=${_smesh_test_path};QT_QPA_PLATFORM=windows")
+add_test(NAME MaterialTensileStrengthChecks COMMAND UiGeometryPostChecks "${CMAKE_BINARY_DIR}/test-evidence/material-tensile" --material-tensile)
+set_tests_properties(MaterialTensileStrengthChecks PROPERTIES TIMEOUT 60 ENVIRONMENT "PATH=${_smesh_test_path};QT_QPA_PLATFORM=windows")
 add_test(NAME SettingsPageLayoutChecks COMMAND UiGeometryPostChecks "${CMAKE_BINARY_DIR}/test-evidence/settings-layout" --layout-audit)
 set_tests_properties(SettingsPageLayoutChecks PROPERTIES TIMEOUT 120 ENVIRONMENT "PATH=${_smesh_test_path};QT_QPA_PLATFORM=windows")
 add_test(NAME MainWindowLayoutChecks COMMAND UiGeometryPostChecks "${CMAKE_BINARY_DIR}/test-evidence/main-window-layout")
@@ -157,6 +159,14 @@ add_test(NAME PostRefreshChecks COMMAND PostRefreshChecks)
 set_tests_properties(PostRefreshChecks PROPERTIES TIMEOUT 120 ENVIRONMENT "PATH=${_smesh_test_path}")
 
 add_executable(SlopeExcavationChecks SlopeExcavationChecks.cpp)
+add_executable(CaveReinforcementFieldChecks CaveReinforcementFieldChecks.cpp
+    ../plugins/Base_Solver/CaveReinforcementFieldPage.cpp
+    ../plugins/Base_Solver/CaveReinforcementFieldPage.h)
+target_include_directories(CaveReinforcementFieldChecks PRIVATE "${CMAKE_SOURCE_DIR}/core" "${CMAKE_SOURCE_DIR}/interfaces")
+target_link_libraries(CaveReinforcementFieldChecks PRIVATE core Qt6::Widgets CAE::VTK)
+cae_vtk_autoinit(CaveReinforcementFieldChecks)
+add_test(NAME CaveReinforcementFieldChecks COMMAND CaveReinforcementFieldChecks)
+set_tests_properties(CaveReinforcementFieldChecks PROPERTIES TIMEOUT 60 ENVIRONMENT "PATH=${_smesh_test_path};QT_QPA_PLATFORM=windows")
 add_executable(SlopeSearchChecks SlopeSearchChecks.cpp
     ../plugins/Base_Solver/SlopeStandardDatModel.cpp)
 target_link_libraries(SlopeSearchChecks PRIVATE Qt6::Core)
@@ -200,7 +210,7 @@ add_executable(TerrainDisplayChecks TerrainDisplayChecks.cpp
     ../plugins/Base_Gemo/builders/DxfReader.cpp ../res.qrc)
 target_include_directories(TerrainDisplayChecks PRIVATE "${CMAKE_SOURCE_DIR}/core" "${CMAKE_SOURCE_DIR}/interfaces" "${CMAKE_SOURCE_DIR}/plugins/Base_Gemo/workbench")
 target_link_libraries(TerrainDisplayChecks PRIVATE Base_Gemo core Qt6::Widgets CAE::OCC CAE::VTK CAE::GDAL)
-add_dependencies(TerrainDisplayChecks Base_Gemo Base_UiFrame Base_Visualization Base_ProjectManager Base_Output)
+add_dependencies(TerrainDisplayChecks Base_Gemo Base_UiFrame Base_Visualization Base_ProjectManager Base_Output Base_Mesh)
 cae_vtk_autoinit(TerrainDisplayChecks)
 add_test(NAME TerrainDisplayChecks COMMAND TerrainDisplayChecks)
 set_tests_properties(TerrainDisplayChecks PROPERTIES TIMEOUT 180 ENVIRONMENT "PATH=${_smesh_test_path}")

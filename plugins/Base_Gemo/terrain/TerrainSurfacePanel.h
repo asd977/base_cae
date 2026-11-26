@@ -1,5 +1,6 @@
 #pragma once
 #include <BasePage.h>
+#include <geometry_global.h>
 #include "TerrainSurfaceBuilder.h"
 
 class QTableWidget;
@@ -10,7 +11,7 @@ class QCheckBox;
 class QComboBox;
 class vtkActor;
 
-class TerrainSurfacePanel : public BasePage
+class GEOMETRY_EXPORT TerrainSurfacePanel : public BasePage
 {
 public:
     explicit TerrainSurfacePanel(QWidget* parent = nullptr);
@@ -34,6 +35,10 @@ private:
     void refreshTable();
     void refreshRow(int row);
     void invalidate();
+    void generateAsync();
+    GeometryTerrain::GridOptions currentGridOptions() const;
+    void applyResult(const GeometryTerrain::Result& result, const QJsonObject& builtState,
+                     vtkPolyData* surface = nullptr, vtkPolyData* edges = nullptr);
     void updatePreview(bool fitCamera = false);
     void fitView(const double bounds[6]);
     void updateBoundsFromSources();
@@ -43,6 +48,11 @@ private:
     QVector<GeometryTerrain::Source> m_sources;
     GeometryTerrain::Result m_result;
     bool m_generated = false;
+    bool m_dirty = false;
+    bool m_building = false;
+    bool m_pageActive = true;
+    quint64 m_buildRevision = 0;
+    QJsonObject m_builtState;
     bool m_refreshing = false;
     QString m_sourcePath;
     vtkSmartPointer<vtkActor> m_sourceActor;
@@ -57,6 +67,7 @@ private:
     QDoubleSpinBox* m_ymin = nullptr;
     QDoubleSpinBox* m_ymax = nullptr;
     QPushButton* m_autoBoundsBtn = nullptr;
+    QPushButton* m_generateButton = nullptr;
     QComboBox* m_algorithm = nullptr;
     QComboBox* m_domainMode = nullptr;
     QCheckBox* m_showContours = nullptr;

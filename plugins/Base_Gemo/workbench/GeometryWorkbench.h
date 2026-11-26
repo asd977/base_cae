@@ -55,6 +55,7 @@ class GeometryWorkbench : public QObject, public PreProcessingService
     // The receiver gets QEvent::User+421 and can read the dynamic properties
     // _geometryExternalPickDim / _geometryExternalPickId.
     Q_INVOKABLE bool beginExternalEntityPick(QObject* receiver, int dim);
+    Q_INVOKABLE QVariantList meshingGeometryBounds(int dimension, const QVariantList& ids);
     // 批量 Sweep：从模型树 Ctrl/Shift 多选的几何叶节点中返回全局 Volume UI ID。
     Q_INVOKABLE QVariantList externalSelectedSolidIds() const;
     // 批量选择对话框使用：返回活动 CAD Volume 的 {id,name,visible,selected}。

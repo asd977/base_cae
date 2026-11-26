@@ -1703,6 +1703,19 @@ void MaterialEntryWidget::rebuildForm(MaterialModel* model, MaterialEntry* entry
             }
             targetLayout->addRow(createParameterLabel(label, toolTip, targetParent),
                                  createParameterFieldWidget(valueEdit, unit, targetParent));
+            if (model->key == QStringLiteral("dagangshan_isotropic") &&
+                column == QStringLiteral("抗拉强度Rt（MPa）"))
+            {
+                auto* explicitTensile = new QCheckBox(QStringLiteral("使用输入抗拉强度（允许为0）"), targetParent);
+                explicitTensile->setObjectName(QStringLiteral("explicitTensileStrength"));
+                explicitTensile->setChecked(entry->properties.value(
+                    QStringLiteral("抗拉强度按输入值"), QStringLiteral("0")) == QStringLiteral("1"));
+                connect(explicitTensile, &QCheckBox::toggled, this, [this, entry](bool enabled) {
+                    entry->properties.insert(QStringLiteral("抗拉强度按输入值"), enabled ? QStringLiteral("1") : QStringLiteral("0"));
+                    m_materialManager->notifyEntryUpdated(m_entryId, false);
+                });
+                targetLayout->addRow(explicitTensile);
+            }
             continue;
         }
 
