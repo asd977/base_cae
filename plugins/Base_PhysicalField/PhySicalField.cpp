@@ -388,9 +388,10 @@ void PhysicalField::newProject()
                 if (page->hasDeferredLoadJson())
                 {
                     const QJsonObject saved = page->saveJsonForPersistence();
-                    item.ux = saved.value(QStringLiteral("ux")).toString(QStringLiteral("1")).toInt();
-                    item.uy = saved.value(QStringLiteral("uy")).toString(QStringLiteral("1")).toInt();
-                    item.uz = saved.value(QStringLiteral("uz")).toString(QStringLiteral("1")).toInt();
+                    auto normFlag = [](const QString& s) { const int v = s.toInt(); return v == 2 ? 0 : v; };
+                    item.ux = normFlag(saved.value(QStringLiteral("ux")).toString(QStringLiteral("1")));
+                    item.uy = normFlag(saved.value(QStringLiteral("uy")).toString(QStringLiteral("1")));
+                    item.uz = normFlag(saved.value(QStringLiteral("uz")).toString(QStringLiteral("1")));
                 }
                 else
                 {
@@ -990,8 +991,10 @@ void PhysicalField::writeIIWL_Part3_BodyForce(QTextStream& os)
     QSet<int> iiSet;
     for (auto* p : nodes)
     {
-        auto* page = dynamic_cast<BodyForcePage*>(p->getPage());
         if (!p)
+            continue;
+        auto* page = dynamic_cast<BodyForcePage*>(p->getPage());
+        if (!page)
             continue;
         iiSet.insert(page->ii());
 

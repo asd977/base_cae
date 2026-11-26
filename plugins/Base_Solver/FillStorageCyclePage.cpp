@@ -708,6 +708,22 @@ void FillStorageCyclePage::openConstructionStageEditor()
 
     if (m_constructionStageEditor)
     {
+        if (m_constructionStageTable && m_circleTable)
+        {
+            const QSignalBlocker blocker(m_constructionStageTable);
+            m_constructionStageTable->setRowCount(m_circleTable->rowCount());
+            for (int r = 0; r < m_circleTable->rowCount(); ++r)
+            {
+                for (int c = 0; c < m_circleTable->columnCount(); ++c)
+                {
+                    const QString txt = tableItemText(m_circleTable, r, c, QString());
+                    if (auto* item = m_constructionStageTable->item(r, c))
+                        item->setText(txt);
+                    else
+                        m_constructionStageTable->setItem(r, c, new QTableWidgetItem(txt));
+                }
+            }
+        }
         uiFrame->setWidgetVisible(m_constructionStageEditor, true);
         updateConstructionStageLabels();
         updateConstructionStageSummary();
@@ -1008,11 +1024,15 @@ void FillStorageCyclePage::insertConstructionStageRow(int insertAt, int sourceRo
                 initialElevation = waterOk ? previousWater : 0.0;
             }
 
+            const bool firstHasWaterFill = insertAt > 0 &&
+                tableItemText(table, 0, 8, QStringLiteral("0")) == QStringLiteral("1");
+            const double targetElevation = firstHasWaterFill ? initialElevation + 1.0 : initialElevation;
             const QStringList defaults = {
                 QString::number(firstLayer), QString::number(firstLayer),
                 QStringLiteral("0.0000"), QString::number(initialElevation, 'f', 4),
-                QString::number(initialElevation, 'f', 4), QStringLiteral("0.0000"),
-                QStringLiteral("1"), QStringLiteral("0"), QStringLiteral("0"),
+                QString::number(targetElevation, 'f', 4), QStringLiteral("0.0000"),
+                QStringLiteral("1"), QStringLiteral("0"),
+                firstHasWaterFill ? QStringLiteral("1") : QStringLiteral("0"),
                 QStringLiteral("0"), QString(), QString()};
             for (int column = 0; column < defaults.size(); ++column)
                 table->setItem(insertAt, column, new QTableWidgetItem(defaults.at(column)));
@@ -2339,6 +2359,12 @@ void FillStorageCyclePage::setFillLayerRange(int firstLayer, int lastLayer)
     };
     setCell(0, firstLayer);
     setCell(1, lastLayer);
+    if (m_constructionStageTable && m_constructionStageTable->rowCount() == 1)
+    {
+        const QSignalBlocker blocker(m_constructionStageTable);
+        if (auto* it0 = m_constructionStageTable->item(0, 0)) it0->setText(QString::number(firstLayer));
+        if (auto* it1 = m_constructionStageTable->item(0, 1)) it1->setText(QString::number(lastLayer));
+    }
     updatePreview();
     emit requirementsChanged();
 }

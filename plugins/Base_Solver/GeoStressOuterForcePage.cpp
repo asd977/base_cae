@@ -315,12 +315,27 @@ QString GeoStressOuterForcePage::forceFile() const
     return kForceFileName;
 }
 
+void GeoStressOuterForcePage::setCalculationMode(int calcMode)
+{
+    const bool gravityMode = (calcMode == 0);
+    const bool is3D = currentPickMode() == PickMode::Face;
+    if (ui->fxEdit) ui->fxEdit->setEnabled(gravityMode);
+    if (ui->fyEdit) ui->fyEdit->setEnabled(gravityMode);
+    if (ui->fzEdit) ui->fzEdit->setEnabled(gravityMode && is3D);
+    if (ui->fxEdit)
+        ui->fxEdit->setToolTip(gravityMode ? QString() : QStringLiteral("回归模式下仅导出地表边界 FAROOF.DAT，不施加附加外面力。"));
+}
+
 int GeoStressOuterForcePage::forceEnabled() const
 {
     double fx = 0.0;
     double fy = 0.0;
     double fz = 0.0;
-    if (!readForceComponents(ui, fx, fy, fz) || !hasNonZeroForce(fx, fy, fz))
+    if (!readForceComponents(ui, fx, fy, fz))
+        return 0;
+    if (currentPickMode() != PickMode::Face)
+        fz = 0.0;
+    if (!hasNonZeroForce(fx, fy, fz))
         return 0;
 
     PickManager::instance().updateStructure();
@@ -567,6 +582,11 @@ void GeoStressOuterForcePage::refreshGroupCombo()
             : QStringLiteral("提示：Shift 框选网格边，Ctrl 取消选择。"));
     ui->pickEnableCheckBox->setText(selectFaces ? QStringLiteral("开启面点选")
                                                  : QStringLiteral("开启边点选"));
+    if (ui->fzEdit)
+    {
+        ui->fzEdit->setEnabled(selectFaces && ui->fxEdit && ui->fxEdit->isEnabled());
+        ui->fzEdit->setToolTip(selectFaces ? QString() : QStringLiteral("二维模型不使用 Z 方向外力"));
+    }
 
     auto* meshSvc = ServiceRegistry::instance().getService<MeshModuleControllerService>();
     if (!meshSvc || !ui->groupCombo)

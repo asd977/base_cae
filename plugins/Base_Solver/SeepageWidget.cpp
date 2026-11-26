@@ -47,7 +47,9 @@ SeepageWidget::SeepageWidget(QWidget* parent)
             this, [this](int)
             {
                 updateComputeTypeVisibility();
+                updateOptionalControls();
                 syncBoundaryTransientSettings();
+                emit requirementsChanged();
             });
     connect(ui->checkNaturalFreeSurface, &QCheckBox::toggled, this,
             [this](bool)
@@ -232,11 +234,23 @@ void SeepageWidget::updateComputeTypeVisibility()
                               : QStringLiteral("稳定与非稳定渗流设置"));
 }
 
+bool SeepageWidget::effectiveNaturalFreeSurfaceEnabled() const
+{
+    return computeType() != 2 && naturalFreeSurfaceEnabled();
+}
+
 void SeepageWidget::updateOptionalControls()
 {
-    const bool enabled = naturalFreeSurfaceEnabled();
-    ui->comboItagFree->setEnabled(enabled);
-    if (!enabled && ui->comboItagFree->currentData().toInt() != 0)
+    const int type = computeType();
+    const bool allowNatural = (type != 2);
+    ui->checkNaturalFreeSurface->setEnabled(allowNatural);
+    ui->checkNaturalFreeSurface->setToolTip(
+        allowNatural ? QString() : QStringLiteral("纯非稳定渗流模式不使用天然渗流场。"));
+    const bool allowItag = (type == 1 && naturalFreeSurfaceEnabled());
+    ui->comboItagFree->setEnabled(allowItag);
+    ui->comboItagFree->setToolTip(
+        allowItag ? QString() : QStringLiteral("仅稳定渗流且启用天然渗流场时支持继承天然水头。"));
+    if (!allowItag && ui->comboItagFree->currentData().toInt() != 0)
     {
         const QSignalBlocker blocker(ui->comboItagFree);
         const int index = ui->comboItagFree->findData(0);
@@ -567,7 +581,7 @@ QJsonObject SeepageWidget::saveJson()
     obj[QStringLiteral("drain_well")] = ui->checkDrainWell->isChecked();
     obj[QStringLiteral("compute_type")] = ui->comboComputeType->currentData().toInt();
     obj[QStringLiteral("iter")] = ui->spinIter->value();
-    obj[QStringLiteral("itag_free")] = naturalFreeSurfaceEnabled()
+    obj[QStringLiteral("itag_free")] = (computeType() == 1 && naturalFreeSurfaceEnabled())
                                                ? ui->comboItagFree->currentData().toInt() : 0;
     obj[QStringLiteral("seep_case_dir")] = QStringLiteral("SEEPCASE01");
     obj[QStringLiteral("dt")] = ui->spinDt->value();

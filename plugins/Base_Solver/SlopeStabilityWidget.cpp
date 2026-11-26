@@ -344,7 +344,13 @@ void SlopeStabilityWidget::updateMethodVisibility()
     ui->reserveGroup->setVisible(showStatic && strengthReduction);
     if (m_postExcavationReserveCheck)
         ui->formLayout->setRowVisible(m_postExcavationReserveCheck,
-                                     showStatic && strengthReduction);
+                                     showStatic && strengthReduction && excavationEnabled());
+    if (m_dynamicExcavationShape)
+    {
+        m_dynamicExcavationShape->setEnabled(excavationEnabled());
+        if (!excavationEnabled() && m_dynamicExcavationShape->currentIndex() != 0)
+            m_dynamicExcavationShape->setCurrentIndex(0);
+    }
 }
 
 void SlopeStabilityWidget::updateDampingControls()
@@ -389,8 +395,9 @@ QString SlopeStabilityWidget::lineValue(int lineNo) const
     if (lineNo == 4)
         return gravityLineValue();
     if (lineNo == 10)
-        return m_dynamicExcavationShape ? m_dynamicExcavationShape->currentData().toString()
-                                        : QStringLiteral("1");
+        return (excavationEnabled() && m_dynamicExcavationShape)
+                   ? m_dynamicExcavationShape->currentData().toString()
+                   : QStringLiteral("1");
     if (lineNo == 26)
         return m_postExcavationReserveCheck && m_postExcavationReserveCheck->isChecked()
             ? QStringLiteral("1") : QStringLiteral("0");
@@ -710,33 +717,43 @@ bool SlopeStabilityWidget::validateInputs(QString* errorMessage) const
             || ui->line19Combo->currentData().toString() == QStringLiteral("3"))
         && !m_quietBoundarySelection->generate())
         return fail(QStringLiteral("请在模型中选择粘弹性边界区域；当前支持线性边界面（二维选择边）。"));
-    if (!number(ui->gravityXEdit) || !number(ui->gravityYEdit) || !number(ui->gravityZEdit))
-        return fail(QStringLiteral("重力加速度必须填写三个有效数值。"));
-
-    bool iterationsOk = false;
-    const QString iterationsText = ui->line6Edit->text().trimmed();
-    const int iterations = iterationsText.toInt(&iterationsOk);
-    double tolerance = 0.0;
-    if (!iterationsOk || iterations <= 0 || QString::number(iterations) != iterationsText)
-        return fail(QStringLiteral("最大迭代次数必须为正整数。"));
-    if (!number(ui->line7Edit, &tolerance) || tolerance <= 0.0)
-        return fail(QStringLiteral("迭代误差阈值必须为正数。"));
-
-    if (ui->line3Combo->currentData().toString() != QStringLiteral("0"))
+    const int type = ui->line19Combo->currentData().toString().toInt();
+    if (type == 1 || type == 3)
     {
-        if (ui->strengthReserveTable->rowCount() == 0)
-            return fail(QStringLiteral("强度折减计算至少需要一个储备系数。"));
-        for (int row = 0; row < ui->strengthReserveTable->rowCount(); ++row)
+        if (!number(ui->gravityXEdit) || !number(ui->gravityYEdit) || !number(ui->gravityZEdit))
+            return fail(QStringLiteral("重力加速度必须填写三个有效数值。"));
+
+        bool iterationsOk = false;
+        const QString iterationsText = ui->line6Edit->text().trimmed();
+        const int iterations = iterationsText.toInt(&iterationsOk);
+        double tolerance = 0.0;
+        if (!iterationsOk || iterations <= 0 || QString::number(iterations) != iterationsText)
+            return fail(QStringLiteral("最大迭代次数必须为正整数。"));
+        if (!number(ui->line7Edit, &tolerance) || tolerance <= 0.0)
+            return fail(QStringLiteral("迭代误差阈值必须为正数。"));
+
+        if (ui->line3Combo->currentData().toString() != QStringLiteral("0"))
         {
-            const auto* item = ui->strengthReserveTable->item(row, 0);
-            bool ok = false;
-            const double factor = item ? item->text().trimmed().toDouble(&ok) : 0.0;
-            if (!ok || factor <= 0.0)
-                return fail(QStringLiteral("第 %1 个强度储备系数必须为正数。").arg(row + 1));
+            if (ui->strengthReserveTable->rowCount() == 0)
+                return fail(QStringLiteral("强度折减计算至少需要一个储备系数。"));
+            for (int row = 0; row < ui->strengthReserveTable->rowCount(); ++row)
+            {
+                const auto* item = ui->strengthReserveTable->item(row, 0);
+                bool ok = false;
+                const double factor = item ? item->text().trimmed().toDouble(&ok) : 0.0;
+                if (!ok || factor <= 0.0)
+                    return fail(QStringLiteral("第 %1 个强度储备系数必须为正数。").arg(row + 1));
+            }
         }
     }
-
-    const int type = ui->line19Combo->currentData().toString().toInt();
+    if (type == 2)
+    {
+        const QString rawMode = ui->ifModeCombo->currentText().trimmed().section(QLatin1Char(' '), 0, 0);
+        const int modeCount = rawMode.toInt();
+        const bool hasWave = ui->ifWaveCombo->currentData().toString() == QStringLiteral("1");
+        if (modeCount <= 0 && !hasWave)
+            return fail(QStringLiteral("仅动力计算模式下至少需要启用振动模态或时程分析之一。"));
+    }
     if ((type == 2 || type == 3) &&
         ui->ifWaveCombo->currentData().toString() == QStringLiteral("1"))
     {

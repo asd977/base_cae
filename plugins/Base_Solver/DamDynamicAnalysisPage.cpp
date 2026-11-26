@@ -543,7 +543,7 @@ void DamDynamicAnalysisPage::updateConditionalState()
 {
     const bool modal = usesModalAnalysis();
     const bool wave = usesWaveAnalysis();
-    if ((!m_analysisEnabled || !wave) && comboValue(ui->comboIFSETT) == QStringLiteral("1"))
+    if (m_analysisEnabled && !wave && comboValue(ui->comboIFSETT) == QStringLiteral("1"))
     {
         const QSignalBlocker blocker(ui->comboIFSETT);
         setComboValue(ui->comboIFSETT, QStringLiteral("0"));

@@ -1019,7 +1019,7 @@ void CaveSupportComputationPage::updateStaticDependenciesUi()
     {
         const QSignalBlocker blocker(m_ifSeepCombo);
         const int index = m_ifSeepCombo->findData(
-            QString::number(groundwaterModeCode()));
+            QString::number(showStatic ? groundwaterModeCode() : 0));
         if (index >= 0)
             m_ifSeepCombo->setCurrentIndex(index);
     }
@@ -1070,13 +1070,7 @@ bool CaveSupportComputationPage::validateInputs(QString* errorMessage) const
         if (!hasTask)
             return fail(QStringLiteral("至少需要选择一种洞室开挖任务。"));
 
-        if (m_reinforcementFieldPage
-            && m_reinforcementFieldPage->mode()
-                   != CaveReinforcementFieldPage::Mode::Disabled
-            && !reinforcedTaskEnabled())
-        {
-            return fail(QStringLiteral("已设置围岩等效加固，但没有启用加固开挖任务。"));
-        }
+        // Hidden reinforcement field is ignored when no reinforced excavation task is enabled.
 
         if (liningEnabled())
         {
@@ -1101,6 +1095,11 @@ bool CaveSupportComputationPage::validateInputs(QString* errorMessage) const
 
         if (craneBeamEnabled())
         {
+            const bool hasIncremental =
+                m_ifE1toaCombo->currentData().toString() == QStringLiteral("1") ||
+                m_ifJ1toaCombo->currentData().toString() == QStringLiteral("1");
+            if (!hasIncremental)
+                return fail(QStringLiteral("启用吊车梁施工时必须同时启用逐级开挖（不加固或加固逐级开挖）。"));
             if (excavationLevelCount() < 2)
                 return fail(QStringLiteral("启用吊车梁施工时至少需要 2 级开挖体（求解器要求安装阶段不早于第 2 级）。"));
             const int stage = craneBeamInstallStage();
@@ -1122,6 +1121,8 @@ bool CaveSupportComputationPage::validateInputs(QString* errorMessage) const
         }
     }
 
+    if (type == 2 && !modalAnalysisEnabled() && !timeHistoryEnabled())
+        return fail(QStringLiteral("仅动力计算模式下至少需要启用振动模态或时程分析之一。"));
     if ((type == 2 || type == 3) && timeHistoryEnabled())
     {
         if (m_dtSpin->value() <= 0.0)
@@ -1594,8 +1595,9 @@ void CaveSupportComputationPage::saveCurrentCase()
     c.ifJall = m_ifJallCombo->currentData().toString().trimmed();
     c.ifE1toa = m_ifE1toaCombo->currentData().toString().trimmed();
     c.ifJ1toa = m_ifJ1toaCombo->currentData().toString().trimmed();
-    c.jaMethod = liningEnabled() ? QStringLiteral("2") : QStringLiteral("1");
-    c.ifChen = liningEnabled() ? QStringLiteral("1") : QStringLiteral("0");
+    const bool staticActive = (calculationTypeCode() != 2);
+    c.jaMethod = (staticActive && liningEnabled()) ? QStringLiteral("2") : QStringLiteral("1");
+    c.ifChen = (staticActive && liningEnabled()) ? QStringLiteral("1") : QStringLiteral("0");
     c.idayCase = m_idayCaseEdit->text().trimmed();
     if (c.idayCase.isEmpty())
         c.idayCase = QStringLiteral("0");
@@ -1603,8 +1605,8 @@ void CaveSupportComputationPage::saveCurrentCase()
     m_iexcaStaEdit->setText(c.iexcaSta);
     m_iexcaEndEdit->setText(c.iexcaEnd);
     ui->line10Edit->setText(
-        craneBeamEnabled() ? QString::number(-craneBeamInstallStage())
-                           : QStringLiteral("0"));
+        (staticActive && craneBeamEnabled()) ? QString::number(-craneBeamInstallStage())
+                                             : QStringLiteral("0"));
     ui->line11Edit->setText(QString::number(craneBeamReleaseFactor(), 'g', 12));
     ui->line5Edit->setText(QStringLiteral("0.0"));
     ui->line7Edit->setText(QStringLiteral("0.0"));

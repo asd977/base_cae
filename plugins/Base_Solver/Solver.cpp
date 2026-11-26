@@ -2585,9 +2585,12 @@ void Solver::initTreeMenu()
 
             if (kind == QStringLiteral("SeepageAnalysis"))
             {
-                ContextMenuHub::addSeparator(menu);
-                ContextMenuHub::addAction(
-                    menu, this, "添加天然渗流初始面",
+                auto* sp = dynamic_cast<SeepageWidget*>(menuNode->getPage());
+                if (sp && sp->effectiveNaturalFreeSurfaceEnabled())
+                {
+                    ContextMenuHub::addSeparator(menu);
+                    ContextMenuHub::addAction(
+                        menu, this, "添加天然渗流初始面",
                     [this, uuid]()
                     {
                         auto* pm = ServiceRegistry::instance().getService<ProjectManagerService>();
@@ -2595,6 +2598,7 @@ void Solver::initTreeMenu()
                         if (analysisNode)
                             addSeepageNaturalBoundaryNode(analysisNode, true);
                     });
+                }
             }
             else if (kind == QStringLiteral("SlopeStabilityAnalysis"))
             {
@@ -2725,9 +2729,12 @@ void Solver::initTreeMenu()
             }
             else if (kind == QStringLiteral("GeoStressRegression"))
             {
-                ContextMenuHub::addSeparator(menu);
-                ContextMenuHub::addAction(
-                    menu, this, "新增侧立面",
+                auto* gp = dynamic_cast<GeoStressRegressionWidget*>(menuNode->getPage());
+                if (gp && gp->calculationModeCode() != 0)
+                {
+                    ContextMenuHub::addSeparator(menu);
+                    ContextMenuHub::addAction(
+                        menu, this, "新增侧立面",
                     [this, uuid]()
                     {
                         auto* pm = ServiceRegistry::instance().getService<ProjectManagerService>();
@@ -2735,6 +2742,7 @@ void Solver::initTreeMenu()
                         if (node)
                             addGeoStressSideFaceNode(node, true);
                     });
+                }
             }
 
             if (solverNodeCanMove(kind))
@@ -2901,6 +2909,14 @@ void Solver::removeNodeByUuid(const QString& uuid)
     {
         syncDamAnalysisMCase(parent);
         syncDamConditionalNodes(parent);
+    }
+    if (auto* supportPage = dynamic_cast<CaveSupportComputationPage*>(parent->getPage()))
+    {
+        int bodyCount = 0;
+        for (ProjectNode* c : parent->getChildren())
+            if (c && c->getPage() && c->getPage()->getPageType() == QStringLiteral("CaveExcavationBody"))
+                ++bodyCount;
+        supportPage->setExcavationLevelCount(qMax(1, bodyCount));
     }
     if (parent == m_root)
         syncAnalysisNodeNames();
@@ -4160,6 +4176,14 @@ void Solver::addCaveExcavationBodyNode(ProjectNode* supportNode, bool setCurrent
             [this, supportNode](int) { syncChildNodeNames(supportNode); });
     supportNode->setExpanded(true);
     syncChildNodeNames(supportNode);
+    if (auto* supportPage = dynamic_cast<CaveSupportComputationPage*>(supportNode->getPage()))
+    {
+        int bodyCount = 0;
+        for (ProjectNode* c : supportNode->getChildren())
+            if (c && c->getPage() && c->getPage()->getPageType() == QStringLiteral("CaveExcavationBody"))
+                ++bodyCount;
+        supportPage->setExcavationLevelCount(qMax(1, bodyCount));
+    }
 
     if (setCurrent)
     {
@@ -4511,7 +4535,7 @@ void Solver::onComputeSeepage(ProjectNode* analysisNode)
     }
 
     QMap<int, SeepageBoundaryPage::NaturalFreeEntry> mergedNaturalEntries;
-    if (seepagePage->naturalFreeSurfaceEnabled())
+    if (seepagePage->effectiveNaturalFreeSurfaceEnabled())
     {
         QStringList naturalErrors;
         int naturalBoundaryCount = 0;
@@ -4636,7 +4660,7 @@ void Solver::onComputeSeepage(ProjectNode* analysisNode)
     // 这里统一合并，避免各页面依次导出时互相覆盖。
     const QString naturalPath = QDir(SolverFilePaths::outputInputDirectory(projectDir))
                                     .filePath(QStringLiteral("JDFREE.DAT"));
-    if (seepagePage->naturalFreeSurfaceEnabled())
+    if (seepagePage->effectiveNaturalFreeSurfaceEnabled())
     {
         QFile naturalFile(naturalPath);
         if (!naturalFile.open(QIODevice::WriteOnly | QIODevice::Text))
@@ -5276,6 +5300,7 @@ void Solver::onComputeCaveExcavation(ProjectNode* analysisNode)
             QStringLiteral("当前洞室开挖设置未正确加载。请重新打开工程后再试。"));
         return;
     }
+    supportPage->setExcavationLevelCount(qMax(1, static_cast<int>(excavationBodies.size())));
     CaveReinforcementFieldPage* reinforcementPage =
         supportPage->reinforcementFieldPage();
     QString caveParameterError;
@@ -5285,7 +5310,8 @@ void Solver::onComputeCaveExcavation(ProjectNode* analysisNode)
                              caveParameterError);
         return;
     }
-    if (supportPage->craneBeamEnabled())
+    const bool caveStaticActive = (supportPage->calculationTypeCode() != 2);
+    if (caveStaticActive && supportPage->craneBeamEnabled())
     {
         if (!craneBeamAreaPage)
         {
@@ -5301,7 +5327,7 @@ void Solver::onComputeCaveExcavation(ProjectNode* analysisNode)
             return;
         }
     }
-    if (supportPage->liningEnabled())
+    if (caveStaticActive && supportPage->liningEnabled())
     {
         if (!liningInnerBoundaryPage || !liningOuterBoundaryPage)
         {
@@ -7208,7 +7234,12 @@ bool Solver::canDeleteNode(ProjectNode* node) const
         return countGeoStressChildren(parent, QStringLiteral("GeoStressRegressionSideFace"))
                > minimumGeoStressSideFaceCount();
     if (kind == QStringLiteral("GeoStressRegression"))
+    {
+        if (auto* slope = dynamic_cast<SlopeStabilityWidget*>(parent->getPage()))
+            if (!slope->excavationEnabled())
+                return true;
         return countGeoStressChildren(parent, QStringLiteral("GeoStressRegressionAnalysis")) > 1;
+    }
     if (kind == QStringLiteral("CaveSupportComputation"))
         return countGeoStressChildren(parent, QStringLiteral("CaveSupportComputation")) > 1;
     if (kind == QStringLiteral("GeoStressRegressionMeasurePoint"))
@@ -7234,9 +7265,15 @@ void Solver::syncGeoStressConditionalNodes(ProjectNode* geostressNode) const
             && type != QStringLiteral("GeoStressRegressionMeasurePoint")
             && type != QStringLiteral("GeoStressRegressionOuterForce")) continue;
         int count = 0;
+        bool childActive = active;
         if (auto* side = dynamic_cast<GeoStressSideFacePage*>(child->getPage()))count = side->selectionCount();
         else if (auto* points = dynamic_cast<GeoStressMeasurePointPage*>(child->getPage()))count = points->points().size();
-        updateBoundaryNodeStatus(child, count, active,
+        else if (auto* force = dynamic_cast<GeoStressOuterForcePage*>(child->getPage()))
+        {
+            force->setCalculationMode(page->calculationModeCode());
+            childActive = true;
+        }
+        updateBoundaryNodeStatus(child, count, childActive,
             QStringLiteral("仅计算自重应力时不参与计算；切换至实测地应力回归后启用。"));
     }
 }
@@ -7389,8 +7426,10 @@ void Solver::syncSeepageConditionalNodes(ProjectNode* analysisNode) const
             QString reason;
             if (boundary->getPageType() == QStringLiteral("SeepageBoundaryNaturalSeepage"))
             {
-                enabled = page->naturalFreeSurfaceEnabled();
-                reason = QStringLiteral("天然渗流未启用");
+                enabled = page->effectiveNaturalFreeSurfaceEnabled();
+                reason = page->computeType() == 2
+                    ? QStringLiteral("纯非稳定渗流不使用天然渗流场")
+                    : QStringLiteral("天然渗流未启用");
                 boundary->setNaturalReferenceWaterLevels(
                     upstreamAvailable, upstreamLevel,
                     downstreamAvailable, downstreamLevel);
@@ -7589,16 +7628,49 @@ bool Solver::prepareDamSeepageFiles(FillStorageCyclePage* cyclePage,
 
 void Solver::syncQuietBoundaryNode(ProjectNode* owner) const
 {
-    if(!owner||!owner->getPage()||findChildByPageType(owner,QStringLiteral("QuietBoundary")))return;
-    auto* page=owner->getPage();
-    auto* check=page->findChild<QCheckBox*>("quietBoundaryCheck");
-    auto* selection=page->findChild<QuietBoundarySelector*>("quietBoundarySelector");
-    if(!check||!selection)return;
-    auto* boundary=new QuietBoundaryPage(check,selection);
-    const QUuid id=QUuid::createUuidV5(QUuid(owner->getUuid()),QByteArrayLiteral("QuietBoundary"));
-    auto* node=new ProjectNode(QStringLiteral("粘弹性边界"),id.toString(),boundary);
-    setupNodeRole(node,QStringLiteral("QuietBoundary"));owner->addChild(node);
-    node->setToolTip(0,QStringLiteral("选择粘弹性边界作用区域；开关位于父节点设置页面"));
+    if (!owner || !owner->getPage()) return;
+    auto* page = owner->getPage();
+    ProjectNode* node = findChildByPageType(owner, QStringLiteral("QuietBoundary"));
+    auto* check = page->findChild<QCheckBox*>("quietBoundaryCheck");
+    auto* selection = page->findChild<QuietBoundarySelector*>("quietBoundarySelector");
+    if (!node)
+    {
+        if (!check || !selection) return;
+        auto* boundary = new QuietBoundaryPage(check, selection);
+        const QUuid id = QUuid::createUuidV5(QUuid(owner->getUuid()), QByteArrayLiteral("QuietBoundary"));
+        node = new ProjectNode(QStringLiteral("粘弹性边界"), id.toString(), boundary);
+        setupNodeRole(node, QStringLiteral("QuietBoundary"));
+        owner->addChild(node);
+        connect(check, &QCheckBox::toggled, this, [this, owner](bool) { syncQuietBoundaryNode(owner); });
+    }
+    bool dynamicEnabled = true;
+    if (auto* dam = dynamic_cast<DamAnalysisWidget*>(page))
+    {
+        const auto arr = dam->saveJson().value(QStringLiteral("base_values")).toArray();
+        const int m = arr.size() >= 19 ? arr.at(18).toString().toInt() : 1;
+        dynamicEnabled = (m == 2 || m == 3);
+    }
+    else if (auto* cave = dynamic_cast<CaveSupportComputationPage*>(page))
+        dynamicEnabled = (cave->calculationTypeCode() == 2 || cave->calculationTypeCode() == 3);
+    else if (auto* slope = dynamic_cast<SlopeStabilityWidget*>(page))
+    {
+        const auto arr = slope->saveJson().value(QStringLiteral("base_values")).toArray();
+        const int m = arr.size() >= 19 ? arr.at(18).toString().toInt() : 1;
+        dynamicEnabled = (m == 2 || m == 3);
+    }
+    const bool active = dynamicEnabled && check && check->isChecked();
+    if (auto* boundaryPage = node->getPage())
+    {
+        if (auto* sel = boundaryPage->findChild<QuietBoundarySelector*>())
+        {
+            sel->setEnabled(active);
+            if (!active) sel->stop();
+        }
+    }
+    updateBoundaryNodeStatus(
+        node, 0, active,
+        dynamicEnabled ? QStringLiteral("粘弹性边界未勾选启用")
+                       : QStringLiteral("仅静力计算模式下不使用粘弹性边界"));
 }
 
 void Solver::connectSlopeExcavationSignals(SlopeStabilityWidget* page, ProjectNode* analysisNode)
@@ -7653,13 +7725,27 @@ void Solver::syncSlopeExcavationNodes(ProjectNode* analysisNode, bool expandOnEn
             analysisNode->removeChild(existingReinforcementNode);
             deleteNodeRecursively(existingReinforcementNode);
         }
+        if (ProjectNode* geoNode = findChildByPageType(analysisNode, QStringLiteral("GeoStressRegressionAnalysis")))
+        {
+            updateBoundaryNodeStatus(geoNode, 0, false, QStringLiteral("未启用边坡分级开挖，可右键删除或重新启用分级开挖。"));
+            syncGeoStressConditionalNodes(geoNode);
+        }
         normalizeChildNodeOrder(analysisNode);
         return;
     }
 
     // 启用分级开挖时自动准备地应力回归分析子节点，避免用户遗漏初始地应力步骤。
-    if (!findChildByPageType(analysisNode, QStringLiteral("GeoStressRegressionAnalysis")))
+    ProjectNode* geoNode = findChildByPageType(analysisNode, QStringLiteral("GeoStressRegressionAnalysis"));
+    if (!geoNode)
+    {
         addGeoStressRegressionNode(analysisNode, false, false);
+        geoNode = findChildByPageType(analysisNode, QStringLiteral("GeoStressRegressionAnalysis"));
+    }
+    if (geoNode)
+    {
+        updateBoundaryNodeStatus(geoNode, 0, true, QString());
+        syncGeoStressConditionalNodes(geoNode);
+    }
 
     QSet<ProjectNode*> keptStageNodes;
     const int count = excavation->stageCount();
@@ -7939,8 +8025,9 @@ void Solver::syncCaveSupportConditionalNodes(ProjectNode* supportNode) const
     if (!page)
         return;
 
-    const bool liningEnabled = page->liningEnabled();
-    const bool craneEnabled = page->craneBeamEnabled();
+    const bool showStatic = (page->calculationTypeCode() != 2);
+    const bool liningEnabled = showStatic && page->liningEnabled();
+    const bool craneEnabled = showStatic && page->craneBeamEnabled();
     for (ProjectNode* child : supportNode->getChildren())
     {
         if (!child || !child->getPage())

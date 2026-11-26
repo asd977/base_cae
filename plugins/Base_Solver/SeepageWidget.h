@@ -34,6 +34,7 @@ class SeepageWidget : public BasePage
     double upstreamFlux() const;
     double downstreamFlux() const;
     bool naturalFreeSurfaceEnabled() const;
+    bool effectiveNaturalFreeSurfaceEnabled() const;
     bool drainWellEnabled() const;
     int computeType() const;
     QString transientInitialStateDirectory(const QString& workspaceRoot = QString()) const;

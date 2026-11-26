@@ -20,6 +20,7 @@ class vtkCallbackCommand;
 class vtkIntArray;
 class QDoubleSpinBox;
 class QComboBox;
+class QLabel;
 
 class vtkAssembly;
 class vtkOrientationMarkerWidget;
@@ -85,6 +86,8 @@ class DisplacementConstraintWidget : public BasePage
   private:
     Ui::DisplacementConstraintWidget* ui = nullptr;
     QDoubleSpinBox* m_prescribed[3] = {};
+    void updateDimensionControls();
+    QLabel* m_rotationLabel=nullptr;
     QComboBox* m_rotation=nullptr;
     QDoubleSpinBox* m_rotationValue=nullptr;
     bool m_coordinateRangeLoaded = false;

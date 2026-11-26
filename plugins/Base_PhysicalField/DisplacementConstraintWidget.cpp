@@ -736,19 +736,15 @@ DisplacementConstraintWidget::DisplacementConstraintWidget(QWidget* parent)
             [this,axis,directionCombos]{m_prescribed[axis]->setVisible(directionCombos[axis]->currentData().toString()==QStringLiteral("2"));});
     }
 
-    const int NDIM = PublicVariables::instance().get(PublicConstants::kMeshDimension).toInt();
-    const bool is2D = (NDIM == 2);
-    auto* rotationLabel=new QLabel(QStringLiteral("绕 Z 转动（平面梁）"),this);
+    m_rotationLabel=new QLabel(QStringLiteral("绕 Z 转动（平面梁）"),this);
     m_rotation=new QComboBox(this);initConstraintCombo(m_rotation);
     const int prescribedIndex=m_rotation->findData(QStringLiteral("2"));m_rotation->setItemText(prescribedIndex,QStringLiteral("指定转角"));
     m_rotation->removeItem(m_rotation->findData(QStringLiteral("-10000")));
     setConstraintValue(m_rotation,QStringLiteral("1"));
     m_rotationValue=new CompactDoubleSpinBox(this);m_rotationValue->setDecimals(10);m_rotationValue->setRange(-1.e6,1.e6);m_rotationValue->setSuffix(QStringLiteral(" rad"));
-    ui->gridLayout->addWidget(rotationLabel,4,0);ui->gridLayout->addWidget(m_rotation,4,1);ui->gridLayout->addWidget(m_rotationValue,4,2);
-    rotationLabel->setVisible(is2D);m_rotation->setVisible(is2D);m_rotationValue->hide();
-    connect(m_rotation,qOverload<int>(&QComboBox::currentIndexChanged),this,[this,is2D]{m_rotationValue->setVisible(is2D&&m_rotation->currentData().toString()==QStringLiteral("2"));});
-    ui->UZLineEdit->setEnabled(!is2D);
-    ui->UZLineEdit->setToolTip(is2D ? QStringLiteral("二维模型不使用 Z 方向") : QString());
+    ui->gridLayout->addWidget(m_rotationLabel,4,0);ui->gridLayout->addWidget(m_rotation,4,1);ui->gridLayout->addWidget(m_rotationValue,4,2);
+    connect(m_rotation,qOverload<int>(&QComboBox::currentIndexChanged),this,[this]{updateDimensionControls();});
+    updateDimensionControls();
 
     connect(ui->btnSetAllBarsSuspended, &QPushButton::clicked, this,
             &DisplacementConstraintWidget::onSetAllBarsSuspended);
@@ -795,8 +791,23 @@ DisplacementConstraintWidget::~DisplacementConstraintWidget()
     delete ui;
 }
 
+void DisplacementConstraintWidget::updateDimensionControls()
+{
+    const bool is2D = PublicVariables::instance().get(PublicConstants::kMeshDimension).toInt() == 2;
+    if (m_rotationLabel) m_rotationLabel->setVisible(is2D);
+    if (m_rotation) m_rotation->setVisible(is2D);
+    if (m_rotationValue)
+        m_rotationValue->setVisible(is2D && m_rotation && m_rotation->currentData().toString() == QStringLiteral("2"));
+    if (ui && ui->UZLineEdit)
+    {
+        ui->UZLineEdit->setEnabled(!is2D);
+        ui->UZLineEdit->setToolTip(is2D ? QStringLiteral("二维模型不使用 Z 方向") : QString());
+    }
+}
+
 void DisplacementConstraintWidget::beforeLoad()
 {
+    updateDimensionControls();
     m_constraintPageActive = true;
     m_visual = ServiceRegistry::instance().getService<VisualWidgetService>();
 

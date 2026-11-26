@@ -1025,8 +1025,7 @@ void MaterialEntryWidget::onSeepageModelChanged(int)
 
     const QString oldKey = entry->seepageModelKey;
     const QString newKey = m_seepageCombo->currentData().toString();
-    if (!newKey.isEmpty() && !entry->creepModelKey.isEmpty() &&
-        entry->creepModelKey != QStringLiteral("xiyuan_creep"))
+    if (!newKey.isEmpty() && !entry->creepModelKey.isEmpty())
     {
         const QSignalBlocker blocker(m_seepageCombo);
         const int previousIndex = m_seepageCombo->findData(oldKey);
@@ -1081,10 +1080,7 @@ void MaterialEntryWidget::onCreepModelChanged(int)
         return;
 
     const QString newKey = m_creepCombo->currentData().toString();
-    // 西源流变仅使用独立的流变字段，不与渗流方向矩阵共用 CONMAT(14..22)。
-    // 其他三类流变与渗流仍按原有输入字段兼容性规则互斥。
-    if (!newKey.isEmpty() && !entry->seepageModelKey.isEmpty() &&
-        newKey != QStringLiteral("xiyuan_creep"))
+    if (!newKey.isEmpty() && !entry->seepageModelKey.isEmpty())
     {
         const QSignalBlocker blocker(m_creepCombo);
         const int previousIndex = m_creepCombo->findData(entry->creepModelKey);
@@ -1946,7 +1942,8 @@ void MaterialEntryWidget::rebuildForm(MaterialModel* model, MaterialEntry* entry
     for (const auto& creepModel : seepageModels)
     {
         if (creepModel.key != QStringLiteral("jk_corewall_steady_seepage") &&
-            creepModel.key != QStringLiteral("jk_corewall_anisotropic_seepage"))
+            creepModel.key != QStringLiteral("jk_corewall_anisotropic_seepage") &&
+            creepModel.key != QStringLiteral("xiyuan_creep"))
         {
             m_creepCombo->addItem(creepModel.displayName, creepModel.key);
         }

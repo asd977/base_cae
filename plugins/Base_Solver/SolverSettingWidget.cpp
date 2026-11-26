@@ -40,11 +40,11 @@ SolverSettingWidget::SolverSettingWidget(QWidget* parent)
     m_computeDeviceCombo->setToolTip(
         QStringLiteral("GPU 计算可提升部分大型模型的计算速度；块体稳定分析仍使用 CPU。"));
 
+    // SOLVER GPU branches only recognize IDEVICE=1 (METHOD=8).
     m_gpuModeCombo->clear();
-    m_gpuModeCombo->addItem(QStringLiteral("默认求解"), 1);
-    m_gpuModeCombo->addItem(QStringLiteral("GPU 求解"), 2);
+    m_gpuModeCombo->addItem(QStringLiteral("GPU 加速求解（IDEVICE=1）"), 1);
     m_gpuModeCombo->setToolTip(
-        QStringLiteral("默认模式沿用工况设置；GPU 模式优先使用显卡计算。"));
+        QStringLiteral("求解器 GPU 模式固定使用 IDEVICE=1（METHOD=8）。"));
 
     ui->batchAnalysisTree->setColumnCount(2);
     ui->batchAnalysisTree->setHeaderLabels(
@@ -116,10 +116,7 @@ SolverSettingWidget::SolverSettingWidget(QWidget* parent)
     QSettings settings;
     setComputeDevice(settings.value(QStringLiteral("Solver/ComputeDevice"),
                                     QStringLiteral("cpu")).toString());
-    const int gpuMode = qBound(
-        1, settings.value(QStringLiteral("Solver/GpuDeviceMode"), 2).toInt(), 2);
-    const int gpuModeIndex = m_gpuModeCombo->findData(gpuMode);
-    m_gpuModeCombo->setCurrentIndex(gpuModeIndex >= 0 ? gpuModeIndex : 1);
+    m_gpuModeCombo->setCurrentIndex(0);
     updateDeviceControls();
 
     setAnalysisCounts(0, 0, 0, 0, 0);
@@ -178,9 +175,7 @@ void SolverSettingWidget::setComputeDevice(const QString& device)
 
 int SolverSettingWidget::gpuDeviceMode() const
 {
-    if (!m_gpuModeCombo)
-        return 2;
-    return qBound(1, m_gpuModeCombo->currentData().toInt(), 2);
+    return 1;
 }
 
 void SolverSettingWidget::updateDeviceControls()

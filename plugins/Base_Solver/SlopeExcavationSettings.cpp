@@ -221,7 +221,7 @@ void SlopeExcavationSettings::refreshSummary()
         return;
     const int count = m_stages.size();
     if (m_removeButton)
-        m_removeButton->setEnabled(count > 0);
+        m_removeButton->setEnabled(count > 1);
     if (m_reinforcementButton)
         m_reinforcementButton->setVisible(reinforced());
 

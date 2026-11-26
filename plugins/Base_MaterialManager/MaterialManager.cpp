@@ -1386,6 +1386,16 @@ bool MaterialManager::changeEntryModel(const QString& entryId,
 
     MaterialEntry movedEntry = m_models[sourceModelIndex].materials.at(sourceEntryIndex);
     MaterialModel& targetModel = m_models[targetModelIndex];
+    if (movedEntry.appliedMatypes.contains(2) &&
+        targetModel.key != QStringLiteral("linear_elastic") &&
+        targetModel.key != QStringLiteral("planar_elastic_beam"))
+    {
+        if (error)
+            *error = QStringLiteral(
+                "材料编号 2 在求解器中固定为线弹性本构（CONMAT(2,1)=0），"
+                "已施加编号 2 的材料不能切换为非线性或土体本构。");
+        return false;
+    }
 
     // 不删除旧模型参数：当前模型只读取自身 columns，保留旧值可避免用户切回时丢失数据。
     // 目标模型缺少的字段再补默认值。若目标模型是旧版已存在的模型，先按旧规则补出

@@ -68,8 +68,8 @@ void GeoStressRegressionWidget::updateModeUi()
     ui->lambdaEdit->setEnabled(gravity);
     ui->label11->setEnabled(gravity);
     m_modeHint->setText(gravity
-        ? QStringLiteral("侧立面、实测地应力点和附加外面力在此模式下不参与计算。侧压力系数可用于修正自重场的水平应力。")
-        : QStringLiteral("使用侧立面、地表边界和实测地应力点建立回归应力场。"));
+        ? QStringLiteral("侧立面和实测地应力点在此模式下不参与计算；可使用侧压力系数与“外面力”修正自重应力场。")
+        : QStringLiteral("使用侧立面、地表边界（FAROOF）和实测地应力点建立回归应力场；附加外面力（FTLOAD）在回归模式下不生效。"));
 }
 
 void GeoStressRegressionWidget::beforeUnload()
@@ -131,7 +131,7 @@ bool GeoStressRegressionWidget::exportIGEOSDatFile(const ExportPayload& payload)
     const int forceEnabled =
         (calcMode == 0 && payload.forceEnabled != 0) ? 1 : 0;
     os << "'" << QString::number(forceEnabled) << "'      11\n";
-    os << "'" << ui->lambdaEdit->text().trimmed() << "'      12\n";
+    os << "'" << (calcMode == 0 ? ui->lambdaEdit->text().trimmed() : QStringLiteral("0.00000")) << "'      12\n";
 
     os << "   0     NCHANGE\n";
     os << QString("%1    NUM_GEO\n").arg(payload.measureRows.size());

@@ -433,7 +433,13 @@ void DamAnalysisWidget::rebuildConstructionLayerPanel()
         if (m_constructionRegionRoles.contains(roleKey))
             purposeValue = m_constructionRegionRoles.value(roleKey);
         const int roleIdx = purpose->findData(purposeValue);
-        purpose->setCurrentIndex(roleIdx >= 0 ? roleIdx : 0);
+        if (roleIdx >= 0)
+            purpose->setCurrentIndex(roleIdx);
+        else
+        {
+            purpose->setCurrentIndex(0);
+            m_constructionLayerUiDirty = true;
+        }
         SolverUiLayoutHelper::configureComboSizing(purpose);
         purpose->setToolTip(QStringLiteral("蓝色表示坝基，橙色表示填筑区域。面板坝需区分面板与附属结构材料。"));
         connect(purpose, qOverload<int>(&QComboBox::currentIndexChanged),
@@ -1126,15 +1132,22 @@ bool DamAnalysisWidget::validateInputs(QString* errorMessage) const
         setError(QStringLiteral("请在模型中选择粘弹性边界区域；当前支持线性边界面（二维选择边）。"));
         return false;
     }
-    if (m_constructionLayerUiDirty)
+    const int modeCode = ui->comboLine19->currentData().toString().toInt();
+    const bool staticActive = (modeCode == 1 || modeCode == 3);
+    const bool dynamicActive = (modeCode == 2 || modeCode == 3);
+    const bool rayleighActive = dynamicActive && ui->comboLine16->currentData().toString() == QStringLiteral("1");
+    if (staticActive)
     {
-        setError(QStringLiteral("尚未完成坝体施工分层，请为每个区域指定坝基或坝体。"));
-        return false;
-    }
-    if (constructionLayerRange().first != 2)
-    {
-        setError(QStringLiteral("尚未完成坝体施工分层，请先指定坝基和坝体。"));
-        return false;
+        if (m_constructionLayerUiDirty)
+        {
+            setError(QStringLiteral("尚未完成坝体施工分层，请为每个区域指定坝基或坝体。"));
+            return false;
+        }
+        if (constructionLayerRange().first != 2)
+        {
+            setError(QStringLiteral("尚未完成坝体施工分层，请先指定坝基和坝体。"));
+            return false;
+        }
     }
 
     static const QSet<int> oneTokenLines = {10, 15, 16, 17, 18, 19, 21, 22, 23, 24,
@@ -1143,6 +1156,14 @@ bool DamAnalysisWidget::validateInputs(QString* errorMessage) const
     for (int lineNo = 1; lineNo <= 40; ++lineNo)
     {
         if (isFixedFileLine(lineNo))
+            continue;
+        if (!dynamicActive && ((lineNo >= 15 && lineNo <= 18) || (lineNo >= 22 && lineNo <= 30)))
+            continue;
+        if (!rayleighActive && (lineNo == 17 || lineNo == 18))
+            continue;
+        if (!freezeThawEnabled() && lineNo == 37)
+            continue;
+        if (!staticActive && (lineNo == 20 || lineNo == 21))
             continue;
         const QString text = normalizeEnumValue(lineValue(lineNo));
         if (text.trimmed().isEmpty())
