@@ -1,6 +1,6 @@
 <#
 .SYNOPSIS
-Creates an application update ZIP containing the application, GMDS worker, core.dll and plugins.
+Creates an application update ZIP containing only the EXE, core.dll and plugin DLLs.
 .EXAMPLE
 ./scripts/package-app.ps1
 .EXAMPLE
@@ -28,20 +28,12 @@ $pluginPath = Join-Path $sourcePath 'plugins'
 $exeName = 'POWERCHINA-GEOCAE.exe'
 $files = @()
 
-foreach ($name in @($exeName, 'core.dll', 'CAE_GMDSWorker.exe')) {
+foreach ($name in @($exeName, 'core.dll')) {
     $path = Join-Path $sourcePath $name
     if (-not (Test-Path -LiteralPath $path -PathType Leaf)) {
         throw "Required file is missing: $path"
     }
     $files += [pscustomobject]@{ Path = $path; Entry = $name }
-}
-
-$licensePath = Join-Path $sourcePath 'gmds-licenses'
-if (-not (Test-Path -LiteralPath $licensePath -PathType Container)) {
-    throw "GMDS license files are missing: $licensePath"
-}
-foreach ($license in @(Get-ChildItem -LiteralPath $licensePath -File)) {
-    $files += [pscustomobject]@{ Path = $license.FullName; Entry = 'gmds-licenses/' + $license.Name }
 }
 
 if (-not (Test-Path -LiteralPath $pluginPath -PathType Container)) {

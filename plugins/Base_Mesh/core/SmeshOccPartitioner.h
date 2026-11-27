@@ -28,8 +28,6 @@
 #include <Bnd_Box.hxx>
 #include <BRepBndLib.hxx>
 #include <BRepTools.hxx>
-#include <gp_Ax3.hxx>
-#include <gp_Cylinder.hxx>
 #include <gp_Pln.hxx>
 #include <gp_Pnt.hxx>
 #include <gp_Dir.hxx>
@@ -169,38 +167,21 @@ public:
                 normal.normalize();
                 const QVector3D origin = rule.planeOrigin();
 
-                TopoDS_Shape toolFace;
-                if (rule.axis == 4)
-                {
-                    if (!(rule.coordinate > 1.0e-6))
-                        continue;
-                    const gp_Ax3 ax3(gp_Pnt(origin.x(), origin.y(), origin.z()),
-                                     gp_Dir(normal.x(), normal.y(), normal.z()));
-                    const gp_Cylinder cyl(ax3, rule.coordinate);
-                    BRepBuilderAPI_MakeFace cylMaker(cyl, 0.0, 2.0 * 3.14159265358979323846, -half, half);
-                    if (!cylMaker.IsDone())
-                        continue;
-                    toolFace = cylMaker.Face();
-                }
-                else
-                {
-                    // A cutter touching only the body's bounding box is not a useful
-                    // split.  Skip it here; the OCC result below remains authoritative.
-                    if (!planeIntersectsBounds(origin, normal,
-                                               localBox[0], localBox[1], localBox[2],
-                                               localBox[3], localBox[4], localBox[5], eps))
-                        continue;
+                // A cutter touching only the body's bounding box is not a useful
+                // split.  Skip it here; the OCC result below remains authoritative.
+                if (!planeIntersectsBounds(origin, normal,
+                                           localBox[0], localBox[1], localBox[2],
+                                           localBox[3], localBox[4], localBox[5], eps))
+                    continue;
 
-                    const gp_Pln pln(
-                        gp_Pnt(origin.x(), origin.y(), origin.z()),
-                        gp_Dir(normal.x(), normal.y(), normal.z()));
-                    BRepBuilderAPI_MakeFace faceMaker(pln, -half, half, -half, half);
-                    if (!faceMaker.IsDone())
-                        continue;
-                    toolFace = faceMaker.Face();
-                }
+                const gp_Pln pln(
+                    gp_Pnt(origin.x(), origin.y(), origin.z()),
+                    gp_Dir(normal.x(), normal.y(), normal.z()));
+                BRepBuilderAPI_MakeFace faceMaker(pln, -half, half, -half, half);
+                if (!faceMaker.IsDone())
+                    continue;
 
-                tools.Append(toolFace);
+                tools.Append(faceMaker.Face());
                 const QString desc = QStringLiteral("V%1: %2")
                     .arg(solidId).arg(planeDescription(rule, normal));
                 localPlaneDescriptions << desc;
@@ -468,14 +449,6 @@ private:
 
     static QString planeDescription(const SmeshPartitionSettings& rule, const QVector3D& normal)
     {
-        if (rule.axis == 4)
-        {
-            return QString("柱面穿透切 R=%1 N=(%2,%3,%4)")
-                .arg(rule.coordinate, 0, 'g', 6)
-                .arg(normal.x(), 0, 'g', 4)
-                .arg(normal.y(), 0, 'g', 4)
-                .arg(normal.z(), 0, 'g', 4);
-        }
         if (rule.axis == 3)
         {
             const QString desc = rule.sourceFaceUiId > 0

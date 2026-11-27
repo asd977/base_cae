@@ -98,9 +98,6 @@ add_subdirectory(core)
 add_subdirectory(plugins)
 add_subdirectory(launcher)
 
-include("${CMAKE_SOURCE_DIR}/cmake/GMDSBackend.cmake")
-add_dependencies(Base_Gemo CAE_GMDSWorker)
-
 include(CTest)
 if(BUILD_TESTING)
     add_subdirectory(tests)

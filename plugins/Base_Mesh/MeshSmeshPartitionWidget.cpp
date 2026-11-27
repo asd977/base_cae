@@ -1,19 +1,12 @@
 #include "MeshCompactDoubleSpinBox.h"
 #include "MeshSmeshPartitionWidget.h"
 #include "core/MeshSettingsUi.h"
-#include <GmdsPartitionRunner.h>
-#include <QJsonArray>
-#include <QJsonObject>
 
 #include <ServiceRegistry.h>
 #include <services/PreProcessingService.h>
 #include <services/MeshModuleControllerService.h>
 
-#include <QApplication>
-#include <QBrush>
-#include <QColor>
 #include <QComboBox>
-#include <QCursor>
 #include <QDoubleSpinBox>
 #include <QFont>
 #include <QFormLayout>
@@ -84,7 +77,8 @@ MeshSmeshPartitionWidget::MeshSmeshPartitionWidget(QWidget* parent)
     root->addWidget(m_ownerLabel);
 
     auto* hint = new QLabel(
-        tr("先选择实体，再添加切面或分析分块。"), this);
+        tr("只做手动分块：先选要切的实体，再选 X/Y/Z 方向和坐标。"
+           "切面只作用于这个实体，不会切到其它实体，也不会修改原始几何。"), this);
     hint->setWordWrap(true);
     MeshSettingsUi::hideExplanation(hint);
     MeshSettingsUi::hideExplanation(m_ownerLabel);
@@ -154,20 +148,6 @@ MeshSmeshPartitionWidget::MeshSmeshPartitionWidget(QWidget* parent)
     addRow->setColumnStretch(1, 1);
     root->addLayout(addRow);
 
-    auto* semiAutoRow = new QHBoxLayout();
-    semiAutoRow->setSpacing(6);
-    auto* autoSuggest = new QPushButton(tr("GMDS 半自动分块"), this);
-    autoSuggest->setObjectName(QStringLiteral("gmdsPartitionSuggest"));
-    m_gmdsButton = autoSuggest;
-    m_gmdsRunner = new GmdsPartitionRunner(this);
-    connect(m_gmdsRunner,&GmdsPartitionRunner::finished,this,&MeshSmeshPartitionWidget::finishGmdsSuggestions);
-    auto* pickFaceCut = new QPushButton(tr("点面切"), this);
-    auto* pickEdgeCut = new QPushButton(tr("点边切"), this);
-    semiAutoRow->addWidget(autoSuggest, 2);
-    semiAutoRow->addWidget(pickFaceCut, 1);
-    semiAutoRow->addWidget(pickEdgeCut, 1);
-    root->addLayout(semiAutoRow);
-
     m_rules = new QListWidget(this);
     m_rules->setMinimumHeight(84);
     m_rules->setMaximumHeight(130);
@@ -214,15 +194,11 @@ MeshSmeshPartitionWidget::MeshSmeshPartitionWidget(QWidget* parent)
     connect(center, &QPushButton::clicked, this, &MeshSmeshPartitionWidget::snapCoordinateToTargetCenter);
     connect(addAxis, &QPushButton::clicked, this, &MeshSmeshPartitionWidget::addAxisRule);
     connect(m_updateAxis, &QPushButton::clicked, this, &MeshSmeshPartitionWidget::updateSelectedAxisRule);
-    connect(autoSuggest, &QPushButton::clicked, this, &MeshSmeshPartitionWidget::startGmdsAnalysis);
-    connect(pickFaceCut, &QPushButton::clicked, this, &MeshSmeshPartitionWidget::beginCadPlanePick);
-    connect(pickEdgeCut, &QPushButton::clicked, this, &MeshSmeshPartitionWidget::beginEdgePairPick);
     connect(m_targetVolume, qOverload<int>(&QComboBox::currentIndexChanged), this, [this](int)
     {
         updateAxisBounds(true);
         showCuttingPlanePreview();
-        const int tid = m_targetVolume->currentData().toInt();
-        m_selectionPresentation.setSelectedEntities(3, tid > 0 ? QList<int>{tid} : QList<int>{});
+        m_selectionPresentation.setSelectedEntities(3, {m_targetVolume->currentData().toInt()});
     });
     connect(m_axis, qOverload<int>(&QComboBox::currentIndexChanged), this, [this](int)
     {
@@ -287,15 +263,12 @@ MeshSmeshPartitionWidget::MeshSmeshPartitionWidget(QWidget* parent)
 
 MeshSmeshPartitionWidget::~MeshSmeshPartitionWidget()
 {
-    m_discardGmds = true;
-    m_gmdsRunner->cancel();
     stopPick();
     restoreCad();
 }
 
 void MeshSmeshPartitionWidget::setMeshPlanIdentity(const QString& uuid, const QString& displayName)
 {
-    if(m_planUuid!=uuid.trimmed()) { m_discardGmds=true; m_gmdsRunner->cancel(); }
     m_planUuid = uuid.trimmed();
     m_planName = displayName.trimmed();
     setProperty("meshPlanUuid", m_planUuid);
@@ -317,11 +290,9 @@ QObject* MeshSmeshPartitionWidget::geometryBridge() const
 void MeshSmeshPartitionWidget::rebuildTargetVolumes()
 {
     if (!m_targetVolume) return;
-    const bool hadItems = m_targetVolume->count() > 0;
-    const int oldId = hadItems ? m_targetVolume->currentData().toInt() : -1;
+    const int oldId = m_targetVolume->currentData().toInt();
     m_targetVolume->blockSignals(true);
     m_targetVolume->clear();
-    m_targetVolume->addItem(tr("全部实体（自动）"), -1);
     if (auto* svc = ServiceRegistry::instance().getService<PreProcessingService>())
     {
         const QStringList ids = svc->listEntityIds(3);
@@ -333,9 +304,9 @@ void MeshSmeshPartitionWidget::rebuildTargetVolumes()
                 m_targetVolume->addItem(tr("实体 %1").arg(id), id);
         }
     }
-    int index = hadItems ? m_targetVolume->findData(oldId) : 0;
-    if (index < 0) index = 0;
-    m_targetVolume->setCurrentIndex(index);
+    int index = oldId > 0 ? m_targetVolume->findData(oldId) : -1;
+    if (index < 0 && m_targetVolume->count() > 0) index = 0;
+    if (index >= 0) m_targetVolume->setCurrentIndex(index);
     m_targetVolume->blockSignals(false);
 }
 
@@ -347,7 +318,7 @@ void MeshSmeshPartitionWidget::updateAxisBounds(bool snapToCenter)
 
     const int id = m_targetVolume->currentData().toInt();
     const int axis = m_axis->currentData().toInt();
-    if (m_targetVolume->count() <= 1 || axis < 0 || axis > 2)
+    if (id <= 0 || axis < 0 || axis > 2)
     {
         m_slider->setEnabled(false);
         m_rangeLabel->setText(tr("实体范围：无可用实体"));
@@ -358,7 +329,7 @@ void MeshSmeshPartitionWidget::updateAxisBounds(bool snapToCenter)
     if (QObject* bridge = geometryBridge())
     {
         QVariantList ids;
-        if (id > 0) ids.push_back(id);
+        ids.push_back(id);
         QMetaObject::invokeMethod(bridge, "meshingGeometryBounds", Qt::DirectConnection,
                                   Q_RETURN_ARG(QVariantList, bounds),
                                   Q_ARG(int, 3), Q_ARG(QVariantList, ids));
@@ -484,8 +455,6 @@ void MeshSmeshPartitionWidget::beforeLoad()
 
 void MeshSmeshPartitionWidget::beforeUnload()
 {
-    m_discardGmds = true;
-    m_gmdsRunner->cancel();
     stopPick();
     restoreCad();
     m_selectionPresentation.leave();
@@ -574,28 +543,10 @@ void MeshSmeshPartitionWidget::refreshRuleList()
                 text = tr("%1. %2两边确定切面：E%3 + E%4")
                     .arg(i + 1).arg(targetText).arg(r.sourceEdgeUiId1).arg(r.sourceEdgeUiId2);
             }
-            else if (r.sourceFaceUiId > 0)
+            else
             {
                 text = tr("%1. %2选取平面：F%3")
                     .arg(i + 1).arg(targetText).arg(r.sourceFaceUiId);
-            }
-            else if (r.axis == 4)
-            {
-                const QVector3D n = r.planeNormal();
-                QString axisHint;
-                if (std::abs(n.x()) > 0.99f) axisHint = QStringLiteral("X");
-                else if (std::abs(n.y()) > 0.99f) axisHint = QStringLiteral("Y");
-                else if (std::abs(n.z()) > 0.99f) axisHint = QStringLiteral("Z");
-                else axisHint = tr("(%1,%2,%3)").arg(n.x(), 0, 'f', 2).arg(n.y(), 0, 'f', 2).arg(n.z(), 0, 'f', 2);
-                text = tr("%1. %2柱面穿透切 R=%3（沿 %4）")
-                    .arg(i + 1).arg(targetText).arg(r.coordinate, 0, 'g', 6).arg(axisHint);
-            }
-            else
-            {
-                const QVector3D n = r.planeNormal();
-                text = tr("%1. %2智能斜切面 n=(%3,%4,%5)")
-                    .arg(i + 1).arg(targetText)
-                    .arg(n.x(), 0, 'f', 2).arg(n.y(), 0, 'f', 2).arg(n.z(), 0, 'f', 2);
             }
         }
         auto* item = new QListWidgetItem(text, m_rules);
@@ -617,9 +568,9 @@ void MeshSmeshPartitionWidget::refreshRuleList()
 void MeshSmeshPartitionWidget::addAxisRule()
 {
     const int targetVolume = m_targetVolume ? m_targetVolume->currentData().toInt() : -1;
-    if (!m_targetVolume || m_targetVolume->count() <= 1)
+    if (targetVolume <= 0)
     {
-        QMessageBox::information(this, tr("扫掠分块"), tr("当前模型没有可分块的实体。"));
+        QMessageBox::information(this, tr("扫掠分块"), tr("请先选择要分块的实体。"));
         return;
     }
     const int axis = m_axis->currentData().toInt();
@@ -653,164 +604,6 @@ void MeshSmeshPartitionWidget::addAxisRule()
     refreshRuleList();
     invalidateRegionPreview();
     emit logMessage(tr("[扫掠分块] 已添加切面。"));
-}
-
-void MeshSmeshPartitionWidget::startGmdsAnalysis()
-{
-    if(m_gmdsRunner->running()) { m_gmdsRunner->cancel(); return; }
-    QObject* bridge=geometryBridge();
-    if(!bridge || !m_targetVolume || m_targetVolume->count()<=1) return;
-    m_gmdsTarget=m_targetVolume->currentData().toInt();
-    QVariantMap snapshot;
-    if(!QMetaObject::invokeMethod(bridge,"externalGmdsPartitionSnapshot",Qt::DirectConnection,
-        Q_RETURN_ARG(QVariantMap,snapshot),Q_ARG(int,m_gmdsTarget)) || !snapshot.value("valid").toBool()) {
-        m_summary->setText(snapshot.value("message",tr("无法读取 GMDS 几何快照。")).toString()); return;
-    }
-    stopPick(); m_discardGmds=false;
-    m_gmdsSnapshot=snapshot; m_gmdsPlanes=planes(); m_gmdsPlanUuid=m_planUuid;
-    QJsonArray cutters;
-    for(const auto& value:m_gmdsPlanes) {
-        const auto p=value.toMap(); QJsonObject cut=QJsonObject::fromVariantMap(p);
-        for(const auto& key:{QStringLiteral("origin"),QStringLiteral("normal")}) {
-            auto v=p.value(key).value<QVector3D>(); cut[key]=QJsonArray{double(v.x()),double(v.y()),double(v.z())};
-        }
-        cutters.append(cut);
-    }
-    const QJsonObject request{{"bodyIds",QJsonArray::fromVariantList(snapshot.value("bodyIds").toList())},
-        {"preSkipped",QJsonArray::fromVariantList(snapshot.value("preSkipped").toList())},
-        {"planes",cutters},{"maxSuggestions",4}};
-    m_summary->setText(tr("GMDS 正在分析，可点击取消。")); m_gmdsButton->setText(tr("取消 GMDS 分析"));
-    m_gmdsRunner->start(snapshot.value("brep").toByteArray(),request);
-}
-
-void MeshSmeshPartitionWidget::finishGmdsSuggestions(const QVariantMap& result)
-{
-    m_gmdsButton->setText(tr("GMDS 半自动分块"));
-    if(m_discardGmds) return;
-    if(result.value("cancelled").toBool()) { m_summary->setText(result.value("message").toString()); return; }
-    const int targetVolume=m_gmdsTarget;
-    QObject* bridge=geometryBridge(); QVariantMap snapshot;
-    if(!bridge || m_planUuid!=m_gmdsPlanUuid || planes()!=m_gmdsPlanes || m_targetVolume->currentData().toInt()!=targetVolume ||
-       !QMetaObject::invokeMethod(bridge,"externalGmdsPartitionSnapshot",Qt::DirectConnection,
-           Q_RETURN_ARG(QVariantMap,snapshot),Q_ARG(int,targetVolume)) ||
-       snapshot!=m_gmdsSnapshot) {
-        m_summary->setText(tr("几何或分块设置已变化，请重新分析。")); return;
-    }
-    const auto currentPlanes=m_gmdsPlanes;
-    if (!result.value(QStringLiteral("valid")).toBool())
-    {
-        const QString msg = result.value(QStringLiteral("message")).toString();
-        QMessageBox::information(this, tr("GMDS 分块"),
-                                 msg.isEmpty() ? tr("当前无法分析目标实体，请检查几何拓扑。") : msg);
-        return;
-    }
-
-    const QString summaryMsg = result.value(QStringLiteral("message")).toString();
-    m_summary->setText(summaryMsg);
-    emit logMessage(tr("[GMDS 分块] %1").arg(summaryMsg));
-
-    if (result.value(QStringLiteral("alreadySweepable")).toBool())
-    {
-        QMessageBox::information(this, tr("GMDS 分块"), summaryMsg);
-        return;
-    }
-
-    const QVariantList suggestions = result.value(QStringLiteral("suggestions")).toList();
-    if (suggestions.isEmpty())
-    {
-        QMessageBox::information(this, tr("GMDS 分块"), summaryMsg);
-        return;
-    }
-
-    // Preview existing saved cuts (gold) together with recommended cuts (sky-blue) in 3D.
-    QVariantList previewList = currentPlanes;
-    QStringList detailLines;
-    for (int i = 0; i < suggestions.size(); ++i)
-    {
-        const QVariantMap s = suggestions[i].toMap();
-        const int sTarget = s.value(QStringLiteral("targetVolumeUiId"), targetVolume).toInt();
-        const int axis = s.value(QStringLiteral("axis"), 3).toInt();
-        const double coord = s.value(QStringLiteral("coordinate"), 0.0).toDouble();
-        QVariantMap p;
-        p.insert(QStringLiteral("origin"), s.value(QStringLiteral("origin")));
-        p.insert(QStringLiteral("normal"), s.value(QStringLiteral("normal")));
-        p.insert(QStringLiteral("targetVolumeUiId"), sTarget);
-        p.insert(QStringLiteral("axis"), axis);
-        if (axis == 4) p.insert(QStringLiteral("radius"), coord);
-        p.insert(QStringLiteral("isDraft"), true);
-        previewList.push_back(p);
-
-        const QString reason = s.value(QStringLiteral("reason")).toString();
-        const double minVolPct = s.value(QStringLiteral("minVolumeRatio"), 0.0).toDouble() * 100.0;
-        QString posText;
-        if (axis >= 0 && axis <= 2)
-        {
-            const QChar ax = axis == 0 ? QLatin1Char('X') : (axis == 1 ? QLatin1Char('Y') : QLatin1Char('Z'));
-            posText = tr("实体 %1 · %2 = %3").arg(sTarget).arg(ax).arg(coord, 0, 'g', 6);
-        }
-        else if (axis == 4)
-        {
-            const QVector3D n = s.value(QStringLiteral("normal")).value<QVector3D>();
-            posText = tr("实体 %1 · 柱面穿透切 R=%2, 轴(%3,%4,%5)")
-                .arg(sTarget).arg(coord, 0, 'g', 6)
-                .arg(n.x(), 0, 'f', 1).arg(n.y(), 0, 'f', 1).arg(n.z(), 0, 'f', 1);
-        }
-        else
-        {
-            const QVector3D n = s.value(QStringLiteral("normal")).value<QVector3D>();
-            posText = tr("实体 %1 · 斜平面 n=(%2,%3,%4)").arg(sTarget).arg(n.x(), 0, 'f', 2).arg(n.y(), 0, 'f', 2).arg(n.z(), 0, 'f', 2);
-        }
-        detailLines << tr("  %1. %2（%3，最小子块占比 %4%）")
-                           .arg(i + 1).arg(posText).arg(reason).arg(minVolPct, 0, 'f', 1);
-    }
-
-    if (m_selectionPresentation.showingGeometry())
-    {
-        QMetaObject::invokeMethod(bridge, "showExternalPartitionCutters", Qt::DirectConnection,
-                                  Q_ARG(QVariantList, previewList));
-    }
-
-    QMessageBox box(this);
-    box.setWindowTitle(tr("GMDS 分块候选"));
-    box.setIcon(QMessageBox::Question);
-    box.setText(summaryMsg);
-    box.setInformativeText(tr("蓝色半透明面为候选切面：\n%1\n\n是否采纳这些切面并预览分块？")
-                               .arg(detailLines.join(QLatin1Char('\n'))));
-    QPushButton* acceptBtn = box.addButton(tr("采纳切面"), QMessageBox::AcceptRole);
-    box.addButton(tr("仅预览不添加"), QMessageBox::RejectRole);
-    box.setDefaultButton(acceptBtn);
-    box.exec();
-
-    if (box.clickedButton() != acceptBtn)
-        return;
-
-    QVariantMap confirmation;
-    if(m_planUuid!=m_gmdsPlanUuid || planes()!=m_gmdsPlanes ||
-       !QMetaObject::invokeMethod(bridge,"externalGmdsPartitionSnapshot",Qt::DirectConnection,
-           Q_RETURN_ARG(QVariantMap,confirmation),Q_ARG(int,targetVolume)) || confirmation!=m_gmdsSnapshot) {
-        m_summary->setText(tr("几何或分块设置已变化，请重新分析。")); return;
-    }
-
-    for (const QVariant& sv : suggestions)
-    {
-        const QVariantMap s = sv.toMap();
-        PartitionRule r;
-        r.planUuid = m_planUuid;
-        r.targetVolumeUiId = s.value(QStringLiteral("targetVolumeUiId"), targetVolume).toInt();
-        r.axis = s.value(QStringLiteral("axis"), 3).toInt();
-        r.coordinate = s.value(QStringLiteral("coordinate"), 0.0).toDouble();
-        if (r.axis >= 3)
-        {
-            r.origin = s.value(QStringLiteral("origin")).value<QVector3D>();
-            r.normal = s.value(QStringLiteral("normal")).value<QVector3D>();
-        }
-        r.enabled = true;
-        m_ruleData.push_back(r);
-    }
-    saveState();
-    refreshRuleList();
-    refreshRegionList();
-    emit logMessage(tr("[GMDS 分块] 已采纳 %1 个候选切面。").arg(suggestions.size()));
 }
 
 void MeshSmeshPartitionWidget::loadSelectedRuleToEditors()
@@ -857,9 +650,9 @@ void MeshSmeshPartitionWidget::updateSelectedAxisRule()
         return;
     }
     const int targetVolume = m_targetVolume ? m_targetVolume->currentData().toInt() : -1;
-    if (!m_targetVolume || m_targetVolume->count() <= 1)
+    if (targetVolume <= 0)
     {
-        QMessageBox::information(this, tr("扫掠分块"), tr("当前模型没有可分块的实体。"));
+        QMessageBox::information(this, tr("扫掠分块"), tr("请先选择要分块的实体。"));
         return;
     }
     const double coord = m_coordinate->value();
@@ -1125,7 +918,7 @@ void MeshSmeshPartitionWidget::showCuttingPlanePreview()
     QObject* bridge = geometryBridge();
     if (!bridge || !m_targetVolume || !m_axis || !m_coordinate) return;
     const int targetVolume = m_targetVolume->currentData().toInt();
-    if (m_targetVolume->count() <= 1) return;
+    if (targetVolume <= 0) return;
 
     const int selectedRow = m_rules ? m_rules->currentRow() : -1;
     QVariantList visible;
@@ -1140,8 +933,6 @@ void MeshSmeshPartitionWidget::showCuttingPlanePreview()
         m.insert(QStringLiteral("origin"), QVariant::fromValue(r.planeOrigin()));
         m.insert(QStringLiteral("normal"), QVariant::fromValue(n));
         m.insert(QStringLiteral("targetVolumeUiId"), r.targetVolumeUiId);
-        m.insert(QStringLiteral("axis"), r.axis);
-        if (r.axis == 4) m.insert(QStringLiteral("radius"), r.coordinate);
         m.insert(QStringLiteral("isDraft"), false);
         visible.push_back(m);
     }
@@ -1217,7 +1008,6 @@ void MeshSmeshPartitionWidget::refreshRegionList()
         return;
     }
     QVariantList visible;
-    int sweepableCount = 0;
     for (int i = 1; i <= count; ++i)
     {
         QString text = tr("分块 %1").arg(i);
@@ -1226,31 +1016,15 @@ void MeshSmeshPartitionWidget::refreshRegionList()
             bridge, "externalPartitionRegionInfo", Qt::DirectConnection,
             Q_RETURN_ARG(QVariantMap, info), Q_ARG(QVariantList, payload), Q_ARG(int, i));
         const int ownerId = gotInfo ? info.value(QStringLiteral("ownerVolumeId")).toInt() : 0;
-        if (ownerId > 0) text += tr("（实体 %1）").arg(ownerId);
-
-        QVariantMap sweepInfo;
-        const bool gotSweep = QMetaObject::invokeMethod(
-            bridge, "externalAnalyzePartitionSweepRegion", Qt::DirectConnection,
-            Q_RETURN_ARG(QVariantMap, sweepInfo), Q_ARG(QVariantList, payload), Q_ARG(int, i));
-        const bool sweepable = gotSweep && sweepInfo.value(QStringLiteral("sweepable")).toBool();
-        if (sweepable) ++sweepableCount;
-
-        auto* item = new QListWidgetItem(
-            (sweepable ? tr("[可扫掠] ") : tr("[需继续切] ")) + text, m_regions);
-        item->setForeground(QBrush(sweepable ? QColor(22, 130, 56) : QColor(196, 68, 28)));
+        if (ownerId > 0) text += tr("（来自实体 %1）").arg(ownerId);
+        m_regions->addItem(text);
         visible.push_back(i);
     }
     if (bridge)
         QMetaObject::invokeMethod(bridge, "showExternalPartitionRegions", Qt::DirectConnection,
                                   Q_ARG(QVariantList, payload), Q_ARG(QVariantList, visible), Q_ARG(int, 0));
-    const int remaining = count - sweepableCount;
-    if (remaining == 0)
-        m_summary->setText(tr("共 %1 块：全部可扫掠").arg(count));
-    else
-        m_summary->setText(tr("共 %1 块：%2 块可扫掠，%3 块需继续切分")
-                               .arg(count).arg(sweepableCount).arg(remaining));
-    emit logMessage(tr("[扫掠分块] 共 %1 块（%2 块可扫掠，%3 块需继续切分）。")
-                        .arg(count).arg(sweepableCount).arg(remaining));
+    m_summary->setText(tr("已生成 %1 个分块区域").arg(count));
+    emit logMessage(tr("[扫掠分块] 已生成 %1 个分块。").arg(count));
 }
 
 void MeshSmeshPartitionWidget::showSelectedRegion()

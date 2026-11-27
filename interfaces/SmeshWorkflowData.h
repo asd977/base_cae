@@ -55,11 +55,11 @@ struct SmeshPartitionSettings {
     int targetVolumeUiId = 0;
     int sourceFaceUiId = 0;
     QVector3D planeOrigin() const {
-        if(axis>=3)return origin;
+        if(axis==3)return origin;
         return axis==0?QVector3D(coordinate,0,0):axis==1?QVector3D(0,coordinate,0):QVector3D(0,0,coordinate);
     }
     QVector3D planeNormal() const {
-        return axis>=3?normal.normalized():axis==0?QVector3D(1,0,0):axis==1?QVector3D(0,1,0):QVector3D(0,0,1);
+        return axis==3?normal.normalized():axis==0?QVector3D(1,0,0):axis==1?QVector3D(0,1,0):QVector3D(0,0,1);
     }
 };
 

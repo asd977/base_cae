@@ -37,7 +37,7 @@ struct PartitionRule
 
     QVector3D planeOrigin() const
     {
-        if (axis >= 3) return origin;
+        if (axis == 3) return origin;
         if (axis == 0) return QVector3D(float(coordinate), 0.0f, 0.0f);
         if (axis == 1) return QVector3D(0.0f, float(coordinate), 0.0f);
         return QVector3D(0.0f, 0.0f, float(coordinate));
@@ -45,7 +45,7 @@ struct PartitionRule
 
     QVector3D planeNormal() const
     {
-        if (axis >= 3)
+        if (axis == 3)
         {
             QVector3D n = normal;
             if (n.lengthSquared() > 1.0e-16f) n.normalize();
@@ -635,9 +635,6 @@ inline QVariantList planePayload(const QVector<PartitionRule>& rules)
         m.insert(QStringLiteral("origin"), QVariant::fromValue(r.planeOrigin()));
         m.insert(QStringLiteral("normal"), QVariant::fromValue(n));
         m.insert(QStringLiteral("targetVolumeUiId"), r.targetVolumeUiId);
-        m.insert(QStringLiteral("axis"), r.axis);
-        if (r.axis == 4)
-            m.insert(QStringLiteral("radius"), r.coordinate);
         list.push_back(m);
     }
     return list;
