@@ -95,7 +95,18 @@ class MeshModuleController : public QObject, public MeshModuleControllerService
     Q_INVOKABLE void addSmeshSubmesh(int dimension, const QString& parentUuid);
     Q_INVOKABLE void addSmeshSweep();
     Q_INVOKABLE void addSmeshPartition();
+    Q_INVOKABLE void addSmeshTet();
+    Q_INVOKABLE void addMeshVolumeControl();
+    Q_INVOKABLE void addMeshFaceControl();
+    Q_INVOKABLE void addMeshEdgeControl();
     Q_INVOKABLE void generateSmeshSubmesh(const QString& uuid);
+    Q_INVOKABLE void markMeshControlsChangedForPlan(const QString& planUuid);
+    Q_INVOKABLE void refreshMeshUiState();
+    Q_INVOKABLE QVariantMap subMeshOccupancyForPlan(const QString& planUuid, const QString& excludeTaskUuid) const;
+    Q_INVOKABLE void generateCurrentMeshConfiguration();
+    Q_INVOKABLE void generateSmeshTetPreview(const QString& taskUuid, bool surfaceOnly);
+    Q_INVOKABLE void restoreOfficialMeshDisplay();
+    Q_INVOKABLE void requestStopCurrentMesh();
 
   private:
     void initAction();

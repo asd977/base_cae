@@ -1,3 +1,7 @@
+#include <GeometryDisplayManager.h>
+#include <vtkPointData.h>
+#include <vtkCellData.h>
+#include <vtkCellArray.h>
 #include "GeometryEntityTools.h"
 #include <QJsonArray>
 #include "GeometrySelectionVisuals.h"
@@ -2800,4 +2804,229 @@ void clearEntityHighlight()
         vis->removeProp(kEntityHoverHighlightPropId, true);
     }
 }
+
+struct MeshScopeActorState
+{
+    vtkWeakPointer<vtkActor> surface;
+    vtkWeakPointer<vtkActor> edges;
+    vtkSmartPointer<vtkPolyData> surfaceInput;
+    vtkSmartPointer<vtkPolyData> edgeInput;
+    int surfaceVisible = 0;
+    int edgeVisible = 0;
+};
+QHash<QString, MeshScopeActorState>& meshScopeStates()
+{
+    static QHash<QString, MeshScopeActorState> value;
+    return value;
+}
+vtkWeakPointer<vtkProp>& meshScopeEdgeBatchActor()
+{
+    static vtkWeakPointer<vtkProp> value;
+    return value;
+}
+int& meshScopeEdgeBatchVisible()
+{
+    static int value = 0;
+    return value;
+}
+vtkSmartPointer<vtkPolyData>& meshScopeEdgeBatchInput()
+{
+    static vtkSmartPointer<vtkPolyData> value;
+    return value;
+}
+
+vtkSmartPointer<vtkPolyData> filterMeshScopeCells(
+    vtkPolyData* source, const char* idArrayName,
+    const QSet<int>& wanted, bool surface)
+{
+    if (!source || !source->GetPoints() || wanted.isEmpty()) return nullptr;
+    vtkDataArray* indices = source->GetCellData()
+        ? source->GetCellData()->GetArray(idArrayName) : nullptr;
+    if (!indices || indices->GetNumberOfTuples() != source->GetNumberOfCells())
+        return nullptr;
+    vtkNew<vtkCellArray> cells;
+    vtkNew<vtkIdList> pointIds;
+    auto output = vtkSmartPointer<vtkPolyData>::New();
+    output->SetPoints(source->GetPoints());
+    output->GetPointData()->ShallowCopy(source->GetPointData());
+    output->GetCellData()->CopyAllocate(source->GetCellData(), source->GetNumberOfCells());
+    vtkIdType outputCell = 0;
+    for (vtkIdType cell = 0; cell < source->GetNumberOfCells(); ++cell)
+    {
+        if (!wanted.contains(static_cast<int>(indices->GetTuple1(cell)))) continue;
+        source->GetCellPoints(cell, pointIds);
+        if (pointIds->GetNumberOfIds() < (surface ? 3 : 2)) continue;
+        cells->InsertNextCell(pointIds);
+        output->GetCellData()->CopyData(source->GetCellData(), cell, outputCell++);
+    }
+    if (outputCell == 0) return nullptr;
+    if (surface) output->SetPolys(cells);
+    else output->SetLines(cells);
+    return output;
+}
+
+void clearMeshScopeSolids(bool render)
+{
+    auto& states = meshScopeStates();
+    const bool changed = !states.isEmpty() || meshScopeEdgeBatchActor().GetPointer();
+    for (auto it = states.cbegin(); it != states.cend(); ++it)
+    {
+        const MeshScopeActorState& state = it.value();
+        if (auto* actor = state.surface.GetPointer())
+        {
+            if (auto* mapper = vtkPolyDataMapper::SafeDownCast(actor->GetMapper()))
+                if (state.surfaceInput) mapper->SetInputData(state.surfaceInput);
+            actor->SetVisibility(state.surfaceVisible);
+        }
+        if (auto* actor = state.edges.GetPointer())
+        {
+            if (auto* mapper = vtkPolyDataMapper::SafeDownCast(actor->GetMapper()))
+                if (state.edgeInput) mapper->SetInputData(state.edgeInput);
+            actor->SetVisibility(state.edgeVisible);
+        }
+    }
+    states.clear();
+    if (auto* batch = meshScopeEdgeBatchActor().GetPointer())
+    {
+        if (auto* actor = vtkActor::SafeDownCast(batch))
+            if (auto* mapper = vtkPolyDataMapper::SafeDownCast(actor->GetMapper()))
+                if (meshScopeEdgeBatchInput()) mapper->SetInputData(meshScopeEdgeBatchInput());
+        batch->SetVisibility(meshScopeEdgeBatchVisible());
+    }
+    meshScopeEdgeBatchInput() = nullptr;
+    meshScopeEdgeBatchActor() = nullptr;
+    if (render && changed)
+        if (auto* vis = ServiceRegistry::instance().getService<VisualWidgetService>())
+            vis->render();
+}
+
+bool showMeshScopeSolids(const QStringList& geometryUuids,
+                         const QList<int>& selectedGlobalSolidIds)
+{
+    clearMeshScopeSolids(false);
+    auto* manager = GeomManager::GeomManagerInstance::getInstance();
+    if (!manager) return false;
+    TopTools_IndexedMapOfShape globalSolids;
+    if (!buildIndexedShapesFromGeometry(geometryUuids, 3, globalSolids)) return false;
+    QSet<int> included;
+    for (int id : selectedGlobalSolidIds)
+    {
+        if (id <= 0 || id > globalSolids.Extent()) return false;
+        included.insert(id);
+    }
+    auto* vis = ServiceRegistry::instance().getService<VisualWidgetService>();
+    if (!vis) return false;
+    // Large assembly edge batching is not an individual CAD actor. Suppress
+    // its unfiltered outline only during this temporary view.
+    meshScopeEdgeBatchActor() = vis->getProp(QStringLiteral("__geometry_cad_edge_batch"));
+    const bool hasBatchedEdges = meshScopeEdgeBatchActor().GetPointer() != nullptr;
+    if (auto* batch = meshScopeEdgeBatchActor().GetPointer())
+    {
+        meshScopeEdgeBatchVisible() = batch->GetVisibility();
+        if (auto* actor = vtkActor::SafeDownCast(batch))
+            if (auto* mapper = vtkPolyDataMapper::SafeDownCast(actor->GetMapper()))
+                meshScopeEdgeBatchInput() = mapper->GetInput();
+        batch->SetVisibility(false);
+    }
+    vtkNew<vtkAppendPolyData> selectedEdgeBatch;
+    int selectedEdgeInputs = 0;
+    auto includeInEdgeBatch = [&](vtkPolyData* poly) {
+        if (hasBatchedEdges && poly && poly->GetNumberOfLines() > 0) {
+            selectedEdgeBatch->AddInputData(poly);
+            ++selectedEdgeInputs;
+        }
+    };
+    for (const QString& uuid : geometryUuids)
+    {
+        auto* obj = manager->getGeomShapeObject(uuid);
+        if (!obj || !obj->getShape() || obj->getShape()->IsNull()) continue;
+        TopTools_IndexedMapOfShape localSolids, localFaces, localEdges;
+        TopExp::MapShapes(*obj->getShape(), TopAbs_SOLID, localSolids);
+        if (localSolids.Extent() == 0) continue;
+        QSet<int> checkedLocal;
+        for (int j = 1; j <= localSolids.Extent(); ++j)
+        {
+            const int globalId = globalSolids.FindIndex(localSolids(j));
+            if (included.contains(globalId)) checkedLocal.insert(j);
+        }
+        if (checkedLocal.size() == localSolids.Extent()) {
+            if (!GeometryDisplayManager::isVisible(uuid)) continue;
+            vtkActor* edgeActor = obj->getEdgeActor().GetPointer();
+            if (edgeActor)
+                if (auto* mapper = vtkPolyDataMapper::SafeDownCast(edgeActor->GetMapper()))
+                    includeInEdgeBatch(mapper->GetInput());
+            continue;
+        }
+
+        MeshScopeActorState state;
+        state.surface = obj->getSurfActor();
+        state.edges = obj->getEdgeActor();
+        if (auto* actor = state.surface.GetPointer())
+        {
+            state.surfaceVisible = actor->GetVisibility();
+            if (auto* mapper = vtkPolyDataMapper::SafeDownCast(actor->GetMapper()))
+                state.surfaceInput = mapper->GetInput();
+        }
+        if (auto* actor = state.edges.GetPointer())
+        {
+            state.edgeVisible = actor->GetVisibility();
+            if (auto* mapper = vtkPolyDataMapper::SafeDownCast(actor->GetMapper()))
+                state.edgeInput = mapper->GetInput();
+        }
+        meshScopeStates().insert(uuid, state);
+        if (checkedLocal.isEmpty())
+        {
+            if (auto* actor = state.surface.GetPointer()) actor->SetVisibility(false);
+            if (auto* actor = state.edges.GetPointer()) actor->SetVisibility(false);
+            continue;
+        }
+        TopExp::MapShapes(*obj->getShape(), TopAbs_FACE, localFaces);
+        TopExp::MapShapes(*obj->getShape(), TopAbs_EDGE, localEdges);
+        QSet<int> faceIds, edgeIds;
+        for (int j : checkedLocal)
+        {
+            TopTools_IndexedMapOfShape faces, edges;
+            TopExp::MapShapes(localSolids(j), TopAbs_FACE, faces);
+            TopExp::MapShapes(localSolids(j), TopAbs_EDGE, edges);
+            for (int k = 1; k <= faces.Extent(); ++k)
+                if (int id = localFaces.FindIndex(faces(k)); id > 0) faceIds.insert(id);
+            for (int k = 1; k <= edges.Extent(); ++k)
+                if (int id = localEdges.FindIndex(edges(k)); id > 0) edgeIds.insert(id);
+        }
+        // Fail closed when a legacy CAD actor cannot distinguish sub-solids.
+        // Never leave an unchecked solid visible just because its face map is absent.
+        auto partialSurface = filterMeshScopeCells(state.surfaceInput, "OCC_FaceId", faceIds, true);
+        if (!partialSurface)
+        {
+            clearMeshScopeSolids();
+            return false;
+        }
+        if (auto* actor = state.surface.GetPointer())
+            if (auto* mapper = vtkPolyDataMapper::SafeDownCast(actor->GetMapper()))
+                mapper->SetInputData(partialSurface);
+        if (auto* actor = state.edges.GetPointer())
+        {
+            const auto partialEdges = filterMeshScopeCells(state.edgeInput, "OCC_EdgeId", edgeIds, false);
+            if (partialEdges)
+            {
+                if (auto* mapper = vtkPolyDataMapper::SafeDownCast(actor->GetMapper()))
+                    mapper->SetInputData(partialEdges);
+                includeInEdgeBatch(partialEdges);
+            }
+            else actor->SetVisibility(false);
+        }
+    }
+    if (hasBatchedEdges && selectedEdgeInputs > 0)
+    {
+        selectedEdgeBatch->Update();
+        if (auto* actor = vtkActor::SafeDownCast(meshScopeEdgeBatchActor().GetPointer()))
+            if (auto* mapper = vtkPolyDataMapper::SafeDownCast(actor->GetMapper())) {
+                mapper->SetInputData(selectedEdgeBatch->GetOutput());
+                actor->SetVisibility(meshScopeEdgeBatchVisible());
+            }
+    }
+    vis->render();
+    return true;
+}
+
 } // namespace GeometryEntityTools

@@ -50,6 +50,9 @@ class GeometryWorkbench : public QObject, public PreProcessingService
     bool highlightEntities(int dim, const QList<int>& ids, bool hoverPreview) override;
     void clearEntityHoverHighlight() override;
     void clearEntityHighlight() override;
+    std::shared_ptr<const NativeCadSnapshot> nativeCadSnapshot() override;
+    Q_INVOKABLE bool showExternalMeshScopeSolids(const QVariantList& selectedSolidIds);
+    Q_INVOKABLE void clearExternalMeshScopeSolids();
 
     // Loose-coupled viewport sub-entity picking for other preprocessing modules.
     // The receiver gets QEvent::User+421 and can read the dynamic properties

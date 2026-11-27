@@ -21,6 +21,7 @@
 #include <vtkLabeledDataMapper.h>
 #include <vtkLookupTable.h>
 #include <vtkMultiBlockDataSet.h>
+#include <vtkGeometryFilter.h>
 #include <vtkPlane.h>
 #include <vtkPlaneSource.h>
 #include <vtkPointData.h>
@@ -433,6 +434,7 @@ void SliceSettingsWidget::beforeLoad()
 {
     const QSignalBlocker legendBlocker(ui->showScalarBarCheckBox);
     const QSignalBlocker contourBlocker(ui->showContourCheckBox);
+    m_suppressRender = true;
     setProperty("postDisplayActive", true);
     showPostProcessingOnly(m_visualService, false);
     ui->showScalarBarCheckBox->setChecked(postScalarBarStyle().visible);
@@ -444,21 +446,22 @@ void SliceSettingsWidget::beforeLoad()
                            QDir::cleanPath(stepInfo.absoluteFilePath()) != QDir::cleanPath(m_loadedFilePath) ||
                            stepInfo.size() != m_loadedFileSize ||
                            stepInfo.lastModified().toMSecsSinceEpoch() != m_loadedFileModified;
-    if (fileStale)
+    if (!m_plane)
+        m_plane = vtkSmartPointer<vtkPlane>::New();
+    if (m_hasPendingState)
     {
-        if (!m_plane)
-            m_plane = vtkSmartPointer<vtkPlane>::New();
-
+        applyPendingState();
+        m_loadedOnce = true;
+    }
+    else if (fileStale)
+    {
         const QString workPath =
             PublicVariables::instance().get(PublicConstants::kProjectDirectoryKey).toString();
         if (m_dataPath.isEmpty())
             m_dataPath = PostResultAutoPrepare::firstResultDirectory(workPath);
         loadFileName(m_dataPath);
-
         m_loadedOnce = true;
     }
-
-    applyPendingState();
 
     // 切回页面：根据状态挂回
     reattachAccordingToDisplayState();
@@ -485,6 +488,7 @@ void SliceSettingsWidget::beforeLoad()
         }
     }
 
+    m_suppressRender = false;
     if (m_visualService)
         if (auto* rw = m_visualService->renderWindow())
             rw->Render();
@@ -564,32 +568,37 @@ void SliceSettingsWidget::applyPendingState()
         }
     }
     m_dataPath = ui->resultDirComboBox->currentData().toString();
-    loadFileName(m_dataPath);
-
     const QString resultTime = state.value(QStringLiteral("resultTime")).toString();
-    if (!resultTime.isNull())
+    const QString stepFile = state.value(QStringLiteral("stepFile")).toString();
+    // Populate time & step combos once without triggering intermediate grid loads/surface extractions.
+    if (QDir(m_dataPath).exists())
     {
-        const int timeIndex = ui->resultTimeComboBox->findData(resultTime);
-        if (timeIndex >= 0)
+        PostResultSelectionUtils::populateTimeCombo(
+            ui->resultTimeComboBox, projectDir, m_dataPath, resultTime, false);
+        if (!resultTime.isNull())
         {
+            const int timeIndex = ui->resultTimeComboBox->findData(resultTime);
+            if (timeIndex >= 0)
             {
                 const QSignalBlocker blocker(ui->resultTimeComboBox);
                 ui->resultTimeComboBox->setCurrentIndex(timeIndex);
             }
-            on_resultTimeComboBox_currentIndexChanged(timeIndex);
         }
-    }
-
-    const QString stepFile = state.value(QStringLiteral("stepFile")).toString();
-    if (!stepFile.isEmpty())
-    {
-        const int index = ui->stepComboBox->findData(stepFile);
-        if (index >= 0)
+        PostResultSelectionUtils::populateResultCombo(
+            ui->stepComboBox, projectDir, m_dataPath,
+            PostResultSelectionUtils::selectedFrameKey(ui->resultTimeComboBox),
+            stepFile, false);
+        if (!stepFile.isEmpty())
         {
-            const QSignalBlocker blocker(ui->stepComboBox);
-            ui->stepComboBox->setCurrentIndex(index);
-            on_stepComboBox_currentIndexChanged(index);
+            const int index = ui->stepComboBox->findData(stepFile);
+            if (index >= 0)
+            {
+                const QSignalBlocker blocker(ui->stepComboBox);
+                ui->stepComboBox->setCurrentIndex(index);
+            }
         }
+        if (ui->stepComboBox->count() > 0)
+            on_stepComboBox_currentIndexChanged(ui->stepComboBox->currentIndex());
     }
 
     {
@@ -802,7 +811,7 @@ void SliceSettingsWidget::on_stepComboBox_currentIndexChanged(int idx)
     }
 
     reattachAccordingToDisplayState();
-    if (m_visualService)
+    if (!m_suppressRender && m_visualService)
         if (auto* rw = m_visualService->renderWindow())
             rw->Render();
 }
@@ -860,11 +869,25 @@ void SliceSettingsWidget::on_scalarComboBox_currentIndexChanged(int)
     }
     applyPostFieldLookupTable(lut, field.name, range[0], range[1]);
 
-    // 整体结果直接显示当前材料/分层筛选后的体网格。
-    // 切面页的“整体云图”不展开内部域界面，避免筛选后出现碎片薄面；
-    // 真正的切面仍由 vtkCutter 直接切完整筛选体网格。
-    auto mapper = vtkSmartPointer<vtkDataSetMapper>::New();
-    mapper->SetInputData(displayGrid);
+    // 使用 VTK 9 多线程 vtkGeometryFilter 提取并缓存外表面，替代单线程 vtkDataSetMapper。
+    const QString surfKey = QStringLiteral("%1|%2|%3|%4")
+                                .arg(m_loadedFilePath)
+                                .arg(displayGrid->GetNumberOfPoints())
+                                .arg(displayGrid->GetNumberOfCells())
+                                .arg(postSceneStyle().followMeshFilter ? postMeshFilterSignature() : QString());
+    if (m_surfaceCacheKey != surfKey || !m_cachedSurface)
+    {
+        auto surfaceFilter = vtkSmartPointer<vtkGeometryFilter>::New();
+        surfaceFilter->SetInputData(displayGrid);
+        surfaceFilter->Update();
+        m_cachedSurface = vtkSmartPointer<vtkPolyData>::New();
+        if (surfaceFilter->GetOutput())
+            m_cachedSurface->ShallowCopy(surfaceFilter->GetOutput());
+        m_surfaceCacheKey = surfKey;
+    }
+    auto mapper = vtkSmartPointer<vtkPolyDataMapper>::New();
+    mapper->SetInputData(m_cachedSurface);
+    mapper->StaticOn();
     mapper->SetLookupTable(lut);
     if (field.association == vtkDataObject::FIELD_ASSOCIATION_CELLS)
         mapper->SetScalarModeToUseCellFieldData();
@@ -909,7 +932,7 @@ void SliceSettingsWidget::on_scalarComboBox_currentIndexChanged(int)
         buildMultiSliceResult();
     }
 
-    if (m_visualService)
+    if (!m_suppressRender && m_visualService)
         if (auto* rw = m_visualService->renderWindow())
             rw->Render();
 }
@@ -1157,10 +1180,6 @@ void SliceSettingsWidget::buildSingleSliceResult()
         removeActorByService(m_visualService, postActorId(getUuid(), QStringLiteral("slice")), false);
     if (m_cutIndicatorActor)
         removeActorByService(m_visualService, postActorId(getUuid(), QStringLiteral("cut-indicator")), false);
-    if (m_contextActor)
-        removeActorByService(m_visualService, postActorId(getUuid(), QStringLiteral("context-model")), false);
-    if (m_contextOutlineActor)
-        removeActorByService(m_visualService, postActorId(getUuid(), QStringLiteral("context-outline")), false);
     if (m_sliceContourActor)
         removeActorByService(m_visualService, postActorId(getUuid(), QStringLiteral("slice-contour")), false);
     if (m_sliceContourLabelActor)
@@ -1169,8 +1188,6 @@ void SliceSettingsWidget::buildSingleSliceResult()
             postActorId(getUuid(), QStringLiteral("slice-contour-labels")),
             m_sliceContourLabelActor, false);
     m_cutIndicatorActor = nullptr;
-    m_contextActor = nullptr;
-    m_contextOutlineActor = nullptr;
     m_sliceContourActor = nullptr;
     m_sliceContourLabelActor = nullptr;
 
@@ -1190,20 +1207,7 @@ void SliceSettingsWidget::buildSingleSliceResult()
 
     addActorByService(m_visualService, postActorId(getUuid(), QStringLiteral("slice")),
                       m_sliceActor, QStringLiteral("切面"), false);
-    if (postSceneStyle().showContextOutline)
-    {
-        m_contextActor = createContextModelActor(displayGrid);
-        if (m_contextActor)
-            addActorByService(m_visualService, postActorId(getUuid(), QStringLiteral("context-model")),
-                              m_contextActor, QStringLiteral("整体模型参考"), false);
-    }
-    if (postSceneStyle().showContextLines)
-    {
-        m_contextOutlineActor = createPostContextOutlineActor(displayGrid);
-        if (m_contextOutlineActor)
-            addActorByService(m_visualService, postActorId(getUuid(), QStringLiteral("context-outline")),
-                              m_contextOutlineActor, QStringLiteral("轮廓线"), false);
-    }
+    updateContextActors(displayGrid);
     double bounds[6]{0.0, 0.0, 0.0, 0.0, 0.0, 0.0};
     displayGrid->GetBounds(bounds);
     m_cutIndicatorActor = postSceneStyle().showContextOutline
@@ -1387,25 +1391,59 @@ void SliceSettingsWidget::buildMultiSliceResult()
         m_multiContourLabelActors << contourLabelActor;
     }
 
-    m_contextActor = nullptr;
-    m_contextOutlineActor = nullptr;
-    if (postSceneStyle().showContextOutline)
-    {
-        m_contextActor = createContextModelActor(displayGrid);
-        if (m_contextActor)
-            addActorByService(m_visualService, postActorId(getUuid(), QStringLiteral("context-model")),
-                              m_contextActor, QStringLiteral("整体模型参考"), false);
-    }
-    if (postSceneStyle().showContextLines)
-    {
-        m_contextOutlineActor = createPostContextOutlineActor(displayGrid);
-        if (m_contextOutlineActor)
-            addActorByService(m_visualService, postActorId(getUuid(), QStringLiteral("context-outline")),
-                              m_contextOutlineActor, QStringLiteral("轮廓线"), false);
-    }
+    updateContextActors(displayGrid);
 
     applyStandardPostScalarBar(m_visualService, ResultDisplayNames::scalarBarName(field.name));
     m_visualService->showScalarBar(postScalarBarShouldBeVisible(), false);
+}
+
+void SliceSettingsWidget::updateContextActors(vtkUnstructuredGrid* displayGrid)
+{
+    if (!m_visualService)
+        return;
+    const QString modelId = postActorId(getUuid(), QStringLiteral("context-model"));
+    const QString outlineId = postActorId(getUuid(), QStringLiteral("context-outline"));
+    if (!displayGrid || displayGrid->GetNumberOfCells() <= 0)
+    {
+        removeActorByService(m_visualService, modelId, false);
+        removeActorByService(m_visualService, outlineId, false);
+        return;
+    }
+    const QString key = QStringLiteral("%1|%2|%3|%4")
+                            .arg(m_loadedFilePath)
+                            .arg(displayGrid->GetNumberOfPoints())
+                            .arg(displayGrid->GetNumberOfCells())
+                            .arg(postSceneStyle().followMeshFilter ? postMeshFilterSignature() : QString());
+    if (m_contextCacheKey != key)
+    {
+        m_contextActor = nullptr;
+        m_contextOutlineActor = nullptr;
+        m_contextCacheKey = key;
+    }
+    if (postSceneStyle().showContextOutline)
+    {
+        if (!m_contextActor)
+            m_contextActor = createContextModelActor(displayGrid);
+        if (m_contextActor)
+            addActorByService(m_visualService, modelId, m_contextActor,
+                              QStringLiteral("整体模型参考"), false);
+    }
+    else
+    {
+        removeActorByService(m_visualService, modelId, false);
+    }
+    if (postSceneStyle().showContextLines)
+    {
+        if (!m_contextOutlineActor)
+            m_contextOutlineActor = createPostContextOutlineActor(displayGrid);
+        if (m_contextOutlineActor)
+            addActorByService(m_visualService, outlineId, m_contextOutlineActor,
+                              QStringLiteral("轮廓线"), false);
+    }
+    else
+    {
+        removeActorByService(m_visualService, outlineId, false);
+    }
 }
 
 void SliceSettingsWidget::hideMultiSlicesFromScene()

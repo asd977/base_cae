@@ -1,3 +1,4 @@
+#include <NativeCadSnapshot.h>
 #include "GeometryWorkbench.h"
 
 #include <ContextMenuHub.h>
@@ -326,13 +327,25 @@ vtkSmartPointer<vtkActor> makePartitionCutPlanePreviewActor(const QVariantMap& p
     auto actor = vtkSmartPointer<vtkActor>::New();
     actor->SetMapper(mapper);
     actor->PickableOff();
+    const bool isDraft = plane.value(QStringLiteral("isDraft"), false).toBool();
     auto* prop = actor->GetProperty();
     prop->LightingOff();
-    prop->SetColor(1.0, 0.82, 0.10);
-    prop->SetOpacity(0.34);
-    prop->EdgeVisibilityOn();
-    prop->SetEdgeColor(1.0, 0.48, 0.02);
-    prop->SetLineWidth(3.0);
+    if (isDraft)
+    {
+        prop->SetColor(0.14, 0.68, 1.0);
+        prop->SetOpacity(0.38);
+        prop->EdgeVisibilityOn();
+        prop->SetEdgeColor(0.0, 0.45, 0.95);
+        prop->SetLineWidth(3.2);
+    }
+    else
+    {
+        prop->SetColor(1.0, 0.82, 0.10);
+        prop->SetOpacity(0.30);
+        prop->EdgeVisibilityOn();
+        prop->SetEdgeColor(1.0, 0.48, 0.02);
+        prop->SetLineWidth(2.6);
+    }
     return actor;
 }
 
@@ -5097,6 +5110,35 @@ bool GeometryWorkbench::entityMeasure(int dim, int id, double& measure)
     return GeometryEntityTools::entityMeasure(activeGeometryUuids(), dim, id, measure);
 }
 
+std::shared_ptr<const NativeCadSnapshot> GeometryWorkbench::nativeCadSnapshot()
+{
+    auto* manager = GeomManager::GeomManagerInstance::getInstance();
+    if (!manager) return {};
+    BRep_Builder builder;
+    TopoDS_Compound compound;
+    builder.MakeCompound(compound);
+    for (const auto& uuid : activeGeometryUuids())
+    {
+        auto* object = manager->getGeomShapeObject(uuid);
+        if (object && object->getShape() && !object->getShape()->IsNull())
+            builder.Add(compound, *object->getShape());
+    }
+    return NativeCadSnapshot::copy(compound);
+}
+
+bool GeometryWorkbench::showExternalMeshScopeSolids(const QVariantList& selectedSolidIds)
+{
+    QList<int> ids;
+    ids.reserve(selectedSolidIds.size());
+    for (const QVariant& value : selectedSolidIds) ids.push_back(value.toInt());
+    return GeometryEntityTools::showMeshScopeSolids(activeGeometryUuids(), ids);
+}
+
+void GeometryWorkbench::clearExternalMeshScopeSolids()
+{
+    GeometryEntityTools::clearMeshScopeSolids();
+}
+
 bool GeometryWorkbench::highlightEntity(int dim, int id)
 {
     return GeometryEntityTools::highlightEntity(activeGeometryUuids(), dim, id);
@@ -5358,7 +5400,7 @@ bool GeometryWorkbench::beginExternalSolidFacePick(QObject* receiver, int volume
 
         const QString propId = QStringLiteral("mesh.sweep.pick.volume.%1.face.%2")
             .arg(volumeUiId).arg(globalFaceId);
-        visual->addProp(propId, actor, QStringLiteral("网格"),
+        visual->addProp(propId, actor, QStringLiteral("MeshPartitionPreview"),
                         tr("Volume %1 / Face %2（临时选择）").arg(volumeUiId).arg(globalFaceId),
                         false, false);
         m_externalPartitionRegionPropIds << propId;
@@ -5519,7 +5561,7 @@ bool GeometryWorkbench::beginExternalPartitionRegionPick(QObject* receiver,
             continue;
 
         const QString propId = QStringLiteral("mesh.partition.pick.region.%1").arg(i + 1);
-        visual->addProp(propId, actor, QStringLiteral("网格"),
+        visual->addProp(propId, actor, QStringLiteral("MeshPartitionPreview"),
                         tr("分块 Region %1（临时选择）").arg(i + 1), false, false);
         m_externalPartitionRegionPropIds << propId;
         pickActors.push_back(qMakePair(QString::number(i + 1), actor.GetPointer()));
@@ -5600,7 +5642,7 @@ bool GeometryWorkbench::highlightExternalPartitionRegion(const QVariantList& pla
     actor->PickableOff();
 
     const QString propId = QStringLiteral("mesh.partition.selected.region");
-    visual->addProp(propId, actor, QStringLiteral("网格"),
+    visual->addProp(propId, actor, QStringLiteral("MeshPartitionPreview"),
                     tr("已选择分块 Region %1").arg(regionOrdinal), false, false);
     m_externalPartitionRegionPropIds << propId;
     visual->render();
@@ -5635,10 +5677,11 @@ bool GeometryWorkbench::showExternalPartitionCutters(const QVariantList& planes)
         vtkSmartPointer<vtkActor> actor = makePartitionCutPlanePreviewActor(plane, targetShape);
         if (!actor) continue;
         const QString id = QStringLiteral("mesh.partition.cutter.%1").arg(i + 1);
-        visual->addProp(id, actor, QStringLiteral("网格"), tr("扫掠切面 %1").arg(i + 1), false, false);
+        visual->addProp(id, actor, QStringLiteral("MeshPartitionPreview"), tr("扫掠切面 %1").arg(i + 1), false, false);
         m_externalPartitionRegionPropIds << id;
         ++shown;
     }
+    visual->setGroupVisible(QStringLiteral("MeshPartitionPreview"), true, false);
     visual->render();
     return shown > 0;
 }
@@ -5695,7 +5738,7 @@ bool GeometryWorkbench::showExternalPartitionRegions(const QVariantList& planes,
         vtkSmartPointer<vtkActor> cutter = makePartitionCutPlanePreviewActor(plane, targetShape);
         if (!cutter) continue;
         const QString cid = QStringLiteral("mesh.partition.visible.cutter.%1").arg(pi + 1);
-        visual->addProp(cid, cutter, QStringLiteral("网格"), tr("扫掠切面 %1").arg(pi + 1), false, false);
+        visual->addProp(cid, cutter, QStringLiteral("MeshPartitionPreview"), tr("扫掠切面 %1").arg(pi + 1), false, false);
         m_externalPartitionRegionPropIds << cid;
     }
 
@@ -5711,11 +5754,12 @@ bool GeometryWorkbench::showExternalPartitionRegions(const QVariantList& planes,
             actor->GetProperty()->SetOpacity(0.14);
 
         const QString propId = QStringLiteral("mesh.partition.visible.region.%1").arg(ordinal);
-        visual->addProp(propId, actor, QStringLiteral("网格"),
+        visual->addProp(propId, actor, QStringLiteral("MeshPartitionPreview"),
                         tr("分块 Region %1").arg(ordinal), false, false);
         m_externalPartitionRegionPropIds << propId;
     }
 
+    visual->setGroupVisible(QStringLiteral("MeshPartitionPreview"), true, false);
     visual->render();
     return true;
 }
@@ -5840,7 +5884,7 @@ bool GeometryWorkbench::beginExternalPartitionFaceScenePick(QObject* receiver,
             }
             const QString propId = QStringLiteral("mesh.partition.scene.face.%1.%2")
                 .arg(regionOrdinal).arg(faceOrdinal);
-            visual->addProp(propId, actor, QStringLiteral("网格"),
+            visual->addProp(propId, actor, QStringLiteral("MeshPartitionPreview"),
                             tr("分块 %1 / 面 %2（直接选择）").arg(regionOrdinal).arg(faceOrdinal),
                             false, false);
             m_externalPartitionRegionPropIds << propId;
@@ -5928,7 +5972,7 @@ bool GeometryWorkbench::showExternalPartitionFaceRefs(const QVariantList& planes
         // tint to recognise it while preserving the underlying CAD shape.
         actor->GetProperty()->SetOpacity(0.24);
         const QString id = QStringLiteral("mesh.partition.selected.face.ref.%1.%2").arg(r).arg(f);
-        visual->addProp(id, actor, QStringLiteral("网格"),
+        visual->addProp(id, actor, QStringLiteral("MeshPartitionPreview"),
                         tr("已选分块 %1 / 面 %2").arg(r).arg(f), false, false);
         m_externalPartitionRegionPropIds << id;
         ++shown;
@@ -6004,7 +6048,7 @@ bool GeometryWorkbench::beginExternalPartitionSweepFacePick(QObject* receiver,
         {
             actor->PickableOff();
             actor->GetProperty()->SetOpacity(0.88);
-            visual->addProp(propId, actor, QStringLiteral("网格"),
+            visual->addProp(propId, actor, QStringLiteral("MeshPartitionPreview"),
                             selectingSource ? tr("已选目标面") : tr("已选起始面"),
                             false, false);
         }
@@ -6012,7 +6056,7 @@ bool GeometryWorkbench::beginExternalPartitionSweepFacePick(QObject* receiver,
         {
             // 候选面保持足够可见，但不要盖住模型空间关系；悬停由 PickController 高亮。
             actor->GetProperty()->SetOpacity(0.24);
-            visual->addProp(propId, actor, QStringLiteral("网格"),
+            visual->addProp(propId, actor, QStringLiteral("MeshPartitionPreview"),
                             tr("当前分块候选面"), false, false);
             pickActors.push_back(qMakePair(QString::number(faceOrdinal), actor.GetPointer()));
         }
@@ -6096,7 +6140,7 @@ bool GeometryWorkbench::showExternalPartitionSweepSelection(const QVariantList& 
         contextActor->PickableOff();
         contextActor->GetProperty()->SetOpacity(0.18);
         const QString id = QStringLiteral("mesh.partition.sweep.context");
-        visual->addProp(id, contextActor, QStringLiteral("网格"),
+        visual->addProp(id, contextActor, QStringLiteral("MeshPartitionPreview"),
                         tr("当前扫掠分块 %1").arg(regionOrdinal), false, false);
         m_externalPartitionRegionPropIds << id;
     }
@@ -6116,7 +6160,7 @@ bool GeometryWorkbench::showExternalPartitionSweepSelection(const QVariantList& 
         const QString id = source
             ? QStringLiteral("mesh.partition.sweep.source")
             : QStringLiteral("mesh.partition.sweep.target");
-        visual->addProp(id, actor, QStringLiteral("网格"),
+        visual->addProp(id, actor, QStringLiteral("MeshPartitionPreview"),
                         source ? tr("扫掠起始面") : tr("扫掠目标面"), false, false);
         m_externalPartitionRegionPropIds << id;
     };
@@ -6174,7 +6218,7 @@ bool GeometryWorkbench::highlightExternalPartitionFace(const QVariantList& plane
         contextActor->PickableOff();
         contextActor->GetProperty()->SetOpacity(0.16);
         const QString contextId = QStringLiteral("mesh.partition.selected.face.context");
-        visual->addProp(contextId, contextActor, QStringLiteral("网格"),
+        visual->addProp(contextId, contextActor, QStringLiteral("MeshPartitionPreview"),
                         tr("Region %1（面选择上下文）").arg(regionOrdinal), false, false);
         m_externalPartitionRegionPropIds << contextId;
     }
@@ -6191,7 +6235,7 @@ bool GeometryWorkbench::highlightExternalPartitionFace(const QVariantList& plane
     actor->GetProperty()->SetOpacity(0.82);
 
     const QString propId = QStringLiteral("mesh.partition.selected.face");
-    visual->addProp(propId, actor, QStringLiteral("网格"),
+    visual->addProp(propId, actor, QStringLiteral("MeshPartitionPreview"),
                     tr("Region %1 / Face %2").arg(regionOrdinal).arg(faceOrdinal),
                     false, false);
     m_externalPartitionRegionPropIds << propId;
@@ -6315,7 +6359,7 @@ bool GeometryWorkbench::beginExternalPartitionEdgeScenePick(QObject* receiver,
             }
             const QString propId = QStringLiteral("mesh.partition.scene.edge.%1.%2")
                 .arg(regionOrdinal).arg(edgeOrdinal);
-            visual->addProp(propId, actor, QStringLiteral("网格"),
+            visual->addProp(propId, actor, QStringLiteral("MeshPartitionPreview"),
                             tr("分块 %1 / 边 %2（直接选择）").arg(regionOrdinal).arg(edgeOrdinal),
                             false, false);
             m_externalPartitionRegionPropIds << propId;
@@ -6395,7 +6439,7 @@ bool GeometryWorkbench::showExternalPartitionEdgeRefs(const QVariantList& planes
         if (!actor) continue;
         actor->PickableOff();
         const QString id = QStringLiteral("mesh.partition.selected.edge.ref.%1.%2").arg(r).arg(e);
-        visual->addProp(id, actor, QStringLiteral("网格"),
+        visual->addProp(id, actor, QStringLiteral("MeshPartitionPreview"),
                         tr("已选分块 %1 / 边 %2").arg(r).arg(e), false, false);
         m_externalPartitionRegionPropIds << id;
         ++shown;
@@ -6432,7 +6476,7 @@ bool GeometryWorkbench::beginExternalPartitionEdgePick(QObject* receiver,
         context->PickableOff();
         context->GetProperty()->SetOpacity(0.26);
         const QString id = QStringLiteral("mesh.partition.edge.context");
-        visual->addProp(id, context, QStringLiteral("网格"),
+        visual->addProp(id, context, QStringLiteral("MeshPartitionPreview"),
                         tr("分块 %1（边选择上下文）").arg(regionOrdinal), false, false);
         m_externalPartitionRegionPropIds << id;
     }
@@ -6445,7 +6489,7 @@ bool GeometryWorkbench::beginExternalPartitionEdgePick(QObject* receiver,
         if (!actor) continue;
         const QString propId = QStringLiteral("mesh.partition.pick.region.%1.edge.%2")
             .arg(regionOrdinal).arg(edgeOrdinal);
-        visual->addProp(propId, actor, QStringLiteral("网格"),
+        visual->addProp(propId, actor, QStringLiteral("MeshPartitionPreview"),
                         tr("分块 %1 / 边 %2").arg(regionOrdinal).arg(edgeOrdinal), false, false);
         m_externalPartitionRegionPropIds << propId;
         pickActors.push_back(qMakePair(QString::number(edgeOrdinal), actor.GetPointer()));
@@ -6510,7 +6554,7 @@ bool GeometryWorkbench::highlightExternalPartitionEdge(const QVariantList& plane
         context->PickableOff();
         context->GetProperty()->SetOpacity(0.28);
         const QString id = QStringLiteral("mesh.partition.selected.edge.context");
-        visual->addProp(id, context, QStringLiteral("网格"),
+        visual->addProp(id, context, QStringLiteral("MeshPartitionPreview"),
                         tr("分块 %1（边选择上下文）").arg(regionOrdinal), false, false);
         m_externalPartitionRegionPropIds << id;
     }
@@ -6522,7 +6566,7 @@ bool GeometryWorkbench::highlightExternalPartitionEdge(const QVariantList& plane
     }
     actor->PickableOff();
     const QString id = QStringLiteral("mesh.partition.selected.edge");
-    visual->addProp(id, actor, QStringLiteral("网格"),
+    visual->addProp(id, actor, QStringLiteral("MeshPartitionPreview"),
                     tr("分块 %1 / 边 %2").arg(regionOrdinal).arg(edgeOrdinal), false, false);
     m_externalPartitionRegionPropIds << id;
     visual->render();

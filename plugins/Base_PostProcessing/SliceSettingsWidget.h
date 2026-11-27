@@ -11,6 +11,7 @@
 
 class VisualWidgetService;
 class vtkUnstructuredGrid;
+class vtkPolyData;
 class vtkPlane;
 class vtkActor;
 class vtkPolyDataMapper;
@@ -89,9 +90,14 @@ class SliceSettingsWidget : public BasePage
     VisualWidgetService* m_visualService{};
 
     bool m_loadedOnce{false};
+    bool m_suppressRender{false};
     QString m_loadedFilePath;
     qint64 m_loadedFileSize{-1};
     qint64 m_loadedFileModified{-1};
+    QString m_contextCacheKey;
+    QString m_surfaceCacheKey;
+    vtkSmartPointer<vtkPolyData> m_cachedSurface;
+    void updateContextActors(vtkUnstructuredGrid* displayGrid);
     bool m_hasPendingState{false};
     QVariantMap m_pendingState;
     QString m_dataPath;

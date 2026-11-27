@@ -12,6 +12,12 @@
 #include <MeshQualityCheckWidget.h>
 #include <MeshSingleMeshingWidget.h>
 #include "MeshSmeshSubmeshWidget.h"
+#include "core/MeshFaceSizePolicy.h"
+#include "core/MeshEntityIdParser.h"
+#include "MeshSmeshTetWidget.h"
+#include "MeshVolumeControlWidget.h"
+#include "MeshFaceControlWidget.h"
+#include "MeshEdgeControlWidget.h"
 #include "MeshSmeshSweepWidget.h"
 #include "MeshSmeshPartitionWidget.h"
 #include <PickManager.h>
@@ -2785,18 +2791,24 @@ void MeshModuleController::initTreeMenu()
                             dimension=page->meshingDimension();
                         if(dimension==3) {
                             ContextMenuHub::addAction(menu,this,tr("添加体网格设置"),[this,uuid]{addSmeshSubmesh(3,uuid);});
+                            ContextMenuHub::addAction(menu,this,tr("添加四面体域网格"),[this]{addSmeshTet();});
                             ContextMenuHub::addAction(menu,this,tr("添加扫掠网格"),[this]{addSmeshSweep();});
                             ContextMenuHub::addAction(menu,this,tr("扫掠分块"),[this]{addSmeshPartition();});
+                            ContextMenuHub::addAction(menu,this,tr("体细化控制"),[this]{addMeshVolumeControl();});
                         }
-                        if(dimension>=2)
+                        if(dimension>=2) {
                             ContextMenuHub::addAction(menu,this,tr("添加面网格设置"),[this,uuid]{addSmeshSubmesh(2,uuid);});
+                            ContextMenuHub::addAction(menu,this,tr("面细化控制"),[this]{addMeshFaceControl();});
+                            ContextMenuHub::addAction(menu,this,tr("边细化控制"),[this]{addMeshEdgeControl();});
+                        }
                     } else if(dimension==3) {
                         ContextMenuHub::addAction(menu,this,tr("添加面网格设置"),[this,uuid]{addSmeshSubmesh(2,uuid);});
                     }
                     if(dimension>=2)
                         ContextMenuHub::addAction(menu,this,tr("添加边网格设置"),[this,uuid]{addSmeshSubmesh(1,uuid);});
                     if(kind=="SmeshVolumeSubmesh"||kind=="SmeshFaceSubmesh"||
-                       kind=="SmeshEdgeSubmesh"||kind=="SmeshSweep"||kind=="SmeshPartition") {
+                       kind=="SmeshEdgeSubmesh"||kind=="SmeshSweep"||kind=="SmeshPartition"||
+                       kind=="SmeshTet"||kind=="VolumeControl"||kind=="FaceControl"||kind=="EdgeControl") {
                         if(!menu->isEmpty())ContextMenuHub::addSeparator(menu);
                         ContextMenuHub::addAction(menu,this,tr("删除"),[this,uuid]{removeSmeshNode(uuid);});
                     }
@@ -3025,9 +3037,15 @@ bool MeshModuleController::saveProject()
         for (const auto& rule : m_edgeRules)
         {
             QJsonObject obj;
+            obj["plan_uuid"] = rule.planUuid;
+            obj["method_uuid"] = rule.methodUuid;
+            obj["owner_task_kind"] = rule.ownerTaskKind;
+            obj["owner_task_uuid"] = rule.ownerTaskUuid;
             obj["edge_ids"] = rule.edgeIds;
+            obj["partition_edge_refs"] = rule.partitionEdgeRefs;
+            obj["divisions"] = rule.divisions;
+            obj["bias"] = rule.bias;
             obj["max_size"] = rule.maxSize;
-            // Keep the legacy values so old builds can still open the project.
             arr.append(obj);
         }
 
@@ -3041,7 +3059,17 @@ bool MeshModuleController::saveProject()
         for (const auto& rule : m_faceRules)
         {
             QJsonObject obj;
+            obj["plan_uuid"] = rule.planUuid;
+            obj["method_uuid"] = rule.methodUuid;
+            obj["owner_task_kind"] = rule.ownerTaskKind;
+            obj["owner_task_uuid"] = rule.ownerTaskUuid;
             obj["face_ids"] = rule.faceIds;
+            obj["partition_face_refs"] = rule.partitionFaceRefs;
+            obj["local_size_factor"] = rule.localSizeFactor;
+            obj["curvature_refine"] = rule.curvatureRefine;
+            obj["curvature_elements_per_2pi"] = rule.curvatureElementsPer2Pi;
+            obj["minimum_size_mode"] = rule.minimumSizeMode;
+            obj["manual_minimum_size"] = rule.manualMinimumSize;
             obj["max_size"] = rule.maxSize;
             arr.append(obj);
         }
@@ -3056,7 +3084,12 @@ bool MeshModuleController::saveProject()
         for (const auto& rule : m_volumeRules)
         {
             QJsonObject obj;
+            obj["plan_uuid"] = rule.planUuid;
+            obj["method_uuid"] = rule.methodUuid;
+            obj["owner_task_kind"] = rule.ownerTaskKind;
+            obj["owner_task_uuid"] = rule.ownerTaskUuid;
             obj["volume_ids"] = rule.volumeIds;
+            obj["local_size_factor"] = rule.localSizeFactor;
             obj["max_size"] = rule.maxSize;
             arr.append(obj);
         }
@@ -3408,7 +3441,14 @@ bool MeshModuleController::loadProject()
         const QJsonObject obj = v.toObject();
 
         EdgeControlRule rule;
+        rule.planUuid = obj.value("plan_uuid").toString();
+        rule.methodUuid = obj.value("method_uuid").toString();
+        rule.ownerTaskKind = obj.value("owner_task_kind").toString();
+        rule.ownerTaskUuid = obj.value("owner_task_uuid").toString();
         rule.edgeIds = obj.value("edge_ids").toString();
+        rule.partitionEdgeRefs = obj.value("partition_edge_refs").toString();
+        rule.divisions = obj.value("divisions").toInt(10);
+        rule.bias = obj.value("bias").toDouble(1.0);
         rule.maxSize = obj.value("max_size").toDouble(0.0);
 
         m_edgeRules.push_back(rule);
@@ -3421,7 +3461,17 @@ bool MeshModuleController::loadProject()
         const QJsonObject obj = v.toObject();
 
         FaceControlRule rule;
+        rule.planUuid = obj.value("plan_uuid").toString();
+        rule.methodUuid = obj.value("method_uuid").toString();
+        rule.ownerTaskKind = obj.value("owner_task_kind").toString();
+        rule.ownerTaskUuid = obj.value("owner_task_uuid").toString();
         rule.faceIds = obj.value("face_ids").toString();
+        rule.partitionFaceRefs = obj.value("partition_face_refs").toString();
+        rule.localSizeFactor = obj.value("local_size_factor").toDouble(1.0);
+        rule.curvatureRefine = obj.value("curvature_refine").toBool(true);
+        rule.curvatureElementsPer2Pi = obj.value("curvature_elements_per_2pi").toInt(20);
+        rule.minimumSizeMode = obj.value("minimum_size_mode").toInt(-1);
+        rule.manualMinimumSize = obj.value("manual_minimum_size").toDouble(0.0);
         rule.maxSize = obj.value("max_size").toDouble(0.0);
 
         m_faceRules.push_back(rule);
@@ -3434,7 +3484,12 @@ bool MeshModuleController::loadProject()
         const QJsonObject obj = v.toObject();
 
         VolumeControlRule rule;
+        rule.planUuid = obj.value("plan_uuid").toString();
+        rule.methodUuid = obj.value("method_uuid").toString();
+        rule.ownerTaskKind = obj.value("owner_task_kind").toString();
+        rule.ownerTaskUuid = obj.value("owner_task_uuid").toString();
         rule.volumeIds = obj.value("volume_ids").toString();
+        rule.localSizeFactor = obj.value("local_size_factor").toDouble(1.0);
         rule.maxSize = obj.value("max_size").toDouble(0.0);
 
         m_volumeRules.push_back(rule);
@@ -3456,6 +3511,18 @@ bool MeshModuleController::loadProject()
         }
         if (kind == "SmeshPartition") {
             auto* page=new MeshSmeshPartitionWidget();bindSmeshPage(page);return page;
+        }
+        if (kind == "SmeshTet") {
+            return new MeshSmeshTetWidget();
+        }
+        if (kind == "VolumeControl") {
+            return new MeshVolumeControlWidget();
+        }
+        if (kind == "FaceControl") {
+            return new MeshFaceControlWidget();
+        }
+        if (kind == "EdgeControl") {
+            return new MeshEdgeControlWidget();
         }
 
         if (kind == "MeshGrouping")
@@ -4097,6 +4164,11 @@ void MeshModuleController::initAction()
             onMeshSweep();
         });
     reg(PublicConstants::kActionPreprocessMeshPartition,[this]() { addSmeshPartition(); });
+    reg(PublicConstants::kActionPreprocessMeshRegion,[this]() { addSmeshTet(); });
+    reg(PublicConstants::kActionPreprocessMeshGenerate,[this]() { generateCurrentMeshConfiguration(); });
+    reg(PublicConstants::kActionPreprocessCtrlVolume,[this]() { addMeshVolumeControl(); });
+    reg(PublicConstants::kActionPreprocessCtrlSurface,[this]() { addMeshFaceControl(); });
+    reg(PublicConstants::kActionPreprocessCtrlEdge,[this]() { addMeshEdgeControl(); });
 
     reg(PublicConstants::kActionPreprocessMeshEdit,
         [this]
@@ -8277,5 +8349,246 @@ bool MeshModuleController::collectSmeshWorkflow(const QString& meshUuid,SmeshWor
             }
         }
     }
+    // Bridge TMSR TetTasks and enriched Edge/Face/Volume local controls into SmeshWorkflowSettings::submeshes.
+    for (const auto& tet : MeshSmeshWorkflowState::tetTasksForPlan(root->getUuid()))
+    {
+        if (tet.allVolumes || tet.volumeUiIds.isEmpty())
+            continue;
+        SmeshSubmeshSettings sub;
+        sub.uuid = tet.taskUuid;
+        sub.parentUuid = root->getUuid();
+        sub.name = tet.title;
+        sub.dimension = 3;
+        sub.maxSize = tet.targetSize > 0.0 ? tet.targetSize : -1.0;
+        sub.minSize = (tet.automaticMinSize == 0 && tet.manualMinSize > 0.0) ? tet.manualMinSize : -1.0;
+        sub.fineness = tet.fineness;
+        sub.optimize = tet.optimize;
+        sub.surfaceCurvature = tet.surfaceCurvature;
+        sub.surfaceSizing = (tet.sizingScope != 0);
+        for (int volId : tet.volumeUiIds)
+        {
+            SmeshEntityReference ref;
+            if (!capture(3, volId, ref))
+                return false;
+            sub.entityIds.push_back(volId);
+            sub.entities.push_back(ref);
+        }
+        if (!sub.entities.isEmpty())
+            settings.submeshes.push_back(sub);
+    }
+    for (const EdgeControlRule& rule : m_edgeRules)
+    {
+        if (rule.divisions <= 0 || rule.edgeIds.trimmed().isEmpty())
+            continue;
+        QSet<int> ids;
+        QString parseErr;
+        if (!MeshEntityIdParser::parseEntityIds(rule.edgeIds, ids, parseErr) || ids.isEmpty())
+            continue;
+        SmeshSubmeshSettings sub;
+        sub.parentUuid = root->getUuid();
+        sub.dimension = 1;
+        sub.edgeSegments = rule.divisions;
+        sub.edgeBias = rule.bias > 0.0 ? rule.bias : 1.0;
+        for (int eid : ids)
+        {
+            SmeshEntityReference ref;
+            if (!capture(1, eid, ref))
+                continue;
+            sub.entityIds.push_back(eid);
+            sub.entities.push_back(ref);
+        }
+        if (!sub.entities.isEmpty())
+            settings.submeshes.push_back(sub);
+    }
+    for (const FaceControlRule& rule : m_faceRules)
+    {
+        if (rule.faceIds.trimmed().isEmpty())
+            continue;
+        QSet<int> ids;
+        QString parseErr;
+        if (!MeshEntityIdParser::parseEntityIds(rule.faceIds, ids, parseErr) || ids.isEmpty())
+            continue;
+        const bool hasSpecial = (rule.minimumSizeMode >= 0) || (rule.curvatureRefine && rule.curvatureElementsPer2Pi > 0);
+        if (!hasSpecial)
+            continue;
+        SmeshSubmeshSettings sub;
+        sub.parentUuid = root->getUuid();
+        sub.dimension = 2;
+        if (rule.minimumSizeMode == 1 && rule.manualMinimumSize > 0.0)
+            sub.minSize = rule.manualMinimumSize;
+        sub.surfaceCurvature = rule.curvatureRefine ? 1 : 0;
+        if (rule.curvatureRefine && rule.curvatureElementsPer2Pi > 0)
+            sub.curvatureSegments = rule.curvatureElementsPer2Pi;
+        for (int fid : ids)
+        {
+            SmeshEntityReference ref;
+            if (!capture(2, fid, ref))
+                continue;
+            sub.entityIds.push_back(fid);
+            sub.entities.push_back(ref);
+        }
+        if (!sub.entities.isEmpty())
+            settings.submeshes.push_back(sub);
+    }
+
     return true;
+}
+
+
+void MeshModuleController::addSmeshTet()
+{
+    if (!m_gridNode)
+        return;
+    auto* global = findDirectChildByKind(m_gridNode, QStringLiteral("GlobalMeshing"));
+    if (!global)
+    {
+        onMeshGlobal();
+        global = findDirectChildByKind(m_gridNode, QStringLiteral("GlobalMeshing"));
+    }
+    if (!global)
+        return;
+    auto* pm = ServiceRegistry::instance().getService<ProjectManagerService>();
+    auto* page = new MeshSmeshTetWidget();
+    const QString uuid = QUuid::createUuid().toString();
+    page->setOperation(global->getUuid(), uuid);
+    auto* node = new ProjectNode(tr("四面体域网格"), uuid, page);
+    node->setData(0, ProjectNode::RoleModule, QStringLiteral("Mesh"));
+    node->setData(0, ProjectNode::RoleKind, QStringLiteral("SmeshTet"));
+    global->addChild(node);
+    global->setExpanded(true);
+    if (pm)
+        pm->setCurrentItem(node);
+}
+
+void MeshModuleController::addMeshVolumeControl()
+{
+    if (!m_gridNode)
+        return;
+    auto* global = findDirectChildByKind(m_gridNode, QStringLiteral("GlobalMeshing"));
+    if (!global)
+    {
+        onMeshGlobal();
+        global = findDirectChildByKind(m_gridNode, QStringLiteral("GlobalMeshing"));
+    }
+    if (!global)
+        return;
+    if (auto* existing = findDirectChildByKind(global, QStringLiteral("VolumeControl")))
+    {
+        if (auto* pm = ServiceRegistry::instance().getService<ProjectManagerService>())
+            pm->setCurrentItem(existing);
+        return;
+    }
+    auto* page = new MeshVolumeControlWidget();
+    page->setOwnerTask(QStringLiteral("GlobalMeshing"), global->getUuid(), global->text(0));
+    auto* node = new ProjectNode(tr("体细化控制"), QUuid::createUuid().toString(), page);
+    node->setData(0, ProjectNode::RoleModule, QStringLiteral("Mesh"));
+    node->setData(0, ProjectNode::RoleKind, QStringLiteral("VolumeControl"));
+    global->addChild(node);
+    global->setExpanded(true);
+    if (auto* pm = ServiceRegistry::instance().getService<ProjectManagerService>())
+        pm->setCurrentItem(node);
+}
+
+void MeshModuleController::addMeshFaceControl()
+{
+    if (!m_gridNode)
+        return;
+    auto* global = findDirectChildByKind(m_gridNode, QStringLiteral("GlobalMeshing"));
+    if (!global)
+    {
+        onMeshGlobal();
+        global = findDirectChildByKind(m_gridNode, QStringLiteral("GlobalMeshing"));
+    }
+    if (!global)
+        return;
+    if (auto* existing = findDirectChildByKind(global, QStringLiteral("FaceControl")))
+    {
+        if (auto* pm = ServiceRegistry::instance().getService<ProjectManagerService>())
+            pm->setCurrentItem(existing);
+        return;
+    }
+    auto* page = new MeshFaceControlWidget();
+    page->setOwnerTask(QStringLiteral("GlobalMeshing"), global->getUuid(), global->text(0));
+    auto* node = new ProjectNode(tr("面细化控制"), QUuid::createUuid().toString(), page);
+    node->setData(0, ProjectNode::RoleModule, QStringLiteral("Mesh"));
+    node->setData(0, ProjectNode::RoleKind, QStringLiteral("FaceControl"));
+    global->addChild(node);
+    global->setExpanded(true);
+    if (auto* pm = ServiceRegistry::instance().getService<ProjectManagerService>())
+        pm->setCurrentItem(node);
+}
+
+void MeshModuleController::addMeshEdgeControl()
+{
+    if (!m_gridNode)
+        return;
+    auto* global = findDirectChildByKind(m_gridNode, QStringLiteral("GlobalMeshing"));
+    if (!global)
+    {
+        onMeshGlobal();
+        global = findDirectChildByKind(m_gridNode, QStringLiteral("GlobalMeshing"));
+    }
+    if (!global)
+        return;
+    if (auto* existing = findDirectChildByKind(global, QStringLiteral("EdgeControl")))
+    {
+        if (auto* pm = ServiceRegistry::instance().getService<ProjectManagerService>())
+            pm->setCurrentItem(existing);
+        return;
+    }
+    auto* page = new MeshEdgeControlWidget();
+    page->setOwnerTask(QStringLiteral("GlobalMeshing"), global->getUuid(), global->text(0));
+    auto* node = new ProjectNode(tr("边细化控制"), QUuid::createUuid().toString(), page);
+    node->setData(0, ProjectNode::RoleModule, QStringLiteral("Mesh"));
+    node->setData(0, ProjectNode::RoleKind, QStringLiteral("EdgeControl"));
+    global->addChild(node);
+    global->setExpanded(true);
+    if (auto* pm = ServiceRegistry::instance().getService<ProjectManagerService>())
+        pm->setCurrentItem(node);
+}
+
+void MeshModuleController::markMeshControlsChangedForPlan(const QString& planUuid)
+{
+    Q_UNUSED(planUuid);
+}
+
+void MeshModuleController::refreshMeshUiState()
+{
+}
+
+QVariantMap MeshModuleController::subMeshOccupancyForPlan(const QString& planUuid,
+                                                          const QString& excludeTaskUuid) const
+{
+    QVariantMap occupied;
+    for (int volId : sweptCadVolumeIds())
+        occupied.insert(QString::number(volId), tr("扫掠网格"));
+    for (const auto& task : MeshSmeshWorkflowState::tetTasksForPlan(planUuid))
+    {
+        if (task.taskUuid == excludeTaskUuid || task.allVolumes)
+            continue;
+        for (int volId : task.volumeUiIds)
+            occupied.insert(QString::number(volId),
+                            task.title.isEmpty() ? tr("四面体域网格") : task.title);
+    }
+    return occupied;
+}
+
+void MeshModuleController::generateCurrentMeshConfiguration()
+{
+    generateSmeshSubmesh(QString());
+}
+
+void MeshModuleController::generateSmeshTetPreview(const QString& taskUuid, bool surfaceOnly)
+{
+    Q_UNUSED(surfaceOnly);
+    generateSmeshSubmesh(taskUuid);
+}
+
+void MeshModuleController::restoreOfficialMeshDisplay()
+{
+    displayCurrentGrid(false);
+}
+
+void MeshModuleController::requestStopCurrentMesh()
+{
 }

@@ -77,6 +77,8 @@ bool highlightEntity(const QStringList& geometryUuids, int dim, int id);
 bool highlightEntities(const QStringList& geometryUuids, int dim, const QList<int>& ids, bool hoverPreview);
 void clearEntityHoverHighlight();
 void clearEntityHighlight();
+bool showMeshScopeSolids(const QStringList& geometryUuids, const QList<int>& selectedGlobalSolidIds);
+void clearMeshScopeSolids(bool render = true);
 } // namespace GeometryEntityTools
 
 #endif // GEOMETRYENTITYTOOLS_H

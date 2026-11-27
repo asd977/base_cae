@@ -1,9 +1,11 @@
 ﻿#ifndef PREPROCESSINGSERVICE_H
 #define PREPROCESSINGSERVICE_H
 
+#include <QJsonArray>
 #include <QList>
 #include <QStringList>
 #include <QVector3D>
+#include <memory>
 
 class QString;
 class vtkActor;
@@ -12,6 +14,7 @@ class vtkSphereSource;
 class vtkUnstructuredGrid;
 template <typename T> class vtkSmartPointer;
 class BasePage;
+struct NativeCadSnapshot;
 struct PreProcessingService
 {
     virtual ~PreProcessingService()
@@ -41,6 +44,8 @@ struct PreProcessingService
     virtual bool highlightEntities(int dim, const QList<int>& ids, bool hoverPreview) = 0;
     virtual void clearEntityHoverHighlight() = 0;
     virtual void clearEntityHighlight() = 0;
+    virtual std::shared_ptr<const NativeCadSnapshot> nativeCadSnapshot() { return {}; }
+    virtual QJsonArray entityBindings(int dim) { Q_UNUSED(dim); return {}; }
 };
 
 #endif // PREPROCESSINGSERVICE_H

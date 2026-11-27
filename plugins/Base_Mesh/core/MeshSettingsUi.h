@@ -1,6 +1,13 @@
 #pragma once
 
 #include <QAbstractButton>
+#include <QAbstractItemView>
+#include <QAbstractSpinBox>
+#include <QFormLayout>
+#include <QGroupBox>
+#include <QLayout>
+#include <QLineEdit>
+#include <QSizePolicy>
 #include <QComboBox>
 #include <QEvent>
 #include <QLabel>
@@ -32,8 +39,35 @@ inline QString plainText(QString value) {
     value.remove(QStringLiteral("（建议）"));
     return value;
 }
+inline void applyCompactLayout(QLayout* layout) {
+    if (!layout) return;
+    if (auto* form = qobject_cast<QFormLayout*>(layout)) {
+        form->setRowWrapPolicy(QFormLayout::WrapLongRows);
+        form->setFieldGrowthPolicy(QFormLayout::AllNonFixedFieldsGrow);
+        form->setLabelAlignment(Qt::AlignLeft | Qt::AlignVCenter);
+        for (int row = 0; row < form->rowCount(); ++row) {
+            QLayoutItem* item = form->itemAt(row, QFormLayout::LabelRole);
+            if (item && item->widget())
+                if (auto* label = qobject_cast<QLabel*>(item->widget())) {
+                    label->setWordWrap(true);
+                    label->setMinimumWidth(0);
+                }
+        }
+    }
+    for (int i = 0; i < layout->count(); ++i) {
+        QLayoutItem* item = layout->itemAt(i);
+        if (!item) continue;
+        if (auto* child = item->layout()) applyCompactLayout(child);
+        else if (auto* widget = item->widget()) applyCompactLayout(widget->layout());
+    }
+}
 inline void simplify(QWidget* page) {
     if (!page) return;
+    // Do not mark the entire page QSizePolicy::Ignored: that allows a dock
+    // to squeeze form controls below their usable minimum. Individual views
+    // handle overflow using scroll bars; forms wrap their long rows.
+    page->setSizePolicy(QSizePolicy::Preferred, page->sizePolicy().verticalPolicy());
+    applyCompactLayout(page->layout());
     auto* filter = static_cast<PromptFilter*>(page->findChild<QObject*>(QStringLiteral("meshPromptFilter"), Qt::FindDirectChildrenOnly));
     // PromptFilter has no Q_OBJECT; use the owned QObject identity for lookup.
     if (!filter) {
@@ -44,10 +78,22 @@ inline void simplify(QWidget* page) {
     widgets.prepend(page);
     for (auto* widget : widgets) {
         widget->setToolTip({}); widget->setStatusTip({}); widget->setWhatsThis({});
+        if (auto* combo = qobject_cast<QComboBox*>(widget)) {
+            combo->setSizeAdjustPolicy(QComboBox::AdjustToMinimumContentsLengthWithIcon);
+            combo->setMinimumContentsLength(8);
+            combo->setSizePolicy(QSizePolicy::Expanding, combo->sizePolicy().verticalPolicy());
+        } else if (auto* spin = qobject_cast<QAbstractSpinBox*>(widget)) {
+            spin->setSizePolicy(QSizePolicy::Preferred, spin->sizePolicy().verticalPolicy());
+        } else if (auto* edit = qobject_cast<QLineEdit*>(widget)) {
+            edit->setSizePolicy(QSizePolicy::Expanding, edit->sizePolicy().verticalPolicy());
+        } else if (auto* view = qobject_cast<QAbstractItemView*>(widget)) {
+            view->setMinimumWidth(0);
+            view->setHorizontalScrollBarPolicy(Qt::ScrollBarAsNeeded);
+            view->setSizePolicy(QSizePolicy::Expanding, view->sizePolicy().verticalPolicy());
+        }
         widget->installEventFilter(filter);
         if (widget->objectName() == QStringLiteral("meshControlOwnerLabel") ||
             widget->objectName() == QStringLiteral("labelSmeshCurvatureHint") ||
-            widget->objectName() == QStringLiteral("labelCartesianInfo") ||
             widget->objectName() == QStringLiteral("meshFaceEffectiveSizePreview"))
             hideExplanation(widget);
         if (widget->property("mesh.explanation").toBool()) widget->hide();

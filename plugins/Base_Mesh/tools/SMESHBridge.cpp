@@ -255,10 +255,7 @@ void cadBoundaryMetadata(const SMESH_Mesh& mesh, const PointIndex& pointIds,
     const auto* data = mesh.GetMeshDS();
     for (int i = 1; i <= faces.Extent(); ++i) {
         const int shapeId = data->ShapeToIndex(faces(i));
-        GProp_GProps properties;
-        BRepGProp::SurfaceProperties(faces(i), properties);
-        const auto center = properties.CentreOfMass();
-        const double row[]{double(shapeId), center.X(), center.Y(), center.Z(), properties.Mass(), double(i)};
+        const double row[]{double(shapeId), 0.0, 0.0, 0.0, 0.0, double(i)};
         descriptors->InsertNextTuple(row);
     }
     auto iterator = data->facesIterator();
@@ -5151,8 +5148,13 @@ static int runConformalMesh(const CaeSMESHMixedRequest* request,
                         ", CADFaceId=" + std::to_string(entry.first));
                 if (!gen->Compute(*mesh, face, SMESH_Gen::SHAPE_ONLY))
                 {
+                    GProp_GProps faceProps;
+                    BRepGProp::SurfaceProperties(face, faceProps);
+                    const auto faceCenter = faceProps.CentreOfMass();
                     std::ostringstream detail;
                     detail << std::setprecision(12) << "NETGEN_2D failed on CADFaceId=" << entry.first
+                           << ", area=" << faceProps.Mass()
+                           << ", center=(" << faceCenter.X() << "," << faceCenter.Y() << "," << faceCenter.Z() << ")"
                            << ", original solids=";
                     for (int owner : entry.second) detail << owner << ' ';
                     detail << computeError(*mesh, face);

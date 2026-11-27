@@ -25,6 +25,7 @@
 #include <vtkDoubleArray.h>
 #include <vtkGenericOpenGLRenderWindow.h>
 #include <vtkPlot.h>
+#include <vtkPlotPoints.h>
 #include <vtkRenderWindow.h>
 #include <vtkRenderer.h>
 #include <vtkTable.h>
@@ -392,6 +393,37 @@ bool CurvePlotWidget::loadDataFromTraceFile(const QString& filePath, const QStri
         return false;
     }
 
+    bool hasValidPair = false;
+    for (const TracePoint& pt : parsed)
+    {
+        bool xOk = false;
+        fieldValue(pt, canonicalX, &xOk);
+        if (!xOk)
+            continue;
+        for (const QString& yf : orderedFields)
+        {
+            bool yOk = false;
+            fieldValue(pt, yf, &yOk);
+            if (yOk)
+            {
+                hasValidPair = true;
+                break;
+            }
+        }
+        if (hasValidPair)
+            break;
+    }
+    if (!hasValidPair)
+    {
+        clearChart();
+        const QString msg = tr("TRACE 文件中缺少所选横轴（%1）或纵轴字段的有效数据。")
+                                .arg(fieldDisplayName(canonicalX));
+        if (errMsg)
+            *errMsg = msg;
+        updateStatus(msg, true);
+        return false;
+    }
+
     m_tracePath = filePath;
     m_xField = canonicalX;
     m_yFields = orderedFields;
@@ -470,9 +502,10 @@ void CurvePlotWidget::renderPlot()
         return;
     }
 
+    const bool singlePoint = (m_table->GetNumberOfRows() == 1);
     for (int i = 0; i < m_yFields.size(); ++i)
     {
-        vtkPlot* plot = m_chart->AddPlot(vtkChart::LINE);
+        vtkPlot* plot = m_chart->AddPlot(singlePoint ? vtkChart::POINTS : vtkChart::LINE);
         if (!plot)
             continue;
 
@@ -481,7 +514,15 @@ void CurvePlotWidget::renderPlot()
         plot->SetColor(static_cast<unsigned char>(color.red()),
                        static_cast<unsigned char>(color.green()),
                        static_cast<unsigned char>(color.blue()), 255);
-        plot->SetWidth(2.0f);
+        if (singlePoint)
+        {
+            if (auto* pts = vtkPlotPoints::SafeDownCast(plot))
+                pts->SetMarkerSize(8.0f);
+        }
+        else
+        {
+            plot->SetWidth(2.0f);
+        }
     }
 
     if (m_titleLabel)

@@ -1,3 +1,5 @@
+#include "core/MeshAutoSizing.h"
+#include "core/MeshFaceSizePolicy.h"
 #include "MeshGlobalMeshingWidget.h"
 #include <MeshWorkingPaths.h>
 
@@ -553,12 +555,31 @@ void MeshGlobalMeshingWidget::updateAutomaticSize()
         span=std::max(span,high-low);
     }
     if (span<=0.0)return;
-    // Initial global resolution follows model scale; native curvature and
-    // explicit local controls still resolve the actual geometric features.
     constexpr double divisions[]{12.,18.,25.,35.,50.,25.};
     const int level=std::clamp(m_fineness->currentData().toInt(),0,5);
+    double autoMax = span / divisions[level];
+    if (auto* pre = ServiceRegistry::instance().getService<PreProcessingService>())
+    {
+        if (auto snap = pre->nativeCadSnapshot())
+        {
+            QVector<int> scopeSolids;
+            if (m_scopeMode && m_scopeMode->currentIndex() != 0 && meshingDimension() == 3)
+                for (int id : m_geometryIds[3]) scopeSolids.push_back(id);
+            const auto scale = MeshAutoSizing::measure(*snap, scopeSolids);
+            if (scale.valid)
+            {
+                const QString density = (level <= 1) ? QStringLiteral("few") : (level >= 3 ? QStringLiteral("fine") : QStringLiteral("normal"));
+                const auto sizing = MeshAutoSizing::infer(scale, density);
+                if (sizing.minSize > 0.0 && m_automaticMin && m_automaticMin->isChecked())
+                {
+                    const QSignalBlocker b(ui->dsMin);
+                    ui->dsMin->setValue(sizing.minSize);
+                }
+            }
+        }
+    }
     const double minimum=m_automaticMin && !m_automaticMin->isChecked()?ui->dsMin->value():0.0;
-    ui->dsMax->setValue(std::max({span/divisions[level],minimum,1.e-6}));
+    ui->dsMax->setValue(std::max({autoMax,minimum,1.e-6}));
 }
 
 QString MeshGlobalMeshingWidget::tempDirPath() const
@@ -664,20 +685,20 @@ void MeshGlobalMeshingWidget::onGenerate()
 
         for (const FaceControlRule& rule : faceRules)
         {
+            const double target = rule.maxSize > 0.0
+                                      ? rule.maxSize
+                                      : MeshFaceSizePolicy::target(rule.localSizeFactor, p.lenMax);
             for (int entityId : parseEntityIdSet(rule.faceIds))
-            {
-                double target = rule.maxSize;
                 appendControl(2, entityId, target);
-            }
         }
 
         for (const VolumeControlRule& rule : volumeRules)
         {
+            const double target = rule.maxSize > 0.0
+                                      ? rule.maxSize
+                                      : (rule.localSizeFactor > 0.0 ? rule.localSizeFactor * p.lenMax : 0.0);
             for (int entityId : parseEntityIdSet(rule.volumeIds))
-            {
-                double target = rule.maxSize;
                 appendControl(3, entityId, target);
-            }
         }
 
         const int configuredRules = edgeRules.size() + faceRules.size() + volumeRules.size();

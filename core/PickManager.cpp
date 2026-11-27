@@ -1013,7 +1013,7 @@ void PickManager::setSelectedDomains(const QString& domain, const QString& uuid,
 
     m_selectedDomainsByDomainUuid[domain][uuid] = validKeys;
     m_selectedDomainByDomainUuid[domain][uuid] = primary;
-    if (domainKeyIsValidForDisplay(primary))
+    if (validKeys.size() == 1 && domainKeyIsValidForDisplay(primary))
         emit domainSelected(domain, uuid, primary);
     emit domainsSelected(domain, uuid, validKeys);
     rebuildDomainHighlightActors();
@@ -1713,86 +1713,84 @@ void PickManager::OnRightButtonRelease(vtkObject* caller, unsigned long, void* c
     });
 }
 
-DomainKey PickManager::resolveDomainKeyForCell(GridKind kind, vtkDataSet* ds, vtkIdType cellId) const
+static DomainKey resolveDomainKeyFromMap(const MshPickMap& map, GridKind kind,
+                                         vtkDataSet* ds, vtkIdType cellId,
+                                         const QString& preferred)
 {
     if (!ds || cellId < 0 || cellId >= ds->GetNumberOfCells())
         return DomainKey{};
 
     int pickedDomainDim = (kind == GridKind::Line) ? 1 : 3;
+    if (kind == GridKind::Solid && (map.meshDim == 2 || map.meshDim == 3))
+        pickedDomainDim = map.meshDim;
+
     vtkIdType origCellId = cellId;
     vtkDataArray* origCellArr = findArray(ds->GetCellData(), "vtkOriginalCellIds", "orig_cell_id");
-    if (origCellArr && cellId >= 0 && cellId < origCellArr->GetNumberOfTuples())
+    if (origCellArr && cellId < origCellArr->GetNumberOfTuples())
         origCellId = static_cast<vtkIdType>(origCellArr->GetTuple1(cellId));
 
-    DomainKey pickedKey;
-    if (auto* meshSvc = ServiceRegistry::instance().getService<MeshModuleControllerService>())
+    // Fast O(1) lookup via reverse index (cellId -> domain tags).
+    QVector<DomainKey> candidates;
+    const auto tagIt = map.cellIdToDomainTags.constFind(static_cast<MeshIdType>(origCellId));
+    if (tagIt != map.cellIdToDomainTags.constEnd())
     {
-        QVector<DomainKey> candidates;
-        const QVector<DomainKey> domains = meshSvc->availableDomains(QString());
-        if (kind == GridKind::Solid)
+        for (const MeshTagKey& tk : tagIt.value())
         {
-            const int actualDim = meshSvc->mshPickMapSolid().meshDim;
-            if (actualDim == 2 || actualDim == 3)
-                pickedDomainDim = actualDim;
-        }
-        for (const DomainKey& key : domains)
-        {
-            if (key.dim != pickedDomainDim || key.id == 0)
-                continue;
-            const QSet<MeshIdType> cells = meshSvc->domainCells(key);
-            if (cells.contains(static_cast<MeshIdType>(origCellId)))
-                candidates.push_back(key);
-        }
-
-        const QString preferred = m_preferredDomainCategoryByDomainUuid
-            .value(m_currentDomain).value(m_currentUUid);
-        if (!preferred.isEmpty())
-        {
-            for (const DomainKey& key : candidates)
-            {
-                if (key.category.compare(preferred, Qt::CaseInsensitive) == 0 &&
-                    domainKeyIsValidForDisplay(key))
-                {
-                    pickedKey = key;
-                    break;
-                }
-            }
-            return pickedKey;
-        }
-
-        for (const DomainKey& key : candidates)
-        {
-            if (key.category.compare(QStringLiteral("LAYER"), Qt::CaseInsensitive) == 0 && key.id < 0)
-            {
-                pickedKey = key;
-                break;
-            }
-        }
-        if (!domainKeyIsValidForDisplay(pickedKey))
-        {
-            for (const DomainKey& key : candidates)
-            {
-                if (key.category.compare(QStringLiteral("MATYPE"), Qt::CaseInsensitive) == 0 &&
-                    domainKeyIsValidForDisplay(key))
-                {
-                    pickedKey = key;
-                    break;
-                }
-            }
-        }
-        if (!domainKeyIsValidForDisplay(pickedKey))
-        {
-            for (const DomainKey& key : candidates)
-            {
-                if (domainKeyIsValidForDisplay(key))
-                {
-                    pickedKey = key;
-                    break;
-                }
-            }
+            if (tk.dim == pickedDomainDim && tk.id != 0)
+                candidates.push_back(DomainKey{tk.category, tk.dim, tk.id});
         }
     }
+    else if (vtkCellData* cd = ds->GetCellData())
+    {
+        // Direct CellData fallback when reverse index is unavailable.
+        if (vtkDataArray* layArr = cd->GetArray("LAYER"))
+        {
+            const int lay = static_cast<int>(layArr->GetTuple1(cellId));
+            if (lay != 0)
+                candidates.push_back(DomainKey{QStringLiteral("LAYER"), pickedDomainDim, lay});
+        }
+        if (vtkDataArray* matArr = cd->GetArray("MATYPE"))
+        {
+            const int mat = static_cast<int>(matArr->GetTuple1(cellId));
+            if (mat > 0)
+                candidates.push_back(DomainKey{QStringLiteral("MATYPE"), pickedDomainDim, mat});
+        }
+    }
+
+    DomainKey pickedKey;
+    if (!preferred.isEmpty())
+    {
+        for (const DomainKey& key : candidates)
+        {
+            if (key.category.compare(preferred, Qt::CaseInsensitive) == 0 &&
+                domainKeyIsValidForDisplay(key))
+                return key;
+        }
+        return DomainKey{};
+    }
+
+    for (const DomainKey& key : candidates)
+        if (key.category.compare(QStringLiteral("LAYER"), Qt::CaseInsensitive) == 0 && key.id < 0)
+            return key;
+    for (const DomainKey& key : candidates)
+        if (key.category.compare(QStringLiteral("MATYPE"), Qt::CaseInsensitive) == 0 &&
+            domainKeyIsValidForDisplay(key))
+            return key;
+    for (const DomainKey& key : candidates)
+        if (domainKeyIsValidForDisplay(key))
+            return key;
     return pickedKey;
+}
+
+DomainKey PickManager::resolveDomainKeyForCell(GridKind kind, vtkDataSet* ds, vtkIdType cellId) const
+{
+    auto* meshSvc = ServiceRegistry::instance().getService<MeshModuleControllerService>();
+    if (!meshSvc)
+        return DomainKey{};
+    const MshPickMap map = meshSvc->mshPickMapSolid();
+    const QString preferred =
+        m_preferredDomainCategoryByDomainUuid.value(m_currentDomain).value(m_currentUUid);
+    return resolveDomainKeyFromMap(map, kind, ds, cellId, preferred);
 }
 
 bool PickManager::pickAt(int x, int y)
@@ -4608,11 +4606,18 @@ bool PickManager::hardwareBoxSelect(int x0, int y0, int x1, int y1, bool deselec
 
     if (m_pickMode == PickMode::Domain)
     {
+        auto* meshSvc = ServiceRegistry::instance().getService<MeshModuleControllerService>();
+        if (!meshSvc)
+            return false;
+        // Fetch MshPickMap once outside the cell loop so box-selecting thousands of faces stays O(N).
+        const MshPickMap map = meshSvc->mshPickMapSolid();
+        const QString preferred =
+            m_preferredDomainCategoryByDomainUuid.value(m_currentDomain).value(m_currentUUid);
         QSet<DomainKey> hitKeys;
         for (const VisibleCell& candidate : std::as_const(visibleCells))
         {
-            const DomainKey key =
-                resolveDomainKeyForCell(candidate.kind, candidate.dataSet, candidate.cellId);
+            const DomainKey key = resolveDomainKeyFromMap(
+                map, candidate.kind, candidate.dataSet, candidate.cellId, preferred);
             if (domainKeyIsValidForDisplay(key))
                 hitKeys.insert(key);
         }

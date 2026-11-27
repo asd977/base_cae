@@ -1684,15 +1684,18 @@ void MaterialEntryWidget::rebuildForm(MaterialModel* model, MaterialEntry* entry
                 QComboBox* option = addResidualMode(
                     targetLayout, targetParent, QStringLiteral("残余凝聚力沿用峰值"),
                     QStringLiteral("残余凝聚力"));
-                const auto syncResidualCohesion = [valueEdit, option, entry]()
+                const auto syncResidualCohesion = [this, valueEdit, option]()
                 {
+                    MaterialEntry* cur = lookupEntry();
+                    if (!cur)
+                        return;
                     const bool independent =
                         option->currentData().toString() == QStringLiteral("0");
                     const QString displayColumn = independent
                         ? QStringLiteral("残余凝聚力C‘（MPa）")
                         : QStringLiteral("凝聚力C‘（MPa）");
                     const QSignalBlocker blocker(valueEdit);
-                    valueEdit->setText(entry->properties.value(displayColumn));
+                    valueEdit->setText(cur->properties.value(displayColumn));
                     valueEdit->setEnabled(independent);
                 };
                 connect(option, QOverload<int>::of(&QComboBox::currentIndexChanged), this,
@@ -1710,9 +1713,12 @@ void MaterialEntryWidget::rebuildForm(MaterialModel* model, MaterialEntry* entry
                 explicitTensile->setObjectName(QStringLiteral("explicitTensileStrength"));
                 explicitTensile->setChecked(entry->properties.value(
                     QStringLiteral("抗拉强度按输入值"), QStringLiteral("0")) == QStringLiteral("1"));
-                connect(explicitTensile, &QCheckBox::toggled, this, [this, entry](bool enabled) {
-                    entry->properties.insert(QStringLiteral("抗拉强度按输入值"), enabled ? QStringLiteral("1") : QStringLiteral("0"));
-                    m_materialManager->notifyEntryUpdated(m_entryId, false);
+                connect(explicitTensile, &QCheckBox::toggled, this, [this](bool enabled) {
+                    if (MaterialEntry* cur = lookupEntry())
+                    {
+                        cur->properties.insert(QStringLiteral("抗拉强度按输入值"), enabled ? QStringLiteral("1") : QStringLiteral("0"));
+                        m_materialManager->notifyEntryUpdated(m_entryId, false);
+                    }
                 });
                 targetLayout->addRow(explicitTensile);
             }

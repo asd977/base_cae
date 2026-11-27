@@ -214,6 +214,13 @@ void ProjectTreeWidget::ensureSceneVisibleForCurrentNode(QTreeWidgetItem* curren
     if(!visual||!current)return;
     const QString module=resolveNodeModule(current);
     auto* node=dynamic_cast<ProjectNode*>(current);
+    if(node&&node->getPage()&&node->getPage()->getWidget()
+       &&node->getPage()->getWidget()->property("mesh.ownsScene").toBool())
+    {
+        visual->setGroupVisible(QStringLiteral("post"),false,false);
+        visual->render();
+        return;
+    }
     const QString pageType=node&&node->getPage()?node->getPage()->getPageType():QString();
     const bool section=pageType.startsWith(QStringLiteral("SlopeLimitEquilibrium"));
     const bool meshAvailable=visual->getProp("mesh.imported.surface")||visual->getProp("mesh.imported.line")

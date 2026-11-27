@@ -43,10 +43,44 @@ struct MshPickMap;
 template <typename T> class vtkSmartPointer;
 class vtkUnstructuredGrid;
 
-// Native SMESH maximum-size controls on selected CAD subshapes.
-struct EdgeControlRule { QString edgeIds; double maxSize = 0.0; };
-struct FaceControlRule { QString faceIds; double maxSize = 0.0; };
-struct VolumeControlRule { QString volumeIds; double maxSize = 0.0; };
+// Native SMESH local controls on selected CAD / partition subshapes.
+struct EdgeControlRule
+{
+    QString planUuid;
+    QString methodUuid;
+    QString ownerTaskKind;
+    QString ownerTaskUuid;
+    QString edgeIds;
+    QString partitionEdgeRefs;
+    int divisions = 10;
+    double bias = 1.0;
+    double maxSize = 0.0;
+};
+struct FaceControlRule
+{
+    QString planUuid;
+    QString methodUuid;
+    QString ownerTaskKind;
+    QString ownerTaskUuid;
+    QString faceIds;
+    QString partitionFaceRefs;
+    double localSizeFactor = 1.0;
+    bool curvatureRefine = true;
+    int curvatureElementsPer2Pi = 20;
+    int minimumSizeMode = -1;
+    double manualMinimumSize = 0.0;
+    double maxSize = 0.0;
+};
+struct VolumeControlRule
+{
+    QString planUuid;
+    QString methodUuid;
+    QString ownerTaskKind;
+    QString ownerTaskUuid;
+    QString volumeIds;
+    double localSizeFactor = 1.0;
+    double maxSize = 0.0;
+};
 
 struct BarElementPlacement
 {

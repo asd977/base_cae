@@ -160,6 +160,11 @@ constexpr char kActionPreprocessMeshSweep[] = "grid_mesh_sweep";   // 扫掠网�
 constexpr char kActionPreprocessMeshPartition[] = "grid_mesh_partition"; // 扫掠分块
 constexpr char kActionPreprocessMeshLocalFace[] = "grid_mesh_local_face";
 constexpr char kActionPreprocessMeshLocalEdge[] = "grid_mesh_local_edge";
+constexpr char kActionPreprocessMeshRegion[] = "grid_mesh_region";
+constexpr char kActionPreprocessMeshGenerate[] = "grid_mesh_generate_active";
+constexpr char kActionPreprocessCtrlVolume[] = "grid_ctrl_volume";
+constexpr char kActionPreprocessCtrlSurface[] = "grid_ctrl_surface";
+constexpr char kActionPreprocessCtrlEdge[] = "mesh_ctrl_edge";
 
 constexpr char kActionPreprocessMeshEdit[] = "mesh_ctrl_edit";       // 显示控制
 constexpr char kActionPreprocessMeshDisplayPanel[] = "mesh_ctrl_display_panel"; // 仅打开显示控制面板，不切换当前结果/场景

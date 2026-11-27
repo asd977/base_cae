@@ -1850,9 +1850,28 @@ inline vtkSmartPointer<vtkActor> createPostContextModelActor(vtkUnstructuredGrid
 {
     if (!displayGrid || displayGrid->GetNumberOfCells() <= 0)
         return nullptr;
-    auto mapper = vtkSmartPointer<vtkDataSetMapper>::New();
-    mapper->SetInputData(displayGrid);
+    // Strip scalar arrays and extract outer surface with VTK 9 multithreaded vtkGeometryFilter
+    // instead of feeding the full 3D unstructured grid into single-threaded vtkDataSetMapper.
+    auto geometryOnly = vtkSmartPointer<vtkUnstructuredGrid>::New();
+    geometryOnly->ShallowCopy(displayGrid);
+    geometryOnly->GetPointData()->Initialize();
+    geometryOnly->GetCellData()->Initialize();
+    geometryOnly->GetFieldData()->Initialize();
+
+    auto surface = vtkSmartPointer<vtkGeometryFilter>::New();
+    surface->SetInputData(geometryOnly);
+    surface->Update();
+
+    auto poly = vtkSmartPointer<vtkPolyData>::New();
+    if (surface->GetOutput())
+        poly->ShallowCopy(surface->GetOutput());
+    if (poly->GetNumberOfCells() <= 0)
+        return nullptr;
+
+    auto mapper = vtkSmartPointer<vtkPolyDataMapper>::New();
+    mapper->SetInputData(poly);
     mapper->ScalarVisibilityOff();
+    mapper->StaticOn();
     auto actor = vtkSmartPointer<vtkActor>::New();
     actor->SetMapper(mapper);
     actor->PickableOff();

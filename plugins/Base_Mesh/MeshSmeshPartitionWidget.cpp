@@ -1,4 +1,4 @@
-#include "CompactDoubleSpinBox.h"
+#include "MeshCompactDoubleSpinBox.h"
 #include "MeshSmeshPartitionWidget.h"
 #include "core/MeshSettingsUi.h"
 
@@ -8,8 +8,9 @@
 
 #include <QComboBox>
 #include <QDoubleSpinBox>
-#include <QFormLayout>
 #include <QFont>
+#include <QFormLayout>
+#include <QGridLayout>
 #include <QHBoxLayout>
 #include <QLabel>
 #include <QListWidget>
@@ -18,18 +19,51 @@
 #include <QMetaObject>
 #include <QPushButton>
 #include <QSignalBlocker>
+#include <QSizePolicy>
+#include <QSlider>
+#include <QVariantList>
 #include <QVariantMap>
 #include <QVBoxLayout>
+#include <algorithm>
 #include <cmath>
 
 using namespace MeshSmeshWorkflowState;
 
+namespace {
+
+constexpr int kSliderSteps = 1000;
+
+double computeAdaptiveStep(double span)
+{
+    if (!(span > 1.0e-12) || !std::isfinite(span))
+        return 0.01;
+    const double raw = span / 100.0;
+    const double exponent = std::floor(std::log10(raw));
+    const double base = std::pow(10.0, exponent);
+    const double norm = raw / base;
+    double mult = 1.0;
+    if (norm >= 5.0) mult = 5.0;
+    else if (norm >= 2.0) mult = 2.0;
+    return std::max(1.0e-6, mult * base);
+}
+
+int computeAdaptiveDecimals(double span)
+{
+    if (!(span > 1.0e-12) || !std::isfinite(span))
+        return 4;
+    const int exp = static_cast<int>(std::floor(std::log10(span)));
+    return std::clamp(4 - exp, 2, 6);
+}
+
+} // namespace
+
 MeshSmeshPartitionWidget::MeshSmeshPartitionWidget(QWidget* parent)
     : BasePage("MeshSmeshPartitionWidget")
 {
+    Q_UNUSED(parent);
     auto* root = new QVBoxLayout(this);
-    root->setContentsMargins(12, 12, 12, 12);
-    root->setSpacing(8);
+    root->setContentsMargins(10, 10, 10, 10);
+    root->setSpacing(6);
     root->addWidget(m_selectionPresentation.createViewSelector(this));
 
     auto* title = new QLabel(tr("扫掠分块"), this);
@@ -51,7 +85,13 @@ MeshSmeshPartitionWidget::MeshSmeshPartitionWidget(QWidget* parent)
     root->addWidget(hint);
 
     auto* form = new QFormLayout();
+    form->setRowWrapPolicy(QFormLayout::WrapLongRows);
+    form->setFieldGrowthPolicy(QFormLayout::AllNonFixedFieldsGrow);
+    form->setVerticalSpacing(6);
+
     m_targetVolume = new QComboBox(this);
+    m_targetVolume->setMinimumWidth(0);
+    m_targetVolume->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Fixed);
     auto* targetEditor = new QWidget(this);
     auto* targetRow = new QHBoxLayout(targetEditor);
     targetRow->setContentsMargins(0, 0, 0, 0);
@@ -65,43 +105,67 @@ MeshSmeshPartitionWidget::MeshSmeshPartitionWidget(QWidget* parent)
     m_axis->addItem(tr("X = 常数"), 0);
     m_axis->addItem(tr("Y = 常数"), 1);
     m_axis->addItem(tr("Z = 常数"), 2);
-    m_coordinate = new CompactDoubleSpinBox(this);
+
+    auto* coordEditor = new QWidget(this);
+    auto* coordCol = new QVBoxLayout(coordEditor);
+    coordCol->setContentsMargins(0, 0, 0, 0);
+    coordCol->setSpacing(4);
+
+    m_coordinate = new MeshCompactDoubleSpinBox(coordEditor);
     m_coordinate->setRange(-1.0e12, 1.0e12);
-    m_coordinate->setDecimals(8);
-    m_coordinate->setSingleStep(0.001); // CAD units: fine adjustment for wheel and arrow buttons.
-    m_coordinate->setToolTip(tr("滚轮/上下箭头每次调整 0.001 个 CAD 坐标单位；可直接输入精确坐标。"));
+    m_coordinate->setDecimals(4);
+    m_coordinate->setSingleStep(0.1);
+    coordCol->addWidget(m_coordinate);
+
+    m_slider = new QSlider(Qt::Horizontal, coordEditor);
+    m_slider->setRange(0, kSliderSteps);
+    m_slider->setSingleStep(10);
+    m_slider->setPageStep(50);
+    m_slider->setTracking(true);
+    m_slider->setEnabled(false);
+    coordCol->addWidget(m_slider);
+
+    m_rangeLabel = new QLabel(tr("实体范围：--"), coordEditor);
+    m_rangeLabel->setWordWrap(true);
+    m_rangeLabel->setStyleSheet(QStringLiteral("color: palette(mid); font-size: 11px;"));
+    coordCol->addWidget(m_rangeLabel);
+
     form->addRow(tr("切面方向"), m_axis);
-    form->addRow(tr("切面位置"), m_coordinate);
+    form->addRow(tr("切面位置"), coordEditor);
     root->addLayout(form);
 
-    auto* addRow = new QHBoxLayout();
+    auto* addRow = new QGridLayout();
+    addRow->setHorizontalSpacing(6);
+    addRow->setVerticalSpacing(5);
     auto* center = new QPushButton(tr("放到实体中心"), this);
     auto* addAxis = new QPushButton(tr("添加切面"), this);
-    auto* updateAxis = new QPushButton(tr("更新选中"), this);
-    addRow->addWidget(center);
-    addRow->addWidget(addAxis);
-    addRow->addWidget(updateAxis);
-    addRow->addStretch(1);
+    m_updateAxis = new QPushButton(tr("更新选中"), this);
+    m_updateAxis->setEnabled(false);
+    addRow->addWidget(center, 0, 0);
+    addRow->addWidget(addAxis, 0, 1);
+    addRow->addWidget(m_updateAxis, 1, 0, 1, 2);
+    addRow->setColumnStretch(0, 1);
+    addRow->setColumnStretch(1, 1);
     root->addLayout(addRow);
-    auto* otherCuts=new QHBoxLayout();
-    auto* cadPlane=new QPushButton(tr("采用几何平面"),this);
-    auto* edgePair=new QPushButton(tr("两边确定切面"),this);
-    otherCuts->addWidget(cadPlane);otherCuts->addWidget(edgePair);root->addLayout(otherCuts);
-    connect(cadPlane,&QPushButton::clicked,this,&MeshSmeshPartitionWidget::beginCadPlanePick);
-    connect(edgePair,&QPushButton::clicked,this,&MeshSmeshPartitionWidget::beginEdgePairPick);
 
     m_rules = new QListWidget(this);
-    m_rules->setMinimumHeight(120);
+    m_rules->setMinimumHeight(84);
+    m_rules->setMaximumHeight(130);
     root->addWidget(m_rules);
 
-    auto* editRow = new QHBoxLayout();
+    auto* editRow = new QGridLayout();
+    editRow->setHorizontalSpacing(6);
+    editRow->setVerticalSpacing(5);
     auto* remove = new QPushButton(tr("删除选中"), this);
     auto* clear = new QPushButton(tr("清空"), this);
+    auto* showCutters = new QPushButton(tr("显示切面"), this);
     m_preview = new QPushButton(tr("预览分块"), this);
-    editRow->addWidget(remove);
-    editRow->addWidget(clear);
-    editRow->addStretch(1);
-    editRow->addWidget(m_preview);
+    editRow->addWidget(remove, 0, 0);
+    editRow->addWidget(clear, 0, 1);
+    editRow->addWidget(showCutters, 1, 0);
+    editRow->addWidget(m_preview, 1, 1);
+    editRow->setColumnStretch(0, 1);
+    editRow->setColumnStretch(1, 1);
     root->addLayout(editRow);
 
     m_summary = new QLabel(this);
@@ -109,48 +173,69 @@ MeshSmeshPartitionWidget::MeshSmeshPartitionWidget(QWidget* parent)
     root->addWidget(m_summary);
 
     m_regions = new QListWidget(this);
-    m_regions->setMinimumHeight(100);
+    m_regions->setMinimumHeight(76);
+    m_regions->setMaximumHeight(115);
     root->addWidget(m_regions);
 
-    auto* regionRow = new QHBoxLayout();
+    auto* regionRow = new QGridLayout();
+    regionRow->setHorizontalSpacing(6);
+    regionRow->setVerticalSpacing(5);
     auto* pickRegion = new QPushButton(tr("图形区选择分块"), this);
     auto* showRegion = new QPushButton(tr("突出选中分块"), this);
     auto* restore = new QPushButton(tr("恢复普通显示"), this);
-    regionRow->addWidget(pickRegion);
-    regionRow->addWidget(showRegion);
-    regionRow->addWidget(restore);
-    regionRow->addStretch(1);
+    regionRow->addWidget(pickRegion, 0, 0);
+    regionRow->addWidget(showRegion, 0, 1);
+    regionRow->addWidget(restore, 1, 0, 1, 2);
+    regionRow->setColumnStretch(0, 1);
+    regionRow->setColumnStretch(1, 1);
     root->addLayout(regionRow);
-    root->addStretch(1);
 
     connect(pickTarget, &QPushButton::clicked, this, &MeshSmeshPartitionWidget::beginTargetVolumePick);
     connect(center, &QPushButton::clicked, this, &MeshSmeshPartitionWidget::snapCoordinateToTargetCenter);
     connect(addAxis, &QPushButton::clicked, this, &MeshSmeshPartitionWidget::addAxisRule);
-    connect(updateAxis, &QPushButton::clicked, this, &MeshSmeshPartitionWidget::updateSelectedAxisRule);
+    connect(m_updateAxis, &QPushButton::clicked, this, &MeshSmeshPartitionWidget::updateSelectedAxisRule);
     connect(m_targetVolume, qOverload<int>(&QComboBox::currentIndexChanged), this, [this](int)
     {
-        snapCoordinateToTargetCenter();
+        updateAxisBounds(true);
         showCuttingPlanePreview();
         m_selectionPresentation.setSelectedEntities(3, {m_targetVolume->currentData().toInt()});
     });
     connect(m_axis, qOverload<int>(&QComboBox::currentIndexChanged), this, [this](int)
     {
-        snapCoordinateToTargetCenter();
+        updateAxisBounds(true);
         showCuttingPlanePreview();
     });
     connect(m_coordinate, qOverload<double>(&QDoubleSpinBox::valueChanged), this, [this](double)
     {
+        syncSliderFromCoordinate();
         showCuttingPlanePreview();
     });
+    connect(m_slider, &QSlider::valueChanged, this, &MeshSmeshPartitionWidget::onSliderValueChanged);
     connect(remove, &QPushButton::clicked, this, &MeshSmeshPartitionWidget::removeSelectedRule);
     connect(clear, &QPushButton::clicked, this, &MeshSmeshPartitionWidget::clearRules);
     connect(m_preview, &QPushButton::clicked, this, &MeshSmeshPartitionWidget::previewPartition);
+    connect(showCutters, &QPushButton::clicked, this, [this]() {
+        if (auto* view = findChild<QComboBox*>(QStringLiteral("meshSettingsViewSelector"));
+            view && view->currentIndex() != 0)
+            view->setCurrentIndex(0);
+        else if (m_ruleData.isEmpty())
+            showCuttingPlanePreview();
+        else
+            showSavedCutters();
+    });
+    if (auto* view = findChild<QComboBox*>(QStringLiteral("meshSettingsViewSelector")))
+        connect(view, &QComboBox::currentIndexChanged, this, [this](int index) {
+            if (index == 0) {
+                if (m_ruleData.isEmpty()) showCuttingPlanePreview();
+                else showSavedCutters();
+            } else {
+                restoreCad();
+                m_selectionPresentation.refresh();
+            }
+        });
     connect(pickRegion, &QPushButton::clicked, this, &MeshSmeshPartitionWidget::beginRegionPick);
     connect(showRegion, &QPushButton::clicked, this, &MeshSmeshPartitionWidget::showSelectedRegion);
-    // Selecting a Region in the list should immediately show which solid it is.
     connect(m_regions, &QListWidget::itemSelectionChanged, this, [this]() {
-        // During viewport picking the pick controller still owns the temporary
-        // props; stopPick() must run before replacing those props.
         if (m_pickMode != PickRegion) showSelectedRegion();
     });
     connect(restore, &QPushButton::clicked, this, &MeshSmeshPartitionWidget::restoreCad);
@@ -166,15 +251,14 @@ MeshSmeshPartitionWidget::MeshSmeshPartitionWidget(QWidget* parent)
         item->setToolTip(enabled ? tr("已启用：本次分块会使用该切面")
                                  : tr("已停用：保留切面，但本次不参与分块"));
         saveState();
-        refreshRegionList();
+        invalidateRegionPreview();
         emit logMessage(tr("[扫掠分块] 切面 %1 已%2。")
                         .arg(row + 1).arg(enabled ? tr("启用") : tr("停用")));
     });
 
     rebuildTargetVolumes();
     loadState();
-    snapCoordinateToTargetCenter();
-    showCuttingPlanePreview();
+    updateAxisBounds(true);
 }
 
 MeshSmeshPartitionWidget::~MeshSmeshPartitionWidget()
@@ -192,10 +276,8 @@ void MeshSmeshPartitionWidget::setMeshPlanIdentity(const QString& uuid, const QS
         m_ownerLabel->setText(tr("当前网格：%1。分块仅用于准备扫掠区域。")
             .arg(m_planName.isEmpty() ? tr("网格") : m_planName));
     rebuildTargetVolumes();
-    replacePartitionRulesForPlan(m_planUuid,m_ruleData);
-    snapCoordinateToTargetCenter();
-    refreshRegionList();
-    m_selectionPresentation.setSelectedEntities(3, {m_targetVolume->currentData().toInt()});
+    loadState();
+    updateAxisBounds(m_ruleData.isEmpty());
     MeshSettingsUi::simplify(this);
 }
 
@@ -228,17 +310,113 @@ void MeshSmeshPartitionWidget::rebuildTargetVolumes()
     m_targetVolume->blockSignals(false);
 }
 
+void MeshSmeshPartitionWidget::updateAxisBounds(bool snapToCenter)
+{
+    m_hasAxisBounds = false;
+    if (!m_targetVolume || !m_axis || !m_coordinate || !m_slider || !m_rangeLabel)
+        return;
+
+    const int id = m_targetVolume->currentData().toInt();
+    const int axis = m_axis->currentData().toInt();
+    if (id <= 0 || axis < 0 || axis > 2)
+    {
+        m_slider->setEnabled(false);
+        m_rangeLabel->setText(tr("实体范围：无可用实体"));
+        return;
+    }
+
+    QVariantList bounds;
+    if (QObject* bridge = geometryBridge())
+    {
+        QVariantList ids;
+        ids.push_back(id);
+        QMetaObject::invokeMethod(bridge, "meshingGeometryBounds", Qt::DirectConnection,
+                                  Q_RETURN_ARG(QVariantList, bounds),
+                                  Q_ARG(int, 3), Q_ARG(QVariantList, ids));
+    }
+
+    if (bounds.size() == 6)
+    {
+        const double bmin = bounds[axis * 2].toDouble();
+        const double bmax = bounds[axis * 2 + 1].toDouble();
+        if (std::isfinite(bmin) && std::isfinite(bmax) && bmax - bmin > 1.0e-12)
+        {
+            m_axisMin = bmin;
+            m_axisMax = bmax;
+            m_hasAxisBounds = true;
+
+            const double span = m_axisMax - m_axisMin;
+            const double step = computeAdaptiveStep(span);
+            const int decimals = computeAdaptiveDecimals(span);
+
+            {
+                const QSignalBlocker blockCoord(m_coordinate);
+                m_coordinate->setDecimals(decimals);
+                m_coordinate->setSingleStep(step);
+                if (snapToCenter)
+                    m_coordinate->setValue((m_axisMin + m_axisMax) * 0.5);
+            }
+
+            m_slider->setEnabled(true);
+            syncSliderFromCoordinate();
+            m_rangeLabel->setText(tr("范围：%1 ~ %2（步距 %3）")
+                .arg(m_axisMin, 0, 'f', decimals)
+                .arg(m_axisMax, 0, 'f', decimals)
+                .arg(step, 0, 'g', 4));
+            return;
+        }
+    }
+
+    m_slider->setEnabled(false);
+    m_rangeLabel->setText(tr("范围：未获取到包围盒，可直接输入坐标"));
+    if (snapToCenter)
+    {
+        auto* svc = ServiceRegistry::instance().getService<PreProcessingService>();
+        QVector3D center;
+        if (svc && svc->entityCenter(3, id, center))
+        {
+            const QSignalBlocker blockCoord(m_coordinate);
+            const double value = axis == 0 ? center.x() : (axis == 1 ? center.y() : center.z());
+            m_coordinate->setValue(value);
+        }
+    }
+}
+
+void MeshSmeshPartitionWidget::syncSliderFromCoordinate()
+{
+    if (!m_slider || !m_coordinate || !m_hasAxisBounds)
+        return;
+    const double span = m_axisMax - m_axisMin;
+    if (!(span > 1.0e-12))
+        return;
+    const double ratio = std::clamp((m_coordinate->value() - m_axisMin) / span, 0.0, 1.0);
+    const int pos = static_cast<int>(std::llround(ratio * kSliderSteps));
+    const QSignalBlocker blockSlider(m_slider);
+    m_slider->setValue(pos);
+}
+
+void MeshSmeshPartitionWidget::onSliderValueChanged(int sliderPos)
+{
+    if (!m_coordinate || !m_hasAxisBounds)
+        return;
+    const double span = m_axisMax - m_axisMin;
+    if (!(span > 1.0e-12))
+        return;
+    const double ratio = std::clamp(double(sliderPos) / double(kSliderSteps), 0.0, 1.0);
+    const double raw = m_axisMin + span * ratio;
+    const double scale = std::pow(10.0, m_coordinate->decimals());
+    const double rounded = std::round(raw * scale) / scale;
+    {
+        const QSignalBlocker blockCoord(m_coordinate);
+        m_coordinate->setValue(rounded);
+    }
+    showCuttingPlanePreview();
+}
+
 void MeshSmeshPartitionWidget::snapCoordinateToTargetCenter()
 {
-    if (!m_targetVolume || !m_axis || !m_coordinate) return;
-    const int id = m_targetVolume->currentData().toInt();
-    if (id <= 0) return;
-    auto* svc = ServiceRegistry::instance().getService<PreProcessingService>();
-    QVector3D center;
-    if (!svc || !svc->entityCenter(3, id, center)) return;
-    const int axis = m_axis->currentData().toInt();
-    const double value = axis == 0 ? center.x() : (axis == 1 ? center.y() : center.z());
-    m_coordinate->setValue(value);
+    updateAxisBounds(true);
+    showCuttingPlanePreview();
 }
 
 void MeshSmeshPartitionWidget::beginTargetVolumePick()
@@ -264,12 +442,14 @@ void MeshSmeshPartitionWidget::beginTargetVolumePick()
 
 void MeshSmeshPartitionWidget::beforeLoad()
 {
+    m_selectionPresentation.setSelectedEntities(3, {});
     m_selectionPresentation.enter();
     rebuildTargetVolumes();
     loadState();
-    snapCoordinateToTargetCenter();
-    refreshRegionList();
-    m_selectionPresentation.setSelectedEntities(3, {m_targetVolume->currentData().toInt()});
+    updateAxisBounds(m_ruleData.isEmpty());
+    invalidateRegionPreview();
+    if (m_ruleData.isEmpty())
+        showCuttingPlanePreview();
     MeshSettingsUi::simplify(this);
 }
 
@@ -289,10 +469,49 @@ void MeshSmeshPartitionWidget::loadState()
 void MeshSmeshPartitionWidget::saveState()
 {
     if (m_planUuid.isEmpty()) return;
+    for (PartitionRule& r : m_ruleData) r.planUuid = m_planUuid;
     replacePartitionRulesForPlan(m_planUuid, m_ruleData);
-    // Every sweep page sharing this parent mesh must discard transient region IDs.
+    if (auto* svc = ServiceRegistry::instance().getService<MeshModuleControllerService>())
+    {
+        auto faceRules = svc->faceControlRules();
+        bool clearedFaceRefs = false;
+        for (auto& rule : faceRules)
+        {
+            const QString owner = !rule.planUuid.trimmed().isEmpty() ? rule.planUuid.trimmed() : rule.ownerTaskUuid.trimmed();
+            if (owner != m_planUuid || rule.partitionFaceRefs.trimmed().isEmpty()) continue;
+            rule.partitionFaceRefs.clear();
+            clearedFaceRefs = true;
+        }
+        if (clearedFaceRefs)
+        {
+            svc->setFaceControlRules(faceRules);
+            emit logMessage(tr("[面尺寸][提示] 分块已修改，旧的分块面尺寸选择已清空，请重新选择。"));
+        }
+
+        auto edgeRules = svc->edgeControlRules();
+        bool clearedEdgeRefs = false;
+        for (auto& rule : edgeRules)
+        {
+            const QString owner = !rule.planUuid.trimmed().isEmpty() ? rule.planUuid.trimmed() : rule.ownerTaskUuid.trimmed();
+            if (owner != m_planUuid || rule.partitionEdgeRefs.trimmed().isEmpty()) continue;
+            rule.partitionEdgeRefs.clear();
+            clearedEdgeRefs = true;
+        }
+        if (clearedEdgeRefs)
+        {
+            svc->setEdgeControlRules(edgeRules);
+            emit logMessage(tr("[边尺寸][提示] 分块已修改，旧的分块边尺寸选择已清空，请重新选择。"));
+        }
+
+        if (auto* obj = dynamic_cast<QObject*>(svc))
+            QMetaObject::invokeMethod(obj, "markMeshControlsChangedForPlan", Qt::DirectConnection,
+                Q_ARG(QString, m_planUuid), Q_ARG(QString, tr("扫掠分块设置已修改")));
+    }
+    QVector<SweepTask> kept = sweepTasksForPlan(m_planUuid);
+    for (int i = kept.size() - 1; i >= 0; --i)
+        if (kept[i].partitionRegion) kept.removeAt(i);
+    replaceSweepTasksForPlan(m_planUuid, kept);
     emit partitionChanged();
-    emit logMessage(tr("扫掠分块已修改，原扫掠区域列表已清空，请在新分块上重新选择。"));
 }
 
 QVariantList MeshSmeshPartitionWidget::planes() const
@@ -315,7 +534,7 @@ void MeshSmeshPartitionWidget::refreshRuleList()
         if (r.axis >= 0 && r.axis <= 2)
         {
             const QChar axis = r.axis == 0 ? QLatin1Char('X') : (r.axis == 1 ? QLatin1Char('Y') : QLatin1Char('Z'));
-            text = tr("%1. %2%3 = %4").arg(i + 1).arg(targetText).arg(axis).arg(r.coordinate, 0, 'g', 10);
+            text = tr("%1. %2%3 = %4").arg(i + 1).arg(targetText).arg(axis).arg(r.coordinate, 0, 'g', 7);
         }
         else
         {
@@ -337,8 +556,10 @@ void MeshSmeshPartitionWidget::refreshRuleList()
                                    : tr("已停用：保留切面，但本次不参与分块"));
     }
     m_loadingRules = false;
+    if (m_updateAxis)
+        m_updateAxis->setEnabled(false);
     if (m_ruleData.isEmpty())
-        m_summary->setText(tr("未设置切面"));
+        m_summary->setText(tr("未设置切面（拖动滑块定位后点击“添加切面”）"));
     else
         m_summary->setText(tr("切面 %1，已启用 %2")
                            .arg(m_ruleData.size()).arg(enabledCount));
@@ -352,15 +573,36 @@ void MeshSmeshPartitionWidget::addAxisRule()
         QMessageBox::information(this, tr("扫掠分块"), tr("请先选择要分块的实体。"));
         return;
     }
+    const int axis = m_axis->currentData().toInt();
+    const double coord = m_coordinate->value();
+    const double tol = m_hasAxisBounds ? std::max(1.0e-6, (m_axisMax - m_axisMin) * 1.0e-4) : 1.0e-6;
+
+    if (m_hasAxisBounds && (coord <= m_axisMin + tol || coord >= m_axisMax - tol))
+    {
+        m_summary->setText(tr("切面位置需位于目标实体内部（%1 ~ %2），请拖动滑块调整。")
+                           .arg(m_axisMin, 0, 'g', 6).arg(m_axisMax, 0, 'g', 6));
+        return;
+    }
+
+    for (const PartitionRule& existing : m_ruleData)
+    {
+        if (existing.enabled && existing.targetVolumeUiId == targetVolume
+            && existing.axis == axis && std::abs(existing.coordinate - coord) <= tol)
+        {
+            m_summary->setText(tr("相同位置已存在切面，请拖动滑块到新位置后再添加。"));
+            return;
+        }
+    }
+
     PartitionRule r;
     r.planUuid = m_planUuid;
     r.targetVolumeUiId = targetVolume;
-    r.axis = m_axis->currentData().toInt();
-    r.coordinate = m_coordinate->value();
+    r.axis = axis;
+    r.coordinate = coord;
     m_ruleData.push_back(r);
     saveState();
     refreshRuleList();
-    refreshRegionList();
+    invalidateRegionPreview();
     emit logMessage(tr("[扫掠分块] 已添加切面。"));
 }
 
@@ -369,7 +611,11 @@ void MeshSmeshPartitionWidget::loadSelectedRuleToEditors()
     if (m_loadingRules || !m_rules || !m_targetVolume || !m_axis || !m_coordinate)
         return;
     const int row = m_rules->currentRow();
-    if (row < 0 || row >= m_ruleData.size()) return;
+    const bool validRow = (row >= 0 && row < m_ruleData.size());
+    if (m_updateAxis)
+        m_updateAxis->setEnabled(validRow && m_ruleData[row].axis >= 0 && m_ruleData[row].axis <= 2);
+    if (!validRow) return;
+
     const PartitionRule& r = m_ruleData[row];
     if (r.axis < 0 || r.axis > 2)
     {
@@ -377,14 +623,21 @@ void MeshSmeshPartitionWidget::loadSelectedRuleToEditors()
         return;
     }
 
-    const QSignalBlocker blockTarget(m_targetVolume);
-    const QSignalBlocker blockAxis(m_axis);
-    const int targetIndex = m_targetVolume->findData(r.targetVolumeUiId);
-    if (targetIndex >= 0) m_targetVolume->setCurrentIndex(targetIndex);
-    const int axisIndex = m_axis->findData(r.axis);
-    if (axisIndex >= 0) m_axis->setCurrentIndex(axisIndex);
-    m_coordinate->setValue(r.coordinate);
-    m_summary->setText(tr("切面 %1").arg(row + 1));
+    {
+        const QSignalBlocker blockTarget(m_targetVolume);
+        const QSignalBlocker blockAxis(m_axis);
+        const int targetIndex = m_targetVolume->findData(r.targetVolumeUiId);
+        if (targetIndex >= 0) m_targetVolume->setCurrentIndex(targetIndex);
+        const int axisIndex = m_axis->findData(r.axis);
+        if (axisIndex >= 0) m_axis->setCurrentIndex(axisIndex);
+    }
+    updateAxisBounds(false);
+    {
+        const QSignalBlocker blockCoordinate(m_coordinate);
+        m_coordinate->setValue(r.coordinate);
+    }
+    syncSliderFromCoordinate();
+    m_summary->setText(tr("已选中切面 %1（拖动滑块后点击“更新选中”修改，或点击“添加切面”新增）").arg(row + 1));
     showCuttingPlanePreview();
 }
 
@@ -402,11 +655,19 @@ void MeshSmeshPartitionWidget::updateSelectedAxisRule()
         QMessageBox::information(this, tr("扫掠分块"), tr("请先选择要分块的实体。"));
         return;
     }
+    const double coord = m_coordinate->value();
+    const double tol = m_hasAxisBounds ? std::max(1.0e-6, (m_axisMax - m_axisMin) * 1.0e-4) : 1.0e-6;
+    if (m_hasAxisBounds && (coord <= m_axisMin + tol || coord >= m_axisMax - tol))
+    {
+        m_summary->setText(tr("切面位置需位于目标实体内部（%1 ~ %2），请拖动滑块调整。")
+                           .arg(m_axisMin, 0, 'g', 6).arg(m_axisMax, 0, 'g', 6));
+        return;
+    }
 
     PartitionRule& r = m_ruleData[row];
     r.targetVolumeUiId = targetVolume;
     r.axis = m_axis->currentData().toInt();
-    r.coordinate = m_coordinate->value();
+    r.coordinate = coord;
     r.origin = QVector3D();
     r.normal = QVector3D();
     r.sourceFaceUiId = -1;
@@ -415,8 +676,12 @@ void MeshSmeshPartitionWidget::updateSelectedAxisRule()
     r.enabled = true;
     saveState();
     refreshRuleList();
-    m_rules->setCurrentRow(row);
-    refreshRegionList();
+    {
+        const QSignalBlocker blockRules(m_rules);
+        m_rules->setCurrentRow(row);
+    }
+    if (m_updateAxis) m_updateAxis->setEnabled(true);
+    invalidateRegionPreview();
     emit logMessage(tr("[扫掠分块] 已更新切面 %1。").arg(row + 1));
 }
 
@@ -522,6 +787,10 @@ bool MeshSmeshPartitionWidget::buildPlaneFromEdgePair(
 void MeshSmeshPartitionWidget::beginRegionPick()
 {
     if (planes().isEmpty()) { QMessageBox::information(this, tr("扫掠分块"), tr("请先设置有效切面。")); return; }
+    if (m_regions->count() == 0)
+        refreshRegionList();
+    if (m_regions->count() == 0)
+        return;
     QObject* bridge = geometryBridge();
     if (!bridge) return;
     stopPick();
@@ -547,8 +816,7 @@ bool MeshSmeshPartitionWidget::event(QEvent* ev)
             if (index >= 0)
             {
                 m_targetVolume->setCurrentIndex(index);
-                snapCoordinateToTargetCenter();
-                m_summary->setText(tr("实体 %1").arg(id));
+                m_summary->setText(tr("已选定目标实体 %1").arg(id));
             }
             else
             {
@@ -577,8 +845,8 @@ bool MeshSmeshPartitionWidget::event(QEvent* ev)
                 m_ruleData.push_back(r);
                 saveState();
                 refreshRuleList();
-                refreshRegionList();
-                emit logMessage(tr("[扫掠分块] 已使用面 %1 添加切面。") .arg(id));
+                invalidateRegionPreview();
+                emit logMessage(tr("[扫掠分块] 已使用面 %1 添加切面。").arg(id));
             }
         }
         else if (m_pickMode == PickEdgePair && dim == 1 && id > 0)
@@ -606,14 +874,12 @@ bool MeshSmeshPartitionWidget::event(QEvent* ev)
             m_ruleData.push_back(r);
             saveState();
             refreshRuleList();
-            refreshRegionList();
+            invalidateRegionPreview();
             emit logMessage(tr("[扫掠分块] 已根据边 %1 和边 %2 添加切面。").arg(edge1).arg(id));
         }
         else if (m_pickMode == PickRegion && isRegion && id > 0)
         {
             if (id <= m_regions->count()) m_regions->setCurrentRow(id - 1);
-            // stopExternalEntityPick() restores the original CAD display, so stop
-            // the picking session first and then re-apply the selected Region preview.
             stopPick();
             showSelectedRegion();
             return true;
@@ -631,7 +897,9 @@ void MeshSmeshPartitionWidget::removeSelectedRule()
     m_ruleData.removeAt(row);
     saveState();
     refreshRuleList();
-    refreshRegionList();
+    invalidateRegionPreview();
+    if (m_ruleData.isEmpty())
+        showCuttingPlanePreview();
 }
 
 void MeshSmeshPartitionWidget::clearRules()
@@ -639,23 +907,41 @@ void MeshSmeshPartitionWidget::clearRules()
     m_ruleData.clear();
     saveState();
     refreshRuleList();
-    refreshRegionList();
+    invalidateRegionPreview();
     restoreCad();
+    showCuttingPlanePreview();
 }
 
 void MeshSmeshPartitionWidget::showCuttingPlanePreview()
 {
+    if (!m_selectionPresentation.showingGeometry()) return;
     QObject* bridge = geometryBridge();
     if (!bridge || !m_targetVolume || !m_axis || !m_coordinate) return;
     const int targetVolume = m_targetVolume->currentData().toInt();
     if (targetVolume <= 0) return;
+
+    const int selectedRow = m_rules ? m_rules->currentRow() : -1;
+    QVariantList visible;
+    for (int i = 0; i < m_ruleData.size(); ++i)
+    {
+        if (i == selectedRow) continue;
+        const PartitionRule& r = m_ruleData[i];
+        if (!r.enabled) continue;
+        const QVector3D n = r.planeNormal();
+        if (n.lengthSquared() <= 1.0e-16f) continue;
+        QVariantMap m;
+        m.insert(QStringLiteral("origin"), QVariant::fromValue(r.planeOrigin()));
+        m.insert(QStringLiteral("normal"), QVariant::fromValue(n));
+        m.insert(QStringLiteral("targetVolumeUiId"), r.targetVolumeUiId);
+        m.insert(QStringLiteral("isDraft"), false);
+        visible.push_back(m);
+    }
 
     PartitionRule draft;
     draft.planUuid = m_planUuid;
     draft.targetVolumeUiId = targetVolume;
     draft.axis = m_axis->currentData().toInt();
     draft.coordinate = m_coordinate->value();
-    QVariantList visible;
     const QVector3D n = draft.planeNormal();
     if (n.lengthSquared() > 1.0e-16f)
     {
@@ -663,15 +949,42 @@ void MeshSmeshPartitionWidget::showCuttingPlanePreview()
         m.insert(QStringLiteral("origin"), QVariant::fromValue(draft.planeOrigin()));
         m.insert(QStringLiteral("normal"), QVariant::fromValue(n));
         m.insert(QStringLiteral("targetVolumeUiId"), targetVolume);
+        m.insert(QStringLiteral("isDraft"), true);
         visible.push_back(m);
     }
+
     QMetaObject::invokeMethod(bridge, "showExternalPartitionCutters", Qt::DirectConnection,
                               Q_ARG(QVariantList, visible));
 }
 
 void MeshSmeshPartitionWidget::previewPartition()
 {
+    if (auto* view = findChild<QComboBox*>(QStringLiteral("meshSettingsViewSelector")))
+        view->setCurrentIndex(0);
     refreshRegionList();
+}
+
+void MeshSmeshPartitionWidget::showSavedCutters()
+{
+    if (!m_selectionPresentation.showingGeometry()) return;
+    if (auto* bridge = geometryBridge())
+        QMetaObject::invokeMethod(bridge, "showExternalPartitionCutters", Qt::DirectConnection,
+                                  Q_ARG(QVariantList, planes()));
+}
+
+void MeshSmeshPartitionWidget::invalidateRegionPreview()
+{
+    const bool hadPreview = m_regions->count() > 0;
+    const QSignalBlocker blocker(m_regions);
+    m_regions->clear();
+    if (hadPreview)
+    {
+        const auto enabled = std::count_if(m_ruleData.cbegin(), m_ruleData.cend(),
+                                           [](const PartitionRule& rule) { return rule.enabled; });
+        m_summary->setText(tr("切面 %1，已启用 %2").arg(m_ruleData.size()).arg(enabled));
+        restoreCad();
+    }
+    showSavedCutters();
 }
 
 void MeshSmeshPartitionWidget::refreshRegionList()
@@ -710,8 +1023,8 @@ void MeshSmeshPartitionWidget::refreshRegionList()
     if (bridge)
         QMetaObject::invokeMethod(bridge, "showExternalPartitionRegions", Qt::DirectConnection,
                                   Q_ARG(QVariantList, payload), Q_ARG(QVariantList, visible), Q_ARG(int, 0));
-    m_summary->setText(tr("区域 %1") .arg(count));
-    emit logMessage(tr("[扫掠分块] 已生成 %1 个分块。") .arg(count));
+    m_summary->setText(tr("已生成 %1 个分块区域").arg(count));
+    emit logMessage(tr("[扫掠分块] 已生成 %1 个分块。").arg(count));
 }
 
 void MeshSmeshPartitionWidget::showSelectedRegion()
