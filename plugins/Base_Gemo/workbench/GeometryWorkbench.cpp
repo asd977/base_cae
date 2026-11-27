@@ -216,16 +216,14 @@ vtkSmartPointer<vtkActor> makePartitionRegionPreviewActor(const TopoDS_Shape& sh
     actor->PickableOn();
     auto* prop = actor->GetProperty();
     prop->SetRepresentationToSurface();
-    prop->SetInterpolationToFlat();
-    prop->LightingOff();
-    prop->SetAmbient(1.0);
-    prop->SetDiffuse(0.0);
-    prop->SetSpecular(0.0);
-    // 分块预览必须能看清边界。之前只显示半透明面，复杂模型中块与块的
-    // 轮廓很容易融在一起；这里始终显示深色边线，选中块再提高不透明度。
-    prop->EdgeVisibilityOn();
-    prop->SetEdgeColor(0.12, 0.12, 0.12);
-    prop->SetLineWidth(selected ? 2.2 : 1.4);
+    prop->SetInterpolationToGouraud();
+    prop->LightingOn();
+    prop->SetAmbient(0.35);
+    prop->SetDiffuse(0.65);
+    prop->SetSpecular(0.10);
+    // 关闭三角剖分边线，避免曲面/平面上显示杂乱的三角网格对角线；
+    // 轮廓由原 CAD 拓扑边与不同透明度区分。
+    prop->EdgeVisibilityOff();
     if (selected)
     {
         prop->SetColor(1.0, 0.58, 0.12);
@@ -304,17 +302,77 @@ vtkSmartPointer<vtkActor> makePartitionCutPlanePreviewActor(const QVariantMap& p
     v.normalize();
     const float half = float(std::max(1.0, diagonal * 0.72));
 
-    const QVector3D corners[4] = {
-        planeCenter - u*half - v*half,
-        planeCenter + u*half - v*half,
-        planeCenter + u*half + v*half,
-        planeCenter - u*half + v*half
-    };
     auto points = vtkSmartPointer<vtkPoints>::New();
-    for (const QVector3D& c : corners) points->InsertNextPoint(c.x(), c.y(), c.z());
     auto polys = vtkSmartPointer<vtkCellArray>::New();
-    polys->InsertNextCell(4);
-    for (vtkIdType i=0; i<4; ++i) polys->InsertCellPoint(i);
+    const int axisKind = plane.value(QStringLiteral("axis"), 3).toInt();
+    const double cylRadius = plane.value(QStringLiteral("radius"), 0.0).toDouble();
+    if (axisKind == 4 && cylRadius > 1.0e-6)
+    {
+        // Fit cylinder cutter tightly to the target solid's exact projection along axis (+5% margin).
+        float minProj = -float(std::max(1.0, diagonal * 0.5));
+        float maxProj =  float(std::max(1.0, diagonal * 0.5));
+        if (!targetShape.IsNull())
+        {
+            Bnd_Box tbox;
+            BRepBndLib::Add(targetShape, tbox, false);
+            if (!tbox.IsVoid() && !tbox.IsOpen())
+            {
+                double x0=0,y0=0,z0=0,x1=0,y1=0,z1=0;
+                tbox.Get(x0,y0,z0,x1,y1,z1);
+                double lo = 1.0e30, hi = -1.0e30;
+                const double xs[2] = {x0, x1}, ys[2] = {y0, y1}, zs[2] = {z0, z1};
+                for (int ix=0; ix<2; ++ix)
+                    for (int iy=0; iy<2; ++iy)
+                        for (int iz=0; iz<2; ++iz)
+                        {
+                            const QVector3D pt{float(xs[ix]), float(ys[iy]), float(zs[iz])};
+                            const double pr = double(QVector3D::dotProduct(pt - origin, normal));
+                            lo = std::min(lo, pr);
+                            hi = std::max(hi, pr);
+                        }
+                if (hi > lo)
+                {
+                    const double pad = std::max(0.5, (hi - lo) * 0.05);
+                    minProj = float(lo - pad);
+                    maxProj = float(hi + pad);
+                }
+            }
+        }
+        constexpr int kSegs = 48;
+        for (int s = 0; s < kSegs; ++s)
+        {
+            const double ang = 2.0 * 3.14159265358979323846 * double(s) / double(kSegs);
+            const QVector3D radial = (u * float(std::cos(ang)) + v * float(std::sin(ang))) * float(cylRadius);
+            const QVector3D pBot = origin + radial + normal * minProj;
+            const QVector3D pTop = origin + radial + normal * maxProj;
+            points->InsertNextPoint(pBot.x(), pBot.y(), pBot.z());
+            points->InsertNextPoint(pTop.x(), pTop.y(), pTop.z());
+        }
+        for (int s = 0; s < kSegs; ++s)
+        {
+            const vtkIdType b0 = 2 * s;
+            const vtkIdType t0 = 2 * s + 1;
+            const vtkIdType b1 = 2 * ((s + 1) % kSegs);
+            const vtkIdType t1 = 2 * ((s + 1) % kSegs) + 1;
+            polys->InsertNextCell(4);
+            polys->InsertCellPoint(b0);
+            polys->InsertCellPoint(b1);
+            polys->InsertCellPoint(t1);
+            polys->InsertCellPoint(t0);
+        }
+    }
+    else
+    {
+        const QVector3D corners[4] = {
+            planeCenter - u*half - v*half,
+            planeCenter + u*half - v*half,
+            planeCenter + u*half + v*half,
+            planeCenter - u*half + v*half
+        };
+        for (const QVector3D& c : corners) points->InsertNextPoint(c.x(), c.y(), c.z());
+        polys->InsertNextCell(4);
+        for (vtkIdType i=0; i<4; ++i) polys->InsertCellPoint(i);
+    }
     auto poly = vtkSmartPointer<vtkPolyData>::New();
     poly->SetPoints(points);
     poly->SetPolys(polys);
@@ -328,23 +386,43 @@ vtkSmartPointer<vtkActor> makePartitionCutPlanePreviewActor(const QVariantMap& p
     actor->SetMapper(mapper);
     actor->PickableOff();
     const bool isDraft = plane.value(QStringLiteral("isDraft"), false).toBool();
+    const bool isCylinder = (axisKind == 4 && cylRadius > 1.0e-6);
     auto* prop = actor->GetProperty();
-    prop->LightingOff();
-    if (isDraft)
+    if (isCylinder)
     {
-        prop->SetColor(0.14, 0.68, 1.0);
-        prop->SetOpacity(0.38);
-        prop->EdgeVisibilityOn();
-        prop->SetEdgeColor(0.0, 0.45, 0.95);
-        prop->SetLineWidth(3.2);
+        prop->LightingOn();
+        prop->SetInterpolationToGouraud();
+        prop->EdgeVisibilityOff();
+        if (isDraft)
+        {
+            prop->SetColor(0.14, 0.68, 1.0);
+            prop->SetOpacity(0.32);
+        }
+        else
+        {
+            prop->SetColor(1.0, 0.78, 0.14);
+            prop->SetOpacity(0.26);
+        }
     }
     else
     {
-        prop->SetColor(1.0, 0.82, 0.10);
-        prop->SetOpacity(0.30);
-        prop->EdgeVisibilityOn();
-        prop->SetEdgeColor(1.0, 0.48, 0.02);
-        prop->SetLineWidth(2.6);
+        prop->LightingOff();
+        if (isDraft)
+        {
+            prop->SetColor(0.14, 0.68, 1.0);
+            prop->SetOpacity(0.38);
+            prop->EdgeVisibilityOn();
+            prop->SetEdgeColor(0.0, 0.45, 0.95);
+            prop->SetLineWidth(3.2);
+        }
+        else
+        {
+            prop->SetColor(1.0, 0.82, 0.10);
+            prop->SetOpacity(0.30);
+            prop->EdgeVisibilityOn();
+            prop->SetEdgeColor(1.0, 0.48, 0.02);
+            prop->SetLineWidth(2.6);
+        }
     }
     return actor;
 }
@@ -6802,6 +6880,33 @@ QVariantMap GeometryWorkbench::externalAnalyzePartitionSweepRegion(const QVarian
 QVariantMap GeometryWorkbench::externalEvaluateHexBlocking(const QVariantList& planes) const
 {
     return GeometryEntityTools::evaluateHexBlockingPlanes(activeGeometryUuids(), planes);
+}
+
+QVariantMap GeometryWorkbench::externalGmdsPartitionSnapshot(int targetVolumeUiId) const
+{
+    const auto uuids=activeGeometryUuids();
+    const auto ids=GeometryEntityTools::listEntityIds(uuids,3);
+    BRep_Builder builder; TopoDS_Compound compound; builder.MakeCompound(compound);
+    QVariantList bodyIds,preSkipped;
+    if(ids.size()>16 && targetVolumeUiId<=0)
+        return {{"valid",false},{"message",tr("实体超过 16 个，请先选择一个目标实体再分析。")}};
+    for(const auto& text:ids) {
+        const int id=text.toInt(); if(targetVolumeUiId>0 && id!=targetVolumeUiId) continue;
+        TopoDS_Shape solid;
+        if(!GeometryEntityTools::entityShape(uuids,3,id,solid)) continue;
+        TopTools_IndexedMapOfShape fs,es;
+        TopExp::MapShapes(solid,TopAbs_FACE,fs); TopExp::MapShapes(solid,TopAbs_EDGE,es);
+        QString reason;
+        if(fs.Extent()>48 || es.Extent()>144) reason=tr("拓扑数量超过本次分析上限");
+        if(reason.isEmpty()) for(int i=1;i<=fs.Extent();++i)
+            if(BRepAdaptor_Surface(TopoDS::Face(fs(i))).GetType()!=GeomAbs_Plane) { reason=tr("当前 GMDS 适配仅分析平面多面体，曲面实体已跳过"); break; }
+        if(!reason.isEmpty()) { preSkipped.append(QVariantMap{{"volumeId",id},{"reason",reason}}); continue; }
+        builder.Add(compound,solid); bodyIds.append(id);
+    }
+    if(bodyIds.isEmpty() && preSkipped.isEmpty()) return {{"valid",false},{"message",tr("未找到目标实体。")}};
+    std::ostringstream data; BRepTools::Write(compound,data,false,false,TopTools_FormatVersion_CURRENT);
+    const auto bytes=data.str();
+    return {{"valid",true},{"bodyIds",bodyIds},{"preSkipped",preSkipped},{"brep",QByteArray(bytes.data(),qsizetype(bytes.size()))}};
 }
 
 QVariantMap GeometryWorkbench::externalEvaluateHexBlockingSurfaces(const QVariantList& surfaces) const

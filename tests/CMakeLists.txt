@@ -21,6 +21,13 @@ set_tests_properties(SmeshMeshingChecks PROPERTIES TIMEOUT 180
     ENVIRONMENT "PATH=${_smesh_test_path}")
 
 add_executable(SmeshWorkflowChecks SmeshWorkflowChecks.cpp ../plugins/Base_Mesh/SmeshMeshGenerator.cpp)
+add_executable(GmdsPartitionChecks GmdsPartitionChecks.cpp ../plugins/Base_Mesh/SmeshMeshGenerator.cpp)
+target_include_directories(GmdsPartitionChecks PRIVATE "${CMAKE_SOURCE_DIR}/interfaces")
+target_link_libraries(GmdsPartitionChecks PRIVATE core Qt6::Core Qt6::Gui CAE::OCC CAE::VTK)
+add_dependencies(GmdsPartitionChecks CAE_GMDSWorker CAE_SMESHBridge)
+cae_vtk_autoinit(GmdsPartitionChecks)
+add_test(NAME GmdsPartitionChecks COMMAND GmdsPartitionChecks)
+set_tests_properties(GmdsPartitionChecks PROPERTIES TIMEOUT 60 ENVIRONMENT "PATH=${_smesh_test_path}")
 target_include_directories(SmeshWorkflowChecks PRIVATE "${CMAKE_SOURCE_DIR}/interfaces")
 target_link_libraries(SmeshWorkflowChecks PRIVATE Qt6::Core Qt6::Gui CAE::OCC CAE::VTK)
 add_dependencies(SmeshWorkflowChecks CAE_SMESHBridge)

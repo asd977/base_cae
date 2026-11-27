@@ -13,6 +13,7 @@ class QLabel;
 class QListWidget;
 class QPushButton;
 class QSlider;
+class GmdsPartitionRunner;
 
 class MeshSmeshPartitionWidget : public BasePage
 {
@@ -50,6 +51,8 @@ private:
     void onSliderValueChanged(int sliderPos);
     void snapCoordinateToTargetCenter();
     void addAxisRule();
+    void startGmdsAnalysis();
+    void finishGmdsSuggestions(const QVariantMap& result);
     void updateSelectedAxisRule();
     void loadSelectedRuleToEditors();
     void beginCadPlanePick();
@@ -78,6 +81,13 @@ private:
     QLabel* m_ownerLabel = nullptr;
     QLabel* m_summary = nullptr;
     QPushButton* m_preview = nullptr;
+    QPushButton* m_gmdsButton = nullptr;
+    GmdsPartitionRunner* m_gmdsRunner = nullptr;
+    QVariantMap m_gmdsSnapshot;
+    QVariantList m_gmdsPlanes;
+    QString m_gmdsPlanUuid;
+    int m_gmdsTarget = -1;
+    bool m_discardGmds = false;
     QVector<MeshSmeshWorkflowState::PartitionRule> m_ruleData;
     PickMode m_pickMode = PickNone;
     bool m_loadingRules = false;

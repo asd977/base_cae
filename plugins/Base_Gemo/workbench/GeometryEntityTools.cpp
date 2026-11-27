@@ -21,6 +21,8 @@
 #include <BRepTools.hxx>
 #include <GProp_GProps.hxx>
 #include <gp_Pnt.hxx>
+#include <gp_Ax3.hxx>
+#include <gp_Cylinder.hxx>
 #include <gp_Pln.hxx>
 #include <gp_Lin.hxx>
 #include <gp_Circ.hxx>
@@ -1544,6 +1546,10 @@ QVariantMap analyzeTranslationalSweepShape(const TopoDS_Shape& inputSolid)
                 gp_Dir dir(tr);
                 if (std::abs(a.normal.Dot(dir)) < kParallel) continue;
 
+                // SMESH Prism_3D / Projection_1D2D strictly requires equal edge counts
+                // on Source and Target caps (catches tangent-contact split circles where
+                // one cap has 2 arcs and the opposite cap has 1 full circle).
+                if (a.edges.size() != b.edges.size()) continue;
                 const double areaScale = std::max({a.area, b.area, tol * tol});
                 if (std::abs(a.area - b.area) > areaScale * 2.0e-3) continue;
                 if (!translatedBoundaryMatches(a.face, b.face, tr)) continue;
@@ -1558,6 +1564,49 @@ QVariantMap analyzeTranslationalSweepShape(const TopoDS_Shape& inputSolid)
                 constexpr double kSweepVolumeRelTol = 5.0e-3; // 0.5%，兼容 STEP/OCC 数值误差
                 if (solidVolume > tol * tol * tol && sweepVolumeRelError > kSweepVolumeRelTol)
                     continue;
+
+                // V9.0 Linking-Face purity check (O(F), zero BRepExtrema):
+                // Reject false-positive sweep directions when a side/linking wall
+                // carries an unpropagated imprint (e.g. a circular boss footprint
+                // on a box top face when testing X/Y sweep). Every linking face
+                // must touch BOTH source & target caps, and every wire of every
+                // linking face must touch at least one cap edge (no floating holes).
+                {
+                    TopTools_IndexedMapOfShape aEdgeMap, bEdgeMap;
+                    TopExp::MapShapes(a.face, TopAbs_EDGE, aEdgeMap);
+                    TopExp::MapShapes(b.face, TopAbs_EDGE, bEdgeMap);
+                    bool linkingOk = true;
+                    for (int fi = 1; fi <= faces.Extent(); ++fi)
+                    {
+                        if (fi == a.localId || fi == b.localId) continue;
+                        const TopoDS_Shape& lf = faces(fi);
+                        bool touchesA = false, touchesB = false;
+                        for (TopExp_Explorer we(lf, TopAbs_WIRE); we.More(); we.Next())
+                        {
+                            bool wireTouchesCap = false;
+                            for (TopExp_Explorer ee(we.Current(), TopAbs_EDGE); ee.More(); ee.Next())
+                            {
+                                const bool inA = aEdgeMap.Contains(ee.Current());
+                                const bool inB = bEdgeMap.Contains(ee.Current());
+                                if (inA) touchesA = true;
+                                if (inB) touchesB = true;
+                                if (inA || inB) wireTouchesCap = true;
+                            }
+                            if (!wireTouchesCap)
+                            {
+                                linkingOk = false;
+                                break;
+                            }
+                        }
+                        if (!linkingOk || !touchesA || !touchesB)
+                        {
+                            linkingOk = false;
+                            break;
+                        }
+                    }
+                    if (!linkingOk)
+                        continue;
+                }
 
                 // 保证方向稳定：优先 +X/+Y/+Z，避免同一几何每次 Source/Target 翻转。
                 const double comps[3] = {tr.X(), tr.Y(), tr.Z()};
@@ -2206,12 +2255,26 @@ QVector<TopoDS_Shape> splitTemporaryPartitionRegions(const QStringList& geometry
                 continue;
             normal.normalize();
 
-            const gp_Pln pln(
-                gp_Pnt(origin.x(), origin.y(), origin.z()),
-                gp_Dir(normal.x(), normal.y(), normal.z()));
-            BRepBuilderAPI_MakeFace faceMaker(pln, -half, half, -half, half);
-            if (faceMaker.IsDone())
-                tools.Append(faceMaker.Face());
+            const int axisKind = plane.value(QStringLiteral("axis"), 3).toInt();
+            const double cylRadius = plane.value(QStringLiteral("radius"), 0.0).toDouble();
+            if (axisKind == 4 && cylRadius > 1.0e-6)
+            {
+                const gp_Ax3 ax3(gp_Pnt(origin.x(), origin.y(), origin.z()),
+                                 gp_Dir(normal.x(), normal.y(), normal.z()));
+                const gp_Cylinder cyl(ax3, cylRadius);
+                BRepBuilderAPI_MakeFace cylMaker(cyl, 0.0, 2.0 * 3.14159265358979323846, -half, half);
+                if (cylMaker.IsDone())
+                    tools.Append(cylMaker.Face());
+            }
+            else
+            {
+                const gp_Pln pln(
+                    gp_Pnt(origin.x(), origin.y(), origin.z()),
+                    gp_Dir(normal.x(), normal.y(), normal.z()));
+                BRepBuilderAPI_MakeFace faceMaker(pln, -half, half, -half, half);
+                if (faceMaker.IsDone())
+                    tools.Append(faceMaker.Face());
+            }
         }
 
         if (tools.IsEmpty())
@@ -2434,6 +2497,7 @@ QVariantMap evaluateHexBlockingPlanes(const QStringList& geometryUuids, const QV
             .arg(resultCount).arg(counts.join(QStringLiteral(", "))).arg(nonSweepableCount));
     return out;
 }
+
 
 QVariantMap evaluateHexBlockingSurfaces(const QStringList& geometryUuids, const QVariantList& surfaces)
 {

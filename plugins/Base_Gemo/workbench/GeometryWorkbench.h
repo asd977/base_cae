@@ -133,6 +133,7 @@ class GeometryWorkbench : public QObject, public PreProcessingService
     Q_INVOKABLE QVariantMap externalAnalyzePartitionSweepRegion(const QVariantList& planes, int regionOrdinal);
     // Hex Blocking 半自动建议：在原 CAD 的 OCC 临时副本上真实试切并返回 Sweep 拓扑评分。
     Q_INVOKABLE QVariantMap externalEvaluateHexBlocking(const QVariantList& planes) const;
+    Q_INVOKABLE QVariantMap externalGmdsPartitionSnapshot(int targetVolumeUiId) const;
     // Finite Mesh-only Surface precheck for Polycube Region Blocking.
     Q_INVOKABLE QVariantMap externalEvaluateHexBlockingSurfaces(const QVariantList& surfaces) const;
     // Mesh Polycube analysis bridge: export the original OCC CAD boundary as a
