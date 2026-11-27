@@ -685,7 +685,7 @@ void MeshSmeshPartitionWidget::startGmdsAnalysis()
 
 void MeshSmeshPartitionWidget::finishGmdsSuggestions(const QVariantMap& result)
 {
-    m_gmdsButton->setText(tr("GMDS GMDS 分块"));
+    m_gmdsButton->setText(tr("GMDS 半自动分块"));
     if(m_discardGmds) return;
     if(result.value("cancelled").toBool()) { m_summary->setText(result.value("message").toString()); return; }
     const int targetVolume=m_gmdsTarget;

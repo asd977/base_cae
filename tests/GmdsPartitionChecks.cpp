@@ -72,7 +72,7 @@ int main(int argc,char** argv)
         SmeshMeshingRequest mesh; mesh.inputGeometryPath=dir.filePath("cad.brep"); mesh.lenMin=.05; mesh.lenMax=.5; mesh.exportVtk=false; mesh.exportNas=false;
         check(BRepTools::Write(shape,QFile::encodeName(mesh.inputGeometryPath).constData()),"Write source CAD");
         for(auto value:suggestions) {
-            auto s=value.toMap(); SmeshPartitionSettings p; p.axis=3; p.targetVolumeUiId=1; p.target={3,1};
+            auto s=value.toMap(); SmeshPartitionSettings p; p.axis=s.value("axis",3).toInt(); p.coordinate=s.value("coordinate",0.0).toDouble(); p.targetVolumeUiId=1; p.target={3,1};
             p.origin=s.value("origin").value<QVector3D>(); p.normal=s.value("normal").value<QVector3D>(); mesh.workflow.partitions.push_back(p);
         }
         SmeshOccPartitioner::Settings split; split.inputStepPath=mesh.inputGeometryPath; split.outputBrepPath=dir.filePath("partition.brep"); split.rules=mesh.workflow.partitions;
@@ -108,11 +108,11 @@ int main(int argc,char** argv)
         check(hexes>0 && shared>0,"GMDS -> OCC -> SMESH lost hexahedra or shared interface nodes");
         std::cout<<"PASS: GMDS candidates -> exact OCC cuts -> native SMESH: "<<hexes<<" hexes, "<<shared<<" shared nodes\n";
         auto curved=run(runner,serialize(BRepPrimAPI_MakeCylinder(1,2).Shape()),request);
-        check(curved.value("valid").toBool() && curved.value("skipped").toList().size()==1 && curved.value("suggestions").toList().isEmpty(),"Curved geometry not skipped");
+        check(curved.value("valid").toBool() && curved.value("alreadySweepable").toBool() && curved.value("suggestions").toList().isEmpty(),"Clean cylinder should be recognized as already sweepable");
         auto cylindricalCut=request;
         cylindricalCut["planes"]=QJsonArray{QJsonObject{{"axis",4},{"radius",0.4},{"targetVolumeUiId",1},{"origin",QJsonArray{1,1,1}},{"normal",QJsonArray{0,0,1}}}};
         auto residual=run(runner,serialize(BRepPrimAPI_MakeBox(2,2,2).Shape()),cylindricalCut);
-        check(residual.value("valid").toBool() && residual.value("skipped").toList().size()==1,"Curved residuals from saved manual cuts were not skipped");
+        check(residual.value("valid").toBool() && residual.value("alreadySweepable").toBool(),"Box with clean cylindrical through-cut should be recognized as sweepable");
         BRepBuilderAPI_MakePolygon many;
         for(int i=0;i<60;++i) { const double a=i*2.0*3.141592653589793/60.0; many.Add(gp_Pnt(std::cos(a),std::sin(a),0)); }
         many.Close(); const auto complex=BRepPrimAPI_MakePrism(BRepBuilderAPI_MakeFace(many.Wire()).Face(),gp_Vec(0,0,1)).Shape();

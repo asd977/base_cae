@@ -6898,8 +6898,11 @@ QVariantMap GeometryWorkbench::externalGmdsPartitionSnapshot(int targetVolumeUiI
         TopExp::MapShapes(solid,TopAbs_FACE,fs); TopExp::MapShapes(solid,TopAbs_EDGE,es);
         QString reason;
         if(fs.Extent()>48 || es.Extent()>144) reason=tr("拓扑数量超过本次分析上限");
-        if(reason.isEmpty()) for(int i=1;i<=fs.Extent();++i)
-            if(BRepAdaptor_Surface(TopoDS::Face(fs(i))).GetType()!=GeomAbs_Plane) { reason=tr("当前 GMDS 适配仅分析平面多面体，曲面实体已跳过"); break; }
+        if(reason.isEmpty()) for(int i=1;i<=fs.Extent();++i) {
+            const auto st=BRepAdaptor_Surface(TopoDS::Face(fs(i))).GetType();
+            const bool ok=(st==GeomAbs_Plane || st==GeomAbs_Cylinder || st==GeomAbs_Cone || st==GeomAbs_Torus || st==GeomAbs_Sphere);
+            if(!ok) { reason=tr("包含自由 NURBS/样条曲面，已跳过"); break; }
+        }
         if(!reason.isEmpty()) { preSkipped.append(QVariantMap{{"volumeId",id},{"reason",reason}}); continue; }
         builder.Add(compound,solid); bodyIds.append(id);
     }

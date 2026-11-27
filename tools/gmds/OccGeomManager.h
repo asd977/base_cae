@@ -10,11 +10,15 @@
 #include <BRepGProp.hxx>
 #include <BRep_Tool.hxx>
 #include <Bnd_Box.hxx>
+#include <GeomLProp_SLProps.hxx>
 #include <GProp_GProps.hxx>
+#include <ShapeAnalysis_Surface.hxx>
 #include <TopExp.hxx>
 #include <TopExp_Explorer.hxx>
 #include <TopoDS.hxx>
 #include <TopTools_IndexedMapOfShape.hxx>
+#include <gp_Cylinder.hxx>
+#include <gp_Sphere.hxx>
 #include <memory>
 #include <algorithm>
 
@@ -76,7 +80,9 @@ struct Edge : Entity<cad::GeomCurve>
     double computeDihedralAngle() const override
     {
         if(fs.size()!=2) return 0.0;
-        const auto p=closestPoint({(bounds[0]+bounds[3])*0.5,(bounds[1]+bounds[4])*0.5,(bounds[2]+bounds[5])*0.5});
+        BRepAdaptor_Curve c(TopoDS::Edge(shape));
+        gp_Pnt mid=c.Value((c.FirstParameter()+c.LastParameter())*0.5);
+        const Point p{mid.X(),mid.Y(),mid.Z()};
         gmds::math::Vector3d a,b; fs[0]->computeNormal(p,a); fs[1]->computeNormal(p,b);
         return std::acos(std::clamp(a.dot(b),-1.0,1.0));
     }
@@ -84,7 +90,9 @@ struct Edge : Entity<cad::GeomCurve>
     {
         BRepAdaptor_Curve c(TopoDS::Edge(shape)); gp_Pnt p; gp_Vec t;
         c.D1(end ? c.LastParameter() : c.FirstParameter(),p,t);
-        if(end) t.Reverse(); t.Normalize(); return {{t.X(),t.Y(),t.Z()}};
+        if(end) t.Reverse();
+        if(t.SquareMagnitude()<=1e-24) return {{1.0,0.0,0.0}};
+        t.Normalize(); return {{t.X(),t.Y(),t.Z()}};
     }
     bool isALoop() const override { return ns.size()<2; }
     CurvatureInfo getCurvatureInfo() const override
@@ -109,10 +117,42 @@ struct Face : Entity<cad::GeomSurface>
     std::vector<cad::GeomCurve*> es;
     std::vector<cad::GeomVolume*> vs;
     std::vector<std::vector<cad::GeomCurve*>> wires;
-    void computeNormal(const Point&,gmds::math::Vector3d& n) const override
+    void computeNormal(const Point& pt,gmds::math::Vector3d& n) const override
     {
-        auto d=BRepAdaptor_Surface(TopoDS::Face(shape)).Plane().Axis().Direction();
-        if(shape.Orientation()==TopAbs_REVERSED) d.Reverse(); n={{d.X(),d.Y(),d.Z()}};
+        const TopoDS_Face face=TopoDS::Face(shape);
+        BRepAdaptor_Surface surf(face,true);
+        const GeomAbs_SurfaceType stype=surf.GetType();
+        gp_Vec nv(0,0,1);
+        bool ok=false;
+        if(stype==GeomAbs_Plane) {
+            gp_Dir d=surf.Plane().Axis().Direction();
+            nv=gp_Vec(d.X(),d.Y(),d.Z()); ok=true;
+        } else if(stype==GeomAbs_Cylinder) {
+            const gp_Cylinder cyl=surf.Cylinder();
+            const gp_Pnt q(pt.X(),pt.Y(),pt.Z());
+            const gp_Vec v(cyl.Location(),q);
+            const gp_Dir ax=cyl.Axis().Direction();
+            gp_Vec rad=v-gp_Vec(ax)*v.Dot(gp_Vec(ax));
+            if(rad.SquareMagnitude()>1e-20) { rad.Normalize(); nv=rad; ok=true; }
+        } else if(stype==GeomAbs_Sphere) {
+            const gp_Sphere sph=surf.Sphere();
+            gp_Vec rad(sph.Location(),gp_Pnt(pt.X(),pt.Y(),pt.Z()));
+            if(rad.SquareMagnitude()>1e-20) { rad.Normalize(); nv=rad; ok=true; }
+        }
+        if(!ok) {
+            Handle(Geom_Surface) gs=BRep_Tool::Surface(face);
+            if(!gs.IsNull()) {
+                ShapeAnalysis_Surface sas(gs);
+                const gp_Pnt2d uv=sas.ValueOfUV(gp_Pnt(pt.X(),pt.Y(),pt.Z()),1e-6);
+                GeomLProp_SLProps props(gs,uv.X(),uv.Y(),1,1e-6);
+                if(props.IsNormalDefined()) {
+                    gp_Dir d=props.Normal();
+                    nv=gp_Vec(d.X(),d.Y(),d.Z()); ok=true;
+                }
+            }
+        }
+        if(shape.Orientation()==TopAbs_REVERSED) nv.Reverse();
+        n={{nv.X(),nv.Y(),nv.Z()}};
     }
     std::vector<cad::GeomPoint*>& points() override { return ns; }
     std::vector<cad::GeomCurve*>& curves() override { return es; }
@@ -130,7 +170,7 @@ struct Volume : Entity<cad::GeomVolume>
     std::vector<cad::GeomSurface*>& surfaces() override { return fs; }
 };
 
-// Owns all entities for one exact, normalized OCC solid. No faceting or GTS.
+// Owns all entities for one exact, normalized OCC solid (planar & curved). No faceting or GTS.
 class OccGeomManager final : public cad::GeomManager
 {
     std::vector<std::unique_ptr<Vertex>> nodes;
